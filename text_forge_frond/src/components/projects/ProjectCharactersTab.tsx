@@ -285,15 +285,6 @@ export function ProjectCharactersTab({ projectId }: { projectId: string }) {
                 ) : (
                   <>
                     <p className="text-sm text-muted-foreground leading-relaxed line-clamp-2 mb-4">{char.description || '暂无描述'}</p>
-                    {char.images && char.images.length > 0 && (
-                      <div className="flex gap-2 mb-4 overflow-x-auto">
-                        {char.images.slice(0, 4).map((img, i) => (
-                          <div key={i} className="relative w-16 h-16 rounded-2xl overflow-hidden border border-border/30 shrink-0 ring-1 ring-inset ring-white/5">
-                            <Image src={img} alt={`${char.name} 图${i + 1}`} fill className="object-cover" />
-                          </div>
-                        ))}
-                      </div>
-                    )}
                     <div className="flex items-center gap-2">
                       <Button asChild size="sm" className="flex-1 rounded-xl">
                         <Link href={`/characters/${char.id}/chat`}>

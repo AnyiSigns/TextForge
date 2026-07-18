@@ -515,10 +515,22 @@
 .relaxed { line-height: 1.7; }
 .relaxed-sm { line-height: 1.6; }
 
-/* 主内容区统一留白 */
+/* 主内容区：仅保留极小安全边距（防横向溢出/上滑穿透），
+   真正的呼吸留白交给内部滚动容器（scroller）提供，
+   避免双层 padding 压缩内容可视范围 */
 .dash-main {
-  padding: 1.5rem;
+  padding: 0.75rem 0 0;
 }
 @media (min-width: 768px) {
-  .dash-main { padding: 2rem 2.25rem; }
+  .dash-main { padding: 1rem 0 0; }
+}
+
+/* 隐藏元素自身滚动条但保留滚动能力（用于主内容区，
+   页面内独立滚动容器如手稿编辑框、对话消息框不受影响） */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }

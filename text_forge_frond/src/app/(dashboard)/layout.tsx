@@ -91,14 +91,14 @@ export default function DashboardLayout({
         <BackgroundProvider>
           <div className="group/sidebar-layout flex h-screen overflow-hidden">
             <Sidebar />
-            <main className="dash-main flex-1 overflow-hidden md:ml-56 transition-all duration-300 md:[html.sidebar-collapsed_&]:ml-[72px]">
+            <main className="dash-main flex-1 overflow-hidden md:ml-[16rem] transition-all duration-300 md:[html.sidebar-collapsed_&]:ml-[92px]">
               <motion.div
                 className="h-full min-h-full flex flex-col"
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.2 }}
               >
-                <div className="flex-1 min-h-0 overflow-y-auto">{children}</div>
+                <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar px-6 py-6 md:px-8 md:py-7">{children}</div>
                 <Footer />
               </motion.div>
             </main>
