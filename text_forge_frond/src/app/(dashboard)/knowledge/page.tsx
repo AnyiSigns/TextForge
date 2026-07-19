@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Upload, FileText, Trash2, BookOpen, Globe2, FolderOpen, Sparkles, ShieldAlert, Eye, Download, Search } from 'lucide-react';
+import { Upload, FileText, Trash2, BookOpen, Globe2, FolderOpen, Sparkles, ShieldAlert, Eye, Download, Search, AlertCircle, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { EmptyState } from '@/components/shared/states';
@@ -17,6 +17,7 @@ import { useSettingsStore } from '@/lib/stores/settingsStore';
 import { ragClient, type KbDocMeta } from '@/lib/knowledge';
 import { initDownloadedTiers, isTierDownloaded } from '@/lib/rag/embed';
 import { EMBED_TIERS } from '@/lib/rag/embed';
+import { reindexAll } from '@/lib/rag/vectorStore';
 
 const FORBIDDEN_NOTE = '请勿上传包含血腥、暴力、色情或任何其他违反法律法规的内容。违规内容将被系统拦截并追责。';
 
@@ -42,6 +43,7 @@ export default function KnowledgePage() {
   const [embedTierLabel, setEmbedTierLabel] = useState('');
   const [embedTierDim, setEmbedTierDim] = useState(0);
   const [embedDownloaded, setEmbedDownloaded] = useState(false);
+  const [reindexing, setReindexing] = useState(false);
   useEffect(() => {
     initDownloadedTiers().then(() => {
       const t = EMBED_TIERS.find((x) => x.id === embedTierId);
@@ -50,6 +52,24 @@ export default function KnowledgePage() {
       setEmbedDownloaded(isTierDownloaded(embedTierId));
     });
   }, [embedTierId]);
+
+  // 待重建文档数（切换精度后旧文档被标记为 indexing）
+  const pendingReindex = personal.filter((d) => d.status === 'indexing').length;
+
+  const handleReindex = async () => {
+    if (reindexing) return;
+    setReindexing(true);
+    try {
+      await reindexAll();
+      await refresh();
+      toast.success('已重新建库，现在可以正常检索了');
+    } catch (error: unknown) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      toast.error('重新建库失败', { description: err.message });
+    } finally {
+      setReindexing(false);
+    }
+  };
 
   const refresh = useCallback(async () => {
     const [p, pub] = await Promise.all([ragClient.listPersonal(), ragClient.listPublic()]);
@@ -109,9 +129,17 @@ export default function KnowledgePage() {
     setViewing({ name: doc.name, content: content ?? '（暂无内容）' });
   };
 
+  // 个人文档预览：展示前 1000 字（完整内容用于本地检索，不在此全部展开）
+  const previewPersonal = (doc: KbDocMeta) => {
+    const raw = doc.content ?? '（暂无内容）';
+    const limit = 1000;
+    const preview = raw.length > limit ? `${raw.slice(0, limit)}\n\n…（预览仅显示前 ${limit} 字，完整内容已用于本地检索）` : raw;
+    setViewing({ name: doc.name, content: preview });
+  };
+
   const getStatusBadge = (status: KbDocMeta['status']) => {
     switch (status) {
-      case 'indexing': return <Badge variant="secondary">索引中</Badge>;
+      case 'indexing': return <Badge variant="secondary" className="bg-amber-500/10 text-amber-600 border-amber-500/20">待重建</Badge>;
       case 'indexed': return <Badge variant="default">已索引</Badge>;
       case 'failed': return <Badge variant="destructive">失败</Badge>;
     }
@@ -132,6 +160,11 @@ export default function KnowledgePage() {
         {getStatusBadge(doc.status)}
       </div>
       <div className="flex items-center gap-1">
+        {doc.scope === 'personal' && (
+          <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => previewPersonal(doc)} title="预览">
+            <Eye className="w-4 h-4" />
+          </Button>
+        )}
         {doc.scope === 'public' && (
           <>
             <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => openPublic(doc)}>
@@ -171,6 +204,18 @@ export default function KnowledgePage() {
           <CardContent className="p-5 space-y-5 animate-fade-scale" key={view}>
           {view === 'personal' ? (
             <>
+              {pendingReindex > 0 && (
+                <div className="flex flex-wrap items-center gap-3 p-3 rounded-xl border border-amber-500/30 bg-amber-500/10">
+                  <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+                  <p className="text-sm text-amber-700 dark:text-amber-300 flex-1 min-w-0">
+                    你切换了检索精度，有 <span className="font-semibold">{pendingReindex}</span> 篇文档需要重新建库才能被检索到（切换前已上传的文档不会丢失）。
+                  </p>
+                  <Button size="sm" variant="outline" onClick={handleReindex} disabled={reindexing} className="shrink-0">
+                    <RefreshCw className={`w-4 h-4 mr-1.5 ${reindexing ? 'animate-spin' : ''}`} />
+                    {reindexing ? '重建中…' : '重新建库'}
+                  </Button>
+                </div>
+              )}
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center gap-3">
                   <Button variant="outline" onClick={() => personalInputRef.current?.click()} disabled={isLoading} className="glass-surface">

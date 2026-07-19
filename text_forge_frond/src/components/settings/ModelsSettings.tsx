@@ -43,7 +43,7 @@ function uid(): string {
     : Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
-export function ModelsSettings() {
+export function ModelsSettings({ initialCategory = 'llm' }: { initialCategory?: ModelCategory }) {
   const models = useModelStore((s) => s.models);
   const addModel = useModelStore((s) => s.addModel);
   const updateModel = useModelStore((s) => s.updateModel);
@@ -51,7 +51,7 @@ export function ModelsSettings() {
   const setDefault = useModelStore((s) => s.setDefault);
   const setEmbedTierId = useSettingsStore((s) => s.setEmbedTierId);
 
-  const [category, setCategory] = useState<ModelCategory>('llm');
+  const [category, setCategory] = useState<ModelCategory>(initialCategory);
   const [editing, setEditing] = useState<ModelConfig | null>(null);
   const [open, setOpen] = useState(false);
   const [testStatus, setTestStatus] = useState<Record<string, 'idle' | 'testing' | 'success' | 'error'>>({});

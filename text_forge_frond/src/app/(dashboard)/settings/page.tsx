@@ -18,12 +18,13 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { ModelsSettings } from '@/components/settings/ModelsSettings';
 import { Moon, Sun, Monitor, Image as ImageIcon, Eye, EyeOff, User, Palette, Sparkles, Boxes, SlidersHorizontal, Download } from 'lucide-react';
-import { EMBED_TIERS, isTierDownloaded, switchEmbedTier, downloadEmbedModel, getDownloadedTiers, initDownloadedTiers } from '@/lib/rag/embed';
+import { EMBED_TIERS, isTierDownloaded, downloadEmbedModel, getDownloadedTiers, initDownloadedTiers } from '@/lib/rag/embed';
 import { toast } from 'sonner';
 import { useProjectStore } from '@/lib/stores/projectStore';
 import { useCharacterStore } from '@/lib/stores/characterStore';
 import { useBriefStore } from '@/lib/stores/briefStore';
 import { useModelStore } from '@/lib/stores/modelStore';
+import type { ModelCategory } from '@/types';
 import { exportWorkspace, downloadBackup } from '@/lib/storage/backup';
 
 const BG_AREA_OPTIONS: { value: BgArea; label: string }[] = [
@@ -63,6 +64,8 @@ export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
 
   const [activeTab, setActiveTab] = useState('profile');
+  // 从「AI 偏好」跳来下载向量模型时，自动展开「向量模型」分类
+  const [modelsInitialCategory, setModelsInitialCategory] = useState<ModelCategory>('llm');
 
   // 已下载的本地向量模型档位（与「模型 → 向量模型」同源，联动显示）
   const [downloadedTiers, setDownloadedTiers] = useState<string[]>([]);
@@ -680,28 +683,40 @@ export default function SettingsPage() {
                     const id = v as string;
                     const t = EMBED_TIERS.find((x) => x.id === id);
                     if (!t) return;
-                    // 已下载该精度：直接切换，不打扰用户（权重已在本机）
+                    // 已下载该精度：直接切换（权重已在本机）。跨维度时旧文档需重建索引。
                     if (isTierDownloaded(id)) {
-                      switchEmbedTier(id);
-                      setEmbedTierId(id);
-                      toast.success(`已切换到「${t.label}」`);
+                      (async () => {
+                        try {
+                          const { resetForTier } = await import('@/lib/rag/vectorStore');
+                          const removed = await resetForTier(id);
+                          setEmbedTierId(id);
+                          toast.success(
+                            removed > 0
+                              ? `已切换到「${t.label}」，原有 ${removed} 篇文档需重新建库（在「知识库」中一键重建）`
+                              : `已切换到「${t.label}」`
+                          );
+                        } catch {
+                          toast.error('切换失败，请重试');
+                        }
+                      })();
                       return;
                     }
-                    // 未下载：提示并触发下载
+                    // 未下载：提示并触发下载（跳到「模型 → 向量模型」让用户看到进度）
                     const ok = window.confirm(
                       `「${t.label}」尚未下载到本机（约 ${t.sizeMB}MB）。\n\n` +
-                      '确定现在下载吗？下载完成前该精度不可用，已下载的其它精度不受影响。'
+                      '确定现在下载吗？下载完成后会自动切到该精度；你已有的文档需要在「知识库」中重新建库一次。'
                     );
                     if (!ok) return;
                     setEmbedTierId(id);
+                    setActiveTab('models');
+                    setModelsInitialCategory('embedding');
                     (async () => {
                       try {
                         const { resetForTier } = await import('@/lib/rag/vectorStore');
-                        await resetForTier(id);
-                        await downloadEmbedModel(id);
-                        switchEmbedTier(id);
+                        await resetForTier(id); // 先清旧索引并标记旧文档待重建
+                        await downloadEmbedModel(id); // 下载（带进度，UI 在向量模型区展示）
                         refreshDownloadedTiers();
-                        toast.success(`已下载并切换到「${t.label}」，离线可用`);
+                        toast.success(`「${t.label}」已下载并启用。请到「知识库」重新建库以检索旧文档`);
                       } catch {
                         toast.error('下载失败，请重试或选择已下载的精度');
                       }
@@ -733,7 +748,7 @@ export default function SettingsPage() {
 
         {/* Tab 4: 模型 */}
         {activeTab === 'models' && (
-          <ModelsSettings />
+          <ModelsSettings initialCategory={modelsInitialCategory} />
         )}
 
         {/* Tab 5: 高级选项 */}

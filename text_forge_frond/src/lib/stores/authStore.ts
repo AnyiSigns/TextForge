@@ -4,6 +4,7 @@ import { persist } from 'zustand/middleware';
 import { setRefreshCookie, clearRefreshCookie } from '@/lib/auth/cookie';
 import apiClient from '@/lib/api/client';
 import { API_URL } from '@/lib/config/env';
+import { useSettingsStore } from '@/lib/stores/settingsStore';
 export interface User {
   id: string;
   username: string;
@@ -29,13 +30,25 @@ interface AuthStore {
 }
 
 // 登录后 10 秒静默预热本地向量检索模型（后台下载，不阻塞 UI）。
+// 预热用户「AI 偏好」中选中的精度档，而非固定默认档。
 // 在 setAuth（主动登录）与 onRehydrateStorage（刷新后恢复登录态）两处触发。
 let prewarmTimer: ReturnType<typeof setTimeout> | null = null;
 function scheduleEmbedPrewarm() {
   if (prewarmTimer) return;
   prewarmTimer = setTimeout(() => {
     prewarmTimer = null;
-    import('@/lib/rag/embed').then((m) => m.prewarmEmbed()).catch(() => {});
+    import('@/lib/rag/embed')
+      .then((m) => {
+        try {
+          // 先切到用户选中档，再预热该档（避免预热了默认档却用不上）
+          const { embedTierId } = useSettingsStore.getState();
+          m.setEmbedTier(embedTierId);
+        } catch {
+          /* 忽略，prewarm 内部会用默认档 */
+        }
+        return m.prewarmEmbed();
+      })
+      .catch(() => {});
   }, 10_000);
 }
 
