@@ -185,15 +185,14 @@ async function buildExtractor(onProgress?: (p: EmbedDownloadProgress) => void, c
 
 async function getExtractor(onProgress?: (p: EmbedDownloadProgress) => void, controller?: { cancelled: boolean }): Promise<FeatureExtractionPipeline> {
   if (extractor) return extractor;
-  // 失败清理：若上次下载失败，loading 会残留一个 rejected promise，
-  // 不清空会导致后续调用复用失败结果、且不再发起新请求（无法重试）。
+  // 进行中则复用同一 promise（含正在下载的预热），避免并发重复构建 /
+  // 复用已失败的 rejected promise。失败时 loading 已被清，下次调用会重启。
+  if (loading) return loading;
   const start = () =>
     buildExtractor(onProgress, controller)
       .then((p) => { extractor = p; loading = null; return p; })
       .catch((e) => { loading = null; throw e; });
-  if (!loading) {
-    loading = start();
-  }
+  loading = start();
   return loading;
 }
 

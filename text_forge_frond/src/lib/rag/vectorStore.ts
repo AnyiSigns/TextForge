@@ -84,6 +84,18 @@ async function getChunkById(id: string): Promise<StoredChunk | undefined> {
   return chunkCache.get(id);
 }
 
+// 用游标按 docId 过滤删除，避免全表 getAll 一次性载入内存（大文档峰值减半）。
+async function deleteChunksByDocId(docId: string): Promise<void> {
+  const db = await getDB();
+  const tx = db.transaction(CHUNK_STORE, 'readwrite');
+  let cursor = await tx.store.openCursor();
+  while (cursor) {
+    if ((cursor.value as StoredChunk).docId === docId) await cursor.delete();
+    cursor = await cursor.continue();
+  }
+  await tx.done;
+}
+
 async function getEngine(): Promise<WasmSearchEngine> {
   if (engine) return engine;
   if (!engineLoading) {
@@ -102,11 +114,6 @@ async function getEngine(): Promise<WasmSearchEngine> {
   }
   engine = await engineLoading;
   return engine;
-}
-
-async function loadAllChunks(): Promise<StoredChunk[]> {
-  const db = await getDB();
-  return (await db.getAll(CHUNK_STORE)) as StoredChunk[];
 }
 
 async function buildEngine(chunks: StoredChunk[]): Promise<WasmSearchEngine> {
@@ -146,27 +153,27 @@ export async function indexDocument(doc: KbDocRecord): Promise<void> {
   );
 
   const db = await getDB();
+  // 游标删除同 docId 的旧 chunk，避免在内存里全表 getAll 一份再逐条删。
+  await deleteChunksByDocId(doc.id);
+
+  // 仅把本篇 chunks 写入库（单事务，避免逐条 put 的多次往返）。
   const tx = db.transaction(CHUNK_STORE, 'readwrite');
-  // 先删旧 chunk（同 docId）
-  const all = (await db.getAll(CHUNK_STORE)) as StoredChunk[];
-  for (const c of all) if (c.docId === doc.id) await tx.store.delete(c.id);
   for (const c of chunks) await tx.store.put(c);
   await tx.done;
 
-  // 重建并持久化索引
-  const eng = await buildEngine(await loadAllChunks());
+  // 重建索引：用「存活 chunk（游标全表一次）」而非再次 getAll 全量读。
+  const survivors = (await db.getAll(CHUNK_STORE)) as StoredChunk[];
+  const eng = await buildEngine(survivors);
   engine = eng;
   invalidateChunkCache();
   await persistEngine(eng);
 }
 
 export async function removeDocumentChunks(docId: string): Promise<void> {
-  const db = await getDB();
-  const all = (await db.getAll(CHUNK_STORE)) as StoredChunk[];
-  const tx = db.transaction(CHUNK_STORE, 'readwrite');
-  for (const c of all) if (c.docId === docId) await tx.store.delete(c.id);
-  await tx.done;
-  const eng = await buildEngine(all.filter((c) => c.docId !== docId));
+  await deleteChunksByDocId(docId);
+  // 用「存活 chunk（游标/全表一次）」重建，不再把全表先在内存里留一份再 filter。
+  const survivors = (await getDB().then((db) => db.getAll(CHUNK_STORE))) as StoredChunk[];
+  const eng = await buildEngine(survivors);
   engine = eng;
   invalidateChunkCache();
   await persistEngine(eng);
@@ -234,16 +241,37 @@ export async function resetForTier(tierId: string): Promise<number> {
   if (!t) return 0;
   if (t.dim === getEmbedDim()) return 0; // 未变化
 
-  // 清空所有维度档位各自的向量分块库（库名带维度后缀，直接删除整库最稳妥）
-  await Promise.all(
-    EMBED_TIERS.map(
-      (tier) =>
-        new Promise<void>((resolve) => {
-          const req = indexedDB.deleteDatabase(`text-forge-rag-${tier.dim}`);
-          req.onsuccess = req.onerror = req.onblocked = () => resolve();
-        })
-    )
+  // 清空所有维度档位各自的向量分块库（库名带维度后缀，直接删除整库最稳妥）。
+  // 注意：若其它标签页正打开该库，deleteDatabase 会触发 onblocked 且不会真正删除，
+  // 此时绝不能当成成功——否则 engine=null 后用旧/空数据检索，文档还被错标 indexing。
+  const blocked: number[] = [];
+  const deleteTasks = EMBED_TIERS.map(
+    (tier) =>
+      new Promise<void>((resolve, reject) => {
+        const name = `text-forge-rag-${tier.dim}`;
+        const req = indexedDB.deleteDatabase(name);
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(new Error(`删除向量库失败：${name}`));
+        req.onblocked = () => {
+          blocked.push(tier.dim);
+          reject(new Error(`向量库正被其它标签页占用，无法删除：${name}（请关闭其它标签页后重试）`));
+        };
+      })
   );
+  try {
+    await Promise.all(deleteTasks);
+  } catch (e) {
+    // 被占用/失败：清空本地引擎（下次检索会按真实状态重建），向上抛出以便 UI 提示用户。
+    // 注意：这里不把文档标 indexing，避免「删除失败却显示待重建」的错标。
+    engine = null;
+    invalidateChunkCache();
+    throw e;
+  }
+
+  if (blocked.length > 0) {
+    throw new Error('部分向量库仍被其它标签页占用，请关闭后重试');
+  }
+
   engine = null;
   invalidateChunkCache();
 

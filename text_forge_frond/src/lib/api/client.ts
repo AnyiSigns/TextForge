@@ -59,6 +59,8 @@ axiosRetry(apiClient, {
   retries: 3,
   retryDelay: axiosRetry.exponentialDelay,
   retryCondition: (error) => {
+    // 自定义 401 刷新重试已单独处理，避免与 axios-retry 叠加导致幂等写请求发两次。
+    if ((error.config as RetryableRequestConfig & { _noRetry?: boolean })?._noRetry) return false;
     const status = error.response?.status;
     return axiosRetry.isNetworkOrIdempotentRequestError(error) || status === 429 || (status !== undefined && status >= 500);
   },
@@ -67,7 +69,7 @@ axiosRetry(apiClient, {
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const originalRequest = error.config as RetryableRequestConfig;
+    const originalRequest = error.config as RetryableRequestConfig & { _noRetry?: boolean };
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
       try {
@@ -76,6 +78,9 @@ apiClient.interceptors.response.use(
         if (newToken) {
           originalRequest.headers = originalRequest.headers || {};
           originalRequest.headers.Authorization = `Bearer ${newToken}`;
+          // 用原请求本身（已含拦截器生成的 Idempotency-Key / If-Match）重放，
+          // 并标记 _noRetry 让 axios-retry 跳过，避免与自定义 401 重试叠加发两次。
+          originalRequest._noRetry = true;
           return apiClient(originalRequest);
         }
       } catch {

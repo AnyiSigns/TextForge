@@ -86,17 +86,21 @@ export function useManuscriptEditor(projectId: string) {
 
   const active = useMemo(() => chapters.find((c) => c.id === activeId) ?? null, [chapters, activeId]);
 
-  // 首次进入自动建一章（去重锁：避免 React 严格模式双调用 + load 未 await 竞态导致重复建章）
-  const ensureChapterLock = useRef(false);
+  // 首次进入自动建一章。用「进行中」标记防严格模式双调用 + load 未 await 竞态导致重复建章，
+  // 但锁是单次请求级而非永久：删光章节后 chapters.length 回到 0，本次请求已结束，
+  // 标记复位，可重新自动建章，避免空手稿无法恢复（边界数据丢失风险）。
+  const ensuringRef = useRef(false);
   useEffect(() => {
-    if (ensureChapterLock.current) return;
+    if (ensuringRef.current) return;
     if (chapters.length === 0) {
-      ensureChapterLock.current = true;
-      addChapter(projectId, '第 1 章').then((c) => { setActiveId(c.id); setDraftContent(''); setTitle(c.title); });
+      ensuringRef.current = true;
+      addChapter(projectId, '第 1 章')
+        .then((c) => { setActiveId(c.id); setDraftContent(''); setTitle(c.title); })
+        .finally(() => { ensuringRef.current = false; });
     } else if (!activeId) {
       setActiveId(chapters[0].id);
     }
-  }, [chapters.length]);
+  }, [chapters.length, activeId]);
 
   // 切换章节时载入内容（非受控：直接写 textarea DOM + ref，避免受控重渲染）
   useEffect(() => {

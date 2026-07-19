@@ -4,6 +4,16 @@ import { handleDevApi } from '@/mocks';
 
 const REFRESH_COOKIE = 'tf_rt';
 
+// 模型代理单次拉取上限（防慢镜像无限挂起占用流式响应）；高并发下载模型也有边界。
+const MODEL_FETCH_TIMEOUT_MS = 120000;
+
+// 模型资源白名单后缀：仅允许 transformers.js 实际需要的权重/配置类文件，
+// 避免 /hf/ 被用作任意路径穿越转发。
+const ALLOWED_MODEL_SUFFIXES = [
+  '.onnx', '.onnx.gz', '.json', '.txt', '.bin', '.safetensors',
+  '.model', '.tflite', '.wm', '.pb', '.tokenizer', '.vocab', '.merges',
+];
+
 // 开发期：浏览器端 transformers.js 拉取模型权重时，国内镜像（hf-mirror 等）
 // 大多不支持 CORS，直接从浏览器跨域拉取会 Failed to fetch。
 // 这里用同源代理把 /hf/* 转发到镜像源，规避 CORS。
@@ -15,28 +25,45 @@ const MODEL_MIRRORS = [
 async function proxyModelFile(request: NextRequest, pathname: string): Promise<NextResponse | null> {
   const rest = pathname.replace(/^\/hf\//, '');
   if (!rest) return null;
-  for (const base of MODEL_MIRRORS) {
-    const target = `${base}/${rest}`;
-    try {
-      const upstream = await fetch(target, { redirect: 'follow' });
-      // 镜像返回非 2xx（404/重定向到错误页等）时尝试下一个镜像
-      if (!upstream.ok || !upstream.body) continue;
-      // 流式转发上游 body：大文件（如 onnx 24MB）一次性 arrayBuffer 易触发连接重置，
-      // 流式更稳定。content-length 视上游是否提供。
-      const headers = new Headers();
-      const ct = upstream.headers.get('content-type');
-      if (ct) headers.set('content-type', ct);
-      const cl = upstream.headers.get('content-length');
-      if (cl) headers.set('content-length', cl);
-      const cc = upstream.headers.get('cache-control');
-      if (cc) headers.set('cache-control', cc);
-      const etag = upstream.headers.get('etag');
-      if (etag) headers.set('etag', etag);
-      headers.set('access-control-allow-origin', '*');
-      return new NextResponse(upstream.body, { status: 200, headers });
-    } catch {
-      /* 尝试下一个镜像 */
+  // 路径校验：禁止空片段、上级目录穿越（..）、非白名单资源后缀。
+  if (rest.split('/').some((seg) => seg === '..' || seg === '')) {
+    return NextResponse.json({ error: 'invalid model path' }, { status: 400 });
+  }
+  const lower = rest.toLowerCase();
+  if (!ALLOWED_MODEL_SUFFIXES.some((s) => lower.endsWith(s))) {
+    return NextResponse.json({ error: 'unsupported model resource' }, { status: 400 });
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), MODEL_FETCH_TIMEOUT_MS);
+  try {
+    for (const base of MODEL_MIRRORS) {
+      const target = `${base}/${rest}`;
+      try {
+        const upstream = await fetch(target, { redirect: 'follow', signal: controller.signal });
+        // 镜像返回非 2xx（404/重定向到错误页等）时尝试下一个镜像
+        if (!upstream.ok || !upstream.body) continue;
+        // 流式转发上游 body：大文件（如 onnx 24MB）一次性 arrayBuffer 易触发连接重置，
+        // 流式更稳定。content-length 视上游是否提供。
+        const headers = new Headers();
+        const ct = upstream.headers.get('content-type');
+        if (ct) headers.set('content-type', ct);
+        const cl = upstream.headers.get('content-length');
+        if (cl) headers.set('content-length', cl);
+        const cc = upstream.headers.get('cache-control');
+        if (cc) headers.set('cache-control', cc);
+        const etag = upstream.headers.get('etag');
+        if (etag) headers.set('etag', etag);
+        headers.set('access-control-allow-origin', '*');
+        return new NextResponse(upstream.body, { status: 200, headers });
+      } catch (e) {
+        // 超时/网络错误：尝试下一个镜像；若已因超时中止则不再重试。
+        if (controller.signal.aborted) break;
+        if (e instanceof Error && e.name === 'AbortError') break;
+        /* 尝试下一个镜像 */
+      }
     }
+  } finally {
+    clearTimeout(timer);
   }
   return NextResponse.json({ error: 'model fetch failed' }, { status: 502 });
 }
