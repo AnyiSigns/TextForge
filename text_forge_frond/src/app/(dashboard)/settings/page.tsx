@@ -1,7 +1,7 @@
 // src/app/(dashboard)/settings/page.tsx
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useAuthStore } from '@/lib/stores/authStore';
 import { useSettingsStore, type BgArea } from '@/lib/stores/settingsStore';
 import { useTheme } from 'next-themes';
@@ -18,7 +18,7 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { ModelsSettings } from '@/components/settings/ModelsSettings';
 import { Moon, Sun, Monitor, Image as ImageIcon, Eye, EyeOff, User, Palette, Sparkles, Boxes, SlidersHorizontal, Download } from 'lucide-react';
-import { EMBED_TIERS } from '@/lib/rag/embed';
+import { EMBED_TIERS, isTierDownloaded, switchEmbedTier, downloadEmbedModel, getDownloadedTiers, initDownloadedTiers } from '@/lib/rag/embed';
 import { toast } from 'sonner';
 import { useProjectStore } from '@/lib/stores/projectStore';
 import { useCharacterStore } from '@/lib/stores/characterStore';
@@ -63,6 +63,13 @@ export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
 
   const [activeTab, setActiveTab] = useState('profile');
+
+  // 已下载的本地向量模型档位（与「模型 → 向量模型」同源，联动显示）
+  const [downloadedTiers, setDownloadedTiers] = useState<string[]>([]);
+  useEffect(() => {
+    initDownloadedTiers().then(() => setDownloadedTiers(getDownloadedTiers()));
+  }, []);
+  const refreshDownloadedTiers = () => setDownloadedTiers(getDownloadedTiers());
 
   const [username, setUsername] = useState(user?.username || '');
   const [email, setEmail] = useState(user?.email || '');
@@ -670,44 +677,56 @@ export default function SettingsPage() {
                   value={embedTierId}
                   onValueChange={(v) => {
                     if (v === embedTierId) return;
-                    const t = EMBED_TIERS.find((x) => x.id === v);
+                    const id = v as string;
+                    const t = EMBED_TIERS.find((x) => x.id === id);
                     if (!t) return;
+                    // 已下载该精度：直接切换，不打扰用户（权重已在本机）
+                    if (isTierDownloaded(id)) {
+                      switchEmbedTier(id);
+                      setEmbedTierId(id);
+                      refreshDownloadedTiers();
+                      toast.success(`已切换到「${t.label}」`);
+                      return;
+                    }
+                    // 未下载：提示并触发下载
                     const ok = window.confirm(
-                      `切换为「${t.label}」会重新下载本地模型（约 ${t.sizeMB}MB），并清空已建好的本地检索索引、需要重新建库。\n\n` +
-                      '维度越高检索越精准，但首次下载更慢、更占内存。确定切换吗？'
+                      `「${t.label}」尚未下载到本机（约 ${t.sizeMB}MB）。\n\n` +
+                      '确定现在下载吗？下载完成前该精度不可用，已下载的其它精度不受影响。'
                     );
                     if (!ok) return;
-                    setEmbedTierId(v ?? embedTierId);
+                    setEmbedTierId(id);
                     (async () => {
-                      const { resetForTier } = await import('@/lib/rag/vectorStore');
-                      const { prewarmEmbed } = await import('@/lib/rag/embed');
-                      const removed = await resetForTier(v ?? embedTierId);
-                      await prewarmEmbed();
-                      toast.success(
-                        removed > 0
-                          ? `已切换，清除了 ${removed} 个旧片段，正在后台重建本地索引（上传文档后将自动重新建库）`
-                          : '已切换，正在后台下载本地模型'
-                      );
-                    })().catch(() => toast.error('切换失败，请重试'));
+                      try {
+                        const { resetForTier } = await import('@/lib/rag/vectorStore');
+                        await resetForTier(id);
+                        await downloadEmbedModel(id);
+                        switchEmbedTier(id);
+                        refreshDownloadedTiers();
+                        toast.success(`已下载并切换到「${t.label}」，离线可用`);
+                      } catch {
+                        toast.error('下载失败，请重试或选择已下载的精度');
+                      }
+                    })();
                   }}
                 >
                   <SelectTrigger className="max-w-xs">
                     <SelectValue placeholder="选择精度">
                       {(value: string) => {
                         const t = EMBED_TIERS.find((x) => x.id === value);
-                        return t ? `${t.label} · ${t.desc}` : value;
+                        const dl = isTierDownloaded(value);
+                        return t ? `${t.label} · ${t.desc}${dl ? '（已下载）' : ''}` : value;
                       }}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {EMBED_TIERS.map((t) => (
                       <SelectItem key={t.id} value={t.id}>
-                        {t.label} · {t.desc}
+                        {t.label} · {t.desc}{downloadedTiers.includes(t.id) ? '（已下载）' : ''}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-[10px] text-muted-foreground">更高维度检索更准，但首次下载模型更大、更占内存。</p>
+                <p className="text-[10px] text-muted-foreground">更高维度检索更准，但首次下载模型更大、更占内存。已下载的精度会保留在本机，可在「模型 → 向量模型」中删除。</p>
               </div>
             </CardContent>
           </Card>

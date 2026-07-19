@@ -11,6 +11,7 @@
 // 注意：transformers.js 在浏览器顶层初始化会访问 Node 环境，必须动态 import，
 // 且只在浏览器端真正调用时才加载，避免污染页面 hydration。
 import type { FeatureExtractionPipeline } from '@huggingface/transformers';
+import { getItem, setItem } from '@/lib/storage/indexedDB';
 
 // 模型档位：维度越高语义越准，但下载体积/首次耗时越大。
 export interface EmbedModelTier {
@@ -54,14 +55,83 @@ export function getEmbedTier(): EmbedModelTier {
   return currentTier;
 }
 
-// 下载进度回调：已下载文件数 / 已观测到的文件总数（多文件依次下载，
-// transformers.js 对每个文件单独上报，不提供整体字节进度，故用文件数更稳妥直观）。
+// 下载进度回调：真实字节累计。多文件依次下载，分母优先用 transformers 上报的
+// 各文件真实 total 之和（无 content-length 时 Next dev 走 chunked 拿不到，退回档位估算体积）。
 export interface EmbedDownloadProgress {
-  done: number;   // 已完成下载的文件数
-  total: number;  // 已观测到的不同文件数（单调增长，下载完成时等于真实总数）
+  loaded: number;   // 已下载字节（含已完成文件累加）
+  total: number;    // 总字节（真实之和或档位估算）；>0 才有意义
+  done: number;     // 已完成文件数
+  fileTotal: number; // 已观测到的文件数
 }
 
-async function buildExtractor(onProgress?: (p: EmbedDownloadProgress) => void): Promise<FeatureExtractionPipeline> {
+// 已下载档位持久化（浏览器端用户本地目录）：权重本身落在浏览器 Cache Storage
+// （即用户电脑/手机浏览器本地目录，真实文件存于浏览器 profile 的 Cache 下），
+// 这里额外把「曾成功下载过的档位 id」集合持久化到 IndexedDB（与 modelStore 同库），
+// 比 localStorage 更稳：刷新、重开浏览器、清 cookie 都不丢。
+const DOWNLOADED_KEY = 'tf_embed_downloaded';
+let memoryDownloaded: string[] | null = null; // 同步读取用的内存缓存
+
+export async function initDownloadedTiers(): Promise<void> {
+  if (typeof window === 'undefined') return;
+  try {
+    const raw = await getItem<string>(DOWNLOADED_KEY);
+    memoryDownloaded = raw ? (JSON.parse(raw) as string[]) : [];
+  } catch {
+    memoryDownloaded = [];
+  }
+}
+
+async function loadDownloaded(): Promise<string[]> {
+  if (memoryDownloaded) return memoryDownloaded;
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = await getItem<string>(DOWNLOADED_KEY);
+    memoryDownloaded = raw ? (JSON.parse(raw) as string[]) : [];
+  } catch {
+    memoryDownloaded = [];
+  }
+  return memoryDownloaded;
+}
+
+async function saveDownloaded(ids: string[]) {
+  memoryDownloaded = [...new Set(ids)];
+  if (typeof window === 'undefined') return;
+  try {
+    await setItem(DOWNLOADED_KEY, JSON.stringify(memoryDownloaded));
+  } catch {
+    /* 忽略 */
+  }
+}
+
+// 同步读取：优先用内存缓存（需先 initDownloadedTiers 或经一次读写后填充）。
+export function isTierDownloaded(id: string): boolean {
+  return memoryDownloaded ? memoryDownloaded.includes(id) : false;
+}
+
+// 同步读取全部（组件挂载后用于初始化 state；首次可能为空，需配合 initDownloadedTiers）
+export function getDownloadedTiers(): string[] {
+  return memoryDownloaded ? [...memoryDownloaded] : [];
+}
+
+// 异步标记某档已下载
+export async function markTierDownloaded(id: string): Promise<void> {
+  const ids = await loadDownloaded();
+  if (!ids.includes(id)) await saveDownloaded([...ids, id]);
+}
+
+// 异步移除某档下载标记
+export async function unmarkTierDownloaded(id: string): Promise<void> {
+  const ids = await loadDownloaded();
+  await saveDownloaded(ids.filter((x) => x !== id));
+}
+
+// 当前正在进行的下载控制器（用于取消）
+let activeController: { cancelled: boolean } | null = null;
+export function cancelEmbedDownload() {
+  if (activeController) activeController.cancelled = true;
+}
+
+async function buildExtractor(onProgress?: (p: EmbedDownloadProgress) => void, controller?: { cancelled: boolean }): Promise<FeatureExtractionPipeline> {
   // transformers.js v3 的 pipeline 返回类型联合过大，TS 无法表示（TS2590），
   // 用 any 取模块后再断言回 FeatureExtractionPipeline，运行时类型正确。
   const mod = await import('@huggingface/transformers');
@@ -71,39 +141,59 @@ async function buildExtractor(onProgress?: (p: EmbedDownloadProgress) => void): 
   if (typeof window !== 'undefined') {
     env.allowLocalModels = false;
     env.remoteHost = MODEL_BASE_URL;
+    // onnxruntime-web 的 wasm 默认从外部 CDN（jsdelivr/unpkg）拉取，本机环境不可达会卡死。
+    // 改为同源 /ort-wasm/（已把 wasm 文件放到 public/ort-wasm/）规避外网依赖。
+    if (env.backends?.onnx?.wasm) {
+      env.backends.onnx.wasm.wasmPaths = '/ort-wasm/';
+    }
   }
-  // 下载进度：按文件数聚合。transformers.js 依次下载各文件（config/tokenizer/onnx…），
-  // 每个文件单独上报 progress / done，不提供整体字节进度，故用「已完成文件数/已观测文件数」更稳妥。
-  const seenFiles = new Set<string>();
-  let doneCount = 0;
+  // 字节聚合进度：每个文件单独上报 loaded/total，大文件（onnx）不报中间 loaded，
+  // 仅 'done' 时给终值，故 done 事件把该文件 loaded 补满到其 total。
+  const estTotal = currentTier.sizeMB * 1024 * 1024;
+  const fileMap: Record<string, { loaded: number; total: number; done: boolean }> = {};
   const report = (onProgress: (p: EmbedDownloadProgress) => void) => {
-    onProgress({ done: doneCount, total: seenFiles.size });
+    let loaded = 0;
+    let total = 0;
+    let doneCount = 0;
+    for (const k in fileMap) {
+      loaded += fileMap[k].loaded;
+      total += fileMap[k].total;
+      if (fileMap[k].done) doneCount++;
+    }
+    const denom = total > 0 ? total : estTotal;
+    onProgress({ loaded, total: denom, done: doneCount, fileTotal: Object.keys(fileMap).length });
   };
   const pipe = await pipeline('feature-extraction', currentTier.model, {
     progress_callback: onProgress
-      ? (e: { status: string; file?: string }) => {
+      ? (e: { status: string; progress?: number; loaded?: number; total?: number; file?: string }) => {
+          if (controller?.cancelled) return;
           const file = e.file ?? '?';
-          if (e.status === 'initiate' || e.status === 'download' || e.status === 'progress') {
-            seenFiles.add(file); // 新文件出现，总数 +1
+          if (e.status === 'progress') {
+            const total = typeof e.total === 'number' && e.total > 0 ? e.total : (fileMap[file]?.total ?? 0);
+            const loaded = typeof e.loaded === 'number' ? e.loaded : (fileMap[file]?.loaded ?? 0);
+            fileMap[file] = { loaded, total, done: fileMap[file]?.done ?? false };
           } else if (e.status === 'done') {
-            if (!seenFiles.has(file)) seenFiles.add(file);
-            doneCount = Math.max(doneCount, seenFiles.size); // 该文件完成
+            const prev = fileMap[file] ?? { loaded: 0, total: 0, done: false };
+            const total = typeof e.total === 'number' && e.total > 0 ? e.total : (prev.total || estTotal);
+            fileMap[file] = { loaded: total, total, done: true };
+          } else if (e.status === 'initiate' || e.status === 'download') {
+            if (!fileMap[file]) fileMap[file] = { loaded: 0, total: 0, done: false };
           }
           report(onProgress);
         }
       : undefined,
   });
-  // 所有文件就绪：回调（总数, 总数）表示下载完成（UI 随后切到「已就绪」）
-  if (onProgress) onProgress({ done: seenFiles.size, total: seenFiles.size });
+  // 下载完成：回调满值，UI 据此切到「已就绪」
+  if (onProgress) onProgress({ loaded: estTotal, total: estTotal, done: Object.keys(fileMap).length, fileTotal: Object.keys(fileMap).length });
   return pipe as FeatureExtractionPipeline;
 }
 
-async function getExtractor(onProgress?: (p: EmbedDownloadProgress) => void): Promise<FeatureExtractionPipeline> {
+async function getExtractor(onProgress?: (p: EmbedDownloadProgress) => void, controller?: { cancelled: boolean }): Promise<FeatureExtractionPipeline> {
   if (extractor) return extractor;
   // 失败清理：若上次下载失败，loading 会残留一个 rejected promise，
   // 不清空会导致后续调用复用失败结果、且不再发起新请求（无法重试）。
   const start = () =>
-    buildExtractor(onProgress)
+    buildExtractor(onProgress, controller)
       .then((p) => { extractor = p; loading = null; return p; })
       .catch((e) => { loading = null; throw e; });
   if (!loading) {
@@ -131,13 +221,66 @@ export function isEmbedReady(): boolean {
 export async function downloadEmbedModel(id: string, onProgress?: (p: EmbedDownloadProgress) => void): Promise<boolean> {
   const t = EMBED_TIERS.find((x) => x.id === id);
   if (!t) throw new Error(`未知向量模型档位：${id}`);
-  // 切换档位：若当前已是该档且已就绪，直接返回
-  if (extractor && currentTier.id === id) return true;
+  // 切换档位：若当前已是该档且已就绪，直接返回（无需重复下载）
+  if (extractor && currentTier.id === id) {
+    await markTierDownloaded(id);
+    return true;
+  }
   setEmbedTier(id);
   extractor = null;
   loading = null;
-  await getExtractor(onProgress);
-  return true;
+  const controller = { cancelled: false };
+  activeController = controller;
+  try {
+    await getExtractor(onProgress, controller);
+    // 下载成功：记录该档已下载（即便中途被新下载取代，本档权重已落本地缓存）
+    await markTierDownloaded(id);
+    return true;
+  } finally {
+    if (activeController === controller) activeController = null;
+  }
+}
+
+// 仅切换当前精度档（不触发下载），用于已下载档位的即时切换。
+export function switchEmbedTier(id: string) {
+  const t = EMBED_TIERS.find((x) => x.id === id);
+  if (!t) return;
+  if (extractor && currentTier.id !== id) {
+    // 切换档位：旧 extractor 失效，清空交由下次检索/预热重建
+    extractor = null;
+    loading = null;
+  }
+  currentTier = t;
+}
+
+// 删除某个档位：清浏览器 Cache Storage 中该模型权重 + 从已下载集合移除。
+// 不影响其它档位；若删除的是当前档，则清空内存 extractor。
+export async function deleteEmbedModel(id: string): Promise<void> {
+  const t = EMBED_TIERS.find((x) => x.id === id);
+  if (!t) return;
+  const prefix = `/hf/${t.model}/`;
+  if (typeof window !== 'undefined' && 'caches' in window) {
+    try {
+      const cache = await caches.open('transformers-cache');
+      const keys = await cache.keys();
+      await Promise.all(
+        keys
+          .filter((req) => {
+            const u = req.url;
+            return u.includes(prefix) || u.endsWith(`/hf/${t.model}`);
+          })
+          .map((req) => cache.delete(req))
+      );
+    } catch {
+      /* 忽略缓存删除失败 */
+    }
+  }
+  const ids = await loadDownloaded();
+  await saveDownloaded(ids.filter((x) => x !== id));
+  if (currentTier.id === id) {
+    extractor = null;
+    loading = null;
+  }
 }
 
 // 登录后静默预热：后台下载并初始化默认档模型，不阻塞 UI。

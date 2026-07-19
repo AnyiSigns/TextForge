@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { useModelStore } from '@/lib/stores/modelStore';
+import { useSettingsStore } from '@/lib/stores/settingsStore';
 import {
   MODEL_TEMPLATES, CATEGORY_LABELS, AUX_ROLE_LABELS,
 } from '@/lib/models/templates';
@@ -25,7 +26,14 @@ import { Plus, Pencil, Trash2, Star, Cloud, Cpu, X, Check, AlertCircle } from 'l
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import apiClient from '@/lib/api/client';
-import { EMBED_TIERS, type EmbedDownloadProgress } from '@/lib/rag/embed';
+import { EMBED_TIERS, type EmbedDownloadProgress, getDownloadedTiers, deleteEmbedModel, cancelEmbedDownload, initDownloadedTiers } from '@/lib/rag/embed';
+
+function formatSize(bytes: number): string {
+  if (!bytes || bytes < 0) return '0 MB';
+  const mb = bytes / (1024 * 1024);
+  if (mb < 1) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${mb.toFixed(1)} MB`;
+}
 
 const CATEGORIES: ModelCategory[] = ['llm', 'vision', 'omni', 'speech', 'embedding'];
 
@@ -41,6 +49,7 @@ export function ModelsSettings() {
   const updateModel = useModelStore((s) => s.updateModel);
   const removeModel = useModelStore((s) => s.removeModel);
   const setDefault = useModelStore((s) => s.setDefault);
+  const setEmbedTierId = useSettingsStore((s) => s.setEmbedTierId);
 
   const [category, setCategory] = useState<ModelCategory>('llm');
   const [editing, setEditing] = useState<ModelConfig | null>(null);
@@ -48,18 +57,17 @@ export function ModelsSettings() {
   const [testStatus, setTestStatus] = useState<Record<string, 'idle' | 'testing' | 'success' | 'error'>>({});
 
   // 本地向量模型（个人文档库检索）管理
-  const [embedLoaded, setEmbedLoaded] = useState(false);
   const [embedDownloading, setEmbedDownloading] = useState(false);
   const [embedDownloadId, setEmbedDownloadId] = useState<string | null>(null);
   const [embedProgress, setEmbedProgress] = useState<EmbedDownloadProgress | null>(null);
+  const [embedDeleting, setEmbedDeleting] = useState<string | null>(null);
+  const [downloadedIds, setDownloadedIds] = useState<string[]>([]);
 
   useEffect(() => {
-    let alive = true;
-    import('@/lib/rag/embed')
-      .then((m) => { if (alive) setEmbedLoaded(m.isEmbedReady()); })
-      .catch(() => {});
-    return () => { alive = false; };
+    initDownloadedTiers().then(() => setDownloadedIds(getDownloadedTiers()));
   }, []);
+
+  const refreshDownloaded = () => setDownloadedIds(getDownloadedTiers());
 
   const handleDownloadEmbed = async (id: string) => {
     const tier = EMBED_TIERS.find((t) => t.id === id);
@@ -68,9 +76,10 @@ export function ModelsSettings() {
     setEmbedDownloadId(id);
     setEmbedProgress(null);
     try {
-      const { downloadEmbedModel, isEmbedReady } = await import('@/lib/rag/embed');
+      const { downloadEmbedModel } = await import('@/lib/rag/embed');
       await downloadEmbedModel(id, (p) => setEmbedProgress(p));
-      setEmbedLoaded(isEmbedReady());
+      setEmbedTierId(id); // 下载即启用该精度，使 AI 偏好/知识库/运行时三者一致
+      refreshDownloaded();
       toast.success(`本地向量模型「${name}」已就绪，离线可用`);
     } catch (error: unknown) {
       const err = error instanceof Error ? error : new Error(String(error));
@@ -79,6 +88,21 @@ export function ModelsSettings() {
       setEmbedDownloading(false);
       setEmbedDownloadId(null);
       setEmbedProgress(null);
+    }
+  };
+
+  const handleDeleteEmbed = async (id: string) => {
+    const tier = EMBED_TIERS.find((t) => t.id === id);
+    if (!confirm(`确定删除本地向量模型「${tier?.label ?? id}」？删除后如需使用需重新下载。`)) return;
+    setEmbedDeleting(id);
+    try {
+      await deleteEmbedModel(id);
+      refreshDownloaded();
+      toast.success('已删除本地模型');
+    } catch {
+      toast.error('删除失败');
+    } finally {
+      setEmbedDeleting(null);
     }
   };
 
@@ -196,30 +220,48 @@ export function ModelsSettings() {
             <div className="flex items-center gap-2">
               <Cpu className="w-4 h-4 text-primary" />
               <p className="text-sm font-medium">本地向量模型（个人文档库检索）</p>
-              <span className={cn('ml-auto text-xs', embedLoaded ? 'text-emerald-500' : 'text-amber-500')}>
-                {embedLoaded ? '● 已就绪' : '○ 未下载'}
-              </span>
             </div>
             <p className="text-xs text-muted-foreground">
-              本地向量模型在本机浏览器下载并缓存，之后离线可用，不依赖任何外部服务。切换精度会改用对应维度的模型；首次下载约 30~320MB。
+              本地向量模型在本机浏览器下载并缓存，之后离线可用，不依赖任何外部服务。可在「AI 偏好」中切换检索精度；已下载的精度会保留在本机，可随时删除。首次下载约 30~320MB。
             </p>
             <div className="space-y-2">
               {EMBED_TIERS.map((t) => {
                 const active = embedDownloadId === t.id;
+                const isDownloaded = downloadedIds.includes(t.id);
                 return (
                   <div key={t.id} className="flex items-center justify-between gap-3 rounded-lg border border-border/30 px-3 py-2">
                     <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{t.label}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium truncate">{t.label}</p>
+                        {isDownloaded && (
+                          <Badge variant="secondary" className="text-[10px] shrink-0 bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
+                            已下载
+                          </Badge>
+                        )}
+                      </div>
                       <p className="text-xs text-muted-foreground truncate">约 {t.sizeMB}MB · {t.desc}</p>
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={embedDownloading && !active}
-                      onClick={() => handleDownloadEmbed(t.id)}
-                    >
-                      {active && embedDownloading ? '下载中…' : '下载'}
-                    </Button>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {isDownloaded && !active && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-muted-foreground hover:text-destructive"
+                          disabled={embedDeleting === t.id}
+                          onClick={() => handleDeleteEmbed(t.id)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={(embedDownloading && !active) || (!active && embedDownloading)}
+                        onClick={() => (active && embedDownloading ? cancelEmbedDownload() : handleDownloadEmbed(t.id))}
+                      >
+                        {active && embedDownloading ? '取消' : isDownloaded ? '重新下载' : '下载'}
+                      </Button>
+                    </div>
                   </div>
                 );
               })}
@@ -229,11 +271,13 @@ export function ModelsSettings() {
                 <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
                   <div
                     className="h-full bg-primary transition-all"
-                    style={{ width: `${(embedProgress && embedProgress.total > 0 ? Math.min(100, (embedProgress.done / embedProgress.total) * 100) : 0)}%` }}
+                    style={{ width: `${(embedProgress && embedProgress.total > 0 ? Math.min(100, (embedProgress.loaded / embedProgress.total) * 100) : 0)}%` }}
                   />
                 </div>
                 <span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">
-                  {embedProgress ? `已下载 ${embedProgress.done} / ${embedProgress.total} 个文件` : '准备中…'}
+                  {embedProgress && embedProgress.total > 0
+                    ? `${formatSize(embedProgress.loaded)} / ${formatSize(embedProgress.total)}`
+                    : '准备中…'}
                 </span>
               </div>
             )}

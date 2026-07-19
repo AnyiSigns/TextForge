@@ -19,7 +19,8 @@ async function proxyModelFile(request: NextRequest, pathname: string): Promise<N
     const target = `${base}/${rest}`;
     try {
       const upstream = await fetch(target, { redirect: 'follow' });
-      if (!upstream.ok) continue;
+      // 镜像返回非 2xx（404/重定向到错误页等）时尝试下一个镜像
+      if (!upstream.ok || !upstream.body) continue;
       // 流式转发上游 body：大文件（如 onnx 24MB）一次性 arrayBuffer 易触发连接重置，
       // 流式更稳定。content-length 视上游是否提供。
       const headers = new Headers();
