@@ -75,11 +75,16 @@ export async function initDownloadedTiers(): Promise<void> {
   } catch {
     memoryDownloaded = [];
   }
+  snapshotCache = [...(memoryDownloaded ?? [])];
 }
+
+// 稳定快照：useSyncExternalStore 要求 getSnapshot 在未变更时返回同一引用，
+// 否则会触发「getSnapshot should be cached」无限循环告警。
+let snapshotCache: string[] = [];
 
 // 同步读取已下载集合（需先 initDownloadedTiers 或经一次读写后填充；否则为空数组）
 export function getDownloadedTiers(): string[] {
-  return memoryDownloaded ? [...memoryDownloaded] : [];
+  return snapshotCache;
 }
 
 export function isTierDownloaded(id: string): boolean {
@@ -95,6 +100,7 @@ export function subscribeDownloaded(fn: DownloadedListener): () => void {
   return () => downloadedListeners.delete(fn);
 }
 function emitDownloaded() {
+  snapshotCache = [...(memoryDownloaded ?? [])];
   downloadedListeners.forEach((fn) => fn());
 }
 
