@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useManuscriptStore } from '@/lib/stores/manuscriptStore';
+import { useProjectStore } from '@/lib/stores/projectStore';
 import { useProjectCharacters } from '@/lib/hooks/useProjectCharacters';
 import { useBriefStore } from '@/lib/stores/briefStore';
 import { useSettingsStore } from '@/lib/stores/settingsStore';
@@ -267,7 +268,9 @@ export function ManuscriptEditor({ projectId }: { projectId: string }) {
   const confirmSend = async (syncGlobal: boolean) => {
     if (!active) return;
     if (syncGlobal) {
-      await importManuscriptToProject(projectId, active.title, active.content);
+      const step = await importManuscriptToProject(projectId, active.title, active.content);
+      const draft = (await useProjectStore.getState().getDraft(projectId)) ?? [];
+      await useProjectStore.getState().saveDraft(projectId, [...draft, step]);
       toast.success('已同步到工作台（作为项目步骤，可被 Agent 流读取为前文）');
     } else {
       // 仅本地草稿已在手稿，这里提示保持本地
@@ -286,8 +289,10 @@ export function ManuscriptEditor({ projectId }: { projectId: string }) {
   const confirmBookImport = async (syncGlobal: boolean) => {
     if (!bookChapters) return;
     if (syncGlobal) {
-      const n = await importBookToProject(projectId, bookChapters);
-      toast.success(`已导入 ${n} 章到工作台（Agent 续写将以此为前文）`);
+      const steps = await importBookToProject(projectId, bookChapters);
+      const draft = (await useProjectStore.getState().getDraft(projectId)) ?? [];
+      await useProjectStore.getState().saveDraft(projectId, [...draft, ...steps]);
+      toast.success(`已导入 ${steps.length} 章到工作台（Agent 续写将以此为前文）`);
     } else {
       for (const c of bookChapters) {
         await useManuscriptStore.getState().importFromStep(projectId, c.title, c.content);

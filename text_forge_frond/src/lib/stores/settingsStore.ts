@@ -176,6 +176,11 @@ syncManager.register({
         motionEnabled: update.motionEnabled,
         suggestionFrequency: update.suggestionFrequency,
         theme: update.theme,
+        processNavPosition: update.processNavPosition,
+        contentScale: update.contentScale,
+        fontFamily: update.fontFamily,
+        bgSolidOpacity: update.bgSolidOpacity,
+        embedTierId: update.embedTierId,
       });
     }
     if (version !== undefined) {

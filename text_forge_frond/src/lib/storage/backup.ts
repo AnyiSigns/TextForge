@@ -4,6 +4,10 @@
 // 同时提供整包导出/导入，保证"纯前端可跑 + 前后端数据一致"。
 import { getItem, setItem } from './indexedDB';
 import type { Project, Step, Character, ProjectBrief, Origin } from '@/types';
+import { useProjectStore } from '@/lib/stores/projectStore';
+import { useCharacterStore } from '@/lib/stores/characterStore';
+import { useBriefStore } from '@/lib/stores/briefStore';
+import { useManuscriptStore } from '@/lib/stores/manuscriptStore';
 
 export type OutlineNodeStatus = 'todo' | 'writing' | 'done';
 
@@ -186,10 +190,6 @@ function downloadText(content: string, filename: string, mime: string): void {
 const safeName = (title: string) => (title || '未命名项目').replace(/[\\/:*?"<>|]/g, '_');
 
 export async function buildProjectBundle(projectId: string): Promise<SingleProjectBundle> {
-  const { useProjectStore } = await import('@/lib/stores/projectStore');
-  const { useCharacterStore } = await import('@/lib/stores/characterStore');
-  const { useBriefStore } = await import('@/lib/stores/briefStore');
-
   const project = useProjectStore.getState().projects.find((p) => p.id === projectId);
   const steps = (await getItem<Step[]>(`steps-${projectId}`)) || [];
   const outline = await loadOutline(projectId);
@@ -382,8 +382,6 @@ export async function exportManuscriptBook(
   fmt: 'markdown' | 'txt' = 'txt',
   mode: TxtMode = 'tidy',
 ): Promise<void> {
-  const { useManuscriptStore } = await import('@/lib/stores/manuscriptStore');
-  const { useProjectStore } = await import('@/lib/stores/projectStore');
   await useManuscriptStore.getState().load(projectId);
   const chapters = useManuscriptStore.getState().chapters
     .filter((c) => c.projectId === projectId)

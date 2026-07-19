@@ -141,37 +141,28 @@ function runStepToStreamStep(run: WorkflowRunStep): Step | null {
   };
 }
 
-/** 把一段正文作为 step 写入项目草稿（手稿 → 工作台 互导） */
+/** 把一段正文转为工作台 step（手稿 → 工作台 互导）。
+ *  仅负责构造 step，草稿落库由调用方负责（API 层不耦合 store）。 */
 export async function importManuscriptToProject(projectId: string, title: string, content: string): Promise<Step> {
-  const step: Step = {
+  return {
     id: `step-manuscript-${Date.now()}`,
     agent: 'writer',
     content: `# ${title}\n\n${content}`,
     status: 'completed',
   };
-  // 本地草稿优先（mock 期），后端期可改为追加接口
-  const { useProjectStore } = await import('@/lib/stores/projectStore');
-  const draft = await useProjectStore.getState().getDraft(projectId);
-  const steps = draft ?? [];
-  await useProjectStore.getState().saveDraft(projectId, [...steps, step]);
-  return step;
 }
 
-// 把整本书（已拆好的章节）作为历史前文写入项目 steps（completed），
+// 把整本书（已拆好的章节）转为工作台 steps（completed），
 // 让工作台「续写下一章」能把这些已导入章节当作上下文注入 Agent 流。
+// 仅负责构造 steps，草稿落库由调用方负责（API 层不耦合 store）。
 export async function importBookToProject(
   projectId: string,
   chapters: { title: string; content: string }[],
-): Promise<number> {
-  const { useProjectStore } = await import('@/lib/stores/projectStore');
-  const draft = await useProjectStore.getState().getDraft(projectId);
-  const steps = draft ?? [];
-  const appended: Step[] = chapters.map((c, i) => ({
+): Promise<Step[]> {
+  return chapters.map((c, i) => ({
     id: `step-book-${Date.now()}-${i}`,
     agent: 'writer',
     content: `# ${c.title}\n\n${c.content}`,
     status: 'completed',
   }));
-  await useProjectStore.getState().saveDraft(projectId, [...steps, ...appended]);
-  return appended.length;
 }
