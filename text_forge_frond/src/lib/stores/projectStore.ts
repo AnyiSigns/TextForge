@@ -15,9 +15,9 @@ interface ProjectVersionMeta {
 }
 
 const DEFAULT_TEMPLATES: ProjectTemplate[] = [
-  { id: 't-novel', name: '??', description: '????????', genre: 'general', createdAt: new Date(0).toISOString() },
-  { id: 't-scifi', name: '????', description: '???????', genre: 'science-fiction', createdAt: new Date(0).toISOString() },
-  { id: 't-fantasy', name: '????', description: '??????', genre: 'fantasy', createdAt: new Date(0).toISOString() },
+  { id: 't-novel', name: '通用小说', description: '适合各类题材的通用起点：先定设定与人物，再逐步推进章节。', genre: 'general', createdAt: new Date(0).toISOString() },
+  { id: 't-scifi', name: '科幻', description: '以科技、未来与世界设定驱动：先搭世界观与核心概念，再展开人物与情节。', genre: 'science-fiction', createdAt: new Date(0).toISOString() },
+  { id: 't-fantasy', name: '奇幻', description: '以魔法、种族与架空大陆为背景：先立世界规则与势力，再写冒险主线。', genre: 'fantasy', createdAt: new Date(0).toISOString() },
 ];
 
 interface ProjectStore {
@@ -80,7 +80,7 @@ addProject: async (input) => {
          };
           set((s) => ({ projects: [optimistic, ...s.projects] }));
           try {
-            // ????? POST??? If-Match ?????????? 412?
+            // 创建项目：POST 后端，若带 If-Match 乐观并发冲突会返回 412
             const created = await apiCreateProject(input);
             const { version } = get().getVersionMeta();
             projectVersionMeta = { lastSyncAt: new Date().toISOString(), version: created.version ?? (version ? version + 1 : 1) };
@@ -90,7 +90,7 @@ addProject: async (input) => {
            const apiError = e as ApiError;
             if (apiError.status === 409) {
               await syncManager.resolveConflict('projects', get().projects, null);
-              toast.error('????', { description: '?????????????' });
+              toast.error('创建冲突', { description: '服务器已有更新版本，已尝试自动合并，请重试' });
             }
             set((s) => ({ projects: s.projects.filter((p) => p.id !== optimistic.id) }));
            throw e;
@@ -108,7 +108,7 @@ addProject: async (input) => {
            const apiError = e as ApiError;
             if (apiError.status === 409) {
               await syncManager.resolveConflict('projects', prev, null);
-              toast.error('????', { description: '?????????????' });
+              toast.error('删除冲突', { description: '服务器已有更新版本，已尝试自动合并，请重试' });
             }
             set({ projects: prev });
            throw e;
@@ -155,7 +155,7 @@ addProject: async (input) => {
       createProject: async (templateId) => {
         const template = templateId ? DEFAULT_TEMPLATES.find((t) => t.id === templateId) : undefined;
         const input = {
-          title: `?${template?.name || '??'}`,
+          title: `新${template?.name || '项目'}`,
           description: template?.description || '',
           genre: template?.genre || 'general',
         };
