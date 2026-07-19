@@ -20,14 +20,19 @@ async function proxyModelFile(request: NextRequest, pathname: string): Promise<N
     try {
       const upstream = await fetch(target, { redirect: 'follow' });
       if (!upstream.ok) continue;
-      const body = await upstream.arrayBuffer();
+      // 流式转发上游 body：大文件（如 onnx 24MB）一次性 arrayBuffer 易触发连接重置，
+      // 流式更稳定。content-length 视上游是否提供。
       const headers = new Headers();
       const ct = upstream.headers.get('content-type');
       if (ct) headers.set('content-type', ct);
+      const cl = upstream.headers.get('content-length');
+      if (cl) headers.set('content-length', cl);
       const cc = upstream.headers.get('cache-control');
       if (cc) headers.set('cache-control', cc);
+      const etag = upstream.headers.get('etag');
+      if (etag) headers.set('etag', etag);
       headers.set('access-control-allow-origin', '*');
-      return new NextResponse(body, { status: 200, headers });
+      return new NextResponse(upstream.body, { status: 200, headers });
     } catch {
       /* 尝试下一个镜像 */
     }

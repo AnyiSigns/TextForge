@@ -25,7 +25,7 @@ import { Plus, Pencil, Trash2, Star, Cloud, Cpu, X, Check, AlertCircle } from 'l
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import apiClient from '@/lib/api/client';
-import { EMBED_TIERS } from '@/lib/rag/embed';
+import { EMBED_TIERS, type EmbedDownloadProgress } from '@/lib/rag/embed';
 
 const CATEGORIES: ModelCategory[] = ['llm', 'vision', 'omni', 'speech', 'embedding'];
 
@@ -51,7 +51,7 @@ export function ModelsSettings() {
   const [embedLoaded, setEmbedLoaded] = useState(false);
   const [embedDownloading, setEmbedDownloading] = useState(false);
   const [embedDownloadId, setEmbedDownloadId] = useState<string | null>(null);
-  const [embedProgress, setEmbedProgress] = useState<number | null>(null);
+  const [embedProgress, setEmbedProgress] = useState<EmbedDownloadProgress | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -66,7 +66,7 @@ export function ModelsSettings() {
     const name = tier?.label ?? id;
     setEmbedDownloading(true);
     setEmbedDownloadId(id);
-    setEmbedProgress(0);
+    setEmbedProgress(null);
     try {
       const { downloadEmbedModel, isEmbedReady } = await import('@/lib/rag/embed');
       await downloadEmbedModel(id, (p) => setEmbedProgress(p));
@@ -227,9 +227,14 @@ export function ModelsSettings() {
             {embedDownloading && embedDownloadId && (
               <div className="flex items-center gap-2 pt-1">
                 <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
-                  <div className="h-full bg-primary transition-all" style={{ width: `${embedProgress ?? 0}%` }} />
+                  <div
+                    className="h-full bg-primary transition-all"
+                    style={{ width: `${(embedProgress && embedProgress.total > 0 ? Math.min(100, (embedProgress.done / embedProgress.total) * 100) : 0)}%` }}
+                  />
                 </div>
-                <span className="text-xs text-muted-foreground tabular-nums w-10 text-right">{embedProgress ?? 0}%</span>
+                <span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+                  {embedProgress ? `已下载 ${embedProgress.done} / ${embedProgress.total} 个文件` : '准备中…'}
+                </span>
               </div>
             )}
           </div>

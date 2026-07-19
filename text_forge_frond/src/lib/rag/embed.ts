@@ -54,7 +54,14 @@ export function getEmbedTier(): EmbedModelTier {
   return currentTier;
 }
 
-async function buildExtractor(onProgress?: (p: number) => void): Promise<FeatureExtractionPipeline> {
+// 下载进度回调：已下载文件数 / 已观测到的文件总数（多文件依次下载，
+// transformers.js 对每个文件单独上报，不提供整体字节进度，故用文件数更稳妥直观）。
+export interface EmbedDownloadProgress {
+  done: number;   // 已完成下载的文件数
+  total: number;  // 已观测到的不同文件数（单调增长，下载完成时等于真实总数）
+}
+
+async function buildExtractor(onProgress?: (p: EmbedDownloadProgress) => void): Promise<FeatureExtractionPipeline> {
   // transformers.js v3 的 pipeline 返回类型联合过大，TS 无法表示（TS2590），
   // 用 any 取模块后再断言回 FeatureExtractionPipeline，运行时类型正确。
   const mod = await import('@huggingface/transformers');
@@ -65,19 +72,33 @@ async function buildExtractor(onProgress?: (p: number) => void): Promise<Feature
     env.allowLocalModels = false;
     env.remoteHost = MODEL_BASE_URL;
   }
+  // 下载进度：按文件数聚合。transformers.js 依次下载各文件（config/tokenizer/onnx…），
+  // 每个文件单独上报 progress / done，不提供整体字节进度，故用「已完成文件数/已观测文件数」更稳妥。
+  const seenFiles = new Set<string>();
+  let doneCount = 0;
+  const report = (onProgress: (p: EmbedDownloadProgress) => void) => {
+    onProgress({ done: doneCount, total: seenFiles.size });
+  };
   const pipe = await pipeline('feature-extraction', currentTier.model, {
     progress_callback: onProgress
-      ? (e: { status: string; progress?: number; file?: string }) => {
-          if (e.status === 'progress' && typeof e.progress === 'number') {
-            onProgress(Math.round(e.progress));
+      ? (e: { status: string; file?: string }) => {
+          const file = e.file ?? '?';
+          if (e.status === 'initiate' || e.status === 'download' || e.status === 'progress') {
+            seenFiles.add(file); // 新文件出现，总数 +1
+          } else if (e.status === 'done') {
+            if (!seenFiles.has(file)) seenFiles.add(file);
+            doneCount = Math.max(doneCount, seenFiles.size); // 该文件完成
           }
+          report(onProgress);
         }
       : undefined,
   });
+  // 所有文件就绪：回调（总数, 总数）表示下载完成（UI 随后切到「已就绪」）
+  if (onProgress) onProgress({ done: seenFiles.size, total: seenFiles.size });
   return pipe as FeatureExtractionPipeline;
 }
 
-async function getExtractor(onProgress?: (p: number) => void): Promise<FeatureExtractionPipeline> {
+async function getExtractor(onProgress?: (p: EmbedDownloadProgress) => void): Promise<FeatureExtractionPipeline> {
   if (extractor) return extractor;
   // 失败清理：若上次下载失败，loading 会残留一个 rejected promise，
   // 不清空会导致后续调用复用失败结果、且不再发起新请求（无法重试）。
@@ -107,7 +128,7 @@ export function isEmbedReady(): boolean {
 // 显式下载指定档位模型：切到该档、并发起下载（带进度回调）。
 // 与 prewarmEmbed 共用 extractor 单例：若已就绪且档位一致直接返回，
 // 否则强制清掉之前的加载锁重新下载，避免被静默预热的 loading 阻塞。
-export async function downloadEmbedModel(id: string, onProgress?: (p: number) => void): Promise<boolean> {
+export async function downloadEmbedModel(id: string, onProgress?: (p: EmbedDownloadProgress) => void): Promise<boolean> {
   const t = EMBED_TIERS.find((x) => x.id === id);
   if (!t) throw new Error(`未知向量模型档位：${id}`);
   // 切换档位：若当前已是该档且已就绪，直接返回
