@@ -25,9 +25,6 @@ const KIND_META: Record<WorkflowNodeKind, { label: string; icon: typeof Bot; col
   output: { label: '输出', icon: LogOut, color: '#16a34a' },
 };
 
-let seq = 100;
-const nid = () => `n${Date.now()}-${seq++}`;
-
 export function WorkflowEditor({ initial, onSaved }: { initial: Workflow; onSaved?: (wf: Workflow) => void }) {
   const [wf, setWf] = useState<Workflow>(initial);
   const [selected, setSelected] = useState<string | null>(initial.nodes[0]?.id ?? null);
@@ -36,6 +33,9 @@ export function WorkflowEditor({ initial, onSaved }: { initial: Workflow; onSave
   const [expandedResult, setExpandedResult] = useState<string | null>(null);
   // 拖拽排序（零依赖 HTML5 DnD）
   const dragId = useRef<string | null>(null);
+  // 节点 id 自增序列：组件实例隔离，避免模块级可变状态在 SSR / 多实例下串台
+  const seqRef = useRef(100);
+  const nid = () => `n${Date.now()}-${seqRef.current++}`;
 
   const [pickingRole, setPickingRole] = useState(false);
   const [targetProject, setTargetProject] = useState<string>('');
@@ -160,10 +160,9 @@ export function WorkflowEditor({ initial, onSaved }: { initial: Workflow; onSave
       const runs = await runWorkflow(wf.id, '');
       const outline: OutlineVolume[] = await loadOutline(targetProject).catch(() => []);
       const steps = workflowToSteps(runs, outline);
-      const { useProjectStore: ps } = await import('@/lib/stores/projectStore');
-      const draft = await ps.getState().getDraft(targetProject);
+      const draft = await useProjectStore.getState().getDraft(targetProject);
       const prev = draft ?? [];
-      await ps.getState().saveDraft(targetProject, [...prev, ...steps]);
+      await useProjectStore.getState().saveDraft(targetProject, [...prev, ...steps]);
       const proj = projects.find((p) => p.id === targetProject);
       toast.success(`已写入《${proj?.title ?? '项目'}》${steps.length} 个环节（可在项目工作台查看）`);
     } catch (e) {
