@@ -22,6 +22,20 @@ const MODEL_MIRRORS = [
   'https://mirrors.tuna.tsinghua.edu.cn/huggingface',
 ];
 
+// 同源代理的 CORS 白名单：仅允许本站的 origin（scheme+host+port 完全一致），
+// 避免把 /hf/ 变成任意第三方站点可用的开放代理出口。
+// 浏览器跨域才会带 Origin；同站（如页面自身 fetch 同源）无 Origin 时返回 null，
+// 此时不输出 ACAO（同源请求本就不需要）。
+function getSameSiteOrigin(request: NextRequest, origin: string | null): string | null {
+  if (!origin) return null;
+  try {
+    const reqOrigin = new URL(request.url).origin;
+    return new URL(origin).origin === reqOrigin ? origin : null;
+  } catch {
+    return null;
+  }
+}
+
 async function proxyModelFile(request: NextRequest, pathname: string): Promise<NextResponse | null> {
   const rest = pathname.replace(/^\/hf\//, '');
   if (!rest) return null;
@@ -35,6 +49,10 @@ async function proxyModelFile(request: NextRequest, pathname: string): Promise<N
   }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), MODEL_FETCH_TIMEOUT_MS);
+  // 同源代理只面向本站页面使用，ACAO 必须限定为本站 origin，
+  // 否则 * 会被任意第三方站点利用此代理出口发起 SSRF/跨域请求。
+  const origin = request.headers.get('origin');
+  const allowedOrigin = getSameSiteOrigin(request, origin);
   try {
     for (const base of MODEL_MIRRORS) {
       const target = `${base}/${rest}`;
@@ -53,7 +71,9 @@ async function proxyModelFile(request: NextRequest, pathname: string): Promise<N
         if (cc) headers.set('cache-control', cc);
         const etag = upstream.headers.get('etag');
         if (etag) headers.set('etag', etag);
-        headers.set('access-control-allow-origin', '*');
+        if (allowedOrigin) headers.set('access-control-allow-origin', allowedOrigin);
+        headers.set('access-control-allow-credentials', 'true');
+        headers.set('vary', 'Origin');
         return new NextResponse(upstream.body, { status: 200, headers });
       } catch (e) {
         // 超时/网络错误：尝试下一个镜像；若已因超时中止则不再重试。

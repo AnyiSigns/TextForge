@@ -13,7 +13,7 @@ import { useSettingsStore } from '@/lib/stores/settingsStore';
 import {
   exportWorkspace, downloadBackup, importWorkspace,
   exportProjectJson, exportProjectMarkdown, exportProjectText,
-  type WorkspaceBackup,
+  parseWorkspaceBackup,
 } from '@/lib/storage/backup';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -100,11 +100,7 @@ export function ProjectExport({ projectId, compact = false }: { projectId?: stri
     setBusy('import');
     try {
       const text = await file.text();
-      const backup = JSON.parse(text) as WorkspaceBackup;
-      if (backup.version !== 1) {
-        toast.error('不支持的备份格式');
-        return;
-      }
+      const backup = parseWorkspaceBackup(text);
       await importWorkspace(
         backup,
         {

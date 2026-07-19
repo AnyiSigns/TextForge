@@ -2,6 +2,7 @@
 // 统一本地存储：把项目级附属文档（大纲、灵感剪藏）也存入 IndexedDB，
 // 与 projects/characters/briefs 保持一致，避免 localStorage 与 IndexedDB 两套存储分裂。
 // 同时提供整包导出/导入，保证"纯前端可跑 + 前后端数据一致"。
+import { z } from 'zod';
 import { getItem, setItem } from './indexedDB';
 import type { Project, Step, Character, ProjectBrief, Origin } from '@/types';
 import { useProjectStore } from '@/lib/stores/projectStore';
@@ -24,6 +25,79 @@ export interface OutlineNode {
   sectionIds?: string[];     // 关联设定维度
   origin?: Origin;           // 来源（种子/用户），增量合并用
 }
+
+// ---------- 导入结构校验（防篡改 JSON 注入/data 注入） ----------
+// 导入的备份来自用户选择的本地文件，可能被篡改；若直接落入 store 会造成
+// 类型混乱/数据注入。这里用 zod 对结构做白名单式校验，未知字段一律丢弃。
+const outlineNodeSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  content: z.string().optional(),
+  status: z.enum(['todo', 'writing', 'done']).optional(),
+  targetWords: z.number().optional(),
+  charIds: z.array(z.string()).optional(),
+  sectionIds: z.array(z.string()).optional(),
+  origin: z.enum(['seed', 'user', 'init']).optional(),
+});
+
+const outlineChapterSchema = outlineNodeSchema
+  .omit({ targetWords: true, charIds: true, sectionIds: true, origin: true })
+  .extend({
+    nodes: z.array(outlineNodeSchema),
+    origin: z.enum(['seed', 'user', 'init']).optional(),
+  });
+
+const outlineVolumeSchema = outlineChapterSchema
+  .omit({ nodes: true, origin: true })
+  .extend({
+    chapters: z.array(outlineChapterSchema),
+    origin: z.enum(['seed', 'user', 'init']).optional(),
+  });
+
+const inspirationItemSchema = z.object({
+  id: z.string(),
+  type: z.enum(['text', 'image', 'link']),
+  content: z.string(),
+  note: z.string().optional(),
+  createdAt: z.string(),
+});
+
+export const workspaceBackupSchema = z
+  .object({
+    version: z.literal(1),
+    exportedAt: z.string(),
+    projects: z.unknown().optional(),
+    characters: z.unknown().optional(),
+    briefs: z.unknown().optional(),
+    models: z.unknown().optional(),
+    settings: z.unknown().optional(),
+    outlines: z.record(z.string(), z.array(outlineVolumeSchema)).optional(),
+    inspirations: z.record(z.string(), z.array(inspirationItemSchema)).optional(),
+    drafts: z.record(z.string(), z.unknown()).optional(),
+    versionHistories: z.record(z.string(), z.unknown()).optional(),
+  })
+  .strict();
+
+export type ParsedWorkspaceBackup = z.infer<typeof workspaceBackupSchema>;
+
+/** 解析并校验导入的备份 JSON，失败抛出含中文说明的 Error。 */
+export function parseWorkspaceBackup(text: string): ParsedWorkspaceBackup {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    throw new Error('文件不是合法的 JSON');
+  }
+  const result = workspaceBackupSchema.safeParse(raw);
+  if (!result.success) {
+    throw new Error('备份格式不合法或已被篡改');
+  }
+  if (result.data.version !== 1) {
+    throw new Error('不支持的备份版本');
+  }
+  return result.data;
+}
+
 
 export interface OutlineChapter {
   id: string;
@@ -141,7 +215,7 @@ export function downloadBackup(backup: WorkspaceBackup, filename?: string): void
 }
 
 export async function importWorkspace(
-  backup: WorkspaceBackup,
+  backup: ParsedWorkspaceBackup,
   apply: {
     projects?: (data: unknown) => void | Promise<void>;
     characters?: (data: unknown) => void | Promise<void>;

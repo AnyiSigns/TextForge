@@ -108,9 +108,11 @@ export const ragClient = {
     indexDocument(rec).catch(() => {});
     try {
       const token = useAuthStore.getState().accessToken;
+      // 注意：multipart/form-data 不能手动设置 Content-Type——浏览器需自动生成
+      // 带 boundary 的边界串，手动设置会丢失 boundary 导致后端 400。
       await fetch(`${API_URL}/api/knowledge/upload`, {
         method: 'POST',
-        headers: { 'Content-Type': 'multipart/form-data', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: file,
       });
     } catch { /* 后端未就绪，本地已存并建索引 */ }

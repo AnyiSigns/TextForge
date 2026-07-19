@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { Image as ImageIcon, Video, Sparkles, Link as LinkIcon, Loader2, User, BookOpen, ChevronDown, Clapperboard, Info } from 'lucide-react';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
+import { isSafeMediaUrl } from '@/lib/utils/url';
 import { uid } from '@/lib/utils/id';
 import { chapterLabel } from '@/lib/utils/chapter';
 import { Badge } from '@/components/ui/badge';
@@ -347,7 +348,7 @@ export function ProjectStudio({ projectId, steps, mode, selectedCharIds }: { pro
                 {visiblePortfolio.map((item) => (
                   <div key={item.id} className="rounded-xl border border-border/40 overflow-hidden bg-background/40">
                     <div className={cn('bg-gradient-to-br from-primary/20 to-accent/40 dark:from-primary/30 dark:to-accent/50 grid place-items-center', item.kind === 'video' ? 'aspect-video' : 'aspect-square')}>
-                      {item.status === 'completed' && item.result_url ? (
+                      {item.status === 'completed' && item.result_url && isSafeMediaUrl(item.result_url) ? (
                         item.kind === 'video' ? (
                           <video src={item.result_url} className="w-full h-full object-cover" controls />
                         ) : (
@@ -355,6 +356,8 @@ export function ProjectStudio({ projectId, steps, mode, selectedCharIds }: { pro
                             <Image src={item.result_url} alt={item.prompt} fill className="object-cover" />
                           </div>
                         )
+                      ) : item.status === 'completed' ? (
+                        <span className="text-xs text-destructive">来源不可用</span>
                       ) : item.status === 'failed' ? (
                         <span className="text-xs text-destructive">失败</span>
                       ) : (
