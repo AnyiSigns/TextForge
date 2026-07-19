@@ -38,17 +38,26 @@ const BG_AREA_OPTIONS: { value: BgArea; label: string }[] = [
   { value: 'settings', label: '设置页' },
 ];
 
+const FONT_FAMILY_OPTIONS: { value: string; label: string }[] = [
+  { value: 'system', label: '系统默认' },
+  { value: 'sans', label: '无衬线（黑体）' },
+  { value: 'serif', label: '衬线（宋体）' },
+  { value: 'kai', label: '楷体' },
+  { value: 'yuan', label: '圆体' },
+  { value: 'fangsong', label: '仿宋' },
+];
+
 export default function SettingsPage() {
   const { user, updateUser } = useAuthStore();
   const {
     bgImage, bgOpacity, bgBlur, bgArea, suggestionFrequency,
     bgSolidOpacity, inkEnabled, inkOpacity, motionEnabled, glassEnabled,
     cardGlassOpacity, cardGlassBlur,
-    contentScale,
+    contentScale, fontFamily,
     setBgImage, setBgOpacity, setBgBlur, setBgArea, setSuggestionFrequency,
     setBgSolidOpacity, setInkEnabled, setInkOpacity, setMotionEnabled, setGlassEnabled,
     setCardGlassOpacity, setCardGlassBlur, setSidebarGlassOpacity, setSidebarGlassBlur,
-    setContentScale,
+    setContentScale, setFontFamily,
     embedTierId, setEmbedTierId,
   } = useSettingsStore();
   const { theme, setTheme } = useTheme();
@@ -469,8 +478,8 @@ export default function SettingsPage() {
                   <Label>背景显示范围</Label>
                   <Select value={bgArea} onValueChange={(v) => setBgArea(v as BgArea)}>
                   <SelectTrigger className="max-w-xs">
-                    <SelectValue placeholder="选择精度">
-                      {(value: string) => EMBED_TIERS.find((t) => t.id === value)?.label ?? value}
+                    <SelectValue placeholder="选择范围">
+                      {(value: string) => BG_AREA_OPTIONS.find((o) => o.value === value)?.label ?? value}
                     </SelectValue>
                   </SelectTrigger>
                     <SelectContent>
@@ -580,6 +589,23 @@ export default function SettingsPage() {
               <Separator />
 
               <div className="space-y-2">
+                <Label>界面字体</Label>
+                <Select value={fontFamily} onValueChange={(v) => setFontFamily(v ?? 'system')}>
+                  <SelectTrigger className="max-w-xs">
+                    <SelectValue placeholder="选择字体">
+                      {(value: string) => FONT_FAMILY_OPTIONS.find((o) => o.value === value)?.label ?? value}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {FONT_FAMILY_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">切换界面整体字体（标题与正文同步生效）</p>
+              </div>
+
+              <div className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <Label>页面展示大小</Label>
                   <span className="text-muted-foreground text-sm">{contentScale}%</span>
@@ -665,7 +691,14 @@ export default function SettingsPage() {
                     })().catch(() => toast.error('切换失败，请重试'));
                   }}
                 >
-                  <SelectTrigger className="max-w-xs"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="max-w-xs">
+                    <SelectValue placeholder="选择精度">
+                      {(value: string) => {
+                        const t = EMBED_TIERS.find((x) => x.id === value);
+                        return t ? `${t.label} · ${t.desc}` : value;
+                      }}
+                    </SelectValue>
+                  </SelectTrigger>
                   <SelectContent>
                     {EMBED_TIERS.map((t) => (
                       <SelectItem key={t.id} value={t.id}>

@@ -4,6 +4,37 @@ import { handleDevApi } from '@/mocks';
 
 const REFRESH_COOKIE = 'tf_rt';
 
+// 开发期：浏览器端 transformers.js 拉取模型权重时，国内镜像（hf-mirror 等）
+// 大多不支持 CORS，直接从浏览器跨域拉取会 Failed to fetch。
+// 这里用同源代理把 /hf/* 转发到镜像源，规避 CORS。
+const MODEL_MIRRORS = [
+  'https://hf-mirror.com',
+  'https://mirrors.tuna.tsinghua.edu.cn/huggingface',
+];
+
+async function proxyModelFile(request: NextRequest, pathname: string): Promise<NextResponse | null> {
+  const rest = pathname.replace(/^\/hf\//, '');
+  if (!rest) return null;
+  for (const base of MODEL_MIRRORS) {
+    const target = `${base}/${rest}`;
+    try {
+      const upstream = await fetch(target, { redirect: 'follow' });
+      if (!upstream.ok) continue;
+      const body = await upstream.arrayBuffer();
+      const headers = new Headers();
+      const ct = upstream.headers.get('content-type');
+      if (ct) headers.set('content-type', ct);
+      const cc = upstream.headers.get('cache-control');
+      if (cc) headers.set('cache-control', cc);
+      headers.set('access-control-allow-origin', '*');
+      return new NextResponse(body, { status: 200, headers });
+    } catch {
+      /* 尝试下一个镜像 */
+    }
+  }
+  return NextResponse.json({ error: 'model fetch failed' }, { status: 502 });
+}
+
 const PROTECTED_ROOTS = [
   '/',
   '/projects',
@@ -44,6 +75,12 @@ function redirectToLogin(request: NextRequest, pathname: string) {
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const hasRefreshCookie = request.cookies.has(REFRESH_COOKIE);
+
+  // 模型权重同源代理（浏览器端 transformers.js 经此拉取，规避镜像 CORS）
+  if (pathname.startsWith('/hf/')) {
+    const r = await proxyModelFile(request, pathname);
+    if (r) return r;
+  }
 
   // 开发期 mock：后端未就绪时，让前端本地跑通登录与各列表页
   if (process.env.NODE_ENV !== 'production' && pathname.startsWith('/api/')) {
