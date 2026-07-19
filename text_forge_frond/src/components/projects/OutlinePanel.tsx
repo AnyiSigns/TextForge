@@ -23,7 +23,8 @@ const STATUS_META: Record<OutlineNodeStatus, { label: string; cls: string; icon:
 export function OutlinePanel({ projectId }: { projectId: string }) {
   const [volumes, setVolumes] = useState<OutlineVolume[]>([]);
   const [loaded, setLoaded] = useState(false);
-  const skipNextSave = useRef(true);
+  const didHydrate = useRef(false);
+  const skipNextSave = useRef(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [newVol, setNewVol] = useState('');
   const [newChap, setNewChap] = useState<Record<string, string>>({});
@@ -42,11 +43,16 @@ export function OutlinePanel({ projectId }: { projectId: string }) {
     setLoaded(false);
     loadOutline(projectId).then((v) => {
       if (!active) return;
-      // 仅当地空时才用加载结果，避免异步晚到覆盖用户已做的编辑
-      setVolumes((prev) => (prev.length ? prev : v));
-      skipNextSave.current = true;
+      // 仅当地空时才用加载结果，避免异步晚到覆盖用户已做的编辑；
+      // 且只在本次 hydration 真正填充时才跳过随后的自动保存（用户已编辑则不标 skip）。
+      setVolumes((prev) => {
+        if (prev.length) return prev;
+        skipNextSave.current = true;
+        return v;
+      });
+      didHydrate.current = true;
       setLoaded(true);
-    }).catch(() => { if (active) setLoaded(true); });
+    }).catch(() => { if (active) { didHydrate.current = true; setLoaded(true); } });
     return () => { active = false; };
   }, [projectId]);
 
@@ -63,6 +69,7 @@ export function OutlinePanel({ projectId }: { projectId: string }) {
   }, [projectId]);
 
   useEffect(() => {
+    if (!didHydrate.current) return; // 首载完成前不保存，避免吞掉/误存加载前的编辑
     if (skipNextSave.current) { skipNextSave.current = false; return; }
     saveOutline(projectId, volumes).catch(() => {});
   }, [loaded, volumes, projectId]);

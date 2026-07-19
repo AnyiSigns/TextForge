@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 
 import { syncManager } from '@/lib/storage/syncManager';
 import { createIdbStorage } from '@/lib/storage/zustandIdb';
+import { now } from '@/lib/utils/time';
 
 export type SuggestionFrequency = 'high' | 'medium' | 'manual';
 export type BgArea = 'global' | 'dashboard' | 'projects' | 'characters' | 'knowledge' | 'tasks' | 'assets' | 'api-keys' | 'settings';
@@ -184,7 +185,7 @@ syncManager.register({
       });
     }
     if (version !== undefined) {
-      settingsVersionMeta = { ...settingsVersionMeta, lastSyncAt: new Date().toISOString(), version };
+      settingsVersionMeta = { ...settingsVersionMeta, lastSyncAt: now(), version };
     }
   },
   getMeta: () => useSettingsStore.getState().getVersionMeta(),

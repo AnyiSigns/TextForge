@@ -37,11 +37,3 @@ class Logger {
 }
 
 export const logger = new Logger();
-
-export function logError(error: unknown, context?: string) {
-  if (error instanceof Error) {
-    logger.error(`${context ?? 'Error'}: ${error.message}`, { stack: error.stack });
-  } else {
-    logger.error(context ?? 'Unknown error', { error });
-  }
-}
