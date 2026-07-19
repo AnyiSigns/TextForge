@@ -15,6 +15,7 @@ import { API_URL } from '@/lib/config/env';
 import { useAuthStore } from '@/lib/stores/authStore';
 import { type RagChunk, putKbDoc, getKbDoc, getAllKbDocs, deleteKbDoc, type KbDocRecord } from '@/lib/storage/indexedDB';
 import { vectorSearch, indexDocument, removeDocumentChunks } from '@/lib/rag/vectorStore';
+import { downloadBlob } from '@/lib/utils/download';
 
 export type KbScope = 'personal' | 'public';
 
@@ -184,20 +185,11 @@ export const ragClient = {
       const res = await fetch(`${API_URL}/api/knowledge/public/${id}/download`);
       if (res.ok) {
         const blob = await res.blob();
-        triggerDownload(blob, name);
+        downloadBlob(blob, name);
         return;
       }
     } catch { /* 回退本地演示语料 */ }
     const content = PUBLIC_DEMO.find((d) => d.id === id)?.content ?? '';
-    triggerDownload(new Blob([content], { type: 'text/markdown' }), name);
+    downloadBlob(new Blob([content], { type: 'text/markdown' }), name);
   },
 };
-
-function triggerDownload(blob: Blob, name: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  a.click();
-  URL.revokeObjectURL(url);
-}

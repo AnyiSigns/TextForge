@@ -8,6 +8,8 @@ import { useProjectStore } from '@/lib/stores/projectStore';
 import { useCharacterStore } from '@/lib/stores/characterStore';
 import { useBriefStore } from '@/lib/stores/briefStore';
 import { useManuscriptStore } from '@/lib/stores/manuscriptStore';
+import { downloadText } from '@/lib/utils/download';
+import { sanitizeFileName } from '@/lib/utils/filename';
 
 export type OutlineNodeStatus = 'todo' | 'writing' | 'done';
 
@@ -135,13 +137,7 @@ export async function exportWorkspace(
 
 export function downloadBackup(backup: WorkspaceBackup, filename?: string): void {
   const data = JSON.stringify(backup, null, 2);
-  const blob = new Blob([data], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename || `text-forge-backup-${backup.exportedAt.split('T')[0]}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadText(data, filename || `text-forge-backup-${backup.exportedAt.split('T')[0]}.json`, 'application/json');
 }
 
 export async function importWorkspace(
@@ -176,18 +172,6 @@ export interface SingleProjectBundle {
   characters: Character[];
   brief: ProjectBrief | null;
 }
-
-function downloadText(content: string, filename: string, mime: string): void {
-  const blob = new Blob([content], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-const safeName = (title: string) => (title || '未命名项目').replace(/[\\/:*?"<>|]/g, '_');
 
 export async function buildProjectBundle(projectId: string): Promise<SingleProjectBundle> {
   const project = useProjectStore.getState().projects.find((p) => p.id === projectId);
@@ -291,12 +275,12 @@ export function projectBundleToMarkdown(bundle: SingleProjectBundle): string {
 
 export async function exportProjectJson(projectId: string): Promise<void> {
   const bundle = await buildProjectBundle(projectId);
-  downloadText(JSON.stringify(bundle, null, 2), `${safeName(bundle.project.title)}.json`, 'application/json');
+  downloadText(JSON.stringify(bundle, null, 2), `${sanitizeFileName(bundle.project.title)}.json`, 'application/json');
 }
 
 export async function exportProjectMarkdown(projectId: string): Promise<void> {
   const bundle = await buildProjectBundle(projectId);
-  downloadText(projectBundleToMarkdown(bundle), `${safeName(bundle.project.title)}.md`, 'text/markdown');
+  downloadText(projectBundleToMarkdown(bundle), `${sanitizeFileName(bundle.project.title)}.md`, 'text/markdown');
 }
 
 // 去除正文里的图片链接（![说明](url)），保证纯文字导出不含配图标记
@@ -373,7 +357,7 @@ export async function exportProjectText(projectId: string, mode: TxtMode = 'tidy
   const bundle = await buildProjectBundle(projectId);
   const body = toPlainBody(bundle.steps.map((s) => s.content || ''), mode);
   const plain = lightTidy(`${bundle.project.title || '未命名项目'}\n\n${body}`);
-  downloadText(plain, `${safeName(bundle.project.title)}.txt`, 'text/plain');
+  downloadText(plain, `${sanitizeFileName(bundle.project.title)}.txt`, 'text/plain');
 }
 
 // 仅导出手稿书籍正文（不含设定/角色/工作台步骤），支持 Markdown / 纯文本。
@@ -402,6 +386,6 @@ export async function exportManuscriptBook(
     })
     .join('\n\n———\n\n');
 
-  if (fmt === 'markdown') downloadText(md, `${safeName(title)}.md`, 'text/markdown');
-  else downloadText(txt, `${safeName(title)}.txt`, 'text/plain');
+  if (fmt === 'markdown') downloadText(md, `${sanitizeFileName(title)}.md`, 'text/markdown');
+  else downloadText(txt, `${sanitizeFileName(title)}.txt`, 'text/plain');
 }
