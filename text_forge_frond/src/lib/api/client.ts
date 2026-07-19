@@ -1,10 +1,10 @@
 // src/lib/api/client.ts
-import axios, { type AxiosRequestConfig, type AxiosError } from 'axios';
+import axios, { type AxiosRequestConfig } from 'axios';
 import axiosRetry from 'axios-retry';
 import { useAuthStore } from '@/lib/stores/authStore';
 import type { SyncResponse } from '@/types';
 import { API_URL } from '@/lib/config/env';
-import { isErrorCode, type ErrorCode } from './errorCodes';
+import { type ErrorCode } from './errorCodes';
 
 const DEFAULT_TIMEOUT = 30000;
 
@@ -34,12 +34,6 @@ interface VersionedRequestConfig extends AxiosRequestConfig {
 export interface SyncUpdate {
   id: string;
   [key: string]: unknown;
-}
-
-interface ApiErrorResponse {
-  message?: string;
-  error?: string;
-  code?: string;
 }
 
 export class ApiError extends Error {
@@ -73,19 +67,6 @@ axiosRetry(apiClient, {
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
-    if (error.response?.data) {
-      const data = error.response.data as ApiErrorResponse;
-      const rawCode = data.code;
-      // 仅当后端返回的是约定错误码时才赋值，避免脏字符串污染 code
-      const code = rawCode && isErrorCode(rawCode) ? rawCode : undefined;
-      (error as AxiosError & { apiError?: ApiError }).apiError = new ApiError(
-        data.message || data.error || '请求失败',
-        error.response.status,
-        code,
-        error.response.data
-      );
-    }
-
     const originalRequest = error.config as RetryableRequestConfig;
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
@@ -147,8 +128,6 @@ async function refreshAccessToken(): Promise<void> {
       useAuthStore.getState().setAccessToken(newToken);
     })
     .catch(() => {
-      useAuthStore.getState().logout();
-      window.location.href = '/login';
       return Promise.reject();
     })
     .finally(() => {

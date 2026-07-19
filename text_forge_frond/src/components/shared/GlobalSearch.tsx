@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 import { useHotkeys } from 'react-hotkeys-hook';
 import apiClient from '@/lib/api/client';
 import { logger } from '@/lib/logger';
+import type { Project } from '@/types';
 
 interface SearchResult {
   id: string;
@@ -19,12 +20,6 @@ interface SearchResult {
   type: 'project' | 'character' | 'document';
   href: string;
   icon: React.ReactNode;
-}
-
-interface Project {
-  id: string | number;
-  title: string;
-  status?: string;
 }
 
 const PROJECT_STATUS_LABEL: Record<string, string> = {

@@ -268,20 +268,23 @@ export default function ProjectWorkbench() {
 
   // 复盘师逻辑（cheap 档）：把本章出场角色的状态/关系变化沉淀进 currentProfile。
   // 真架构由复盘 agent 提取；mock 期做最小启发式：检测死亡/状态关键词，追加时间线节点。
+  // 扫描正文中出现的角色名（与项目角色匹配）即沉淀，不再依赖「本章勾选出场」（避免正文写了角色死亡却被漏掉）。
   const depositCharacterProfiles = async (text: string) => {
-    if (!selectedCharIds.length) return;
+    if (!projectChars.length) return;
     const updateCharacter = useCharacterStore.getState().updateCharacter;
-    const chars = projectChars.filter((c) => selectedCharIds.includes(c.id));
-    for (const c of chars) {
-      const mention = text.includes(c.name);
-      const died = /死亡|陨落|牺牲|毙命|咽气/.test(text) && mention;
+    for (const c of projectChars) {
+      const name = c.name?.trim();
+      if (!name) continue;
+      const mention = text.includes(name);
+      if (!mention) continue;
+      const died = /死亡|陨落|牺牲|毙命|咽气/.test(text);
       if (died && c.status !== '死亡') {
         const note = `于剧情中死亡（由生成结果自动沉淀）`;
         const base = c.currentProfile ? `${c.currentProfile}\n` : '';
         try {
           await updateCharacter(c.id, { status: '死亡', currentProfile: `${base}${note}` });
         } catch { /* 忽略 */ }
-      } else if (mention && !c.currentProfile?.includes('本章出场')) {
+      } else if (!c.currentProfile?.includes('本章出场')) {
         const note = `本章出场并参与剧情`;
         const base = c.currentProfile ? `${c.currentProfile}\n` : '';
         try {
