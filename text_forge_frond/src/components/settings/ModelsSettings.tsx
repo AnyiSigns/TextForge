@@ -229,7 +229,7 @@ export function ModelsSettings() {
                 const active = embedDownloadId === t.id;
                 const isDownloaded = downloadedIds.includes(t.id);
                 return (
-                  <div key={t.id} className="flex items-center justify-between gap-3 rounded-lg border border-border/30 px-3 py-2">
+                  <div key={t.id} data-testid="embed-tier-row" data-tier-id={t.id} className="flex items-center justify-between gap-3 rounded-lg border border-border/30 px-3 py-2">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-medium truncate">{t.label}</p>

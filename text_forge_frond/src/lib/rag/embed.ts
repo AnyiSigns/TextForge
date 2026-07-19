@@ -51,17 +51,11 @@ export function setEmbedTier(id: string) {
   loading = null;
 }
 
-export function getEmbedTier(): EmbedModelTier {
-  return currentTier;
-}
-
 // 下载进度回调：真实字节累计。多文件依次下载，分母优先用 transformers 上报的
 // 各文件真实 total 之和（无 content-length 时 Next dev 走 chunked 拿不到，退回档位估算体积）。
 export interface EmbedDownloadProgress {
   loaded: number;   // 已下载字节（含已完成文件累加）
   total: number;    // 总字节（真实之和或档位估算）；>0 才有意义
-  done: number;     // 已完成文件数
-  fileTotal: number; // 已观测到的文件数
 }
 
 // 已下载档位持久化（浏览器端用户本地目录）：权重本身落在浏览器 Cache Storage
@@ -71,8 +65,10 @@ export interface EmbedDownloadProgress {
 const DOWNLOADED_KEY = 'tf_embed_downloaded';
 let memoryDownloaded: string[] | null = null; // 同步读取用的内存缓存
 
+// 确保已下载集合已从 IndexedDB 载入内存（幂等；SSR 下跳过）
 export async function initDownloadedTiers(): Promise<void> {
   if (typeof window === 'undefined') return;
+  if (memoryDownloaded) return;
   try {
     const raw = await getItem<string>(DOWNLOADED_KEY);
     memoryDownloaded = raw ? (JSON.parse(raw) as string[]) : [];
@@ -81,16 +77,13 @@ export async function initDownloadedTiers(): Promise<void> {
   }
 }
 
-async function loadDownloaded(): Promise<string[]> {
-  if (memoryDownloaded) return memoryDownloaded;
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = await getItem<string>(DOWNLOADED_KEY);
-    memoryDownloaded = raw ? (JSON.parse(raw) as string[]) : [];
-  } catch {
-    memoryDownloaded = [];
-  }
-  return memoryDownloaded;
+// 同步读取已下载集合（需先 initDownloadedTiers 或经一次读写后填充；否则为空数组）
+export function getDownloadedTiers(): string[] {
+  return memoryDownloaded ? [...memoryDownloaded] : [];
+}
+
+export function isTierDownloaded(id: string): boolean {
+  return memoryDownloaded ? memoryDownloaded.includes(id) : false;
 }
 
 async function saveDownloaded(ids: string[]) {
@@ -103,26 +96,11 @@ async function saveDownloaded(ids: string[]) {
   }
 }
 
-// 同步读取：优先用内存缓存（需先 initDownloadedTiers 或经一次读写后填充）。
-export function isTierDownloaded(id: string): boolean {
-  return memoryDownloaded ? memoryDownloaded.includes(id) : false;
-}
-
-// 同步读取全部（组件挂载后用于初始化 state；首次可能为空，需配合 initDownloadedTiers）
-export function getDownloadedTiers(): string[] {
-  return memoryDownloaded ? [...memoryDownloaded] : [];
-}
-
 // 异步标记某档已下载
 export async function markTierDownloaded(id: string): Promise<void> {
-  const ids = await loadDownloaded();
+  await initDownloadedTiers();
+  const ids = getDownloadedTiers();
   if (!ids.includes(id)) await saveDownloaded([...ids, id]);
-}
-
-// 异步移除某档下载标记
-export async function unmarkTierDownloaded(id: string): Promise<void> {
-  const ids = await loadDownloaded();
-  await saveDownloaded(ids.filter((x) => x !== id));
 }
 
 // 当前正在进行的下载控制器（用于取消）
@@ -150,18 +128,16 @@ async function buildExtractor(onProgress?: (p: EmbedDownloadProgress) => void, c
   // 字节聚合进度：每个文件单独上报 loaded/total，大文件（onnx）不报中间 loaded，
   // 仅 'done' 时给终值，故 done 事件把该文件 loaded 补满到其 total。
   const estTotal = currentTier.sizeMB * 1024 * 1024;
-  const fileMap: Record<string, { loaded: number; total: number; done: boolean }> = {};
+  const fileMap: Record<string, { loaded: number; total: number }> = {};
   const report = (onProgress: (p: EmbedDownloadProgress) => void) => {
     let loaded = 0;
     let total = 0;
-    let doneCount = 0;
     for (const k in fileMap) {
       loaded += fileMap[k].loaded;
       total += fileMap[k].total;
-      if (fileMap[k].done) doneCount++;
     }
     const denom = total > 0 ? total : estTotal;
-    onProgress({ loaded, total: denom, done: doneCount, fileTotal: Object.keys(fileMap).length });
+    onProgress({ loaded, total: denom });
   };
   const pipe = await pipeline('feature-extraction', currentTier.model, {
     progress_callback: onProgress
@@ -171,20 +147,20 @@ async function buildExtractor(onProgress?: (p: EmbedDownloadProgress) => void, c
           if (e.status === 'progress') {
             const total = typeof e.total === 'number' && e.total > 0 ? e.total : (fileMap[file]?.total ?? 0);
             const loaded = typeof e.loaded === 'number' ? e.loaded : (fileMap[file]?.loaded ?? 0);
-            fileMap[file] = { loaded, total, done: fileMap[file]?.done ?? false };
+            fileMap[file] = { loaded, total };
           } else if (e.status === 'done') {
-            const prev = fileMap[file] ?? { loaded: 0, total: 0, done: false };
+            const prev = fileMap[file] ?? { loaded: 0, total: 0 };
             const total = typeof e.total === 'number' && e.total > 0 ? e.total : (prev.total || estTotal);
-            fileMap[file] = { loaded: total, total, done: true };
+            fileMap[file] = { loaded: total, total };
           } else if (e.status === 'initiate' || e.status === 'download') {
-            if (!fileMap[file]) fileMap[file] = { loaded: 0, total: 0, done: false };
+            if (!fileMap[file]) fileMap[file] = { loaded: 0, total: 0 };
           }
           report(onProgress);
         }
       : undefined,
   });
   // 下载完成：回调满值，UI 据此切到「已就绪」
-  if (onProgress) onProgress({ loaded: estTotal, total: estTotal, done: Object.keys(fileMap).length, fileTotal: Object.keys(fileMap).length });
+  if (onProgress) onProgress({ loaded: estTotal, total: estTotal });
   return pipe as FeatureExtractionPipeline;
 }
 
@@ -207,12 +183,6 @@ export async function embed(text: string): Promise<number[]> {
   const pipe = await getExtractor();
   const out = await pipe(text, { pooling: 'mean', normalize: true });
   return Array.from(out.data as Float32Array).slice(0, currentTier.dim);
-}
-
-export const EMBED_DIM = 768; // 默认值（base），运行时以 getEmbedDim() 为准
-
-export function isEmbedReady(): boolean {
-  return extractor !== null;
 }
 
 // 显式下载指定档位模型：切到该档、并发起下载（带进度回调）。
@@ -275,7 +245,8 @@ export async function deleteEmbedModel(id: string): Promise<void> {
       /* 忽略缓存删除失败 */
     }
   }
-  const ids = await loadDownloaded();
+  await initDownloadedTiers();
+  const ids = getDownloadedTiers();
   await saveDownloaded(ids.filter((x) => x !== id));
   if (currentTier.id === id) {
     extractor = null;

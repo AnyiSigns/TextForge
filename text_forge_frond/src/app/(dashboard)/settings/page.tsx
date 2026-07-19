@@ -684,7 +684,6 @@ export default function SettingsPage() {
                     if (isTierDownloaded(id)) {
                       switchEmbedTier(id);
                       setEmbedTierId(id);
-                      refreshDownloadedTiers();
                       toast.success(`已切换到「${t.label}」`);
                       return;
                     }
