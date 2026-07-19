@@ -10,6 +10,7 @@ export default tseslint.config(
     "node_modules/**",
     "e2e/**",
     "src/test/**",
+    "public/**",
   ]),
   js.configs.recommended,
   ...tseslint.configs.recommended,

@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { Character, CharacterRole, CharacterRelationship } from '@/types';
 import { EmptyState, Spinner } from '@/components/shared/states';
 import { useCharacterStore } from '@/lib/stores/characterStore';
+import { useProjectCharacters } from '@/lib/hooks/useProjectCharacters';
 import { uploadAvatar } from '@/lib/api/characters';
 import { generatePart } from '@/lib/seed/generate';
 import { downloadImagesZip } from '@/lib/storage/imageExport';
@@ -58,8 +59,7 @@ function roleLabel(char: Character | { role?: string; customRole?: string }): st
 }
 
 export function ProjectCharactersTab({ projectId }: { projectId: string }) {
-  const characters = useCharacterStore((s) => s.characters);
-  const syncFromBackend = useCharacterStore((s) => s.syncFromBackend);
+  const { projectChars, allCharacters: characters, sync: syncFromBackend } = useProjectCharacters(projectId);
   const removeCharacter = useCharacterStore((s) => s.removeCharacter);
   const updateCharacter = useCharacterStore((s) => s.updateCharacter);
   const [searchTerm, setSearchTerm] = useState('');
@@ -95,11 +95,9 @@ export function ProjectCharactersTab({ projectId }: { projectId: string }) {
 
   useEffect(() => {
     syncFromBackend()
-      .catch((e) => toast.error('加载失败', { description: e instanceof Error ? e.message : '未知错误' }))
+      .catch((e: unknown) => toast.error('加载失败', { description: e instanceof Error ? e.message : '未知错误' }))
       .finally(() => setIsLoading(false));
   }, [syncFromBackend]);
-
-  const projectChars = characters.filter((c) => (c.projectId ?? null) === projectId);
 
   // 中途单补角色：按当前项目设定生成新角色，增量合并（不覆盖用户已有角色）
   const [isSeedingChars, setIsSeedingChars] = useState(false);

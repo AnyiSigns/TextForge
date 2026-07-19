@@ -1,7 +1,7 @@
 // src/components/settings/ModelsSettings.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useModelStore } from '@/lib/stores/modelStore';
 import { useSettingsStore } from '@/lib/stores/settingsStore';
 import {
@@ -27,7 +27,8 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import apiClient from '@/lib/api/client';
 import { uid } from '@/lib/utils/id';
-import { EMBED_TIERS, type EmbedDownloadProgress, getDownloadedTiers, deleteEmbedModel, cancelEmbedDownload, initDownloadedTiers } from '@/lib/rag/embed';
+import { EMBED_TIERS, type EmbedDownloadProgress, deleteEmbedModel, cancelEmbedDownload } from '@/lib/rag/embed';
+import { useEmbedDownloaded } from '@/lib/hooks/useEmbedDownloaded';
 
 function formatSize(bytes: number): string {
   if (!bytes || bytes < 0) return '0 MB';
@@ -56,13 +57,7 @@ export function ModelsSettings({ initialCategory = 'llm' }: { initialCategory?: 
   const [embedDownloadId, setEmbedDownloadId] = useState<string | null>(null);
   const [embedProgress, setEmbedProgress] = useState<EmbedDownloadProgress | null>(null);
   const [embedDeleting, setEmbedDeleting] = useState<string | null>(null);
-  const [downloadedIds, setDownloadedIds] = useState<string[]>([]);
-
-  useEffect(() => {
-    initDownloadedTiers().then(() => setDownloadedIds(getDownloadedTiers()));
-  }, []);
-
-  const refreshDownloaded = () => setDownloadedIds(getDownloadedTiers());
+  const downloadedIds = useEmbedDownloaded();
 
   const handleDownloadEmbed = async (id: string) => {
     const tier = EMBED_TIERS.find((t) => t.id === id);
@@ -74,7 +69,6 @@ export function ModelsSettings({ initialCategory = 'llm' }: { initialCategory?: 
       const { downloadEmbedModel } = await import('@/lib/rag/embed');
       await downloadEmbedModel(id, (p) => setEmbedProgress(p));
       setEmbedTierId(id); // 下载即启用该精度，使 AI 偏好/知识库/运行时三者一致
-      refreshDownloaded();
       toast.success(`本地向量模型「${name}」已就绪，离线可用`);
     } catch (error: unknown) {
       const err = error instanceof Error ? error : new Error(String(error));
@@ -92,7 +86,6 @@ export function ModelsSettings({ initialCategory = 'llm' }: { initialCategory?: 
     setEmbedDeleting(id);
     try {
       await deleteEmbedModel(id);
-      refreshDownloaded();
       toast.success('已删除本地模型');
     } catch {
       toast.error('删除失败');

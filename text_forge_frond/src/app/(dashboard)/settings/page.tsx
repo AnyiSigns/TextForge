@@ -18,7 +18,8 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { ModelsSettings } from '@/components/settings/ModelsSettings';
 import { Moon, Sun, Monitor, Image as ImageIcon, Eye, EyeOff, User, Palette, Sparkles, Boxes, SlidersHorizontal, Download } from 'lucide-react';
-import { EMBED_TIERS, isTierDownloaded, downloadEmbedModel, getDownloadedTiers, initDownloadedTiers } from '@/lib/rag/embed';
+import { EMBED_TIERS, isTierDownloaded, downloadEmbedModel } from '@/lib/rag/embed';
+import { useEmbedDownloaded } from '@/lib/hooks/useEmbedDownloaded';
 import { toast } from 'sonner';
 import { useProjectStore } from '@/lib/stores/projectStore';
 import { useCharacterStore } from '@/lib/stores/characterStore';
@@ -67,12 +68,8 @@ export default function SettingsPage() {
   // 从「AI 偏好」跳来下载向量模型时，自动展开「向量模型」分类
   const [modelsInitialCategory, setModelsInitialCategory] = useState<ModelCategory>('llm');
 
-  // 已下载的本地向量模型档位（与「模型 → 向量模型」同源，联动显示）
-  const [downloadedTiers, setDownloadedTiers] = useState<string[]>([]);
-  useEffect(() => {
-    initDownloadedTiers().then(() => setDownloadedTiers(getDownloadedTiers()));
-  }, []);
-  const refreshDownloadedTiers = () => setDownloadedTiers(getDownloadedTiers());
+  // 已下载的本地向量模型档位（单一数据源：useEmbedDownloaded 共享 embed.ts 实时状态）
+  const downloadedTiers = useEmbedDownloaded();
 
   const [username, setUsername] = useState(user?.username || '');
   const [email, setEmail] = useState(user?.email || '');
@@ -715,7 +712,6 @@ export default function SettingsPage() {
                         const { resetForTier } = await import('@/lib/rag/vectorStore');
                         await resetForTier(id); // 先清旧索引并标记旧文档待重建
                         await downloadEmbedModel(id); // 下载（带进度，UI 在向量模型区展示）
-                        refreshDownloadedTiers();
                         toast.success(`「${t.label}」已下载并启用。请到「知识库」重新建库以检索旧文档`);
                       } catch {
                         toast.error('下载失败，请重试或选择已下载的精度');

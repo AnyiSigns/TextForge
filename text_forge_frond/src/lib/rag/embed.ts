@@ -86,6 +86,18 @@ export function isTierDownloaded(id: string): boolean {
   return memoryDownloaded ? memoryDownloaded.includes(id) : false;
 }
 
+// 模块级发布订阅：让多组件共享同一份「已下载集合」实时状态（单一数据源），
+// 避免 settings 页与 ModelsSettings 各自维护副本导致互相不感知。
+type DownloadedListener = () => void;
+const downloadedListeners = new Set<DownloadedListener>();
+export function subscribeDownloaded(fn: DownloadedListener): () => void {
+  downloadedListeners.add(fn);
+  return () => downloadedListeners.delete(fn);
+}
+function emitDownloaded() {
+  downloadedListeners.forEach((fn) => fn());
+}
+
 async function saveDownloaded(ids: string[]) {
   memoryDownloaded = [...new Set(ids)];
   if (typeof window === 'undefined') return;
@@ -94,6 +106,7 @@ async function saveDownloaded(ids: string[]) {
   } catch {
     /* 忽略 */
   }
+  emitDownloaded();
 }
 
 // 异步标记某档已下载

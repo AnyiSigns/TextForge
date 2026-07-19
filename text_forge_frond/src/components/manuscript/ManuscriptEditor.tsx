@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useManuscriptStore } from '@/lib/stores/manuscriptStore';
-import { useCharacterStore } from '@/lib/stores/characterStore';
+import { useProjectCharacters } from '@/lib/hooks/useProjectCharacters';
 import { useBriefStore } from '@/lib/stores/briefStore';
 import { useSettingsStore } from '@/lib/stores/settingsStore';
 import { importManuscriptToProject, importBookToProject } from '@/lib/api/projects';
@@ -20,7 +20,7 @@ import { parseBookText } from '@/lib/utils/bookImport';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose,
 } from '@/components/ui/dialog';
-import type { Character, ProjectBrief, ManuscriptChapter } from '@/types';
+import type { ProjectBrief, ManuscriptChapter } from '@/types';
 
 type SuggestionKind = 'character' | 'setting' | 'hint';
 interface Suggestion { kind: SuggestionKind; label: string; detail?: string; }
@@ -33,11 +33,7 @@ export function ManuscriptEditor({ projectId }: { projectId: string }) {
   const removeChapter = useManuscriptStore((s) => s.removeChapter);
   const clearProject = useManuscriptStore((s) => s.clearProject);
 
-  const charactersAll = useCharacterStore((s) => s.characters);
-  const characters = useMemo(
-    () => charactersAll.filter((c: Character) => (c.projectId ?? null) === projectId),
-    [charactersAll, projectId],
-  );
+  const { projectChars: characters } = useProjectCharacters(projectId);
   const brief = useBriefStore((s) => s.briefs[projectId]) as ProjectBrief | undefined;
   const freq = useSettingsStore((s) => s.suggestionFrequency);
 
@@ -75,13 +71,7 @@ export function ManuscriptEditor({ projectId }: { projectId: string }) {
     } catch { /* 隐私模式下忽略 */ }
   }, []);
 
-  // 进入手稿即拉取角色数据，保证 @ 角色联想始终有候选（角色 store 仅在角色页加载，手稿页需主动同步）
-  useEffect(() => {
-    const charStore = useCharacterStore.getState();
-    if (charStore.characters.length === 0) {
-      charStore.syncFromBackend().catch(() => {});
-    }
-  }, [projectId]);
+  // 角色数据由 useProjectCharacters 在进入时按需同步，保证 @ 角色联想始终有候选
 
   const dismissSuggestHint = () => {
     setShowSuggestHint(false);
