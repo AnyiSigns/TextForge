@@ -1,26 +1,20 @@
 ﻿// src/components/projects/ProjectCharactersTab.tsx
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Plus, Search, Users, UserPlus, Pencil, MessageCircle, Trash2, Eye, Images, Skull, Heart, CircleDot, Upload, Lock, ImageOff, Download, Sparkles, List, LayoutGrid, Link2 } from 'lucide-react';
-import { toast } from 'sonner';
-import { Character, CharacterRole, CharacterRelationship } from '@/types';
+import { Character, CharacterRole } from '@/types';
 import { EmptyState, Spinner } from '@/components/shared/states';
-import { useCharacterStore } from '@/lib/stores/characterStore';
-import { useProjectCharacters } from '@/lib/hooks/useProjectCharacters';
-import { uploadAvatar } from '@/lib/api/characters';
-import { generatePart } from '@/lib/seed/generate';
-import { downloadImagesZip } from '@/lib/storage/imageExport';
 import { CHARACTER_ROLE_LABELS, characterRoleLabel } from '@/lib/workflow/agentRoles';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { CharacterStudioSheet } from '@/components/characters/CharacterStudioSheet';
 import Image from 'next/image';
+import { useProjectCharactersTab } from '@/lib/hooks/useProjectCharactersTab';
 
 // 状态预设（string 支持自定义）
 const STATUS_PRESETS = ['存活', '重伤', '失踪', '囚禁', '死亡', '未知'];
@@ -59,166 +53,61 @@ function roleLabel(char: Character | { role?: string; customRole?: string }): st
 }
 
 export function ProjectCharactersTab({ projectId }: { projectId: string }) {
-  const { projectChars, allCharacters: characters, sync: syncFromBackend } = useProjectCharacters(projectId);
-  const removeCharacter = useCharacterStore((s) => s.removeCharacter);
-  const updateCharacter = useCharacterStore((s) => s.updateCharacter);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editName, setEditName] = useState('');
-  const [editDesc, setEditDesc] = useState('');
-  const [editRole, setEditRole] = useState<string>('');
-  const [editCustomRole, setEditCustomRole] = useState<string>('');
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
-  const [detailChar, setDetailChar] = useState<Character | null>(null);
-  const [statusTarget, setStatusTarget] = useState<Character | null>(null);
-  const [statusDraft, setStatusDraft] = useState('');
-  const [relTarget, setRelTarget] = useState<Character | null>(null);
-  const [relDraft, setRelDraft] = useState<CharacterRelationship[]>([]);
-  const [studioTarget, setStudioTarget] = useState<Character | null>(null);
-  const [detailRole, setDetailRole] = useState<string>('');
-  const [detailCustomRole, setDetailCustomRole] = useState<string>('');
-  const avatarInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
-
-  const handleAvatarChange = async (id: string, e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    try {
-      const url = await uploadAvatar(id, file);
-      await updateCharacter(id, { avatar: url });
-      toast.success('头像已更新');
-    } catch (err) {
-      toast.error('头像更新失败', { description: err instanceof Error ? err.message : '未知错误' });
-    }
-  };
-
-  useEffect(() => {
-    syncFromBackend()
-      .catch((e: unknown) => toast.error('加载失败', { description: e instanceof Error ? e.message : '未知错误' }))
-      .finally(() => setIsLoading(false));
-  }, [syncFromBackend]);
-
-  // 中途单补角色：按当前项目设定生成新角色，增量合并（不覆盖用户已有角色）
-  const [isSeedingChars, setIsSeedingChars] = useState(false);
-  const handleSeedChars = async () => {
-    if (isSeedingChars) return;
-    setIsSeedingChars(true);
-    try {
-      const res = await generatePart(projectId, 'characters', { prompt: '为本书补充若干贴合世界观的新角色' });
-      const n = res.characters?.length ?? 0;
-      toast.success(`已补充 ${n} 个角色（可手动微调）`);
-    } catch (e) {
-      toast.error('补充角色失败', { description: e instanceof Error ? e.message : '未知错误' });
-    } finally {
-      setIsSeedingChars(false);
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm('确定要删除这个角色吗？')) return;
-    try {
-      await removeCharacter(id);
-      toast.success('已删除');
-    } catch (e) {
-      toast.error('删除失败', { description: e instanceof Error ? e.message : '未知错误' });
-    }
-  };
-
-  const startEdit = (char: Character) => {
-    setEditingId(char.id);
-    setEditName(char.name);
-    setEditDesc(char.description);
-    setEditRole(char.role ?? '');
-    setEditCustomRole(char.customRole ?? '');
-  };
-
-  const saveEdit = async (id: string) => {
-    if (!editName.trim()) return;
-    try {
-      const patch: Partial<Character> = {
-        name: editName.trim(),
-        description: editDesc.trim(),
-        role: (editRole || undefined) as CharacterRole | undefined,
-      };
-      if (editRole === 'custom') patch.customRole = editCustomRole.trim() || '自定义';
-      await updateCharacter(id, patch);
-      toast.success('角色已更新');
-      setEditingId(null);
-    } catch (e) {
-      toast.error('更新失败', { description: e instanceof Error ? e.message : '未知错误' });
-    }
-  };
-
-  const openStatus = (char: Character) => {
-    setStatusTarget(char);
-    setStatusDraft(char.status ?? '存活');
-  };
-
-  const openRelations = (char: Character) => {
-    setRelTarget(char);
-    setRelDraft(char.relationships ? [...char.relationships] : []);
-  };
-
-  const addRelation = () => {
-    setRelDraft((p) => [...p, { id: `rel-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, targetId: '', relation: '' }]);
-  };
-
-  const updateRelation = (id: string, patch: Partial<CharacterRelationship>) => {
-    setRelDraft((p) => p.map((r) => (r.id === id ? { ...r, ...patch } : r)));
-  };
-
-  const removeRelation = (id: string) => {
-    setRelDraft((p) => p.filter((r) => r.id !== id));
-  };
-
-  const applyRelations = async () => {
-    if (!relTarget) return;
-    // 仅保留已选对端且填写了关系描述的项
-    const next = relDraft.filter((r) => r.targetId && r.relation.trim());
-    try {
-      await updateCharacter(relTarget.id, { relationships: next });
-      toast.success('角色关系已保存');
-      setRelTarget(null);
-      if (detailChar?.id === relTarget.id) {
-        setDetailChar((c) => (c ? { ...c, relationships: next } : c));
-      }
-    } catch (e) {
-      toast.error('关系保存失败', { description: e instanceof Error ? e.message : '未知错误' });
-    }
-  };
-
-  const charNameById = (id: string) =>
-    projectChars.find((c) => c.id === id)?.name ?? characters.find((c) => c.id === id)?.name ?? '（未知角色）';
-
-  const applyStatus = async () => {
-    if (!statusTarget) return;
-    const next = statusDraft.trim() || '存活';
-    // 剧情性死亡：二次确认，确认后写入 currentProfile 节点
-    if (next === '死亡' && statusTarget.status !== '死亡') {
-      if (!confirm(`确认「${statusTarget.name}」死亡？\n该状态将更新其当前档案并通知后续生成上下文。`)) return;
-    }
-    try {
-      const patch: Partial<Character> = { status: next };
-      if (next === '死亡') {
-        const stamp = `于剧情中死亡（由作者确认）`;
-        const base = statusTarget.currentProfile ? `${statusTarget.currentProfile}\n` : '';
-        patch.currentProfile = `${base}${stamp}`;
-      }
-      await updateCharacter(statusTarget.id, patch);
-      toast.success('角色状态已更新');
-      setStatusTarget(null);
-      if (detailChar?.id === statusTarget.id) {
-        setDetailChar((c) => (c ? { ...c, ...patch } : c));
-      }
-    } catch (e) {
-      toast.error('状态更新失败', { description: e instanceof Error ? e.message : '未知错误' });
-    }
-  };
-
-  const filtered = projectChars.filter((c) =>
-    (c.name ?? '').includes(searchTerm) || (c.description ?? '').includes(searchTerm)
-  );
+  const {
+    projectChars,
+    characters,
+    filtered,
+    isLoading,
+    searchTerm,
+    setSearchTerm,
+    viewMode,
+    setViewMode,
+    editingId,
+    setEditingId,
+    editName,
+    setEditName,
+    editDesc,
+    setEditDesc,
+    editRole,
+    setEditRole,
+    editCustomRole,
+    setEditCustomRole,
+    startEdit,
+    saveEdit,
+    relTarget,
+    setRelTarget,
+    relDraft,
+    openRelations,
+    addRelation,
+    updateRelation,
+    removeRelation,
+    applyRelations,
+    charNameById,
+    statusTarget,
+    setStatusTarget,
+    statusDraft,
+    setStatusDraft,
+    openStatus,
+    applyStatus,
+    detailChar,
+    setDetailChar,
+    detailRole,
+    setDetailRole,
+    detailCustomRole,
+    setDetailCustomRole,
+    openDetailRoleEdit,
+    saveDetailRole,
+    saveCurrentProfile,
+    setReferenceImage,
+    exportImages,
+    avatarInputRefs,
+    handleAvatarChange,
+    isSeedingChars,
+    handleSeedChars,
+    handleDelete,
+    studioTarget,
+    setStudioTarget,
+  } = useProjectCharactersTab(projectId);
 
   if (isLoading) {
     return <Spinner label="正在加载角色..." />;
@@ -559,7 +448,7 @@ export function ProjectCharactersTab({ projectId }: { projectId: string }) {
                   <Button size="sm" variant="outline" className="rounded-xl" onClick={() => openStatus(detailChar)}>
                     <CircleDot className="w-3.5 h-3.5 mr-1" /> 设置状态
                   </Button>
-                  <Button size="sm" variant="outline" className="rounded-xl" onClick={() => { setDetailRole(detailChar.role ?? ''); setDetailCustomRole(detailChar.customRole ?? ''); }}>
+                  <Button size="sm" variant="outline" className="rounded-xl" onClick={() => openDetailRoleEdit(detailChar)}>
                     <Pencil className="w-3.5 h-3.5 mr-1" /> 编辑定位
                   </Button>
                 </div>
@@ -585,18 +474,7 @@ export function ProjectCharactersTab({ projectId }: { projectId: string }) {
                         className="mt-1.5 h-9 rounded-xl text-sm"
                       />
                     )}
-                    <Button size="sm" className="rounded-xl w-full" onClick={async () => {
-                      try {
-                        const patch: Partial<Character> = { role: (detailRole || undefined) as CharacterRole | undefined };
-                        if (detailRole === 'custom') patch.customRole = detailCustomRole.trim() || '自定义';
-                        await updateCharacter(detailChar.id, patch);
-                        setDetailChar((c) => (c ? { ...c, ...patch } : c));
-                        setDetailRole('');
-                        toast.success('故事定位已更新');
-                      } catch (e) {
-                        toast.error('更新失败', { description: e instanceof Error ? e.message : '未知错误' });
-                      }
-                    }}>保存定位</Button>
+                    <Button size="sm" className="rounded-xl w-full" onClick={saveDetailRole}>保存定位</Button>
                   </div>
                 )}
 
@@ -616,14 +494,7 @@ export function ProjectCharactersTab({ projectId }: { projectId: string }) {
                     rows={4}
                     className="text-sm rounded-2xl bg-background/40 border-border/30 focus-visible:border-primary/40"
                   />
-                  <Button size="sm" variant="outline" className="rounded-xl" onClick={async () => {
-                    try {
-                      await updateCharacter(detailChar.id, { currentProfile: detailChar.currentProfile ?? '' });
-                      toast.success('当前档案已保存');
-                    } catch (e) {
-                      toast.error('保存失败', { description: e instanceof Error ? e.message : '未知错误' });
-                    }
-                  }}>保存当前档案</Button>
+                  <Button size="sm" variant="outline" className="rounded-xl" onClick={saveCurrentProfile}>保存当前档案</Button>
                 </div>
 
                 <div className="space-y-2">
@@ -667,7 +538,7 @@ export function ProjectCharactersTab({ projectId }: { projectId: string }) {
                                 <button
                                   type="button"
                                   title="取消参考图"
-                                  onClick={() => { updateCharacter(detailChar.id, { referenceImage: null }).catch(() => {}); toast.success('已取消参考图，后续生图不再强制一致'); }}
+                                  onClick={() => setReferenceImage(null)}
                                   className="w-6 h-6 grid place-items-center rounded-full bg-white/90 text-foreground"
                                 >
                                   <ImageOff className="w-3 h-3" />
@@ -676,7 +547,7 @@ export function ProjectCharactersTab({ projectId }: { projectId: string }) {
                                 <button
                                   type="button"
                                   title="设为参考图"
-                                  onClick={() => { updateCharacter(detailChar.id, { referenceImage: img }).catch(() => {}); toast.success('已设为参考图，后续生成立绘会更一致'); }}
+                                  onClick={() => setReferenceImage(img)}
                                   className="w-6 h-6 grid place-items-center rounded-full bg-primary text-primary-foreground"
                                 >
                                   <Lock className="w-3 h-3" />
@@ -695,15 +566,7 @@ export function ProjectCharactersTab({ projectId }: { projectId: string }) {
                       variant="outline"
                       size="sm"
                       className="rounded-xl mt-2"
-                      onClick={async () => {
-                        try {
-                          const { ok, failed } = await downloadImagesZip(detailChar.images!, `${detailChar.name}-立绘`, detailChar.name);
-                          if (failed > 0) toast.success(`已导出 ${ok} 张（${failed} 张跨域受限，已存来源链接）`);
-                          else toast.success(`已导出 ${ok} 张立绘`);
-                        } catch {
-                          toast.error('导出失败，请重试');
-                        }
-                      }}
+                      onClick={exportImages}
                     >
                       <Download className="w-3.5 h-3.5 mr-1.5" /> 导出全部立绘（{detailChar.images.length}）
                     </Button>
@@ -827,5 +690,3 @@ export function ProjectCharactersTab({ projectId }: { projectId: string }) {
     </div>
   );
 }
-
-
