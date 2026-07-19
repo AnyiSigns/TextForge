@@ -1,7 +1,8 @@
 // src/app/(dashboard)/settings/page.tsx
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useAuthStore } from '@/lib/stores/authStore';
 import { useSettingsStore, type BgArea } from '@/lib/stores/settingsStore';
 import { useTheme } from 'next-themes';
@@ -51,17 +52,33 @@ const FONT_FAMILY_OPTIONS: { value: string; label: string }[] = [
 
 export default function SettingsPage() {
   const { user, updateUser } = useAuthStore();
+  // 分字段订阅：任意单个设置变更只让用到它的小组件重渲，而非整页（含 ModelsSettings 大组件）。
+  const bgImage = useSettingsStore((s) => s.bgImage);
+  const bgOpacity = useSettingsStore((s) => s.bgOpacity);
+  const bgBlur = useSettingsStore((s) => s.bgBlur);
+  const bgArea = useSettingsStore((s) => s.bgArea);
+  const suggestionFrequency = useSettingsStore((s) => s.suggestionFrequency);
+  const bgSolidOpacity = useSettingsStore((s) => s.bgSolidOpacity);
+  const inkEnabled = useSettingsStore((s) => s.inkEnabled);
+  const inkOpacity = useSettingsStore((s) => s.inkOpacity);
+  const motionEnabled = useSettingsStore((s) => s.motionEnabled);
+  const glassEnabled = useSettingsStore((s) => s.glassEnabled);
+  const cardGlassOpacity = useSettingsStore((s) => s.cardGlassOpacity);
+  const cardGlassBlur = useSettingsStore((s) => s.cardGlassBlur);
+  const contentScale = useSettingsStore((s) => s.contentScale);
+  const fontFamily = useSettingsStore((s) => s.fontFamily);
+  const embedTierId = useSettingsStore((s) => s.embedTierId);
   const {
-    bgImage, bgOpacity, bgBlur, bgArea, suggestionFrequency,
-    bgSolidOpacity, inkEnabled, inkOpacity, motionEnabled, glassEnabled,
-    cardGlassOpacity, cardGlassBlur,
-    contentScale, fontFamily,
     setBgImage, setBgOpacity, setBgBlur, setBgArea, setSuggestionFrequency,
     setBgSolidOpacity, setInkEnabled, setInkOpacity, setMotionEnabled, setGlassEnabled,
     setCardGlassOpacity, setCardGlassBlur, setSidebarGlassOpacity, setSidebarGlassBlur,
-    setContentScale, setFontFamily,
-    embedTierId, setEmbedTierId,
-  } = useSettingsStore();
+    setContentScale, setFontFamily, setEmbedTierId,
+  } = useSettingsStore(useShallow((s) => ({
+    setBgImage: s.setBgImage, setBgOpacity: s.setBgOpacity, setBgBlur: s.setBgBlur, setBgArea: s.setBgArea, setSuggestionFrequency: s.setSuggestionFrequency,
+    setBgSolidOpacity: s.setBgSolidOpacity, setInkEnabled: s.setInkEnabled, setInkOpacity: s.setInkOpacity, setMotionEnabled: s.setMotionEnabled, setGlassEnabled: s.setGlassEnabled,
+    setCardGlassOpacity: s.setCardGlassOpacity, setCardGlassBlur: s.setCardGlassBlur, setSidebarGlassOpacity: s.setSidebarGlassOpacity, setSidebarGlassBlur: s.setSidebarGlassBlur,
+    setContentScale: s.setContentScale, setFontFamily: s.setFontFamily, setEmbedTierId: s.setEmbedTierId,
+  })));
   const { theme, setTheme } = useTheme();
 
   const [activeTab, setActiveTab] = useState('profile');

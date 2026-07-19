@@ -104,11 +104,13 @@ export function ProjectStudio({ projectId, steps, mode, selectedCharIds }: { pro
     } catch { /* 后端未就绪时保留本地乐观记录 */ }
   }, [projectId, setPortfolio]);
 
+  // 仅在有 running 任务且卡片展开时轮询（避免切到其它 tab 仍持续 fetch + 写库）。
   useEffect(() => {
+    if (!isExpanded || !hasRunningTasks) return;
     const t = setTimeout(reloadPortfolio, 0);
     const interval = setInterval(reloadPortfolio, 8000);
     return () => { clearTimeout(t); clearInterval(interval); };
-  }, [reloadPortfolio]);
+  }, [reloadPortfolio, isExpanded, hasRunningTasks]);
 
   const makeOptimistic = (kind: MediaTask['kind'], p: ImageRequest | VideoRequest): MediaTask => {
     const ctx = p.context as GenerationContext | undefined;

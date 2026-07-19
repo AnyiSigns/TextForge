@@ -43,6 +43,12 @@ export function useManuscriptEditor(projectId: string) {
   const [dirty, setDirty] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
 
+  // 非受控 textarea 的最新生效文本：每次按键只更新 ref（不触发 React 重渲染），
+  // 节流 commit 到 state 供字数/预览派生展示，自动保存也只读取 ref，避免整编辑器重渲染。
+  const latestContentRef = useRef('');
+  // 节流 commit 句柄
+  const commitRafRef = useRef<number | null>(null);
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // 联想弹层状态
   const [suggest, setSuggest] = useState<SuggestState | null>(null);
@@ -92,34 +98,51 @@ export function useManuscriptEditor(projectId: string) {
     }
   }, [chapters.length]);
 
-  // 切换章节时载入内容
+  // 切换章节时载入内容（非受控：直接写 textarea DOM + ref，避免受控重渲染）
   useEffect(() => {
     if (active) {
+      latestContentRef.current = active.content;
+      if (textareaRef.current) textareaRef.current.value = active.content;
       setDraftContent(active.content);
       setTitle(active.title);
       setDirty(false);
     }
   }, [active?.id]);
 
-  const save = useCallback(async () => {
+  // 统一提交文本：同步 ref / state / DOM（供联想替换、AI 动作等非受控修改路径调用）
+  const commitContent = useCallback((value: string) => {
+    latestContentRef.current = value;
+    if (textareaRef.current) textareaRef.current.value = value;
+    setDraftContent(value);
+    setDirty(true);
+  }, []);
+
+  const save = useCallback(async (contentOverride?: string) => {
     if (!activeId || !active) return;
+    const content = contentOverride ?? latestContentRef.current ?? draftContent;
     // 纯AI章节经用户编辑后，来源升级为「AI后手工修改」
     const patch: Partial<Pick<ManuscriptChapter, 'title' | 'content' | 'index' | 'source'>> = {
-      content: draftContent,
+      content,
       title: title || active.title || '未命名章节',
     };
     if (active.source === 'ai') patch.source = 'ai_edited';
     await updateChapter(activeId, patch);
     setDirty(false);
     setSavedAt(Date.now());
-  }, [activeId, active, draftContent, title, updateChapter]);
+  }, [activeId, active, title, updateChapter]);
 
-  // 自动保存（停笔 1s）——仅更新"已保存"标记，不打扰式弹 toast
+  // 自动保存（停笔 1s）：合并为单一稳定定时器，仅在 dirty 时触发一次写库，避免长文逐字反复 setTimeout。
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!activeId || !dirty) return;
-    const t = setTimeout(() => { void save(); }, 1000);
-    return () => clearTimeout(t);
-  }, [draftContent, title, dirty, activeId, save]);
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = setTimeout(() => {
+      void save();
+    }, 1000);
+    return () => {
+      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    };
+  }, [activeId, dirty, save]);
 
   const settingKeywords = useMemo(() => {
     const list: Suggestion[] = [];
@@ -144,11 +167,18 @@ export function useManuscriptEditor(projectId: string) {
     return pool.filter((s) => s.label.includes(query) || s.detail?.includes(query)).slice(0, 6);
   };
 
-  // 处理输入：检测 @ 或 # 触发联想；高频时自动提示
+  // 处理输入：检测 @ 或 # 触发联想；高频时自动提示。
+  // 非受控：每次按键只写 ref，节流 commit 到 state（仅驱动字数显示），不打断输入流畅度。
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
-    setDraftContent(value);
-    setDirty(true);
+    latestContentRef.current = value;
+    if (!dirty) setDirty(true);
+    // 节流把内容同步到 state（字数/预览展示），避免逐字重渲染整个编辑器
+    if (commitRafRef.current != null) return;
+    commitRafRef.current = window.setTimeout(() => {
+      commitRafRef.current = null;
+      setDraftContent(latestContentRef.current);
+    }, 200);
     const el = e.target;
     const pos = el.selectionStart ?? value.length;
     const before = value.slice(0, pos);
@@ -201,8 +231,7 @@ export function useManuscriptEditor(projectId: string) {
       : /#[\u4e00-\u9fa5\w]*$/;
     const replaced = before.replace(re, `${trigger}${s.label}`);
     const next = replaced + value.slice(pos);
-    setDraftContent(next);
-    setDirty(true);
+    commitContent(next);
     setSuggest(null);
     requestAnimationFrame(() => {
       el.focus();
@@ -241,8 +270,7 @@ export function useManuscriptEditor(projectId: string) {
       summarize: `${sel}\n\n（缩写：提炼要点，压缩冗余。）`,
     };
     const next = el.value.slice(0, start) + resultMap[action] + el.value.slice(end);
-    setDraftContent(next);
-    setDirty(true);
+    commitContent(next);
     toast.success(`已${action === 'expand' ? '扩写' : action === 'rewrite' ? '改写' : '缩写'}`);
   };
 

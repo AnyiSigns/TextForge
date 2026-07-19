@@ -165,7 +165,7 @@ export function useWorkbench(projectId: string) {
 
   // 构造章节级注入上下文：分层组织为「设定基座 / 大纲骨架 / 出场角色 / 相关维度 / 剧情摘要」，
   // 结构清晰且前后端可同时消费（文本兜底 + 结构化树），保证所有编辑过的字段都被生成读到的。
-  const buildContext = () => {
+  const buildContext = useCallback(() => {
     const briefLine = briefToContextLine(brief);
 
     // —— 出场角色（含故事定位 + 结构化关系链）——
@@ -219,11 +219,11 @@ export function useWorkbench(projectId: string) {
       characters: contextChars.length ? contextChars : undefined,
       sections,
     };
-  };
+  }, [brief, projectChars, selectedCharIds, outlineVolumes, projectTitle, plotSummary, charNameById]);
 
   // 本地/后端 summarizer（cheap 档）：压缩已完成章节为摘要，供下一章注入。
   // 后端就绪时走 /api/projects/:id/summarize（用便宜模型）；mock 期做轻量压缩。
-  const summarizePlot = async (text: string): Promise<string> => {
+  const summarizePlot = useCallback(async (text: string): Promise<string> => {
     if (!text.trim()) return '';
     try {
       const res = await fetch(`${API_URL}/api/projects/${projectId}/summarize`, {
@@ -242,12 +242,12 @@ export function useWorkbench(projectId: string) {
     const head = paras.slice(0, 3).join('\n');
     const tail = paras.slice(-3).join('\n');
     return `（前文要点）${head}\n…\n（最新进展）${tail}`.slice(0, 2000);
-  };
+  }, [projectId]);
 
   // 复盘师逻辑（cheap 档）：把本章出场角色的状态/关系变化沉淀进 currentProfile。
   // 真架构由复盘 agent 提取；mock 期做最小启发式：检测死亡/状态关键词，追加时间线节点。
   // 扫描正文中出现的角色名（与项目角色匹配）即沉淀，不再依赖「本章勾选出场」（避免正文写了角色死亡却被漏掉）。
-  const depositCharacterProfiles = async (text: string) => {
+  const depositCharacterProfiles = useCallback(async (text: string) => {
     if (!projectChars.length) return;
     const updateCharacter = useCharacterStore.getState().updateCharacter;
     for (const c of projectChars) {
@@ -270,7 +270,7 @@ export function useWorkbench(projectId: string) {
         } catch { /* 忽略 */ }
       }
     }
-  };
+  }, [projectChars]);
 
   const handleConfirm = async (stepId: string) => {
     try {
@@ -398,6 +398,36 @@ export function useWorkbench(projectId: string) {
     try { await bindWorkflow(projectId, wfId); } catch { /* mock 期静默 */ }
   };
 
+  // 流式步骤合并缓冲：把同一帧（requestAnimationFrame）内的多次 onStep 累积为「单次 setSteps」，
+  // 避免 7+ 节点 / SSE 逐 token 流式触发的整列表高频重渲染。
+  const stepUpdatesRef = useRef<((prev: Step[]) => Step[])[]>([]);
+  const pendingAgentRef = useRef<string | null>(null);
+  const flushScheduledRef = useRef(false);
+
+  const flushStepUpdates = useCallback(() => {
+    flushScheduledRef.current = false;
+    const updates = stepUpdatesRef.current;
+    const agent = pendingAgentRef.current;
+    stepUpdatesRef.current = [];
+    pendingAgentRef.current = null;
+    if (updates.length) {
+      setSteps((prev) => updates.reduce<Step[]>((acc, u) => u(acc), prev));
+    }
+    if (agent) setCurrentAgent(agent);
+  }, []);
+
+  const enqueueStepUpdate = useCallback(
+    (update: (prev: Step[]) => Step[]) => {
+      stepUpdatesRef.current.push(update);
+      if (!flushScheduledRef.current) {
+        flushScheduledRef.current = true;
+        // 合并到下一帧：一帧内所有 onStep 合并为一次渲染
+        requestAnimationFrame(() => flushStepUpdates());
+      }
+    },
+    [flushStepUpdates],
+  );
+
   const handleGenerate = useCallback(async () => {
     abortRef.current = new AbortController();
     setIsStreaming(true);
@@ -412,7 +442,7 @@ export function useWorkbench(projectId: string) {
         // 取消信号：由 abortRef 控制（重新生成/卸载时取消）
         isAborted: () => !!abortRef.current?.signal.aborted,
         onStep: (step) => {
-          setSteps((prev) => {
+          enqueueStepUpdate((prev) => {
             // 合并键优先用 nodeId（流式单元已带，稳定不重名）；
             // 回退到 agent 以兼容缺 nodeId 的预置/脏数据。
             const idx = prev.findIndex((s) => (step.nodeId && s.nodeId === step.nodeId) || s.agent === step.agent);
@@ -425,7 +455,7 @@ export function useWorkbench(projectId: string) {
               next[idx] = { ...existing, content: step.content, status: keepStatus, nodeId: step.nodeId };
               return next;
             }
-            if (step.agent === 'writer' || step.nodeId === 'writer') setCurrentAgent('writer');
+            if (step.agent === 'writer' || step.nodeId === 'writer') pendingAgentRef.current = 'writer';
             return [...prev, step];
           });
         },
@@ -440,10 +470,14 @@ export function useWorkbench(projectId: string) {
     } catch (e) {
       toast.error('生成失败', { description: e instanceof Error ? e.message : '未知错误' });
     } finally {
+      // 强制同步 flush 残留的流式步骤缓冲，避免生成结束时最后一批更新丢失
+      if (flushScheduledRef.current || stepUpdatesRef.current.length) {
+        flushStepUpdates();
+      }
       setIsStreaming(false);
       setCurrentAgent(null);
     }
-  }, [projectId, activeWorkflowId, activeWorkflow?.name, buildContext, summarizePlot, depositCharacterProfiles]);
+  }, [projectId, activeWorkflowId, activeWorkflow?.name, buildContext, summarizePlot, depositCharacterProfiles, enqueueStepUpdate]);
 
   // 把某一步导入到手稿（作家续写）
   const handleSendToManuscript = async (step: Step) => {

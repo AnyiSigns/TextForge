@@ -131,7 +131,8 @@ export function ManuscriptEditor({ projectId }: { projectId: string }) {
         <div className="relative h-full min-h-0 rounded-2xl border border-border/40 bg-background/40 overflow-hidden">
           <textarea
             ref={textareaRef}
-            value={draftContent}
+            defaultValue={draftContent}
+            key={activeId ?? 'none'}
             onChange={handleInput}
             onSelect={handleSelect}
             onKeyUp={(e) => { if (e.key === 'Escape') { setSuggest(null); setAiMenu(null); } }}

@@ -67,6 +67,23 @@ export interface StoredChunk {
 let engine: WasmSearchEngine | null = null;
 let engineLoading: Promise<WasmSearchEngine> | null = null;
 
+// 文本常驻缓存：随写失效（indexDocument / removeDocumentChunks 时清空）。
+// 检索只读引擎拿 id+score，文本按需取，避免每次 query 全表读出全部 chunk 文本。
+let chunkCache: Map<string, StoredChunk> | null = null;
+
+function invalidateChunkCache() {
+  chunkCache = null;
+}
+
+async function getChunkById(id: string): Promise<StoredChunk | undefined> {
+  if (!chunkCache) {
+    const db = await getDB();
+    const all = (await db.getAll(CHUNK_STORE)) as StoredChunk[];
+    chunkCache = new Map(all.map((c) => [c.id, c]));
+  }
+  return chunkCache.get(id);
+}
+
 async function getEngine(): Promise<WasmSearchEngine> {
   if (engine) return engine;
   if (!engineLoading) {
@@ -77,8 +94,9 @@ async function getEngine(): Promise<WasmSearchEngine> {
       if (bytes instanceof Uint8Array && bytes.byteLength > 0) {
         return new mod.WasmSearchEngine(bytes);
       }
-      // 无索引：用现有 chunks 重建
-      const chunks = await loadAllChunks();
+      // 无索引：用现有 chunks 重建（同时预热文本缓存）
+      const chunks = (await db.getAll(CHUNK_STORE)) as StoredChunk[];
+      chunkCache = new Map(chunks.map((c) => [c.id, c]));
       return buildEngine(chunks);
     })();
   }
@@ -138,6 +156,7 @@ export async function indexDocument(doc: KbDocRecord): Promise<void> {
   // 重建并持久化索引
   const eng = await buildEngine(await loadAllChunks());
   engine = eng;
+  invalidateChunkCache();
   await persistEngine(eng);
 }
 
@@ -149,6 +168,7 @@ export async function removeDocumentChunks(docId: string): Promise<void> {
   await tx.done;
   const eng = await buildEngine(all.filter((c) => c.docId !== docId));
   engine = eng;
+  invalidateChunkCache();
   await persistEngine(eng);
 }
 
@@ -180,13 +200,10 @@ export async function vectorSearch(
   const eng = await getEngine();
   const raw = JSON.parse(eng.search(new Float32Array(qVec), topK * 4)) as [string, number][];
 
-  const db = await getDB();
-  const chunks = (await db.getAll(CHUNK_STORE)) as StoredChunk[];
-  const byId = new Map(chunks.map((c) => [c.id, c]));
-
+  // 仅按需读取命中的 chunk 文本，避免每次 query 全表读出全部 chunk。
   const hits: VectorSearchHit[] = [];
   for (const [id, dist] of raw) {
-    const c = byId.get(id);
+    const c = await getChunkById(id);
     if (!c) continue;
     if (filter?.docIds?.length && !filter.docIds.includes(c.docId)) continue;
     if (filter?.authorIds?.length && !filter.authorIds.includes(c.uploaderName ?? '')) continue;
@@ -198,8 +215,9 @@ export async function vectorSearch(
       text: c.text,
       score: 1 / (1 + dist), // distance -> 相似度
     });
+    if (hits.length >= topK) break;
   }
-  return hits.slice(0, topK);
+  return hits;
 }
 
 export async function chunkCount(): Promise<number> {
@@ -227,6 +245,7 @@ export async function resetForTier(tierId: string): Promise<number> {
     )
   );
   engine = null;
+  invalidateChunkCache();
 
   // 文档元数据标记待重建（列表仍保留，但状态变为「需重建」，检索时不会被误判为可用）
   const docs = await getAllKbDocs();
