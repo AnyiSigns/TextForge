@@ -3,10 +3,11 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { CharacterCard } from '@/components/characters/CharacterCard';
+import { CharacterStudioSheet } from '@/components/characters/CharacterStudioSheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Search, Drama, ArrowDownAz, Clock, LayoutGrid, List, MessageCircle, Trash2 } from 'lucide-react';
+import { Plus, Search, Drama, ArrowDownAz, Clock, LayoutGrid, List, MessageCircle, Trash2, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Spinner, EmptyState } from '@/components/shared/states';
@@ -22,6 +23,7 @@ type ViewMode = 'grid' | 'list';
 const ROLE_LABEL: Record<string, string> = {
   protagonist: '主角',
   heroine: '女主',
+  deuteragonist: '男二',
   supporting: '配角',
   antagonist: '反派',
 };
@@ -175,6 +177,7 @@ function CharacterRow({
   onDelete: (id: string) => void;
 }) {
   const role = character.role ? (ROLE_LABEL[character.role] ?? character.role) : undefined;
+  const [studio, setStudio] = useState(false);
   return (
     <div className="flex items-center gap-3 p-2 border border-border/40 rounded-lg bg-background/30">
       <Avatar className="w-9 h-9 border border-border shrink-0">
@@ -196,12 +199,22 @@ function CharacterRow({
       <Button
         variant="ghost"
         size="sm"
+        className="h-7 px-2 shrink-0"
+        onClick={() => setStudio(true)}
+        title="生成立绘"
+      >
+        <Sparkles className="w-4 h-4 mr-1.5" /> 生图
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
         className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive shrink-0"
         onClick={() => onDelete(character.id)}
         aria-label="删除角色"
       >
         <Trash2 className="w-3.5 h-3.5" />
       </Button>
+      <CharacterStudioSheet character={character} open={studio} onOpenChange={setStudio} />
     </div>
   );
 }

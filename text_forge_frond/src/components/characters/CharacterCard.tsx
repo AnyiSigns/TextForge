@@ -6,19 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
-import { MessageCircle, Trash2, Images, Sparkles, Lock, Pin, FileText, ListTree, ImageOff, Download } from 'lucide-react';
+import { MessageCircle, Trash2, Images, Sparkles } from 'lucide-react';
 import { Character } from '@/types';
-import Image from 'next/image';
-import { useCharacterStore } from '@/lib/stores/characterStore';
-import { dispatchInsertStep, type InsertTarget } from '@/lib/events/projectEvents';
-import { fetchProjectDetail, saveStepEdit } from '@/lib/api/projects';
-import { loadOutline, saveOutline, type OutlineVolume } from '@/lib/storage/backup';
-import { downloadImagesZip } from '@/lib/storage/imageExport';
-import { useProjectStore } from '@/lib/stores/projectStore';
-import { GenerationForm } from '@/components/shared/GenerationForm';
-import { submitImage } from '@/lib/api/generation';
-import { toast } from 'sonner';
+import { CharacterStudioSheet } from '@/components/characters/CharacterStudioSheet';
 
 interface Props {
   character: Character;
@@ -26,123 +16,8 @@ interface Props {
 }
 
 export function CharacterCard({ character, onDelete }: Props) {
-  const updateCharacter = useCharacterStore((s) => s.updateCharacter);
-  const addCharacterImage = useCharacterStore((s) => s.addCharacterImage);
   const images = character.images ?? [];
-  const [askInsert, setAskInsert] = useState<string | null>(null);
   const [askStudio, setAskStudio] = useState(false);
-  const [showGenerate, setShowGenerate] = useState(false);
-  const [chapters, setChapters] = useState<{ id: string; title: string }[]>([]);
-  const [outline, setOutline] = useState<OutlineVolume[]>([]);
-
-  const openInsert = async (img: string) => {
-    setAskInsert(img);
-    if (character.projectId) {
-      try {
-        const steps = await fetchProjectDetail(character.projectId);
-        setChapters(
-          steps
-            .filter((s) => s.agent === 'writer' || /^#\s/.test(s.content || ''))
-            .map((s) => ({
-              id: s.id,
-              title: s.content?.match(/^#\s*(.+)$/m)?.[1]?.trim() || 'untitled',
-            })),
-        );
-      } catch { setChapters([]); }
-      try {
-        const vols = await loadOutline(character.projectId);
-        setOutline(vols);
-      } catch { setOutline([]); }
-    }
-  };
-
-  const exportAllPortraits = async () => {
-    const urls = character.images ?? [];
-    if (urls.length === 0) {
-      toast.error('该角色暂无可导出的立绘');
-      return;
-    }
-    try {
-      const { ok, failed } = await downloadImagesZip(urls, `${character.name}-立绘`, character.name);
-      if (failed > 0) toast.success(`已导出 ${ok} 张（${failed} 张跨域受限，已存来源链接）`);
-      else toast.success(`已导出 ${ok} 张立绘`);
-    } catch {
-      toast.error('导出失败，请重试');
-    }
-  };
-
-  const doInsert = async (img: string, target: InsertTarget | undefined) => {
-    const content = `![${character.name}](${img})`;
-    const pid = character.projectId ?? '';
-    setAskInsert(null);
-    try {
-      if (target?.kind === 'chapter') {
-        const steps = await fetchProjectDetail(pid);
-        const next = steps.map((s) => {
-          if (s.id !== target.stepId) return s;
-          const tail = s.content && !s.content.endsWith('\n') ? '\n' : '';
-          return { ...s, content: `${s.content || ''}${tail}${content}`, status: 'completed' as const };
-        });
-        await saveStepEdit(pid, target.stepId, next.find((s) => s.id === target.stepId)!.content);
-        await useProjectStore.getState().saveDraft(pid, next);
-        toast.success('inserted image into chapter');
-        return;
-      }
-      if (target?.kind === 'outline') {
-        const vols = await loadOutline(pid);
-        const next: OutlineVolume[] = vols.map((v) => {
-          if (v.id !== target.volumeId) return v;
-          return {
-            ...v,
-            chapters: v.chapters.map((c) => {
-              if (c.id !== target.chapterId) return c;
-              return {
-                ...c,
-                nodes: c.nodes.map((n) => {
-                  if (n.id !== target.nodeId) return n;
-                  const tail = n.content && !n.content.endsWith('\n') ? '\n' : '';
-                  return { ...n, content: `${n.content || ''}${tail}${content}` };
-                }),
-  };
-
-  const exportAllPortraits = async () => {
-    const urls = character.images ?? [];
-    if (urls.length === 0) {
-      toast.error('该角色暂无可导出的立绘');
-      return;
-    }
-    try {
-      const { ok, failed } = await downloadImagesZip(urls, `${character.name}-立绘`, character.name);
-      if (failed > 0) toast.success(`已导出 ${ok} 张（${failed} 张跨域受限，已存来源链接）`);
-      else toast.success(`已导出 ${ok} 张立绘`);
-    } catch {
-      toast.error('导出失败，请重试');
-    }
-  };
-
-            }),
-          };
-        });
-        await saveOutline(pid, next);
-        toast.success('inserted image into outline');
-        return;
-      }
-      const steps = await fetchProjectDetail(pid);
-      const step = { id: `step-${Date.now()}`, agent: `${character.name} image`, content, status: 'completed' as const };
-      const next = [...steps, step];
-      await useProjectStore.getState().saveDraft(pid, next);
-      dispatchInsertStep({ projectId: pid, title: `${character.name} image`, content });
-      toast.success('sent image to workbench');
-    } catch {
-      toast.error('insert failed');
-    }
-  };
-
-  const outlineNodes = outline.flatMap((v) =>
-    v.chapters.flatMap((c) =>
-      c.nodes.map((n) => ({ volumeId: v.id, chapterId: c.id, nodeId: n.id, label: `${v.title} / ${c.title} / ${n.title}` })),
-    ),
-  );
 
   return (
     <Card className="card-elegant">
@@ -171,7 +46,7 @@ export function CharacterCard({ character, onDelete }: Props) {
           <Button
             size="sm"
             variant="outline"
-            title="generate portrait"
+            title="生成立绘"
             onClick={() => setAskStudio(true)}
           >
             <Sparkles className="w-4 h-4 mr-1.5" /> 生成立绘
@@ -192,164 +67,7 @@ export function CharacterCard({ character, onDelete }: Props) {
         </div>
       </CardContent>
 
-      <Sheet open={askStudio} onOpenChange={setAskStudio}>
-        <SheetContent side="right" className="glass-sheet w-full sm:max-w-[22rem] overflow-y-auto rounded-l-3xl">
-          <SheetHeader className="px-5 pt-5 pb-4 border-b border-border/30">
-            <SheetTitle className="flex items-center gap-2"><Sparkles className="w-4 h-4 text-primary" /> {character.name} · 生成立绘 / 素材</SheetTitle>
-            <SheetDescription>设置参考图保证生成立绘一致；也可把图插入正文或大纲，或在右下角直接生成。</SheetDescription>
-          </SheetHeader>
-          <div className="mt-5 px-5 space-y-5">
-            <div className="space-y-2">
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.12em]">参考图</p>
-              {images.length > 0 ? (
-                <div className="grid grid-cols-3 gap-2">
-                  {images.slice(0, 9).map((img, i) => {
-                    const isRef = character.referenceImage === img;
-                    return (
-                      <div key={i} className="relative aspect-square rounded-lg overflow-hidden border border-border/40 group">
-                        <Image src={img} alt={`${character.name} ${i + 1}`} fill unoptimized className="object-cover" />
-                        {isRef && (
-                          <span className="absolute top-0.5 left-0.5 text-[9px] px-1 rounded-full bg-primary text-primary-foreground">ref</span>
-                        )}
-                        <div className="absolute inset-0 flex items-center justify-center gap-1 bg-black/45 opacity-0 group-hover:opacity-100 transition-opacity">
-                          {isRef ? (
-                            <button
-                              type="button"
-                              title="unset reference"
-                              onClick={() => { updateCharacter(character.id, { referenceImage: null }).catch(() => {}); toast.success('reference cleared'); }}
-                              className="w-6 h-6 grid place-items-center rounded-full bg-white/90 text-foreground"
-                            >
-                              <ImageOff className="w-3 h-3" />
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              title="set reference"
-                              onClick={() => { updateCharacter(character.id, { referenceImage: img }).catch(() => {}); toast.success('reference set'); }}
-                              className="w-6 h-6 grid place-items-center rounded-full bg-primary text-primary-foreground"
-                            >
-                              <Lock className="w-3 h-3" />
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                    title="插入到正文/大纲"
-                            onClick={() => { setAskInsert(img); }}
-                            className="w-6 h-6 grid place-items-center rounded-full bg-white/90 text-foreground"
-                          >
-                            <Pin className="w-3 h-3" />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground rounded-lg border border-dashed border-border/50 px-3 py-3">
-                  no images yet. 先点「生成立绘」生成几张，再回来设一张为参考图。
-                </p>
-              )}
-              {character.referenceImage ? (
-                <p className="text-[11px] text-primary flex items-center gap-1">
-                  <Lock className="w-3 h-3" /> 已锁定参考图，生成立绘会尽量保持一致；可在上方取消。
-                </p>
-              ) : (
-                <p className="text-[11px] text-muted-foreground">未设参考图：生图每次外观可能不同。设一张为参考图可保证多图一致。</p>
-              )}
-            </div>
-
-            {askInsert !== null && (
-              <div className="space-y-3 rounded-xl border border-border/40 bg-background/40 p-3">
-                <p className="text-sm font-medium flex items-center gap-1.5"><Pin className="w-4 h-4 text-primary" /> 把这张图插入到哪？</p>
-                <div className="space-y-3 max-h-[40vh] overflow-y-auto">
-                  {character.projectId ? (
-                    <>
-                      <div>
-                        <p className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1">
-                          <FileText className="w-3.5 h-3.5" /> 插入到章节正文
-                        </p>
-                        <div className="space-y-1">
-                          {chapters.length === 0 && <p className="text-xs text-muted-foreground">no chapters yet</p>}
-                          {chapters.map((c) => (
-                            <Button key={c.id} variant="outline" size="sm" className="w-full justify-start" onClick={() => doInsert(askInsert, { kind: 'chapter', stepId: c.id })}>
-                              {c.title}
-                            </Button>
-                          ))}
-                        </div>
-                      </div>
-                      <div>
-                        <p className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1">
-                          <ListTree className="w-3.5 h-3.5" /> 插入到大纲节点
-                        </p>
-                        <div className="space-y-1">
-                          {outlineNodes.length === 0 && <p className="text-xs text-muted-foreground">no outline yet</p>}
-                          {outlineNodes.map((n) => (
-                            <Button key={n.nodeId} variant="outline" size="sm" className="w-full justify-start" onClick={() => doInsert(askInsert, { kind: 'outline', volumeId: n.volumeId, chapterId: n.chapterId, nodeId: n.nodeId })}>
-                              {n.label}
-                            </Button>
-                          ))}
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">该角色未关联到项目，只能发送到工作台。</p>
-                  )}
-                </div>
-                <div className="flex gap-2 pt-1">
-                  <Button variant="ghost" className="flex-1" onClick={() => doInsert(askInsert, undefined)}>发到工作台</Button>
-                  <Button variant="outline" className="flex-1" onClick={() => setAskInsert(null)}>取消</Button>
-                </div>
-              </div>
-            )}
-
-            <div className="pt-4 mt-1 px-5 -mx-5 border-t border-border/30 space-y-2">
-              <Button className="w-full" onClick={() => setShowGenerate(true)}>
-                <Sparkles className="w-4 h-4 mr-2" /> 生成立绘
-              </Button>
-              <Button variant="outline" className="w-full" onClick={exportAllPortraits} disabled={(character.images ?? []).length === 0}>
-                <Download className="w-4 h-4 mr-2" /> 导出全部立绘（{(character.images ?? []).length}）
-              </Button>
-            </div>
-          </div>
-
-          {showGenerate && (
-            <div className="absolute inset-0 z-20 bg-background/95 overflow-y-auto p-4">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-sm font-medium flex items-center gap-1.5"><Sparkles className="w-4 h-4 text-primary" /> 生成 {character.name} 的立绘</p>
-                <Button variant="ghost" size="sm" onClick={() => setShowGenerate(false)}>关闭</Button>
-              </div>
-              <GenerationForm
-                kind="image"
-                defaultCharacterId={character.id}
-                defaultProjectId={character.projectId}
-                characterImages={character.referenceImage ? [character.referenceImage] : []}
-                submitLabel="生成并加入图库"
-                onSubmit={async (payload) => {
-                  try {
-                    const task = await submitImage({
-                      prompt: payload.prompt,
-                      negative_prompt: payload.negative_prompt,
-                      style: payload.style,
-                      size: payload.size,
-                      count: payload.count,
-                      model_id: payload.model_id,
-                      project_id: payload.project_id,
-                      characterId: character.id,
-                      reference_image: character.referenceImage ?? undefined,
-                    });
-                    const url = task?.result_url || `https://picsum.photos/seed/${character.id}-${Date.now()}/512`;
-                    await addCharacterImage(character.id, url);
-                    toast.success('已生成并加入角色图库');
-                    setShowGenerate(false);
-                  } catch {
-                    toast.error('生成失败，请检查模型或后端连接');
-                  }
-                }}
-              />
-            </div>
-          )}
-        </SheetContent>
-      </Sheet>
+      <CharacterStudioSheet character={character} open={askStudio} onOpenChange={setAskStudio} />
     </Card>
   );
 }

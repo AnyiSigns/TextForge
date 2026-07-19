@@ -6,9 +6,9 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, Search, Users, UserPlus, Pencil, MessageCircle, Trash2, Eye, Images, Skull, Heart, CircleDot, Upload, Lock, ImageOff, Download, Sparkles } from 'lucide-react';
+import { Plus, Search, Users, UserPlus, Pencil, MessageCircle, Trash2, Eye, Images, Skull, Heart, CircleDot, Upload, Lock, ImageOff, Download, Sparkles, List, LayoutGrid, Link2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Character, CharacterRole } from '@/types';
+import { Character, CharacterRole, CharacterRelationship } from '@/types';
 import { EmptyState, Spinner } from '@/components/shared/states';
 import { useCharacterStore } from '@/lib/stores/characterStore';
 import { uploadAvatar } from '@/lib/api/characters';
@@ -17,13 +17,15 @@ import { downloadImagesZip } from '@/lib/storage/imageExport';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { CharacterStudioSheet } from '@/components/characters/CharacterStudioSheet';
 import Image from 'next/image';
 
 // 状态预设（string 支持自定义）
 const STATUS_PRESETS = ['存活', '重伤', '失踪', '囚禁', '死亡', '未知'];
 const ROLE_PRESETS: { value: CharacterRole; label: string }[] = [
   { value: 'protagonist', label: '主角' },
-  { value: 'deuteragonist', label: '女主/男二' },
+  { value: 'heroine', label: '女主' },
+  { value: 'deuteragonist', label: '男二' },
   { value: 'antagonist', label: '反派' },
   { value: 'supporting', label: '配角' },
   { value: 'custom', label: '自定义' },
@@ -45,8 +47,10 @@ function statusBadge(status?: string) {
   );
 }
 
-function roleLabel(role?: string) {
+function roleLabel(char: Character | { role?: string; customRole?: string }): string | null {
+  const role = char.role;
   if (!role) return null;
+  if (role === 'custom') return char.customRole?.trim() || null;
   const found = ROLE_PRESETS.find((r) => r.value === role);
   return found ? found.label : role;
 }
@@ -62,9 +66,16 @@ export function ProjectCharactersTab({ projectId }: { projectId: string }) {
   const [editName, setEditName] = useState('');
   const [editDesc, setEditDesc] = useState('');
   const [editRole, setEditRole] = useState<string>('');
+  const [editCustomRole, setEditCustomRole] = useState<string>('');
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [detailChar, setDetailChar] = useState<Character | null>(null);
   const [statusTarget, setStatusTarget] = useState<Character | null>(null);
   const [statusDraft, setStatusDraft] = useState('');
+  const [relTarget, setRelTarget] = useState<Character | null>(null);
+  const [relDraft, setRelDraft] = useState<CharacterRelationship[]>([]);
+  const [studioTarget, setStudioTarget] = useState<Character | null>(null);
+  const [detailRole, setDetailRole] = useState<string>('');
+  const [detailCustomRole, setDetailCustomRole] = useState<string>('');
   const avatarInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const handleAvatarChange = async (id: string, e: React.ChangeEvent<HTMLInputElement>) => {
@@ -119,13 +130,19 @@ export function ProjectCharactersTab({ projectId }: { projectId: string }) {
     setEditName(char.name);
     setEditDesc(char.description);
     setEditRole(char.role ?? '');
+    setEditCustomRole(char.customRole ?? '');
   };
 
   const saveEdit = async (id: string) => {
     if (!editName.trim()) return;
     try {
-      const role = editRole === 'custom' ? 'custom' : editRole;
-      await updateCharacter(id, { name: editName.trim(), description: editDesc.trim(), role });
+      const patch: Partial<Character> = {
+        name: editName.trim(),
+        description: editDesc.trim(),
+        role: (editRole || undefined) as CharacterRole | undefined,
+      };
+      if (editRole === 'custom') patch.customRole = editCustomRole.trim() || '自定义';
+      await updateCharacter(id, patch);
       toast.success('角色已更新');
       setEditingId(null);
     } catch (e) {
@@ -137,6 +154,42 @@ export function ProjectCharactersTab({ projectId }: { projectId: string }) {
     setStatusTarget(char);
     setStatusDraft(char.status ?? '存活');
   };
+
+  const openRelations = (char: Character) => {
+    setRelTarget(char);
+    setRelDraft(char.relationships ? [...char.relationships] : []);
+  };
+
+  const addRelation = () => {
+    setRelDraft((p) => [...p, { id: `rel-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, targetId: '', relation: '' }]);
+  };
+
+  const updateRelation = (id: string, patch: Partial<CharacterRelationship>) => {
+    setRelDraft((p) => p.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  };
+
+  const removeRelation = (id: string) => {
+    setRelDraft((p) => p.filter((r) => r.id !== id));
+  };
+
+  const applyRelations = async () => {
+    if (!relTarget) return;
+    // 仅保留已选对端且填写了关系描述的项
+    const next = relDraft.filter((r) => r.targetId && r.relation.trim());
+    try {
+      await updateCharacter(relTarget.id, { relationships: next });
+      toast.success('角色关系已保存');
+      setRelTarget(null);
+      if (detailChar?.id === relTarget.id) {
+        setDetailChar((c) => (c ? { ...c, relationships: next } : c));
+      }
+    } catch (e) {
+      toast.error('关系保存失败', { description: e instanceof Error ? e.message : '未知错误' });
+    }
+  };
+
+  const charNameById = (id: string) =>
+    projectChars.find((c) => c.id === id)?.name ?? characters.find((c) => c.id === id)?.name ?? '（未知角色）';
 
   const applyStatus = async () => {
     if (!statusTarget) return;
@@ -188,6 +241,26 @@ export function ProjectCharactersTab({ projectId }: { projectId: string }) {
           <Sparkles className="w-4 h-4 mr-1.5" />
           {isSeedingChars ? '生成中…' : '按设定补角色'}
         </Button>
+        <div className="flex rounded-md border border-border/40 overflow-hidden shrink-0">
+          <Button
+            variant={viewMode === 'list' ? 'default' : 'ghost'}
+            size="sm"
+            className="h-8 w-8 p-0"
+            onClick={() => setViewMode('list')}
+            aria-label="列表视图"
+          >
+            <List className="w-4 h-4" />
+          </Button>
+          <Button
+            variant={viewMode === 'grid' ? 'default' : 'ghost'}
+            size="sm"
+            className="h-8 w-8 p-0"
+            onClick={() => setViewMode('grid')}
+            aria-label="网格视图"
+          >
+            <LayoutGrid className="w-4 h-4" />
+          </Button>
+        </div>
         <span className="text-xs text-muted-foreground">基于当前世界观/已有角色，增量补充新角色（不覆盖已有）</span>
       </div>
 
@@ -204,6 +277,100 @@ export function ProjectCharactersTab({ projectId }: { projectId: string }) {
             </Button>
           ) : undefined}
         />
+      ) : viewMode === 'list' ? (
+        <div className="space-y-2 stagger">
+          {filtered.map((char) => (
+            <div key={char.id} className="flex items-center gap-3 p-2.5 border border-border/40 rounded-xl bg-background/30">
+              {editingId === char.id ? (
+                <div className="flex-1 min-w-0 space-y-2 w-full">
+                  <Input
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    placeholder="角色名"
+                    className="h-9 rounded-xl"
+                    autoFocus
+                  />
+                  <Textarea
+                    value={editDesc}
+                    onChange={(e) => setEditDesc(e.target.value)}
+                    placeholder="角色描述..."
+                    rows={2}
+                    className="text-sm rounded-xl"
+                  />
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-muted-foreground">故事定位</label>
+                    <select
+                      value={editRole}
+                      onChange={(e) => setEditRole(e.target.value)}
+                      className="w-full h-9 rounded-xl border border-border bg-background px-3 text-sm"
+                    >
+                      <option value="">未设定</option>
+                      {ROLE_PRESETS.map((r) => (
+                        <option key={r.value} value={r.value}>{r.label}</option>
+                      ))}
+                    </select>
+                    {editRole === 'custom' && (
+                      <Input
+                        value={editCustomRole}
+                        onChange={(e) => setEditCustomRole(e.target.value)}
+                        placeholder="自定义定位，如：亦正亦邪的军师"
+                        className="mt-1.5 h-9 rounded-xl text-sm"
+                      />
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" className="flex-1 rounded-xl" onClick={() => saveEdit(char.id)}>保存</Button>
+                    <Button size="sm" variant="outline" className="rounded-xl" onClick={() => setEditingId(null)}>取消</Button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="relative shrink-0">
+                    <Avatar className="w-10 h-10 rounded-xl border border-border/40">
+                      <AvatarImage src={char.avatar} />
+                      <AvatarFallback className="text-sm rounded-xl">{char.name.slice(0, 2)}</AvatarFallback>
+                    </Avatar>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-medium truncate">{char.name}</p>
+                      {roleLabel(char) && (
+                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">{roleLabel(char)}</span>
+                      )}
+                      {statusBadge(char.status)}
+                    </div>
+                    <p className="text-xs text-muted-foreground truncate mt-0.5">{char.description || '暂无描述'}</p>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Button asChild size="sm" variant="default" className="rounded-xl">
+                      <Link href={`/characters/${char.id}/chat`}>
+                        <MessageCircle className="w-4 h-4 mr-1.5" /> 对话
+                      </Link>
+                    </Button>
+                <Button variant="outline" size="sm" className="rounded-xl" onClick={() => openRelations(char)} title="设置角色关系">
+                  <Link2 className="w-4 h-4" />
+                </Button>
+                <Button variant="outline" size="sm" className="rounded-xl" onClick={() => setStudioTarget(char)} title="生成立绘 / 素材">
+                  <Sparkles className="w-4 h-4" />
+                </Button>
+                <Button variant="outline" size="sm" className="rounded-xl" onClick={() => openStatus(char)} title="设置角色状态">
+                  <CircleDot className="w-4 h-4" />
+                </Button>
+                    <Button variant="outline" size="sm" className="rounded-xl" onClick={() => setDetailChar(char)} title="查看角色详情">
+                      <Eye className="w-4 h-4" />
+                    </Button>
+                    <Button variant="outline" size="sm" className="rounded-xl" onClick={() => startEdit(char)}>
+                      <Pencil className="w-4 h-4" />
+                    </Button>
+                    <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive rounded-xl" onClick={() => handleDelete(char.id)}>
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 stagger">
           {filtered.map((char) => (
@@ -246,9 +413,9 @@ export function ProjectCharactersTab({ projectId }: { projectId: string }) {
                       <CardTitle className="text-lg truncate tracking-tight">{char.name}</CardTitle>
                     )}
                     <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                      {roleLabel(char.role) && (
-                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">{roleLabel(char.role)}</span>
-                      )}
+                {roleLabel(char) && (
+                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">{roleLabel(char)}</span>
+                )}
                       {statusBadge(char.status)}
                     </div>
                   </div>
@@ -276,6 +443,14 @@ export function ProjectCharactersTab({ projectId }: { projectId: string }) {
                           <option key={r.value} value={r.value}>{r.label}</option>
                         ))}
                       </select>
+                      {editRole === 'custom' && (
+                        <Input
+                          value={editCustomRole}
+                          onChange={(e) => setEditCustomRole(e.target.value)}
+                          placeholder="自定义定位，如：亦正亦邪的军师"
+                          className="mt-1.5 h-9 rounded-xl text-sm"
+                        />
+                      )}
                     </div>
                     <div className="flex gap-2">
                       <Button size="sm" className="flex-1 rounded-xl" onClick={() => saveEdit(char.id)}>保存</Button>
@@ -290,6 +465,24 @@ export function ProjectCharactersTab({ projectId }: { projectId: string }) {
                         <Link href={`/characters/${char.id}/chat`}>
                           <MessageCircle className="w-4 h-4 mr-2" /> 对话
                         </Link>
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="rounded-xl"
+                        onClick={() => openRelations(char)}
+                        title="设置角色关系"
+                      >
+                        <Link2 className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="rounded-xl"
+                        onClick={() => setStudioTarget(char)}
+                        title="生成立绘 / 素材"
+                      >
+                        <Sparkles className="w-4 h-4" />
                       </Button>
                       <Button
                         variant="outline"
@@ -330,7 +523,7 @@ export function ProjectCharactersTab({ projectId }: { projectId: string }) {
                 )}
               </CardContent>
             </Card>
-          )          )}
+          ))          }
         </div>
       )}
 
@@ -359,14 +552,53 @@ export function ProjectCharactersTab({ projectId }: { projectId: string }) {
 
               <div className="mt-5 px-5 space-y-5">
                 <div className="flex items-center gap-2 flex-wrap">
-                  {roleLabel(detailChar.role) && (
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-primary/15 text-primary font-medium tracking-wide">{roleLabel(detailChar.role)}</span>
+                  {roleLabel(detailChar) && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-primary/15 text-primary font-medium tracking-wide">{roleLabel(detailChar)}</span>
                   )}
                   {statusBadge(detailChar.status)}
                   <Button size="sm" variant="outline" className="rounded-xl" onClick={() => openStatus(detailChar)}>
                     <CircleDot className="w-3.5 h-3.5 mr-1" /> 设置状态
                   </Button>
+                  <Button size="sm" variant="outline" className="rounded-xl" onClick={() => { setDetailRole(detailChar.role ?? ''); setDetailCustomRole(detailChar.customRole ?? ''); }}>
+                    <Pencil className="w-3.5 h-3.5 mr-1" /> 编辑定位
+                  </Button>
                 </div>
+
+                {(detailRole !== '' || detailChar.role) && (
+                  <div className="space-y-1.5 rounded-xl border border-border/40 p-3">
+                    <label className="text-xs text-muted-foreground">故事定位</label>
+                    <select
+                      value={detailRole}
+                      onChange={(e) => setDetailRole(e.target.value)}
+                      className="w-full h-9 rounded-xl border border-border bg-background px-3 text-sm"
+                    >
+                      <option value="">未设定</option>
+                      {ROLE_PRESETS.map((r) => (
+                        <option key={r.value} value={r.value}>{r.label}</option>
+                      ))}
+                    </select>
+                    {detailRole === 'custom' && (
+                      <Input
+                        value={detailCustomRole}
+                        onChange={(e) => setDetailCustomRole(e.target.value)}
+                        placeholder="自定义定位，如：亦正亦邪的军师"
+                        className="mt-1.5 h-9 rounded-xl text-sm"
+                      />
+                    )}
+                    <Button size="sm" className="rounded-xl w-full" onClick={async () => {
+                      try {
+                        const patch: Partial<Character> = { role: (detailRole || undefined) as CharacterRole | undefined };
+                        if (detailRole === 'custom') patch.customRole = detailCustomRole.trim() || '自定义';
+                        await updateCharacter(detailChar.id, patch);
+                        setDetailChar((c) => (c ? { ...c, ...patch } : c));
+                        setDetailRole('');
+                        toast.success('故事定位已更新');
+                      } catch (e) {
+                        toast.error('更新失败', { description: e instanceof Error ? e.message : '未知错误' });
+                      }
+                    }}>保存定位</Button>
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.12em]">角色设定 / 介绍</p>
@@ -392,6 +624,28 @@ export function ProjectCharactersTab({ projectId }: { projectId: string }) {
                       toast.error('保存失败', { description: e instanceof Error ? e.message : '未知错误' });
                     }
                   }}>保存当前档案</Button>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.12em] flex items-center gap-1.5">
+                    <Link2 className="w-3.5 h-3.5" /> 角色关系（{detailChar.relationships?.length ?? 0}）
+                  </p>
+                  {detailChar.relationships && detailChar.relationships.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {detailChar.relationships.map((r) => (
+                        <div key={r.id} className="flex items-center gap-2 text-sm">
+                          <span className="font-medium">{charNameById(r.targetId)}</span>
+                          <span className="text-muted-foreground/60">·</span>
+                          <span className="text-muted-foreground truncate">{r.relation}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">暂无设定关系。</p>
+                  )}
+                  <Button size="sm" variant="outline" className="rounded-xl" onClick={() => openRelations(detailChar)}>
+                    <Link2 className="w-3.5 h-3.5 mr-1" /> 编辑关系
+                  </Button>
                 </div>
 
                 <div className="space-y-2">
@@ -506,6 +760,72 @@ export function ProjectCharactersTab({ projectId }: { projectId: string }) {
           )}
         </SheetContent>
       </Sheet>
+
+      {/* 关系设置弹窗：可自定义「与谁、什么关系」 */}
+      <Sheet open={!!relTarget} onOpenChange={(o) => !o && setRelTarget(null)}>
+        <SheetContent side="right" className="glass-sheet w-full sm:max-w-[22rem] overflow-y-auto rounded-l-3xl">
+          {relTarget && (
+            <>
+              <SheetHeader className="px-5 pt-5 pb-4 border-b border-border/30">
+                <SheetTitle className="text-xl tracking-tight">角色关系 · {relTarget.name}</SheetTitle>
+                <SheetDescription className="text-[13px]">自由添加与本项目其他角色的关系，如「宿敌」「师徒」「暗恋」。可自定义任意描述。</SheetDescription>
+              </SheetHeader>
+              <div className="mt-5 px-5 space-y-3">
+                {relDraft.length === 0 && (
+                  <p className="text-xs text-muted-foreground">还没有设定关系，点击下方「添加关系」开始。</p>
+                )}
+                {relDraft.map((r) => (
+                  <div key={r.id} className="space-y-2 rounded-xl border border-border/40 p-3">
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={r.targetId}
+                        onChange={(e) => updateRelation(r.id, { targetId: e.target.value })}
+                        className="flex-1 h-9 rounded-xl border border-border bg-background px-3 text-sm"
+                      >
+                        <option value="">选择角色…</option>
+                        {projectChars.filter((c) => c.id !== relTarget.id).map((c) => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-muted-foreground hover:text-destructive rounded-xl"
+                        onClick={() => removeRelation(r.id)}
+                        aria-label="删除该关系"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    <Input
+                      value={r.relation}
+                      onChange={(e) => updateRelation(r.id, { relation: e.target.value })}
+                      placeholder="关系描述，如：青梅竹马 / 宿敌 / 暗恋"
+                      className="rounded-xl bg-background/40 border-border/30"
+                    />
+                  </div>
+                ))}
+                <Button variant="outline" size="sm" className="rounded-xl" onClick={addRelation}>
+                  <Plus className="w-4 h-4 mr-1.5" /> 添加关系
+                </Button>
+                <Button className="rounded-xl px-6 w-full" onClick={applyRelations}>
+                  保存关系
+                </Button>
+              </div>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
+
+      {studioTarget && (
+        <CharacterStudioSheet
+          character={studioTarget}
+          open={!!studioTarget}
+          onOpenChange={(o) => !o && setStudioTarget(null)}
+        />
+      )}
     </div>
   );
 }
+
+

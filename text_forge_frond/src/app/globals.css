@@ -46,6 +46,28 @@
   --color-ink-soft: var(--ink-soft);
 }
 
+/* 界面字体家族：由 layout 的 data-font 属性切换，覆盖 --font-sans / --font-heading */
+[data-font='sans'] {
+  --font-sans: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+  --font-heading: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+}
+[data-font='serif'] {
+  --font-sans: "Noto Serif SC", "Songti SC", "SimSun", serif;
+  --font-heading: "Noto Serif SC", "Songti SC", "SimSun", serif;
+}
+[data-font='kai'] {
+  --font-sans: "Kaiti SC", "KaiTi", "STKaiti", serif;
+  --font-heading: "Kaiti SC", "KaiTi", "STKaiti", serif;
+}
+[data-font='yuan'] {
+  --font-sans: "Yuanti SC", "YouYuan", "Microsoft YaHei", sans-serif;
+  --font-heading: "Yuanti SC", "YouYuan", "Microsoft YaHei", sans-serif;
+}
+[data-font='fangsong'] {
+  --font-sans: "FangSong", "STFangsong", serif;
+  --font-heading: "FangSong", "STFangsong", serif;
+}
+
 :root {
   --background: #f4f3f0;
   --foreground: #1c1b1a;

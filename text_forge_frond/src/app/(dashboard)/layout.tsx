@@ -28,6 +28,7 @@ export default function DashboardLayout({
   const router = useRouter();
   useNetworkStatus();
   const contentScale = useSettingsStore((s) => s.contentScale);
+  const fontFamily = useSettingsStore((s) => s.fontFamily);
 
   useEffect(() => {
     void syncManager.syncAll();
@@ -37,6 +38,15 @@ export default function DashboardLayout({
   useEffect(() => {
     document.documentElement.style.fontSize = `${contentScale}%`;
   }, [contentScale]);
+
+  // 界面字体家族：通过 data-font 属性切换，globals.css 据此覆盖 --font-sans / --font-heading
+  useEffect(() => {
+    if (fontFamily && fontFamily !== 'system') {
+      document.documentElement.dataset.font = fontFamily;
+    } else {
+      delete document.documentElement.dataset.font;
+    }
+  }, [fontFamily]);
 
   // 状态一致性兜底：服务端（proxy）以 tf_rt cookie 为登录真相，
   // 前端以 accessToken 为真相。若两者不一致（例如刷新后 cookie 仍在、

@@ -29,6 +29,22 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+dev-server.log
+dev-server.err
+
+# kiro/kilo local session dir (not project source)
+/.kilo/
+
+# temp / generated
+simulation-context-sample.txt
+generation-result.png
+
+# test / e2e artifacts
+/test-results
+/playwright-report
+/blob-report
+/.playwright-mcp/
+generation-result.png
 
 # env files (can opt-in for committing if needed)
 .env*
