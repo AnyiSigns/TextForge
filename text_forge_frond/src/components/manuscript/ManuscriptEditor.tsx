@@ -1,7 +1,6 @@
 ﻿// src/components/manuscript/ManuscriptEditor.tsx
 'use client';
 
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,311 +9,24 @@ import {
   ArrowRight, ArrowLeft, Check, Upload, Download, BookOpen, CheckCircle2, HelpCircle, Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useManuscriptStore } from '@/lib/stores/manuscriptStore';
-import { useProjectStore } from '@/lib/stores/projectStore';
-import { useProjectCharacters } from '@/lib/hooks/useProjectCharacters';
-import { useBriefStore } from '@/lib/stores/briefStore';
-import { useSettingsStore } from '@/lib/stores/settingsStore';
-import { importManuscriptToProject, importBookToProject } from '@/lib/api/projects';
-import { exportManuscriptBook } from '@/lib/storage/backup';
-import { parseBookText } from '@/lib/utils/bookImport';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose,
 } from '@/components/ui/dialog';
-import type { ProjectBrief, ManuscriptChapter } from '@/types';
-
-type SuggestionKind = 'character' | 'setting' | 'hint';
-interface Suggestion { kind: SuggestionKind; label: string; detail?: string; }
+import { useManuscriptEditor } from '@/lib/hooks/useManuscriptEditor';
 
 export function ManuscriptEditor({ projectId }: { projectId: string }) {
-  const allChapters = useManuscriptStore((s) => s.chapters);
-  const chapters = useMemo(() => allChapters.filter((c) => c.projectId === projectId), [allChapters, projectId]);
-  const addChapter = useManuscriptStore((s) => s.addChapter);
-  const updateChapter = useManuscriptStore((s) => s.updateChapter);
-  const removeChapter = useManuscriptStore((s) => s.removeChapter);
-  const clearProject = useManuscriptStore((s) => s.clearProject);
-
-  const { projectChars: characters } = useProjectCharacters(projectId);
-  const brief = useBriefStore((s) => s.briefs[projectId]) as ProjectBrief | undefined;
-  const freq = useSettingsStore((s) => s.suggestionFrequency);
-
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [draftContent, setDraftContent] = useState('');
-  const [title, setTitle] = useState('');
-  const [dirty, setDirty] = useState(false);
-  const [savedAt, setSavedAt] = useState<number | null>(null);
-
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  // 联想弹层状态
-  const [suggest, setSuggest] = useState<{ items: Suggestion[]; query: string; kind: SuggestionKind; top: number; left: number } | null>(null);
-  const suggestIndexRef = useRef(0);
-  // AI 辅助浮层
-  const [aiMenu, setAiMenu] = useState<{ top: number; left: number } | null>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // 发送到工作台：确认弹窗（是否同步为全局项目 steps）
-  const [sendOpen, setSendOpen] = useState(false);
-  // 书籍导入：解析后的章节预览
-  const [bookChapters, setBookChapters] = useState<{ title: string; content: string }[] | null>(null);
-  const [bookName, setBookName] = useState('');
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [exportOpen, setExportOpen] = useState(false);
-  // 清空手稿确认弹窗
-  const [clearOpen, setClearOpen] = useState(false);
-  // 单章删除确认弹窗
-  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
-  // 联想功能首屏引导（仅首次进入展示一次，localStorage 记忆）
-  const [showSuggestHint, setShowSuggestHint] = useState(false);
-
-  useEffect(() => {
-    try {
-      if (!localStorage.getItem('tf_manuscript_suggest_hint_seen')) setShowSuggestHint(true);
-    } catch { /* 隐私模式下忽略 */ }
-  }, []);
-
-  // 角色数据由 useProjectCharacters 在进入时按需同步，保证 @ 角色联想始终有候选
-
-  const dismissSuggestHint = () => {
-    setShowSuggestHint(false);
-    try { localStorage.setItem('tf_manuscript_suggest_hint_seen', '1'); } catch { /* ignore */ }
-  };
-
-  const active = useMemo(() => chapters.find((c) => c.id === activeId) ?? null, [chapters, activeId]);
-
-  // 首次进入自动建一章（去重锁：避免 React 严格模式双调用 + load 未 await 竞态导致重复建章）
-  const ensureChapterLock = useRef(false);
-  useEffect(() => {
-    if (ensureChapterLock.current) return;
-    if (chapters.length === 0) {
-      ensureChapterLock.current = true;
-      addChapter(projectId, '第 1 章').then((c) => { setActiveId(c.id); setDraftContent(''); setTitle(c.title); });
-    } else if (!activeId) {
-      setActiveId(chapters[0].id);
-    }
-  }, [chapters.length]);
-
-  // 切换章节时载入内容
-  useEffect(() => {
-    if (active) {
-      setDraftContent(active.content);
-      setTitle(active.title);
-      setDirty(false);
-    }
-  }, [active?.id]);
-
-  const save = useCallback(async () => {
-    if (!activeId || !active) return;
-    // 纯AI章节经用户编辑后，来源升级为「AI后手工修改」
-    const patch: Partial<Pick<ManuscriptChapter, 'title' | 'content' | 'index' | 'source'>> = {
-      content: draftContent,
-      title: title || active.title || '未命名章节',
-    };
-    if (active.source === 'ai') patch.source = 'ai_edited';
-    await updateChapter(activeId, patch);
-    setDirty(false);
-    setSavedAt(Date.now());
-  }, [activeId, active, draftContent, title, updateChapter]);
-
-  // 自动保存（停笔 1s）——仅更新"已保存"标记，不打扰式弹 toast
-  useEffect(() => {
-    if (!activeId || !dirty) return;
-    const t = setTimeout(() => { void save(); }, 1000);
-    return () => clearTimeout(t);
-  }, [draftContent, title, dirty, activeId, save]);
-
-  const settingKeywords = useMemo(() => {
-    const list: Suggestion[] = [];
-    if (brief?.worldview) list.push({ kind: 'setting', label: '世界观', detail: brief.worldview.slice(0, 24) });
-    if (brief?.tone) list.push({ kind: 'setting', label: '基调', detail: brief.tone.slice(0, 24) });
-    (brief?.sections ?? []).forEach((s) => list.push({ kind: 'setting', label: s.title, detail: s.content.slice(0, 24) }));
-    return list;
-  }, [brief]);
-
-  const charSuggestions: Suggestion[] = useMemo(
-    () => characters.map((c) => ({ kind: 'character' as const, label: c.name, detail: c.description.slice(0, 24) })),
-    [characters],
-  );
-
-  const computeSuggestions = (kind: SuggestionKind, query: string): Suggestion[] => {
-    // # 设定联想：若项目尚未填写任何设定，给出引导提示而非静默无结果（#10）
-    if (kind === 'setting' && settingKeywords.length === 0) {
-      return [{ kind: 'hint', label: '尚未填写创作设定', detail: '去「创作设定」填写世界观/基调，# 即可联想' }];
-    }
-    const pool = kind === 'character' ? charSuggestions : settingKeywords;
-    if (!query) return pool.slice(0, 6);
-    return pool.filter((s) => s.label.includes(query) || s.detail?.includes(query)).slice(0, 6);
-  };
-
-  // 处理输入：检测 @ 或 # 触发联想；高频时自动提示
-  const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const value = e.target.value;
-    setDraftContent(value);
-    setDirty(true);
-    const el = e.target;
-    const pos = el.selectionStart ?? value.length;
-    const before = value.slice(0, pos);
-    // 从光标前最后一个 @/# 起算（允许紧接中文/字母书写"林墨@"），只匹配末尾片段
-    const atMatch = before.match(/@[\u4e00-\u9fa5\w]*$/);
-    const hashMatch = before.match(/#[\u4e00-\u9fa5\w]*$/);
-    if (atMatch) {
-      showSuggest('character', atMatch[0].slice(1), el, pos);
-    } else if (hashMatch) {
-      showSuggest('setting', hashMatch[0].slice(1), el, pos);
-    } else {
-      setSuggest(null);
-      // 高频联想：停笔后自动提示角色/设定提及
-      if (freq === 'high' || freq === 'medium') {
-        if (debounceRef.current) clearTimeout(debounceRef.current);
-        const delay = freq === 'high' ? 300 : 1200;
-        debounceRef.current = setTimeout(() => {
-          const lastWord = before.match(/([\u4e00-\u9fa5\w]{2,})$/);
-          if (lastWord) {
-            const q = lastWord[1];
-            const items = [...charSuggestions, ...settingKeywords].filter((s) => s.label.includes(q));
-            if (items.length) showSuggest(items[0].kind, q, el, pos, items);
-          }
-        }, delay);
-      }
-    }
-  };
-
-  const showSuggest = (kind: SuggestionKind, query: string, el: HTMLTextAreaElement, pos: number, forced?: Suggestion[]) => {
-    const items = forced ?? computeSuggestions(kind, query);
-    if (!items.length) { setSuggest(null); return; }
-    const rect = el.getBoundingClientRect();
-    // 定位到 textarea 顶部内侧，避免长文时浮层溢出视口底部
-    const top = Math.min(8, rect.height - 60);
-    setSuggest({ items, query, kind, top, left: 8 });
-    suggestIndexRef.current = 0;
-  };
-
-  const applySuggestion = (s: Suggestion) => {
-    if (!suggest || !textareaRef.current) return;
-    // hint 项只提示、不替换文本（引导去填设定）
-    if (s.kind === 'hint') { setSuggest(null); return; }
-    const el = textareaRef.current;
-    const value = el.value;
-    const pos = el.selectionStart ?? value.length;
-    const before = value.slice(0, pos);
-    const trigger = suggest.kind === 'character' ? '@' : '#';
-    const re = suggest.kind === 'character'
-      ? /@[\u4e00-\u9fa5\w]*$/
-      : /#[\u4e00-\u9fa5\w]*$/;
-    const replaced = before.replace(re, `${trigger}${s.label}`);
-    const next = replaced + value.slice(pos);
-    setDraftContent(next);
-    setDirty(true);
-    setSuggest(null);
-    requestAnimationFrame(() => {
-      el.focus();
-      const caret = replaced.length;
-      el.setSelectionRange(caret, caret);
-    });
-  };
-
-  // AI 辅助：选中文本浮层
-  const handleSelect = () => {
-    const el = textareaRef.current;
-    if (!el) return;
-    const sel = el.value.slice(el.selectionStart ?? 0, el.selectionEnd ?? 0);
-    if (sel.trim().length > 0) {
-      const rect = el.getBoundingClientRect();
-      // 定位到 textarea 顶部内侧，避免长文时浮层溢出视口
-      const top = Math.min(8, rect.height - 48);
-      setAiMenu({ top, left: 8 });
-    } else {
-      setAiMenu(null);
-    }
-  };
-
-  const runAiAssist = async (action: 'expand' | 'rewrite' | 'summarize') => {
-    const el = textareaRef.current;
-    if (!el) return;
-    const start = el.selectionStart ?? 0;
-    const end = el.selectionEnd ?? 0;
-    const sel = el.value.slice(start, end);
-    if (!sel.trim()) return;
-    setAiMenu(null);
-    // mock 期：本地占位变换；后端期替换为 SSE 调用
-    const resultMap = {
-      expand: `${sel}\n\n（扩写：在原有基础上延展情节与描写，保持基调一致。）`,
-      rewrite: `${sel}\n\n（改写：优化节奏与措辞，保留原意。）`,
-      summarize: `${sel}\n\n（缩写：提炼要点，压缩冗余。）`,
-    };
-    const next = el.value.slice(0, start) + resultMap[action] + el.value.slice(end);
-    setDraftContent(next);
-    setDirty(true);
-    toast.success(`已${action === 'expand' ? '扩写' : action === 'rewrite' ? '改写' : '缩写'}`);
-  };
-
-  // Ctrl+Space 触发联想（由全局快捷键调用）
-  useEffect(() => {
-    const handler = () => {
-      if (freq === 'manual' && textareaRef.current) {
-        const el = textareaRef.current;
-        const pos = el.selectionStart ?? 0;
-        const before = el.value.slice(0, pos);
-        const at = before.match(/@[\u4e00-\u9fa5\w]*$/);
-        if (at) showSuggest('character', at[0].slice(1), el, pos);
-        else showSuggest('setting', '', el, pos);
-      }
-    };
-    (window as unknown as { __tfTriggerSuggestion?: () => void }).__tfTriggerSuggestion = handler;
-    return () => { delete (window as unknown as { __tfTriggerSuggestion?: () => void }).__tfTriggerSuggestion; };
-  }, [freq, charSuggestions, settingKeywords]);
-
-  // 发送到工作台：先确认是否同步为「全局项目 steps」
-  const openSend = () => { if (active) setSendOpen(true); };
-  const confirmSend = async (syncGlobal: boolean) => {
-    if (!active) return;
-    if (syncGlobal) {
-      const step = await importManuscriptToProject(projectId, active.title, active.content);
-      const draft = (await useProjectStore.getState().getDraft(projectId)) ?? [];
-      await useProjectStore.getState().saveDraft(projectId, [...draft, step]);
-      toast.success('已同步到工作台（作为项目步骤，可被 Agent 流读取为前文）');
-    } else {
-      // 仅本地草稿已在手稿，这里提示保持本地
-      toast.success('已留在手稿本地（未同步到工作台）');
-    }
-    setSendOpen(false);
-  };
-
-  // 书籍导入（txt）：解析为章节，可选「仅手稿」或「同步工作台」
-  const onPickBook = async (file: File) => {
-    const text = await file.text();
-    const parsed = parseBookText(text);
-    setBookName(file.name.replace(/\.txt$/i, ''));
-    setBookChapters(parsed);
-  };
-  const confirmBookImport = async (syncGlobal: boolean) => {
-    if (!bookChapters) return;
-    if (syncGlobal) {
-      const steps = await importBookToProject(projectId, bookChapters);
-      const draft = (await useProjectStore.getState().getDraft(projectId)) ?? [];
-      await useProjectStore.getState().saveDraft(projectId, [...draft, ...steps]);
-      toast.success(`已导入 ${steps.length} 章到工作台（Agent 续写将以此为前文）`);
-    } else {
-      for (const c of bookChapters) {
-        await useManuscriptStore.getState().importFromStep(projectId, c.title, c.content);
-      }
-      toast.success(`已导入 ${bookChapters.length} 章到手稿（本地续写）`);
-    }
-    setBookChapters(null);
-  };
-
-  const [askBookTxt, setAskBookTxt] = useState(false);
-
-  const handleExportBook = (fmt: 'markdown' | 'txt') => {
-    if (fmt === 'markdown') {
-      exportManuscriptBook(projectId, 'markdown').then(() => setExportOpen(false));
-      return;
-    }
-    setAskBookTxt(true);
-  };
-  const doExportBookTxt = (mode: 'tidy' | 'format') => {
-    exportManuscriptBook(projectId, 'txt', mode)
-      .then(() => { setAskBookTxt(false); setExportOpen(false); });
-  };
+  const {
+    chapters, active, activeId, setActiveId, draftContent,
+    title, setTitle, dirty, setDirty, savedAt,
+    textareaRef, suggest, setSuggest, suggestIndexRef, aiMenu, setAiMenu, fileRef,
+    bookChapters, setBookChapters,
+    sendOpen, setSendOpen, bookName, exportOpen, setExportOpen,
+    clearOpen, setClearOpen, pendingDeleteId, setPendingDeleteId,
+    showSuggestHint, askBookTxt, setAskBookTxt,
+    addChapter, removeChapter, clearProject,
+    dismissSuggestHint, save, handleInput, applySuggestion, handleSelect, runAiAssist,
+    openSend, confirmSend, onPickBook, confirmBookImport, handleExportBook, doExportBookTxt,
+  } = useManuscriptEditor(projectId);
 
   if (chapters.length === 0) {
     return (
@@ -358,15 +70,15 @@ export function ManuscriptEditor({ projectId }: { projectId: string }) {
                    {c.source === 'ai_edited' && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 shrink-0" title="AI 生成后经手工修改">AI改</span>}
                    {c.source === 'manual' && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-border/40 text-muted-foreground shrink-0" title="纯手工撰写">手工</span>}
                    {c.source === 'imported' && <ArrowLeft className="w-3 h-3 text-muted-foreground shrink-0" />}
-                </button>
-                <button
-                  type="button"
-                  aria-label="删除章节"
-                  onClick={() => setPendingDeleteId(c.id)}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive shrink-0"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                 </button>
+                 <button
+                   type="button"
+                   aria-label="删除章节"
+                   onClick={() => setPendingDeleteId(c.id)}
+                   className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive shrink-0"
+                 >
+                   <Trash2 className="w-3.5 h-3.5" />
+                 </button>
               </div>
             ))}
           </div>
@@ -587,7 +299,7 @@ export function ManuscriptEditor({ projectId }: { projectId: string }) {
               </DialogDescription>
             </DialogHeader>
             <div className="flex flex-col gap-2 mt-2">
-              <Button size="sm" variant="destructive" onClick={() => { void clearProject(projectId).then(() => { setActiveId(null); setClearOpen(false); toast.success('手稿已清空'); }); }}>
+              <Button size="sm" variant="destructive" onClick={() => { void clearProject(projectId).then(() => { setActiveId(null); setClearOpen(false); }); }}>
                 <Trash2 className="w-4 h-4 mr-2" /> 确认清空全部章节
               </Button>
               <DialogClose render={<Button variant="ghost" size="sm" className="mt-1" />}>取消</DialogClose>
@@ -613,7 +325,6 @@ export function ManuscriptEditor({ projectId }: { projectId: string }) {
                   setActiveId(rest[0]?.id ?? null);
                 }
                 setPendingDeleteId(null);
-                toast.success('章节已删除');
               }}>
                 <Trash2 className="w-4 h-4 mr-2" /> 确认删除该章节
               </Button>
@@ -625,4 +336,3 @@ export function ManuscriptEditor({ projectId }: { projectId: string }) {
     </div>
   );
 }
-
