@@ -1,18 +1,24 @@
 // src/lib/utils/network.ts
-import { toast } from 'sonner';
+// 纯工具层：只负责监听浏览器网络事件并以回调通知，不直接弹 UI（toast 由消费方决定）。
+// 解耦原因：lib 不应依赖 sonner 等 UI 库，避免分层倒置。
 
-let hasShownOfflineToast = false;
+export interface NetworkListenerHandlers {
+  onOnline?: () => void;
+  onOffline?: () => void;
+}
 
-export function setupNetworkListener() {
+export function setupNetworkListener(handlers: NetworkListenerHandlers = {}) {
+  let hasShownOffline = false;
+
   const handleOnline = () => {
-    hasShownOfflineToast = false;
-    toast.success('网络已恢复', { duration: 2000 });
+    hasShownOffline = false;
+    handlers.onOnline?.();
   };
 
   const handleOffline = () => {
-    if (!hasShownOfflineToast) {
-      hasShownOfflineToast = true;
-      toast.warning('网络已断开', { duration: 5000 });
+    if (!hasShownOffline) {
+      hasShownOffline = true;
+      handlers.onOffline?.();
     }
   };
 

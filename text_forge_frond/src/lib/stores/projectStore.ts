@@ -1,7 +1,9 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import { getItem, setItem, removeItem, saveDraft, getDraft, saveVersion, getVersionHistory, type ProjectVersion, type ProjectTemplate } from '@/lib/storage/indexedDB';
+import { persist } from 'zustand/middleware';
+import { saveDraft, getDraft, saveVersion, getVersionHistory, type ProjectVersion, type ProjectTemplate } from '@/lib/storage/indexedDB';
 import { fetchProjects, createProject as apiCreateProject, deleteProject as apiDeleteProject } from '@/lib/api/projects';
+import { uid } from '@/lib/utils/id';
+import { createIdbStorage } from '@/lib/storage/zustandIdb';
 import type { Project, ProjectBrief, Step } from '@/types';
 import { syncManager } from '@/lib/storage/syncManager';
 import { toast } from 'sonner';
@@ -13,9 +15,9 @@ interface ProjectVersionMeta {
 }
 
 const DEFAULT_TEMPLATES: ProjectTemplate[] = [
-  { id: 't-novel', name: '小说', description: '标准小说创作流程', genre: 'general', createdAt: new Date(0).toISOString() },
-  { id: 't-scifi', name: '科幻小说', description: '科幻世界观模板', genre: 'science-fiction', createdAt: new Date(0).toISOString() },
-  { id: 't-fantasy', name: '奇幻小说', description: '奇幻冒险模板', genre: 'fantasy', createdAt: new Date(0).toISOString() },
+  { id: 't-novel', name: '??', description: '????????', genre: 'general', createdAt: new Date(0).toISOString() },
+  { id: 't-scifi', name: '????', description: '???????', genre: 'science-fiction', createdAt: new Date(0).toISOString() },
+  { id: 't-fantasy', name: '????', description: '??????', genre: 'fantasy', createdAt: new Date(0).toISOString() },
 ];
 
 interface ProjectStore {
@@ -36,18 +38,6 @@ interface ProjectStore {
   getVersionHistory: (projectId: string) => Promise<ProjectVersion[]>;
   loadTemplates: () => Promise<void>;
   createProject: (templateId?: string) => Promise<Project>;
-}
-
-const idbStorage = {
-  getItem: async (name: string): Promise<string | null> => (await getItem<string>(name)) ?? null,
-  setItem: async (name: string, value: string): Promise<void> => { await setItem(name, value); },
-  removeItem: async (name: string): Promise<void> => { await removeItem(name); },
-};
-
-function uid(): string {
-  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
-    ? crypto.randomUUID()
-    : `p-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function emptyVersionMeta(): ProjectVersionMeta {
@@ -88,21 +78,21 @@ addProject: async (input) => {
            createdAt: now,
            updatedAt: now,
          };
-         set((s) => ({ projects: [optimistic, ...s.projects] }));
+          set((s) => ({ projects: [optimistic, ...s.projects] }));
           try {
-            // 新建资源用 POST，不带 If-Match 乐观锁头（否则后端会 412）
+            // ????? POST??? If-Match ?????????? 412?
             const created = await apiCreateProject(input);
             const { version } = get().getVersionMeta();
             projectVersionMeta = { lastSyncAt: new Date().toISOString(), version: created.version ?? (version ? version + 1 : 1) };
            set((s) => ({ projects: s.projects.map((p) => (p.id === optimistic.id ? { ...optimistic, id: created.id || optimistic.id, version: created.version } : p)) }));
            return created ?? optimistic;
-         } catch (e) {
+          } catch (e) {
            const apiError = e as ApiError;
-           if (apiError.response?.status === 409) {
-             await syncManager.resolveConflict('projects', get().projects, null);
-             toast.error('数据冲突', { description: '本地修改已保留（前端优先）' });
-           }
-           set((s) => ({ projects: s.projects.filter((p) => p.id !== optimistic.id) }));
+            if (apiError.status === 409) {
+              await syncManager.resolveConflict('projects', get().projects, null);
+              toast.error('????', { description: '?????????????' });
+            }
+            set((s) => ({ projects: s.projects.filter((p) => p.id !== optimistic.id) }));
            throw e;
          }
        },
@@ -116,11 +106,11 @@ addProject: async (input) => {
            projectVersionMeta = { ...get().getVersionMeta(), lastSyncAt: new Date().toISOString(), version: (version ? version + 1 : 1) };
          } catch (e) {
            const apiError = e as ApiError;
-           if (apiError.response?.status === 409) {
-             await syncManager.resolveConflict('projects', prev, null);
-             toast.error('数据冲突', { description: '本地修改已保留（前端优先）' });
-           }
-           set({ projects: prev });
+            if (apiError.status === 409) {
+              await syncManager.resolveConflict('projects', prev, null);
+              toast.error('????', { description: '?????????????' });
+            }
+            set({ projects: prev });
            throw e;
          }
        },
@@ -144,7 +134,7 @@ addProject: async (input) => {
 
       saveVersion: async (projectId, steps, brief) => {
         const version: ProjectVersion = {
-          id: `v-${typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : Date.now()}`,
+          id: uid('v'),
           projectId,
           steps,
           brief,
@@ -165,7 +155,7 @@ addProject: async (input) => {
       createProject: async (templateId) => {
         const template = templateId ? DEFAULT_TEMPLATES.find((t) => t.id === templateId) : undefined;
         const input = {
-          title: `新${template?.name || '项目'}`,
+          title: `?${template?.name || '??'}`,
           description: template?.description || '',
           genre: template?.genre || 'general',
         };
@@ -174,7 +164,7 @@ addProject: async (input) => {
     }),
     {
       name: 'novel-projects',
-      storage: createJSONStorage(() => idbStorage),
+      storage: createIdbStorage(),
       partialize: (s) => ({ projects: s.projects }),
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
@@ -192,7 +182,7 @@ syncManager.register({
       return { projects };
     });
     if (version !== undefined) {
-      projectVersionMeta.version = version;
+      projectVersionMeta = { ...projectVersionMeta, lastSyncAt: new Date().toISOString(), version };
     }
   },
   getMeta: () => useProjectStore.getState().getVersionMeta(),

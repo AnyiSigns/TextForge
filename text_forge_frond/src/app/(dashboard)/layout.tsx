@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { BackgroundProvider } from '@/components/layout/BackgroundProvider';
 import { AppearanceProvider } from '@/components/layout/AppearanceProvider';
-import { Toaster } from 'sonner';
+import { Toaster, toast } from 'sonner';
 import { GlobalShortcuts } from '@/components/shared/globalShortcuts';
 import { GlobalSearch } from '@/components/shared/GlobalSearch';
 import { ConflictDialog } from '@/components/shared/ConflictDialog';
@@ -26,7 +26,10 @@ export default function DashboardLayout({
   const { accessToken, hasHydrated, setHasHydrated, restoreFromCookie } = useAuthStore();
   const isLoggedIn = !!accessToken;
   const router = useRouter();
-  useNetworkStatus();
+  useNetworkStatus({
+    onOnline: () => toast.success('网络已恢复', { duration: 2000 }),
+    onOffline: () => toast.warning('网络已断开', { duration: 5000 }),
+  });
   const contentScale = useSettingsStore((s) => s.contentScale);
   const fontFamily = useSettingsStore((s) => s.fontFamily);
 

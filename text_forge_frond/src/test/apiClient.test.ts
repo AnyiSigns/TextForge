@@ -18,11 +18,11 @@ describe('11.1 单元测试 - apiClient', () => {
   describe('ApiError 类', () => {
     it('创建 ApiError 实例', async () => {
       const { ApiError } = await import('@/lib/api/client');
-      const error = new ApiError('错误消息', 401, 'AUTH_ERROR');
+      const error = new ApiError('错误消息', 401, 'TOKEN_EXPIRED');
       
       expect(error.message).toBe('错误消息');
       expect(error.status).toBe(401);
-      expect(error.code).toBe('AUTH_ERROR');
+      expect(error.code).toBe('TOKEN_EXPIRED');
       expect(error.name).toBe('ApiError');
     });
   });

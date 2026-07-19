@@ -1,7 +1,7 @@
 // src/lib/utils/chapter.ts
 // 从章节内容里提取章节标题（如「第一章：星海初现」），提取不到则回退 agent 标签。
 // 同时生成「第 N 章：标题」的展示标签，过长截断为 …
-import { AGENTS } from '@/components/projects/WorkflowGraph';
+import { builtinAgentLabel } from '@/lib/workflow/agentRoles';
 
 function extractChapterTitle(content?: string): string | null {
   if (!content) return null;
@@ -32,7 +32,7 @@ export function chapterLabel(
   const num = index + 1;
   const zh = num <= 10 ? cn[num] : String(num);
 
-  const title = extractChapterTitle(content) ?? AGENTS.find((a) => a.id === agent)?.label ?? '未命名';
+  const title = extractChapterTitle(content) ?? builtinAgentLabel(agent) ?? '未命名';
   const full = `第${zh}章：${title}`;
   const short = full.length > 14 ? `${full.slice(0, 13)}…` : full;
   return { full, short };

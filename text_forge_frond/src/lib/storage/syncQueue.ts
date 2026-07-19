@@ -2,6 +2,10 @@
 // 轻量"未同步队列"：本地已写入但 push 后端失败的任务入队，
 // 网络恢复或下次打开时自动重试（个人工具，冲突时前端优先）。
 
+import type { ApiError } from '@/lib/api/client';
+
+export type { ApiError };
+
 type SyncTask = () => Promise<void>;
 
 interface QueuedTask {
@@ -9,10 +13,6 @@ interface QueuedTask {
   run: SyncTask;
   attempts: number;
   onConflict?: (error: ApiError) => Promise<void>;
-}
-
-export interface ApiError {
-  response?: { status?: number };
 }
 
 const MAX_ATTEMPTS = 5;
@@ -34,7 +34,7 @@ async function flush() {
       queue.delete(task.key);
     } catch (error) {
       const apiError = error as ApiError;
-      const status = apiError.response?.status;
+      const status = apiError.status;
       if (status === 409 && task.onConflict) {
         await task.onConflict(apiError);
         queue.delete(task.key);

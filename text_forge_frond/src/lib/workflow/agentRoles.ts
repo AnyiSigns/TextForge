@@ -154,6 +154,38 @@ export function agentRoleById(idOrLabel: string): AgentRole | undefined {
   return AGENT_ROLE_MAP[idOrLabel] ?? AGENT_ROLE_BY_LABEL[idOrLabel];
 }
 
+// 内置 7-Agent 流水线的「节点 id → 展示名」纯数据映射（不含 UI 字段）。
+// 供 lib 层（chapter.ts）与组件层（WorkflowGraph）共用，避免 lib 反向依赖组件。
+export const BUILTIN_AGENT_LABELS: Record<string, string> = {
+  planner: '策划',
+  world: '世界观',
+  character: '角色',
+  outline: '大纲',
+  writer: '写作',
+  reviewer: '审校',
+  editor: '总编',
+};
+
+export function builtinAgentLabel(id: string | undefined): string | undefined {
+  return id ? BUILTIN_AGENT_LABELS[id] : undefined;
+}
+
+// 角色故事定位（CharacterRole）→ 中文展示名，单一真相来源。
+// 供 page.tsx 的 buildContext 与 ProjectCharactersTab 共用，避免多处重复映射分叉。
+export const CHARACTER_ROLE_LABELS: Record<string, string> = {
+  protagonist: '主角',
+  heroine: '女主',
+  deuteragonist: '男二',
+  antagonist: '反派',
+  supporting: '配角',
+};
+
+export function characterRoleLabel(role: string | undefined): string | undefined {
+  if (!role) return undefined;
+  if (role === 'custom') return undefined;
+  return CHARACTER_ROLE_LABELS[role] ?? role;
+}
+
 export function pickModelForTier(tier: AgentTier, models: { id: string; isDefault?: boolean; deployment?: string }[]): string | undefined {
   if (tier === 'cheap') {
     const local = models.find((m) => m.deployment === 'local');

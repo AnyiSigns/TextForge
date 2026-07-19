@@ -341,7 +341,13 @@ export async function runWorkflow(
     if (ctx.plot_summary) parts.push(`【前文剧情摘要】\n${ctx.plot_summary}`);
     if (ctx.characters?.length) {
       const c = ctx.characters
-        .map((x) => `- ${x.name}（${x.status}）：${x.description}${x.currentProfile ? `｜当前：${x.currentProfile}` : ''}${x.change ? `｜本章变化：${x.change}` : ''}`)
+        .map((x) => {
+          const role = x.role ? `｜定位：${x.role}` : '';
+          const rel = x.relationships?.length
+            ? `｜关系：${x.relationships.map((r) => `${r.target}（${r.relation}）`).join('、')}`
+            : '';
+          return `- ${x.name}（${x.status}）：${x.description}${role}${x.currentProfile ? `｜当前：${x.currentProfile}` : ''}${rel}${x.change ? `｜本章变化：${x.change}` : ''}`;
+        })
         .join('\n');
       parts.push(`【本章出场角色】\n${c}`);
     }
@@ -349,7 +355,21 @@ export async function runWorkflow(
       const s = ctx.sections.map((x) => `- ${x.title}：${x.content}`).join('\n');
       parts.push(`【相关设定维度】\n${s}`);
     }
-    if (ctx.outline) parts.push(`【大纲骨架】\n${ctx.outline}`);
+    // 大纲骨架：优先用结构化树（更精确），回退到文本 outline（mock 兼容）
+    const outlineText = ctx.outlineTree?.length
+      ? ctx.outlineTree
+          .map((vol) =>
+            vol.chapters
+              .map((ch) =>
+                ch.nodes
+                  .map((n) => `· ${vol.title}/${ch.title}：${n.title}${n.content ? `（${n.content}）` : ''}`)
+                  .join('\n'),
+              )
+              .join('\n'),
+          )
+          .join('\n')
+      : ctx.outline;
+    if (outlineText) parts.push(`【大纲骨架】\n${outlineText}`);
     return parts.length ? `【项目设定基座】\n${parts.join('\n')}` : '';
   }
 

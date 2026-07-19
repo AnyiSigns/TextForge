@@ -1,23 +1,13 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import { getItem, setItem, removeItem } from '@/lib/storage/indexedDB';
+import { persist } from 'zustand/middleware';
+
 import { enqueueSync } from '@/lib/storage/syncQueue';
 import apiClient from '@/lib/api/client';
 import { MODEL_TEMPLATES } from '@/lib/models/templates';
+import { uid } from '@/lib/utils/id';
+import { createIdbStorage } from '@/lib/storage/zustandIdb';
 import type { ModelConfig, ModelCategory } from '@/types';
 import { syncManager } from '@/lib/storage/syncManager';
-
-const idbStorage = {
-  getItem: async (name: string): Promise<string | null> => (await getItem<string>(name)) ?? null,
-  setItem: async (name: string, value: string): Promise<void> => { await setItem(name, value); },
-  removeItem: async (name: string): Promise<void> => { await removeItem(name); },
-};
-
-function uid(): string {
-  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
-    ? crypto.randomUUID()
-    : Math.random().toString(36).slice(2) + Date.now().toString(36);
-}
 
 function buildFromTemplate(templateKey: string, overrides: Partial<ModelConfig> = {}): ModelConfig {
   const t = MODEL_TEMPLATES.find((x) => x.key === templateKey)!;
@@ -118,7 +108,7 @@ export const useModelStore = create<ModelStore>()(
     }),
     {
       name: 'novel-models',
-      storage: createJSONStorage(() => idbStorage),
+      storage: createIdbStorage(),
       partialize: (s) => ({ models: s.models }),
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
@@ -137,7 +127,7 @@ syncManager.register({
       return { models };
     });
     if (version !== undefined) {
-      modelVersionMeta.version = version;
+      modelVersionMeta = { ...modelVersionMeta, lastSyncAt: new Date().toISOString(), version };
     }
   },
   getMeta: () => useModelStore.getState().getVersionMeta(),

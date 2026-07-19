@@ -1,7 +1,6 @@
 import apiClient from './client';
-import { API_URL } from '@/lib/config/env';
+import { authFetch } from './authFetch';
 import { Character, Message, ChatMessageRequest } from '@/types';
-import { useAuthStore } from '@/lib/stores/authStore';
 
 interface CharactersResponse {
   characters: Character[];
@@ -81,14 +80,8 @@ export async function fetchCharacterMessages(id: string): Promise<Message[]> {
 }
 
 export async function sendChatMessage(id: string, req: ChatMessageRequest): Promise<Response> {
-  const token = useAuthStore.getState().accessToken;
-  const res = await fetch(`${API_URL}/api/characters/${id}/chat`, {
+  const res = await authFetch(`/api/characters/${id}/chat`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    credentials: 'include',
     body: JSON.stringify({
       message: req.message,
       ...(req.project_id ? { project_id: req.project_id } : {}),
@@ -98,6 +91,10 @@ export async function sendChatMessage(id: string, req: ChatMessageRequest): Prom
       ...(req.messages && req.messages.length ? { messages: req.messages } : {}),
     }),
   });
-  if (!res.ok) throw new Error('请求失败');
+  if (!res.ok) {
+    const err = new Error(`角色对话请求失败（${res.status}）`);
+    (err as Error & { status?: number }).status = res.status;
+    throw err;
+  }
   return res;
 }

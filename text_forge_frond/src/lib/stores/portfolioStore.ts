@@ -1,9 +1,10 @@
 // src/lib/stores/portfolioStore.ts
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import { getItem, setItem, removeItem } from '@/lib/storage/indexedDB';
+import { persist } from 'zustand/middleware';
+
 import type { MediaTask } from '@/lib/api/generation';
 import { syncManager } from '@/lib/storage/syncManager';
+import { createIdbStorage } from '@/lib/storage/zustandIdb';
 
 interface PortfolioStore {
   portfolio: MediaTask[];
@@ -18,12 +19,6 @@ interface PortfolioStore {
   getVersionMeta: () => { lastSyncAt: string; version?: number };
   setVersionMeta: (meta: { lastSyncAt: string; version?: number }) => void;
 }
-
-const idbStorage = {
-  getItem: async (name: string): Promise<string | null> => (await getItem<string>(name)) ?? null,
-  setItem: async (name: string, value: string): Promise<void> => { await setItem(name, value); },
-  removeItem: async (name: string): Promise<void> => { await removeItem(name); },
-};
 
 let portfolioVersionMeta: { lastSyncAt: string; version?: number } = { lastSyncAt: new Date(0).toISOString(), version: 0 };
 
@@ -46,7 +41,7 @@ export const usePortfolioStore = create<PortfolioStore>()(
     }),
     {
       name: 'novel-portfolio',
-      storage: createJSONStorage(() => idbStorage),
+      storage: createIdbStorage(),
       partialize: (s) => ({ portfolio: s.portfolio }),
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
@@ -64,7 +59,7 @@ syncManager.register({
     const portfolio = current.map((t) => map.get(t.id) || t);
     usePortfolioStore.setState({ portfolio });
     if (version !== undefined) {
-      portfolioVersionMeta.version = version;
+      portfolioVersionMeta = { ...portfolioVersionMeta, lastSyncAt: new Date().toISOString(), version };
     }
   },
   getMeta: () => usePortfolioStore.getState().getVersionMeta(),

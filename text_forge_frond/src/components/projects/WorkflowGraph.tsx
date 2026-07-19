@@ -7,17 +7,18 @@ import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Step } from '@/types';
 import type { Workflow } from '@/lib/api/workflow';
-import { agentRoleById } from '@/lib/workflow/agentRoles';
+import { BUILTIN_AGENT_LABELS } from '@/lib/workflow/agentRoles';
 
 // 内置 7-Agent 流水线映射（与 BUILTIN_NOVEL_PIPELINE 节点对齐），作为缺省展示。
+// label 复用 lib 层 BUILTIN_AGENT_LABELS，避免与 lib/chapter.ts 重复定义。
 const AGENTS: { id: string; label: string; color: string; icon: LucideIcon }[] = [
-  { id: 'planner',   label: '策划',   color: '#9333ea', icon: ClipboardList },
-  { id: 'world',     label: '世界观', color: '#2563eb', icon: Globe },
-  { id: 'character', label: '角色',   color: '#ea580c', icon: User },
-  { id: 'outline',   label: '大纲',   color: '#0891b2', icon: ListTree },
-  { id: 'writer',    label: '写作',   color: '#16a34a', icon: PenLine },
-  { id: 'reviewer',  label: '审校',   color: '#ca8a04', icon: SearchCheck },
-  { id: 'editor',    label: '总编',   color: '#dc2626', icon: Clapperboard },
+  { id: 'planner',   label: BUILTIN_AGENT_LABELS.planner,   color: '#9333ea', icon: ClipboardList },
+  { id: 'world',     label: BUILTIN_AGENT_LABELS.world,     color: '#2563eb', icon: Globe },
+  { id: 'character', label: BUILTIN_AGENT_LABELS.character, color: '#ea580c', icon: User },
+  { id: 'outline',   label: BUILTIN_AGENT_LABELS.outline,   color: '#0891b2', icon: ListTree },
+  { id: 'writer',    label: BUILTIN_AGENT_LABELS.writer,    color: '#16a34a', icon: PenLine },
+  { id: 'reviewer',  label: BUILTIN_AGENT_LABELS.reviewer,  color: '#ca8a04', icon: SearchCheck },
+  { id: 'editor',    label: BUILTIN_AGENT_LABELS.editor,    color: '#dc2626', icon: Clapperboard },
 ];
 
 interface Props {
@@ -34,13 +35,12 @@ export function WorkflowGraph({ steps, currentAgent, isOpen, onToggle, workflow,
   // 取工作流的 agent 节点（保持拓扑顺序）；无则回退内置
   const agents = workflow
     ? workflow.nodes.filter((n) => n.kind === 'agent').map((n) => {
-        const role = agentRoleById(n.label);
         const fallback = AGENTS.find((a) => a.id === n.id);
-        const Icon = role?.short ? ClipboardList : (fallback?.icon ?? ClipboardList);
+        const Icon = fallback?.icon ?? ClipboardList;
         return {
           id: n.id,
           label: n.label,
-          color: role?.color ?? fallback?.color ?? '#6b7280',
+          color: fallback?.color ?? '#6b7280',
           icon: Icon,
         };
       })

@@ -9,11 +9,7 @@ import {
   deleteManuscriptByProject,
 } from '@/lib/storage/indexedDB';
 
-function uid(): string {
-  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
-    ? crypto.randomUUID()
-    : `ms-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
+import { uid } from '@/lib/utils/id';
 
 interface ManuscriptStore {
   chapters: ManuscriptChapter[];
@@ -47,7 +43,7 @@ export const useManuscriptStore = create<ManuscriptStore>((set, get) => ({
       finalTitle = `第 ${n} 章`;
     }
     const chapter: ManuscriptChapter = {
-      id: uid(),
+      id: uid('ms'),
       projectId,
       index: list.length,
       title: finalTitle,
@@ -76,7 +72,7 @@ export const useManuscriptStore = create<ManuscriptStore>((set, get) => ({
   importFromStep: async (projectId, title, content, linkedStepId, source = 'imported') => {
     const list = get().chapters.filter((c) => c.projectId === projectId);
     const chapter: ManuscriptChapter = {
-      id: uid(),
+      id: uid('ms'),
       projectId,
       index: list.length,
       title: title || `导入章节 ${list.length + 1}`,

@@ -1,7 +1,9 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import { getItem, setItem, removeItem } from '@/lib/storage/indexedDB';
+import { persist } from 'zustand/middleware';
+
 import { fetchCharacters, createCharacter as apiCreateCharacter, deleteCharacter as apiDeleteCharacter, updateCharacter as apiUpdateCharacter } from '@/lib/api/characters';
+import { uid } from '@/lib/utils/id';
+import { createIdbStorage } from '@/lib/storage/zustandIdb';
 import type { Character, Message } from '@/types';
 import { syncManager } from '@/lib/storage/syncManager';
 
@@ -31,18 +33,6 @@ interface CharacterStore {
 
   getVersionMeta: () => { lastSyncAt: string; version?: number };
   setVersionMeta: (meta: { lastSyncAt: string; version?: number }) => void;
-}
-
-const idbStorage = {
-  getItem: async (name: string): Promise<string | null> => (await getItem<string>(name)) ?? null,
-  setItem: async (name: string, value: string): Promise<void> => { await setItem(name, value); },
-  removeItem: async (name: string): Promise<void> => { await removeItem(name); },
-};
-
-function uid(): string {
-  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
-    ? crypto.randomUUID()
-    : `c-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 let versionMeta: { lastSyncAt: string; version?: number } = { lastSyncAt: new Date(0).toISOString(), version: 0 };
@@ -82,7 +72,7 @@ export const useCharacterStore = create<CharacterStore>()(
 
       addCharacter: async (input) => {
         const optimistic: Character = {
-          id: uid(),
+          id: uid('c'),
           name: input.name,
           description: input.description,
           projectId: input.projectId ?? null,
@@ -158,7 +148,7 @@ export const useCharacterStore = create<CharacterStore>()(
     }),
     {
       name: 'novel-characters',
-      storage: createJSONStorage(() => idbStorage),
+      storage: createIdbStorage(),
       partialize: (s) => ({ characters: s.characters }),
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
@@ -177,7 +167,7 @@ syncManager.register({
       return { characters };
     });
     if (version !== undefined) {
-      versionMeta.version = version;
+      versionMeta = { ...versionMeta, lastSyncAt: new Date().toISOString(), version };
     }
   },
   getMeta: () => useCharacterStore.getState().getVersionMeta(),

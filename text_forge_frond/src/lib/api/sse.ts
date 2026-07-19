@@ -16,16 +16,25 @@ export function useSse(
 ): {
   connect: () => void;
   disconnect: () => void;
-  isConnected: boolean;
+  isConnected: () => boolean;
 } {
   const maxRetries = options?.maxRetries ?? 5;
   const retryDelay = options?.retryDelay ?? 2000;
   let abortController: AbortController | null = null;
   let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
   let retryCount = 0;
+  let closed = false;
+
+  const clearRetry = () => {
+    if (retryTimer) {
+      clearTimeout(retryTimer);
+      retryTimer = null;
+    }
+  };
 
   const connect = async () => {
-    if (abortController) return;
+    if (abortController || closed) return;
     abortController = new AbortController();
 
     const attempt = async () => {
@@ -69,18 +78,21 @@ export function useSse(
         }
         retryCount = 0;
       } catch (error) {
-        if (abortController?.signal.aborted) return;
+        if (abortController?.signal.aborted || closed) return;
 
         retryCount++;
         if (retryCount <= maxRetries) {
-          setTimeout(() => void attempt(), retryDelay * retryCount);
+          retryTimer = setTimeout(() => void attempt(), retryDelay * retryCount);
         } else {
           const err = error instanceof Error ? error : new Error(String(error));
           onError?.(err);
         }
       } finally {
-        abortController = null;
-        reader = null;
+        // 仅在非断开场景下复位连接句柄；断开由 disconnect 统一清理
+        if (!(abortController?.signal.aborted || closed)) {
+          abortController = null;
+          reader = null;
+        }
       }
     };
 
@@ -88,11 +100,21 @@ export function useSse(
   };
 
   const disconnect = () => {
+    closed = true;
+    clearRetry();
+    if (reader) {
+      reader.cancel().catch(() => {});
+      reader = null;
+    }
     if (abortController) {
       abortController.abort();
       abortController = null;
     }
   };
 
-  return { connect, disconnect, isConnected: abortController !== null };
+  return {
+    connect,
+    disconnect,
+    isConnected: () => abortController !== null && !closed,
+  };
 }

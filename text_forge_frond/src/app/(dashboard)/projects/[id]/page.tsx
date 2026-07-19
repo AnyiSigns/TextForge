@@ -32,8 +32,9 @@ import { useCharacterStore } from '@/lib/stores/characterStore';
 import { useManuscriptStore } from '@/lib/stores/manuscriptStore';
 import { API_URL } from '@/lib/config/env';
 import { listWorkflowsWithBuiltin, type Workflow } from '@/lib/api/workflow';
+import { characterRoleLabel } from '@/lib/workflow/agentRoles';
 import { bindWorkflow, generateWithWorkflow } from '@/lib/api/projects';
-import { loadOutline } from '@/lib/storage/backup';
+import { loadOutline, type OutlineVolume } from '@/lib/storage/backup';
 import { generateSeed } from '@/lib/seed/generate';
 
 export default function ProjectWorkbench() {
@@ -74,9 +75,17 @@ export default function ProjectWorkbench() {
   const pausedRef = useRef(false);
 
   const [outlineReady, setOutlineReady] = useState(false);
+  // 大纲结构化数据（从 IndexedDB 载入，供生成上下文折叠）
+  const [outlineVolumes, setOutlineVolumes] = useState<OutlineVolume[]>([]);
 
   const brief = useBriefStore((s) => s.briefs[projectId]);
   const projectChars = useCharacterStore((s) => s.characters).filter((c) => (c.projectId ?? null) === projectId);
+
+  // 角色 id → 名称 映射（用于把关系链 targetId 解析为可读名，注入生成上下文）
+  const charNameById = useCallback(
+    (id: string) => projectChars.find((c) => c.id === id)?.name ?? '',
+    [projectChars],
+  );
 
   // 大纲步引导：读取本地大纲备份，存在卷/章/节点即视为已就绪
   useEffect(() => {
@@ -84,7 +93,10 @@ export default function ProjectWorkbench() {
     (async () => {
       try {
         const outline = await loadOutline(projectId);
-        if (!cancelled) setOutlineReady(outline.length > 0);
+        if (!cancelled) {
+          setOutlineVolumes(outline);
+          setOutlineReady(outline.length > 0);
+        }
       } catch {
         if (!cancelled) setOutlineReady(false);
       }
@@ -114,7 +126,10 @@ export default function ProjectWorkbench() {
       }
     };
     loadProject();
-    loadOutline(projectId).then((vols) => setOutlineReady((vols ?? []).length > 0)).catch(() => setOutlineReady(false));
+    loadOutline(projectId).then((vols) => {
+      setOutlineVolumes(vols ?? []);
+      setOutlineReady((vols ?? []).length > 0);
+    }).catch(() => setOutlineReady(false));
     fetchProjectMeta(projectId).then((p) => setProjectTitle(p.title)).catch(() => {});
     listWorkflowsWithBuiltin().then((list) => {
       setWorkflows(list);
@@ -170,28 +185,61 @@ export default function ProjectWorkbench() {
     }
   }, [steps, isStreaming, projectId]);
 
-  // 构造章节级注入上下文：仅出场角色 + 状态变化角色 + 压缩剧情 + 相关维度
+  // 构造章节级注入上下文：分层组织为「设定基座 / 大纲骨架 / 出场角色 / 相关维度 / 剧情摘要」，
+  // 结构清晰且前后端可同时消费（文本兜底 + 结构化树），保证所有编辑过的字段都被生成读到的。
   const buildContext = () => {
     const briefLine = briefToContextLine(brief);
+
+    // —— 出场角色（含故事定位 + 结构化关系链）——
     const contextChars = projectChars
       .filter((c) => selectedCharIds.includes(c.id))
       .map((c) => ({
         name: c.name,
+        role: c.role && c.role !== 'custom' ? characterRoleLabel(c.role) : c.role === 'custom' ? (c.customRole ?? undefined) : undefined,
         description: c.description,
         currentProfile: c.currentProfile,
         status: c.status ?? '存活',
+        relationships: c.relationships?.length
+          ? c.relationships
+              .filter((r) => r.targetId && r.relation.trim())
+              .map((r) => ({ target: charNameById(r.targetId) || r.targetId, relation: r.relation.trim() }))
+          : undefined,
       }));
+
+    // —— 大纲骨架：文本折叠（mock 兜底）+ 结构化树（后端精确消费）——
+    const outlineText = outlineVolumes.length
+      ? outlineVolumes
+          .map((vol) =>
+            vol.chapters
+              .map((ch) =>
+                ch.nodes
+                  .map((n) => `· ${vol.title}/${ch.title}：${n.title}${n.content ? `（${n.content}）` : ''}`)
+                  .join('\n'),
+              )
+              .join('\n'),
+          )
+          .join('\n')
+      : undefined;
+    const outlineTree = outlineVolumes.length ? outlineVolumes : undefined;
+
+    // —— 相关设定维度（仅本章挑选的自定义维度）——
     const sectionLine = briefSectionsToContext(brief?.sections, selectedSectionIds);
+    const sections = sectionLine
+      ? sectionLine.split('；').map((s) => {
+          const idx = s.indexOf('：');
+          return idx > -1 ? { title: s.slice(0, idx), content: s.slice(idx + 1) } : { title: '', content: s };
+        })
+      : undefined;
+
     return {
       project_id: projectId,
       project_title: projectTitle,
       brief: briefLine,
       plot_summary: plotSummary || undefined,
+      outline: outlineText,
+      outlineTree,
       characters: contextChars.length ? contextChars : undefined,
-      sections: sectionLine ? sectionLine.split('；').map((s) => {
-        const idx = s.indexOf('：');
-        return idx > -1 ? { title: s.slice(0, idx), content: s.slice(idx + 1) } : { title: '', content: s };
-      }) : undefined,
+      sections,
     };
   };
 

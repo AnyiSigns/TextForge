@@ -14,6 +14,7 @@ import { useCharacterStore } from '@/lib/stores/characterStore';
 import { uploadAvatar } from '@/lib/api/characters';
 import { generatePart } from '@/lib/seed/generate';
 import { downloadImagesZip } from '@/lib/storage/imageExport';
+import { CHARACTER_ROLE_LABELS, characterRoleLabel } from '@/lib/workflow/agentRoles';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
@@ -22,12 +23,14 @@ import Image from 'next/image';
 
 // 状态预设（string 支持自定义）
 const STATUS_PRESETS = ['存活', '重伤', '失踪', '囚禁', '死亡', '未知'];
+
+// 故事定位预设：基于共享 CHARACTER_ROLE_LABELS 生成（保证与 page.tsx buildContext 同源），
+// 末尾补一个「自定义」选项。避免与角色 label 映射分叉。
 const ROLE_PRESETS: { value: CharacterRole; label: string }[] = [
-  { value: 'protagonist', label: '主角' },
-  { value: 'heroine', label: '女主' },
-  { value: 'deuteragonist', label: '男二' },
-  { value: 'antagonist', label: '反派' },
-  { value: 'supporting', label: '配角' },
+  ...(Object.keys(CHARACTER_ROLE_LABELS) as CharacterRole[]).map((value) => ({
+    value,
+    label: CHARACTER_ROLE_LABELS[value],
+  })),
   { value: 'custom', label: '自定义' },
 ];
 
@@ -51,8 +54,7 @@ function roleLabel(char: Character | { role?: string; customRole?: string }): st
   const role = char.role;
   if (!role) return null;
   if (role === 'custom') return char.customRole?.trim() || null;
-  const found = ROLE_PRESETS.find((r) => r.value === role);
-  return found ? found.label : role;
+  return characterRoleLabel(role) ?? role;
 }
 
 export function ProjectCharactersTab({ projectId }: { projectId: string }) {

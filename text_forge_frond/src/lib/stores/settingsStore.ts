@@ -1,7 +1,8 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import { getItem, setItem, removeItem } from '@/lib/storage/indexedDB';
+import { persist } from 'zustand/middleware';
+
 import { syncManager } from '@/lib/storage/syncManager';
+import { createIdbStorage } from '@/lib/storage/zustandIdb';
 
 export type SuggestionFrequency = 'high' | 'medium' | 'manual';
 export type BgArea = 'global' | 'dashboard' | 'projects' | 'characters' | 'knowledge' | 'tasks' | 'assets' | 'api-keys' | 'settings';
@@ -63,19 +64,6 @@ interface SettingsStore {
   setVersionMeta: (meta: { lastSyncAt: string; version?: number }) => void;
 }
 
-const idbStorage = {
-  getItem: async (name: string): Promise<string | null> => {
-    const value = await getItem<string>(name);
-    return value ?? null;
-  },
-  setItem: async (name: string, value: string): Promise<void> => {
-    await setItem(name, value);
-  },
-  removeItem: async (name: string): Promise<void> => {
-    await removeItem(name);
-  },
-};
-
 let settingsVersionMeta: { lastSyncAt: string; version?: number } = { lastSyncAt: new Date(0).toISOString(), version: 0 };
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -134,7 +122,7 @@ export const useSettingsStore = create<SettingsStore>()(
     }),
     {
       name: 'novel-settings',
-      storage: createJSONStorage(() => idbStorage),
+      storage: createIdbStorage(),
       partialize: (s) => ({
         bgImage: s.bgImage,
         bgOpacity: s.bgOpacity,
@@ -191,7 +179,7 @@ syncManager.register({
       });
     }
     if (version !== undefined) {
-      settingsVersionMeta.version = version;
+      settingsVersionMeta = { ...settingsVersionMeta, lastSyncAt: new Date().toISOString(), version };
     }
   },
   getMeta: () => useSettingsStore.getState().getVersionMeta(),

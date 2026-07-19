@@ -1,10 +1,11 @@
 // src/lib/stores/briefStore.ts
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import { getItem, setItem, removeItem } from '@/lib/storage/indexedDB';
+import { persist } from 'zustand/middleware';
+
 import { enqueueSync } from '@/lib/storage/syncQueue';
 import type { ProjectBrief, BriefSection, Origin } from '@/types';
 import apiClient from '@/lib/api/client';
+import { createIdbStorage } from '@/lib/storage/zustandIdb';
 import { syncManager } from '@/lib/storage/syncManager';
 
 // 后端未就绪时，Brief 以「项目 id -> Brief」形式存本地；
@@ -19,12 +20,6 @@ interface BriefStore {
   getVersionMeta: () => { lastSyncAt: string; version?: number };
   setVersionMeta: (meta: { lastSyncAt: string; version?: number }) => void;
 }
-
-const idbStorage = {
-  getItem: async (name: string): Promise<string | null> => (await getItem<string>(name)) ?? null,
-  setItem: async (name: string, value: string): Promise<void> => { await setItem(name, value); },
-  removeItem: async (name: string): Promise<void> => { await removeItem(name); },
-};
 
 let briefVersionMeta: { lastSyncAt: string; version?: number } = { lastSyncAt: new Date(0).toISOString(), version: 0 };
 
@@ -72,7 +67,7 @@ export const useBriefStore = create<BriefStore>()(
     }),
     {
       name: 'novel-briefs',
-      storage: createJSONStorage(() => idbStorage),
+      storage: createIdbStorage(),
       partialize: (s) => ({ briefs: s.briefs }),
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
@@ -93,7 +88,7 @@ syncManager.register({
       return { briefs };
     });
     if (version !== undefined) {
-      briefVersionMeta.version = version;
+      briefVersionMeta = { ...briefVersionMeta, lastSyncAt: new Date().toISOString(), version };
     }
   },
   getMeta: () => useBriefStore.getState().getVersionMeta(),
