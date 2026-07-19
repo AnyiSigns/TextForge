@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { Image as ImageIcon, Video, Sparkles, Link as LinkIcon, Loader2, User, BookOpen, ChevronDown, Clapperboard, Info } from 'lucide-react';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
+import { uid } from '@/lib/utils/id';
 import { chapterLabel } from '@/lib/utils/chapter';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/shared/states';
@@ -112,7 +113,7 @@ export function ProjectStudio({ projectId, steps, mode, selectedCharIds }: { pro
   const makeOptimistic = (kind: MediaTask['kind'], p: ImageRequest | VideoRequest): MediaTask => {
     const ctx = p.context as GenerationContext | undefined;
     return {
-      id: `opt-${crypto.randomUUID()}`,
+      id: uid('opt'),
       prompt: p.prompt,
       status: 'pending',
       kind,

@@ -26,6 +26,7 @@ import { Plus, Pencil, Trash2, Star, Cloud, Cpu, X, Check, AlertCircle } from 'l
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import apiClient from '@/lib/api/client';
+import { uid } from '@/lib/utils/id';
 import { EMBED_TIERS, type EmbedDownloadProgress, getDownloadedTiers, deleteEmbedModel, cancelEmbedDownload, initDownloadedTiers } from '@/lib/rag/embed';
 
 function formatSize(bytes: number): string {
@@ -36,12 +37,6 @@ function formatSize(bytes: number): string {
 }
 
 const CATEGORIES: ModelCategory[] = ['llm', 'vision', 'omni', 'speech', 'embedding'];
-
-function uid(): string {
-  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
-    ? crypto.randomUUID()
-    : Math.random().toString(36).slice(2) + Date.now().toString(36);
-}
 
 export function ModelsSettings({ initialCategory = 'llm' }: { initialCategory?: ModelCategory }) {
   const models = useModelStore((s) => s.models);

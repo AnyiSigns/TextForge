@@ -13,9 +13,7 @@ import { dispatchInsertStep } from '@/lib/events/projectEvents';
 import { useCharacterStore } from '@/lib/stores/characterStore';
 import { useBriefStore } from '@/lib/stores/briefStore';
 import { toast } from 'sonner';
-
-const uid = (p: string) => `${p}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-
+import { uid } from '@/lib/utils/id';
 const STATUS_META: Record<OutlineNodeStatus, { label: string; cls: string; icon: typeof Circle }> = {
   todo: { label: '未写', cls: 'text-muted-foreground', icon: Circle },
   writing: { label: '写作中', cls: 'text-amber-500', icon: PenLine },

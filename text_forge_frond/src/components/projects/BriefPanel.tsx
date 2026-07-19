@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { useBriefStore, briefToContextLine } from '@/lib/stores/briefStore';
 import type { ProjectBrief, BriefSection } from '@/types';
 import { cn } from '@/lib/utils';
+import { uid } from '@/lib/utils/id';
 
 export function BriefPanel({ projectId, projectTitle }: { projectId: string; projectTitle?: string }) {
   const brief = useBriefStore((s) => s.briefs[projectId]);
@@ -49,7 +50,7 @@ export function BriefPanel({ projectId, projectTitle }: { projectId: string; pro
 
   const addSection = () => {
     const section: BriefSection = {
-      id: crypto.randomUUID(),
+      id: uid('sec'),
       title: '',
       content: '',
       pinned: false,
