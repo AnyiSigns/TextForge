@@ -147,6 +147,12 @@ export function useGenerationForm(opts: GenerationFormOptions) {
     if (useCase === 'chapter_art' && granularity !== 'chapter') setGranularity('chapter');
   }, [useCase, granularity, setGranularity]);
 
+  // 切换用例后按时长范围钳制，避免跨用例残留的 duration 越界（如 12 分钟带入角色卡 15 秒）
+  useEffect(() => {
+    if (duration < DURATION_MIN) setDuration(DURATION_MIN);
+    else if (duration > DURATION_MAX) setDuration(DURATION_MAX);
+  }, [useCase, duration, DURATION_MIN, DURATION_MAX, setDuration]);
+
   const handleSubmit = async (onSubmit: (payload: GenerationSubmitPayload) => void | Promise<void>, characterImages: string[] = []) => {
     if (!prompt.trim()) return;
     setIsLoading(true);

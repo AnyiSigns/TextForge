@@ -185,7 +185,7 @@ export function GenerationForm({
               <Label>时长（{f.durationUnit}）</Label>
               <input type="range" min={f.durationMin} max={f.MAX_DURATION_MIN} step={f.durationStep} value={f.duration} onChange={(e) => f.setDuration(Number(e.target.value))} className="w-full accent-primary" />
               <p className="text-xs text-muted-foreground">
-                {f.duration} {f.durationUnit} · {f.duration < 1 ? '适合短视频片段 / 表情包动图' : f.duration <= 2 ? '适合单场景镜头 / 社交平台短视频' : f.duration <= 4 ? '适合多镜头叙事 / 情节片段' : '适合完整短片 / 长镜头叙事'}
+                {f.duration} {f.durationUnit} · {f.useCase === 'character_card' ? '适合生成角色动态立绘 / 角色表情包' : f.duration < 1 ? '适合短视频片段 / 表情包动图' : f.duration <= 2 ? '适合单场景镜头 / 社交平台短视频' : f.duration <= 4 ? '适合多镜头叙事 / 情节片段' : '适合完整短片 / 长镜头叙事'}
               </p>
             </div>
           )}

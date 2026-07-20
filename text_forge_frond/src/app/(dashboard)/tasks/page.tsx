@@ -106,6 +106,7 @@ export default function TasksPage() {
               defaultProjectId={activeProjectId}
               chapterOptions={chapterOptions}
               characters={activeProjectId ? characters.filter((c) => (c.projectId ?? null) === activeProjectId) : []}
+              projectCharacters={activeProjectId ? characters.filter((c) => (c.projectId ?? null) === activeProjectId) : []}
               context={genContext}
               onProjectChange={setActiveProjectId}
               onSubmit={handleGenerate}
