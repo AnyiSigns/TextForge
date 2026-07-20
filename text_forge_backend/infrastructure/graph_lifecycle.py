@@ -1,5 +1,5 @@
-from app.agents.graphs.chat_graph import chat_graph
-from app.agents.graphs.registry import graph_register
+from agents.graphs.chat_graph import chat_graph
+from agents.graphs.registry import graph_register
 
 
 

@@ -4,9 +4,9 @@ from typing import Optional
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.model import UserToken
-from app.repository.base_repo import BaseRepository
-from app.model.user import User
+from model import UserToken
+from repository.base_repo import BaseRepository
+from model.user import User
 
 class UserRepository(BaseRepository[User]):
     def __init__(self,session:AsyncSession):

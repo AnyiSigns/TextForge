@@ -2,7 +2,7 @@ import logging
 import os
 import sys
 from logging.handlers import RotatingFileHandler
-from ..config.settings import settings
+from config.settings import settings
 
 def setup_logger():
     """全局日志配置"""

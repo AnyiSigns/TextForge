@@ -1,6 +1,6 @@
 from langchain_qwq import ChatQwQ
-from app.config.settings import settings
-from app.agents.tools import tools
+from config.settings import settings
+from agents.tools import tools
 def get_llm():
     return ChatQwQ(
         model=settings.DASHSCOPE_MODEL,

@@ -1,11 +1,9 @@
 from typing import Annotated
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.security import verify_token
-from fastapi.security import HTTPAuthorizationCredentials,HTTPBearer
-from fastapi import Depends, HTTPException
-from app.infrastructure.database import  db_manager
-from app.repository.user_repo import UserRepository, UserTokenRepository
-from app.utils.logger import get_logger
+from core.security import verify_token
+from infrastructure.database import  db_manager
+from repository.user_repo import UserRepository, UserTokenRepository
+from utils.logger import get_logger
 
 
 

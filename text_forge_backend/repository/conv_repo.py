@@ -1,8 +1,8 @@
 from sqlalchemy import select, delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.model.conversation import Conversation
-from app.repository.base_repo import BaseRepository
+from model.conversation import Conversation
+from repository.base_repo import BaseRepository
 
 
 

@@ -1,9 +1,9 @@
 from fastapi import HTTPException
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-from app.config.settings import settings
-from app.model import Base
-from app.utils.logger import get_logger
+from config.settings import settings
+from model import Base
+from utils.logger import get_logger
 
 
 

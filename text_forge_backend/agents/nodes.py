@@ -1,9 +1,9 @@
 from langchain_core.messages import SystemMessage
 from langgraph.constants import END
 from langgraph.prebuilt import ToolNode
-from app.agents.state import GraphState
-from app.agents.llm import llm
-from app.agents.tools import tools
+from agents.state import GraphState
+from agents.llm import llm
+from agents.tools import tools
 
 
 async def agent_call(state:GraphState):

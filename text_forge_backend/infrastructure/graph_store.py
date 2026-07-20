@@ -1,7 +1,7 @@
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from psycopg_pool import AsyncConnectionPool
-from app.config.settings import settings
-from app.utils.logger import get_logger
+from config.settings import settings
+from utils.logger import get_logger
 
 
 

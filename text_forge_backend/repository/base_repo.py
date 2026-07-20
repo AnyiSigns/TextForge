@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.model.base import Base
+from model.base import Base
 
 from typing import TypeVar,Generic,Type
 

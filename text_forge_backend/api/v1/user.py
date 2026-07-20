@@ -1,10 +1,10 @@
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
-from app.schema.request.user import UserRequest, UserLogin
-from app.schema.response.user import UserRes, TokenRes
-from app.service.user_service import user_db_serve,UserAuthService
-from app.utils import get_logger
-from app.core.auth import get_current
+from schema.request.user import UserRequest, UserLogin
+from schema.response.user import UserRes, TokenRes
+from service.user_service import user_db_serve,UserAuthService
+from utils import get_logger
+from core.auth import get_current
 
 
 

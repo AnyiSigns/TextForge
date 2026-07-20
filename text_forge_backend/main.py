@@ -1,11 +1,11 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.infrastructure.graph_lifecycle import compiled_all
-from .utils import get_logger
-from app.infrastructure.database import db_manager
-from app.infrastructure.graph_store import graph_pool_manager
-from app.api.router import router
+from infrastructure.graph_lifecycle import compiled_all
+from utils import get_logger
+from infrastructure.database import db_manager
+from infrastructure.graph_store import graph_pool_manager
+from api.router import router
 
 
 

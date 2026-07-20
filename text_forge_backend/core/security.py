@@ -2,8 +2,8 @@ from datetime import timedelta, datetime, timezone
 from typing import Any, Optional
 from passlib.context import CryptContext
 from jose import jwt,ExpiredSignatureError,JWTError
-from app.config.settings import settings
-from app.utils.logger import get_logger
+from config.settings import settings
+from utils.logger import get_logger
 
 
 
