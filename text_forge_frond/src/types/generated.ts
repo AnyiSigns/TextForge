@@ -101,6 +101,57 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/generate/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 提交图像生成任务（AI 绘画 / 角色立绘 / 章节插图） */
+        post: operations["generateImage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/video/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 提交视频生成任务（章节动画 / 预告片 / 角色卡动画） */
+        post: operations["generateVideo"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/user/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** 同步用户模型配置（全量覆盖）。后端以 model.id 为主键落库；生成请求只需带 model_id，后端凭 id 取 adapter/baseUrl/apiKey/category/modalities/tier */
+        put: operations["putUserModels"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/characters": {
         parameters: {
             query?: never;
@@ -197,7 +248,7 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
-    "/workflow": {
+    "/workflows": {
         parameters: {
             query?: never;
             header?: never;
@@ -340,6 +391,107 @@ export type components = {
             id: string;
             name: string;
             description?: string;
+        };
+        ImageGenerationRequest: {
+            prompt: string;
+            negative_prompt?: string;
+            /** @description 视觉模型 id（用户模型库主键，category:vision）；后端凭 id 取 adapter/baseUrl/apiKey */
+            model_id?: string;
+            project_id?: string;
+            style?: string;
+            size?: string;
+            count?: number;
+            characterId?: string;
+            reference_images?: string[];
+            seed?: number;
+            source_step?: string;
+            character_ids?: string[];
+            context?: components["schemas"]["GenerationContext"];
+        };
+        VideoGenerationRequest: {
+            prompt: string;
+            /** @description 视觉模型 id（用户模型库主键，category:vision）；后端凭 id 取 adapter/baseUrl/apiKey */
+            model_id?: string;
+            project_id?: string;
+            duration?: number;
+            aspect?: string;
+            reference_images?: string[];
+            chapter_id?: string;
+            character_ids?: string[];
+            storyboard?: string;
+            context?: components["schemas"]["GenerationContext"];
+        };
+        MediaTaskResponse: {
+            task?: components["schemas"]["MediaTask"];
+        };
+        MediaTask: {
+            id: string;
+            prompt: string;
+            /** @enum {string} */
+            status: "pending" | "processing" | "completed" | "failed";
+            progress?: number;
+            result_url?: string;
+            /** @enum {string} */
+            kind: "image" | "video";
+            project_id?: string;
+            /** @enum {string} */
+            source?: "character" | "chapter";
+            source_ref?: string;
+            chapter_id?: string;
+            character_ids?: string[];
+            storyboard?: string;
+            createdAt: string;
+        };
+        GenerationContextCharacterRelation: {
+            target: string;
+            relation: string;
+        };
+        GenerationContextCharacter: {
+            name: string;
+            role?: string;
+            description: string;
+            currentProfile?: string;
+            status: string;
+            change?: string;
+            relationships?: components["schemas"]["GenerationContextCharacterRelation"][] | null;
+        };
+        GenerationContext: {
+            project_id?: string;
+            project_title?: string;
+            summary?: string;
+            plot_summary?: string;
+            characters?: components["schemas"]["GenerationContextCharacter"][] | null;
+            outline?: string;
+            outlineTree?: Record<string, never>[] | null;
+            sections?: {
+                title?: string;
+                content?: string;
+            }[] | null;
+            /** @enum {string} */
+            source?: "character" | "chapter";
+            source_ref?: string;
+            brief?: string;
+            rag_chunks?: Record<string, never>[] | null;
+        };
+        UserModelConfig: {
+            /** @description 模型主键（前端 uid），即生成请求携带的 model_id */
+            id: string;
+            name: string;
+            /** @enum {string} */
+            category: "llm" | "vision" | "omni" | "speech" | "embedding";
+            /** @enum {string} */
+            deployment?: "cloud" | "local";
+            vendor: string;
+            /** @description 后端据此选择调用库（openai/anthropic/kling/...） */
+            adapter: string;
+            baseUrl?: string;
+            /** @description 前端 PUT 同步后由后端保管；前端本地不长期留存明文 */
+            apiKey?: string;
+            /** @description 实际传给厂商的模型名 */
+            modelId: string;
+            isDefault?: boolean;
+            modalities?: ("image" | "video")[];
+            auxiliary?: Record<string, never>[] | null;
         };
     };
     responses: never;
@@ -538,6 +690,10 @@ export interface operations {
             content: {
                 "application/json": {
                     workflowId?: string;
+                    /** @description 正文生成语言模型 id（用户模型库主键）；后端凭 id 查 adapter/baseUrl/apiKey/category/tier */
+                    model_id?: string;
+                    /** @enum {string} */
+                    category?: "llm" | "vision" | "omni" | "speech" | "embedding";
                 };
             };
         };
@@ -549,6 +705,100 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StepsResponse"];
+                };
+            };
+        };
+    };
+    generateImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImageGenerationRequest"];
+            };
+        };
+        responses: {
+            /** @description 已提交任务 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaTaskResponse"];
+                };
+            };
+            /** @description 任务受理（异步轮询） */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaTaskResponse"];
+                };
+            };
+        };
+    };
+    generateVideo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VideoGenerationRequest"];
+            };
+        };
+        responses: {
+            /** @description 已提交任务 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaTaskResponse"];
+                };
+            };
+            /** @description 任务受理（异步轮询） */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaTaskResponse"];
+                };
+            };
+        };
+    };
+    putUserModels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    models: components["schemas"]["UserModelConfig"][];
+                };
+            };
+        };
+        responses: {
+            /** @description 同步成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        version?: number;
+                    };
                 };
             };
         };

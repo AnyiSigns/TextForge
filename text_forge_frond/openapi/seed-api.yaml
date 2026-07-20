@@ -751,6 +751,42 @@ components:
       properties:
         task:
           $ref: '#/components/schemas/MediaTask'
+    # 与前端 MediaTask（src/types/common.ts:67）对齐
+    MediaTask:
+      type: object
+      required: [id, prompt, status, kind, createdAt]
+      properties:
+        id:
+          type: string
+        prompt:
+          type: string
+        status:
+          type: string
+          enum: [pending, processing, completed, failed]
+        progress:
+          type: number
+        result_url:
+          type: string
+        kind:
+          type: string
+          enum: [image, video]
+        project_id:
+          type: string
+        source:
+          type: string
+          enum: [character, chapter]
+        source_ref:
+          type: string
+        chapter_id:
+          type: string
+        character_ids:
+          type: array
+          items:
+            type: string
+        storyboard:
+          type: string
+        createdAt:
+          type: string
     # 与前端 GenerationContext（src/types/workflow.ts）对齐
     GenerationContextCharacterRelation:
       type: object
