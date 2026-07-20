@@ -1,6 +1,6 @@
 // src/lib/api/workflowStorage.ts
 // 本地工作流存储（mock 期持久化；后端就绪后由服务端对齐）与示例/内置流水线定义。
-import apiClient from './client';
+import apiClient from '@/shared/lib/apiClient';
 import { getItem, setItem } from '@/lib/storage/indexedDB';
 import { BUILTIN_WORKFLOW_ID } from '@/types';
 import type { Workflow, ListWorkflowsResponse, WorkflowResponse } from './workflowTypes';

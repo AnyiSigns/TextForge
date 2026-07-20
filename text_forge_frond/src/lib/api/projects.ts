@@ -1,5 +1,5 @@
 import { Project, Step, CreateProjectRequest, BUILTIN_WORKFLOW_ID, type GenerationContext } from '@/types';
-import apiClient from './client';
+import apiClient from '@/shared/lib/apiClient';
 import { getWorkflow, runWorkflow, workflowToSteps, type RunWorkflowOptions, type WorkflowRunStep } from './workflow';
 
 export interface CreateProjectResponse extends Project {

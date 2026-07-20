@@ -1,5 +1,5 @@
 // src/lib/api/generation.ts
-import apiClient from './client';
+import apiClient from '@/shared/lib/apiClient';
 import type { GenerationContext, MediaTask, MediaKind, ImageRequest, VideoRequest } from '@/types';
 
 export type { MediaKind, MediaTask, GenerationContext, ImageRequest, VideoRequest };

@@ -1,5 +1,5 @@
 // src/lib/api/sse.ts
-import { API_URL } from '@/lib/config/env';
+import { API_URL } from '@/shared/config/env';
 
 export interface SseEvent {
   type?: string;

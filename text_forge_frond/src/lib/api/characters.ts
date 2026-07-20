@@ -1,5 +1,5 @@
-import apiClient from './client';
-import { authFetch } from './authFetch';
+import apiClient from '@/shared/lib/apiClient';
+import { authFetch } from '@/shared/lib/authFetch';
 import { Character, Message, ChatMessageRequest } from '@/types';
 
 interface CharactersResponse {

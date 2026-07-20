@@ -3,7 +3,7 @@ import axios, { type AxiosRequestConfig } from 'axios';
 import axiosRetry from 'axios-retry';
 import { useAuthStore } from '@/lib/stores/authStore';
 import type { SyncResponse } from '@/types';
-import { API_URL } from '@/lib/config/env';
+import { API_URL } from '@/shared/config/env';
 import { type ErrorCode } from './errorCodes';
 
 const DEFAULT_TIMEOUT = 30000;
