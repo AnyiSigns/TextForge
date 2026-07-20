@@ -375,7 +375,6 @@ Content-Type: application/json
 ```
 
 - 邮箱已存在返回 `400 { "message": "邮箱已被注册" }`。
-- 注册成功必须返回 **HTTP 200** 状态码。
 
 ### 4.3 POST `/api/auth/refresh` —— 刷新 token（强依赖，必做）
 
