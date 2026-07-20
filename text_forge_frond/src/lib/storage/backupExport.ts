@@ -7,7 +7,7 @@ import { loadOutline, loadInspiration } from './backupOutline';
 import type { OutlineVolume, InspirationItem } from './backupSchema';
 import type { Project, Step, Character, ProjectBrief, ManuscriptChapter } from '@/types';
 import { useProjectStore } from '@/features/projects';
-import { useCharacterStore } from '@/lib/stores/characterStore';
+import { useCharacterStore } from '@/features/characters';
 import { useBriefStore } from '@/features/projects';
 import { useManuscriptStore } from '@/lib/stores/manuscriptStore';
 

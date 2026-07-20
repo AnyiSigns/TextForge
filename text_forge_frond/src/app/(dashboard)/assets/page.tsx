@@ -16,7 +16,7 @@ import { ProcessNav } from '@/features/projects';
 import { PortfolioGallery } from '@/features/projects';
 import { Images, LayoutGrid, Download } from 'lucide-react';
 import { downloadSingleImage, downloadImagesZip } from '@/lib/storage/imageExport';
-import { useCharacterStore } from '@/lib/stores/characterStore';
+import { useCharacterStore } from '@/features/characters';
 import { useBriefStore, briefToContextLine } from '@/features/projects';
 import type { GenerationContext } from '@/types';
 

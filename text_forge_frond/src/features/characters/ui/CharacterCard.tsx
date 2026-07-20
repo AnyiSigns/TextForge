@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { MessageCircle, Trash2, Images, Sparkles } from 'lucide-react';
 import { Character } from '@/types';
-import { CharacterStudioSheet } from '@/components/characters/CharacterStudioSheet';
+import { CharacterStudioSheet } from './CharacterStudioSheet';
 
 interface Props {
   character: Character;

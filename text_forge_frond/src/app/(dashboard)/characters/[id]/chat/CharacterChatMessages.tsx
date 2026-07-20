@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Send } from 'lucide-react';
-import { ChatMessage } from '@/components/characters/ChatMessage';
+import { ChatMessage } from '@/features/characters';
 import type { Message } from '@/types';
 
 interface CharacterChatMessagesProps {

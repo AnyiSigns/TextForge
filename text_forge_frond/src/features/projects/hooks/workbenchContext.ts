@@ -101,7 +101,7 @@ export function makeSummarizePlot(projectId: string) {
 export function makeDepositCharacterProfiles(projectChars: Character[]) {
   return async (text: string): Promise<void> => {
     if (!projectChars.length) return;
-    const updateCharacter = (await import('@/lib/stores/characterStore')).useCharacterStore.getState().updateCharacter;
+    const updateCharacter = (await import('@/features/characters')).useCharacterStore.getState().updateCharacter;
     for (const c of projectChars) {
       const name = c.name?.trim();
       if (!name) continue;

@@ -9,7 +9,7 @@ import { Sparkles, User, BookOpen, Link as LinkIcon, Loader2 } from 'lucide-reac
 import { cn } from '@/lib/utils';
 import { isSafeMediaUrl } from '@/lib/utils/url';
 import { chapterLabel } from '@/lib/utils/chapter';
-import { useCharacterStore } from '@/lib/stores/characterStore';
+import { useCharacterStore } from '@/features/characters';
 import type { MediaTask } from '@/lib/api/generation';
 
 interface PortfolioGridProps {

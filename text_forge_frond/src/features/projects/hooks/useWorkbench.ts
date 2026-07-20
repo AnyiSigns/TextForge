@@ -10,7 +10,7 @@ import { fetchProjectDetail, fetchProjectMeta, confirmStep, saveStepEdit, bindWo
 import { onInsertStep } from '@/lib/events/projectEvents';
 import { useProjectStore } from '@/features/projects';
 import { useBriefStore } from '@/features/projects';
-import { useCharacterStore } from '@/lib/stores/characterStore';
+import { useCharacterStore } from '@/features/characters';
 import { useManuscriptStore } from '@/lib/stores/manuscriptStore';
 import { listWorkflowsWithBuiltin, type Workflow } from '@/lib/api/workflow';
 import { API_URL } from '@/lib/config/env';

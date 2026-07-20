@@ -3,8 +3,8 @@
 
 import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { uploadAvatar } from '@/lib/api/characters';
-import { useCharacterStore } from '@/lib/stores/characterStore';
+import { uploadAvatar } from '@/features/characters';
+import { useCharacterStore } from '@/features/characters';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';

@@ -8,7 +8,7 @@ import {
 } from '@/lib/api/generation';
 import { useModelStore } from '@/lib/stores/modelStore';
 import { useBriefStore, briefToContextLine } from '@/features/projects';
-import { useCharacterStore } from '@/lib/stores/characterStore';
+import { useCharacterStore } from '@/features/characters';
 import { usePortfolioStore } from '@/lib/stores/portfolioStore';
 import { useShallow } from 'zustand/react/shallow';
 import { toast } from 'sonner';

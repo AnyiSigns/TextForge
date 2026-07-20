@@ -6,9 +6,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Character, CharacterRole, CharacterRelationship } from '@/types';
-import { useCharacterStore } from '@/lib/stores/characterStore';
+import { useCharacterStore } from '@/features/characters';
 import { useProjectCharacters } from '@/features/projects';
-import { uploadAvatar } from '@/lib/api/characters';
+import { uploadAvatar } from '@/features/characters';
 import { generatePart } from '@/lib/seed/generate';
 import { downloadImagesZip } from '@/lib/storage/imageExport';
 

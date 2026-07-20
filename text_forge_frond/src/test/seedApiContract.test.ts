@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { generateSeed, generatePart } from '@/lib/seed/generate';
 import { useBriefStore } from '@/features/projects';
-import { useCharacterStore } from '@/lib/stores/characterStore';
+import { useCharacterStore } from '@/features/characters';
 
 // 用内存实现替换 indexedDB 读写，绕开 jsdom 无 indexedDB 的限制（专注测前端回填逻辑）
 const idbMem = new Map<string, unknown>();

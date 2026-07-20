@@ -12,7 +12,7 @@ import { SlidersHorizontal, User, Palette, Sparkles, Boxes } from 'lucide-react'
 import { EMBED_TIERS, isTierDownloaded, downloadEmbedModel } from '@/lib/rag/embed';
 import { toast } from 'sonner';
 import { useProjectStore } from '@/features/projects';
-import { useCharacterStore } from '@/lib/stores/characterStore';
+import { useCharacterStore } from '@/features/characters';
 import { useBriefStore } from '@/features/projects';
 import { useModelStore } from '@/lib/stores/modelStore';
 import type { ModelCategory } from '@/types';

@@ -13,7 +13,7 @@ import { CharacterCard, type CharacterCardActions } from './CharacterCard';
 import { CharacterDetailSheet } from './CharacterDetailSheet';
 import { CharacterStatusSheet } from './CharacterStatusSheet';
 import { CharacterRelationsSheet } from './CharacterRelationsSheet';
-import { CharacterStudioSheet } from '@/components/characters/CharacterStudioSheet';
+import { CharacterStudioSheet } from '@/features/characters';
 
 // 故事定位预设：基于共享 CHARACTER_ROLE_LABELS 生成（保证与 page.tsx buildContext 同源），
 // 末尾补一个「自定义」选项。避免与角色 label 映射分叉。

@@ -1,6 +1,6 @@
 // src/lib/hooks/useProjectCharacters.ts
 import { useEffect } from 'react';
-import { useCharacterStore } from '@/lib/stores/characterStore';
+import { useCharacterStore } from '@/features/characters';
 import type { Character } from '@/types';
 
 /**

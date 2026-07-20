@@ -10,7 +10,7 @@ import { ListTodo, ChevronDown, Plus, Trash2, FileInput, BookOpen, CheckCircle2,
 import { cn } from '@/lib/utils';
 import { loadOutline, saveOutline, type OutlineVolume, type OutlineChapter, type OutlineNode, type OutlineNodeStatus } from '@/lib/storage/backup';
 import { dispatchInsertStep } from '@/lib/events/projectEvents';
-import { useCharacterStore } from '@/lib/stores/characterStore';
+import { useCharacterStore } from '@/features/characters';
 import { useBriefStore } from '@/features/projects';
 import { toast } from 'sonner';
 import { uid } from '@/lib/utils/id';

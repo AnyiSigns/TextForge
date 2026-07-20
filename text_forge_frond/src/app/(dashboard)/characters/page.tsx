@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { CharacterCard } from '@/components/characters/CharacterCard';
-import { CharacterStudioSheet } from '@/components/characters/CharacterStudioSheet';
+import { CharacterCard } from '@/features/characters';
+import { CharacterStudioSheet } from '@/features/characters';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -13,7 +13,7 @@ import { PageHeader } from '@/components/shared/PageHeader';
 import { Spinner, EmptyState } from '@/components/shared/states';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useProjectStore } from '@/features/projects';
-import { useCharacterStore } from '@/lib/stores/characterStore';
+import { useCharacterStore } from '@/features/characters';
 import { NO_PROJECT } from '@/components/shared/ProjectPicker';
 import type { Character } from '@/types';
 

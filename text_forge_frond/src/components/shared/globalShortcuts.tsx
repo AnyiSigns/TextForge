@@ -38,7 +38,7 @@ export function GlobalShortcuts() {
         e.preventDefault();
         void (async () => {
           const { projects } = useProjectStore.getState();
-          const { characters } = (await import('@/lib/stores/characterStore')).useCharacterStore.getState();
+          const { characters } = (await import('@/features/characters')).useCharacterStore.getState();
           const { briefs } = (await import('@/features/projects')).useBriefStore.getState();
           const { models } = (await import('@/lib/stores/modelStore')).useModelStore.getState();
           const s = (await import('@/lib/stores/settingsStore')).useSettingsStore.getState();

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Sparkles, Lock, Unlock, Pin, FileText, ListTree, Download } from 'lucide-react';
 import Image from 'next/image';
 import { Character } from '@/types';
-import { useCharacterStore } from '@/lib/stores/characterStore';
+import { useCharacterStore } from '../stores/characterStore';
 import { dispatchInsertStep, type InsertTarget } from '@/lib/events/projectEvents';
 import { fetchProjectDetail, saveStepEdit } from '@/features/projects';
 import { loadOutline, saveOutline, type OutlineVolume } from '@/lib/storage/backup';

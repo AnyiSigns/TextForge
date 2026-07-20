@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { useCharacterStore } from '@/lib/stores/characterStore';
+import { useCharacterStore } from '@/features/characters';
 import { Search, Users, BookOpen, ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useHotkeys } from 'react-hotkeys-hook';

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-import { fetchCharacters, createCharacter as apiCreateCharacter, deleteCharacter as apiDeleteCharacter, updateCharacter as apiUpdateCharacter } from '@/lib/api/characters';
+import { fetchCharacters, createCharacter as apiCreateCharacter, deleteCharacter as apiDeleteCharacter, updateCharacter as apiUpdateCharacter } from '../api/characters';
 import { uid } from '@/lib/utils/id';
 import { createIdbStorage } from '@/lib/storage/zustandIdb';
 import type { Character, Message } from '@/types';

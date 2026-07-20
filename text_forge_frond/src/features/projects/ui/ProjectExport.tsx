@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Download, Upload, FileJson, FileText, FileType, HelpCircle } from 'lucide-react';
 import { useProjectStore } from '@/features/projects';
-import { useCharacterStore } from '@/lib/stores/characterStore';
+import { useCharacterStore } from '@/features/characters';
 import { useBriefStore } from '@/features/projects';
 import { useModelStore } from '@/lib/stores/modelStore';
 import { useSettingsStore } from '@/lib/stores/settingsStore';

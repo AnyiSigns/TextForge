@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils';
 import { EmptyState } from '@/components/shared/states';
 import { ProcessNav } from '@/features/projects';
 import { PortfolioGallery } from '@/features/projects';
-import { useCharacterStore } from '@/lib/stores/characterStore';
+import { useCharacterStore } from '@/features/characters';
 import { useBriefStore, briefToContextLine } from '@/features/projects';
 import type { GenerationContext } from '@/types';
 import { Video, Clapperboard, Film, Link as LinkIcon, LayoutGrid, BookOpen, Download } from 'lucide-react';
