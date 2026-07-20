@@ -9,6 +9,7 @@ import { Character, CharacterRole, CharacterRelationship } from '@/types';
 import { useCharacterStore } from '@/features/characters';
 import { useProjectCharacters } from '@/features/projects';
 import { uploadAvatar } from '@/features/characters';
+import { collectReferenceImages, makeRelationId, pruneRelations } from '@/features/characters/lib/characterRefs';
 import { generatePart } from '@/lib/seed/generate';
 import { downloadImagesZip } from '@/lib/storage/imageExport';
 
@@ -115,7 +116,7 @@ export function useProjectCharactersTab(projectId: string) {
   };
 
   const addRelation = () => {
-    setRelDraft((p) => [...p, { id: `rel-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, targetId: '', relation: '' }]);
+    setRelDraft((p) => [...p, { id: makeRelationId(), targetId: '', relation: '' }]);
   };
 
   const updateRelation = (id: string, patch: Partial<CharacterRelationship>) => {
@@ -129,7 +130,7 @@ export function useProjectCharactersTab(projectId: string) {
   const applyRelations = async () => {
     if (!relTarget) return;
     // 仅保留已选对端且填写了关系描述的项
-    const next = relDraft.filter((r) => r.targetId && r.relation.trim());
+    const next = pruneRelations(relDraft);
     try {
       await updateCharacter(relTarget.id, { relationships: next });
       toast.success('角色关系已保存');
@@ -199,7 +200,7 @@ export function useProjectCharactersTab(projectId: string) {
   // 详情 Sheet：切换某张图为参考图（多选，最多 5 张）
   const toggleReferenceImage = (img: string) => {
     if (!detailChar) return;
-    const current = (detailChar.referenceImages ?? []).filter(Boolean);
+    const current = collectReferenceImages(detailChar);
     const next = current.includes(img)
       ? current.filter((u) => u !== img)
       : [...current, img].slice(0, 5);

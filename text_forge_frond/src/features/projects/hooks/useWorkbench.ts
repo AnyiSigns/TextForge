@@ -18,6 +18,7 @@ import { loadOutline, type OutlineVolume } from '@/lib/storage/backup';
 import { makeBuildContext, makeSummarizePlot, makeDepositCharacterProfiles } from './workbenchContext';
 import { makeGeneration } from './workbenchGenerate';
 import { makeSeedActions } from './workbenchSeed';
+import { transformText } from '@/lib/aiTextTransform';
 
 export function useWorkbench(projectId: string) {
   const [isGraphOpen, setIsGraphOpen] = useState(true);
@@ -227,14 +228,7 @@ export function useWorkbench(projectId: string) {
   };
 
   const handleAiAction = async (action: 'expand' | 'rewrite' | 'summarize', text: string, stepId: string) => {
-    let out = text;
-    if (action === 'expand') {
-      out = `${text}\n\n（扩写）${text}`;
-    } else if (action === 'rewrite') {
-      out = `（改写）${text}`;
-    } else if (action === 'summarize') {
-      out = text.length > 120 ? text.slice(0, 120) + '…（缩写）' : text;
-    }
+    let out = transformText(action, text);
     try {
       const API_URL = (await import('@/lib/config/env')).API_URL;
       const res = await fetch(`${API_URL}/api/ai/transform`, {

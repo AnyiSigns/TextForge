@@ -11,6 +11,7 @@ import { useSettingsStore } from '@/features/settings';
 import type { ProjectBrief, ManuscriptChapter } from '@/types';
 import { buildSettingKeywords, buildCharSuggestions, computeSuggestionsFor } from './manuscriptSuggestions';
 import { makeManuscriptIO } from './manuscriptIO';
+import { transformText, AI_ACTION_LABEL } from '@/lib/aiTextTransform';
 
 export type SuggestionKind = 'character' | 'setting' | 'hint';
 export interface Suggestion { kind: SuggestionKind; label: string; detail?: string; }
@@ -248,14 +249,9 @@ export function useManuscriptEditor(projectId: string) {
     if (!sel.trim()) return;
     setAiMenu(null);
     // mock 期：本地占位变换；后端期替换为 SSE 调用
-    const resultMap = {
-      expand: `${sel}\n\n（扩写：在原有基础上延展情节与描写，保持基调一致。）`,
-      rewrite: `${sel}\n\n（改写：优化节奏与措辞，保留原意。）`,
-      summarize: `${sel}\n\n（缩写：提炼要点，压缩冗余。）`,
-    };
-    const next = el.value.slice(0, start) + resultMap[action] + el.value.slice(end);
+    const next = el.value.slice(0, start) + transformText(action, sel) + el.value.slice(end);
     commitContent(next);
-    toast.success(`已${action === 'expand' ? '扩写' : action === 'rewrite' ? '改写' : '缩写'}`);
+    toast.success(`已${AI_ACTION_LABEL[action]}`);
   };
 
   // Ctrl+Space 触发联想（由全局快捷键调用）

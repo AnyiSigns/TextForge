@@ -5,6 +5,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useModelStore } from '@/features/settings';
 import { NO_PROJECT } from '@/shared/components';
+import { collectReferenceImages, matchCharsByText } from '@/features/characters/lib/characterRefs';
 import type { GenerationContext } from '@/types';
 
 const IMAGE_STYLES = ['写实', '水彩', '水墨', '二次元', '像素', '油画', '3D 渲染'];
@@ -94,17 +95,6 @@ export function useGenerationForm(opts: GenerationFormOptions) {
   const DURATION_UNIT = isCharCard ? '秒' : '分钟';
 
   const MAX_REFS = 8;
-
-  // 按章节正文匹配出场角色：角色名或别名（称呼）任一出现在正文中即命中，
-  // 解决「林公子」「惊羽」等别名漏匹配问题（疏漏2）
-  const matchCharsByText = (
-    pool: { id: string; name?: string; aliases?: string[] | null; referenceImages?: string[] | null; referenceImage?: string | null }[],
-    text: string,
-  ) =>
-    pool.filter((c) => {
-      const keys = [c.name, ...(c.aliases ?? [])].filter((k): k is string => !!k && k.trim().length > 0);
-      return keys.some((k) => text.includes(k));
-    });
 
   const [refText, setRefText] = useState('');
 
@@ -203,10 +193,7 @@ export function useGenerationForm(opts: GenerationFormOptions) {
             return;
           }
           const matched = matchCharsByText(pool, stepContent!);
-          const charRefs = matched
-            .flatMap((c) => (c.referenceImages ?? (c.referenceImage ? [c.referenceImage] : [])))
-            .filter((u): u is string => !!u);
-          const refImages = Array.from(new Set(charRefs)).slice(0, 5);
+          const refImages = Array.from(new Set(matched.flatMap(collectReferenceImages))).slice(0, 5);
           const chapterText = `\n\n【章节内容】\n${stepContent!.slice(0, 2000)}`;
           const payload = {
             ...base,
@@ -232,9 +219,7 @@ export function useGenerationForm(opts: GenerationFormOptions) {
         const matched = stepContent
           ? matchCharsByText(pool, stepContent)
           : [];
-        const refImages = Array.from(new Set(
-          matched.flatMap((c) => (c.referenceImages ?? (c.referenceImage ? [c.referenceImage] : []))).filter((u): u is string => !!u),
-        )).slice(0, 5);
+        const refImages = Array.from(new Set(matched.flatMap(collectReferenceImages))).slice(0, 5);
         const finalPrompt = stepContent
           ? `【章节原文】\n${stepContent.slice(0, 3000)}\n\n【生成请求】\n${prompt}`
           : prompt;
@@ -251,10 +236,7 @@ export function useGenerationForm(opts: GenerationFormOptions) {
         // 全书预告片：关联项目后自动传大纲，用户自选出场角色，带入其参考图（≤5），无素材增强
         const pool = characters ?? [];
         const chosen = pool.filter((c) => selectedCharIds.includes(c.id));
-        const charRefs = chosen
-          .flatMap((c) => (c.referenceImages ?? (c.referenceImage ? [c.referenceImage] : [])))
-          .filter((u): u is string => !!u);
-        const refImages = Array.from(new Set(charRefs)).slice(0, 5);
+        const refImages = Array.from(new Set(chosen.flatMap(collectReferenceImages))).slice(0, 5);
         const outline = effectiveSteps?.map((s) => s.content).filter(Boolean).join('\n\n').slice(0, 3000) ?? '';
         const finalPrompt = outline ? `【大纲】\n${outline}\n\n【生成请求】\n${prompt}` : prompt;
         const payload = {
@@ -267,9 +249,7 @@ export function useGenerationForm(opts: GenerationFormOptions) {
       } else {
         // 角色卡动画：选角色后自动带入其参考图（≤5 张），无基于章节、无素材增强
         const selChar = characterId ? (characters ?? []).find((c) => c.id === characterId) : undefined;
-        const charRefs = selChar
-          ? (selChar.referenceImages ?? (selChar.referenceImage ? [selChar.referenceImage] : [])).filter((u): u is string => !!u)
-          : [];
+        const charRefs = selChar ? collectReferenceImages(selChar) : [];
         const payload = {
           ...base, prompt, duration: vDuration, aspect: vAspect, style: vStyle,
           ...(characterId ? { characterId, source: 'character' as const, source_ref: characterId } : {}),
