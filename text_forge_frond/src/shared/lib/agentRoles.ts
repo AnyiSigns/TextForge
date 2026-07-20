@@ -185,11 +185,3 @@ export function characterRoleLabel(role: string | undefined): string | undefined
   if (role === 'custom') return undefined;
   return CHARACTER_ROLE_LABELS[role] ?? role;
 }
-
-export function pickModelForTier(tier: AgentTier, models: { id: string; isDefault?: boolean; deployment?: string }[]): string | undefined {
-  if (tier === 'cheap') {
-    const local = models.find((m) => m.deployment === 'local');
-    return local?.id ?? models.find((m) => m.isDefault)?.id;
-  }
-  return models.find((m) => m.isDefault)?.id;
-}

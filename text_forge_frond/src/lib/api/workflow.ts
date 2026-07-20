@@ -8,7 +8,7 @@ type WorkflowSummary = components['schemas']['WorkflowSummary'];
 
 export async function listWorkflows(): Promise<WorkflowSummary[]> {
   const res = await apiGet<{ workflows: WorkflowSummary[] }>(
-    '/api/workflow',
+    '/api/workflows',
     workflowsResponseSchema as never,
     'listWorkflows',
   );

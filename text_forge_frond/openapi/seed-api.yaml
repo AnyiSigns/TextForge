@@ -370,7 +370,7 @@ paths:
       responses:
         '200':
           description: 对话响应（或 SSE 流）
-  /workflow:
+  /workflows:
     get:
       tags: [workflow]
       operationId: listWorkflows

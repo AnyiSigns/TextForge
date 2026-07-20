@@ -106,7 +106,7 @@ export async function handleDevApi(req: NextRequest) {
   if (url === '/api/knowledge' && method === 'GET') return json({ documents: [], mocked: true });
   if (url === '/api/knowledge/public' && method === 'GET') return json({ documents: [], mocked: true });
   if (url === '/api/api-keys' && method === 'GET') return json({ keys: [] });
-  if (url === '/api/models' && method === 'PUT') return json({ ok: true });
+  if (url === '/api/user/models' && method === 'PUT') return json({ ok: true });
   if (url === '/api/workflows' && method === 'GET') return json({ workflows: [], mocked: true });
   if (url.startsWith('/api/workflows/') && method === 'GET') return json({ workflow: null, mocked: true });
   if (url.startsWith('/api/workflows/') && method === 'DELETE') return json({ ok: true, mocked: true });
