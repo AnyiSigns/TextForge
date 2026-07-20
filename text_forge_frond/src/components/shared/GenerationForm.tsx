@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ProjectPicker } from '@/components/shared/ProjectPicker';
 import { cn } from '@/lib/utils';
-import { Wand2, Clapperboard } from 'lucide-react';
+import { Wand2, Clapperboard, User } from 'lucide-react';
 import { useGenerationForm, type GenKind, type GenUseCase } from '@/lib/hooks/useGenerationForm';
 import { UseCaseTabs, GranularitySection } from './GenerationFormSections';
 import type { GenerationContext } from '@/types';
@@ -206,7 +206,7 @@ export function GenerationForm({
 
         {kind === 'image' && f.useCase !== 'portrait' && <GranularitySection f={f} />}
 
-            {chapterOptions.length > 0 && (
+            {kind === 'video' && f.useCase === 'chapter_anim' && chapterOptions.length > 0 && (
               <div className="space-y-2">
                 <Label>基于章节（可选）</Label>
                 <Select value={f.chapterId ?? '__none__'} onValueChange={(v) => f.setChapterId(v === '__none__' ? null : v)}>
@@ -233,7 +233,7 @@ export function GenerationForm({
               label="关联项目（可选）"
             />
 
-        {kind === 'image' && projectCharacters && projectCharacters.length > 0 && f.useCase !== 'chapter_art' && (
+        {((kind === 'image' && projectCharacters && projectCharacters.length > 0 && f.useCase !== 'chapter_art') || (kind === 'video' && projectCharacters && projectCharacters.length > 0 && f.useCase === 'character_card')) && (
           <div className="space-y-2">
             <Label>角色（可选，自动带入其参考图）</Label>
             <Select value={f.characterId ?? '__none__'} onValueChange={(v) => f.setCharacterId(v === '__none__' ? null : v)}>
@@ -254,11 +254,17 @@ export function GenerationForm({
           </div>
         )}
 
-        {kind === 'image' && (f.useCase === 'portrait' || f.useCase === 'chapter_art') ? (
+        {(kind === 'image' && (f.useCase === 'portrait' || f.useCase === 'chapter_art')) || (kind === 'video' && (f.useCase === 'chapter_anim' || f.useCase === 'trailer' || f.useCase === 'character_card')) ? (
           <p className="text-xs text-muted-foreground/80">
             {f.useCase === 'portrait'
               ? '角色立绘将自动带入所选角色的参考图（最多 5 张），无需在此粘贴素材增强图。'
-              : '章节插图将自动带入该章出场角色的参考图（最多 5 张），无需在此粘贴素材增强图。'}
+              : f.useCase === 'chapter_art'
+                ? '章节插图将自动带入该章出场角色的参考图（最多 5 张），无需在此粘贴素材增强图。'
+                : f.useCase === 'chapter_anim'
+                  ? '章节动画将自动带入该章出场角色的参考图（最多 5 张），无需在此粘贴素材增强图。'
+                  : f.useCase === 'trailer'
+                    ? '全书预告片将自动带入所选出场角色的参考图（最多 5 张）与项目大纲，无需粘贴素材增强图。'
+                    : '角色卡动画将自动带入所选角色的参考图（最多 5 张），无需在此粘贴素材增强图。'}
           </p>
         ) : (
           <div className="space-y-2">
@@ -284,7 +290,33 @@ export function GenerationForm({
           </div>
         )}
 
-        <Button onClick={() => f.handleSubmit(onSubmit, characterImages)} disabled={f.isLoading || (kind === 'video' && f.useCase === 'trailer' && characterImages.length === 0)} className={cn('w-full')}>
+        {kind === 'video' && f.useCase === 'trailer' && projectCharacters && projectCharacters.length > 0 && (
+          <div className="space-y-2">
+            <Label>出场角色（多选，自动带入其参考图）</Label>
+            <div className="flex flex-wrap gap-2">
+              {projectCharacters.map((c) => {
+                const on = f.selectedCharIds.includes(c.id);
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => f.setSelectedCharIds(on ? f.selectedCharIds.filter((id) => id !== c.id) : [...f.selectedCharIds, c.id])}
+                    className={cn(
+                      'px-2.5 py-1 rounded-full text-xs border flex items-center gap-1',
+                      on ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:border-primary/50',
+                    )}
+                  >
+                    {on && <User className="w-3 h-3" />}
+                    {c.name}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-muted-foreground/80">勾选出场的重要角色，生成预告片时会带入其参考图（最多 5 张）与项目大纲保证形象连贯。</p>
+          </div>
+        )}
+
+        <Button onClick={() => f.handleSubmit(onSubmit, characterImages)} disabled={f.isLoading || (kind === 'video' && f.useCase === 'trailer' && f.selectedCharIds.length === 0)} className={cn('w-full')}>
           {f.isLoading ? '提交中...' : (submitLabel ?? (kind === 'image' ? '生成图片' : '提交任务'))}
         </Button>
       </CardContent>

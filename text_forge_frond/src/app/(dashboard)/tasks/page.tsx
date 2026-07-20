@@ -25,7 +25,6 @@ export default function TasksPage() {
   const [tasks, setTasks] = useState<MediaTask[]>([]);
   const [tab, setTab] = useState('videos');
   const [chapterOptions, setChapterOptions] = useState<{ id: string; label: string }[]>([]);
-  const [characterImages, setCharacterImages] = useState<string[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const { characters } = useCharacterStore();
   const brief = useBriefStore((s) => (activeProjectId ? s.briefs[activeProjectId] : undefined));
@@ -37,7 +36,7 @@ export default function TasksPage() {
   // 当关联项目变化：加载该项目的章节作为"从章节生成"选项，并收集其角色立绘（3.1 资产树）
   useEffect(() => {
     let cancelled = false;
-    if (!activeProjectId) { setChapterOptions([]); setCharacterImages([]); return; }
+    if (!activeProjectId) { setChapterOptions([]); return; }
     (async () => {
       try {
         const steps = await fetchProjectDetail(activeProjectId);
@@ -46,13 +45,10 @@ export default function TasksPage() {
           .filter((s) => s.agent === 'writer' || s.nodeId === 'writer')
           .map((s, i) => ({ id: s.id, label: `第${i + 1}章 · ${(s.content.match(/^#\s*(.+)$/m)?.[1] || '未命名').slice(0, 16)}` }));
         setChapterOptions(opts);
-        const projChars = characters.filter((c) => (c.projectId ?? null) === activeProjectId);
-        const imgs = projChars.flatMap((c) => c.images ?? []).filter(Boolean);
-        setCharacterImages(imgs);
       } catch { /* mock 期可能为空，忽略 */ }
     })();
     return () => { cancelled = true; };
-  }, [activeProjectId, characters]);
+  }, [activeProjectId]);
 
   useEffect(() => {
     const fetchTasks = async () => {
@@ -106,10 +102,11 @@ export default function TasksPage() {
         {tab === 'videos' && (
           <div className="grid lg:grid-cols-[1.1fr_1fr] gap-6 items-start">
             <GenerationForm
+              key={activeProjectId ?? 'none'}
               kind="video"
               defaultProjectId={activeProjectId}
               chapterOptions={chapterOptions}
-              characterImages={characterImages}
+              characters={activeProjectId ? characters.filter((c) => (c.projectId ?? null) === activeProjectId) : []}
               context={genContext}
               onProjectChange={setActiveProjectId}
               onSubmit={handleGenerate}

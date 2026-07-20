@@ -71,7 +71,6 @@ export function useGenerationForm(opts: GenerationFormOptions) {
   const [style, setStyle] = useState(IMAGE_STYLES[0]);
   const [size, setSize] = useState(IMAGE_SIZES[0]);
   const [count, setCount] = useState(1);
-  const MAX_DURATION_MIN = 5;
   const [duration, setDuration] = useState(0.5);
   const [aspect, setAspect] = useState(ASPECTS[0]);
   const [projectId, setProjectId] = useState<string | null>(defaultProjectId);
@@ -83,9 +82,11 @@ export function useGenerationForm(opts: GenerationFormOptions) {
   const [selectedStepId, setSelectedStepId] = useState<string>('');
   const [selectedStepIds, setSelectedStepIds] = useState<string[]>([]);
   const [batchMode, setBatchMode] = useState<BatchMode>('single');
+  const [selectedCharIds, setSelectedCharIds] = useState<string[]>([]);
   const [negExpanded, setNegExpanded] = useState(false);
   const [localUseCase, setLocalUseCase] = useState<GenUseCase>(kind === 'image' ? 'portrait' : 'chapter_anim');
   const useCase: GenUseCase = forcedUseCase ?? localUseCase;
+  const MAX_DURATION_MIN = useCase === 'character_card' ? 15 : 5;
 
   const MAX_REFS = 8;
   const [refText, setRefText] = useState('');
@@ -149,7 +150,6 @@ export function useGenerationForm(opts: GenerationFormOptions) {
       const vAspect = preset?.aspect ?? aspect;
       const vDuration = preset?.duration ?? duration;
       const vStyle = preset?.label ?? style;
-      const refs = [...new Set([...characterImages, ...refImages])].slice(0, MAX_REFS);
       const base = {
         prompt: prompt.trim(),
         negative_prompt: negative.trim() || undefined,
@@ -199,33 +199,55 @@ export function useGenerationForm(opts: GenerationFormOptions) {
 
       // 视频：按用途组装
       if (useCase === 'chapter_anim') {
-        const finalPrompt = selectedStep?.content
-          ? `【章节原文】\n${selectedStep.content.slice(0, 3000)}\n\n【生成请求】\n${prompt}`
+        // 选章节后自动匹配该章出场角色并带入其参考图（≤5 张），同时传入章节内容供生成
+        const step = effectiveSteps?.find((s) => s.id === chapterId) ?? selectedStep;
+        const stepContent = step?.content;
+        const pool = characters ?? [];
+        const matched = stepContent
+          ? pool.filter((c) => c.name && stepContent.includes(c.name))
+          : [];
+        const refImages = Array.from(new Set(
+          matched.flatMap((c) => (c.referenceImages ?? (c.referenceImage ? [c.referenceImage] : []))).filter((u): u is string => !!u),
+        )).slice(0, 5);
+        const finalPrompt = stepContent
+          ? `【章节原文】\n${stepContent.slice(0, 3000)}\n\n【生成请求】\n${prompt}`
           : prompt;
         const payload = {
           ...base, prompt: finalPrompt, duration: vDuration, aspect: vAspect, style: vStyle,
-          source_step: selectedStepId || undefined,
+          source_step: step?.id ?? chapterId ?? undefined,
           chapter_id: chapterId ?? undefined,
-          character_ids: characterImages,
-          reference_images: characterImages,
+          ...(matched.length ? { character_ids: matched.map((c) => c.id) } : {}),
+          reference_images: refImages.length ? refImages : undefined,
           storyboard: prompt.trim(),
         };
         await onSubmit(payload);
       } else if (useCase === 'trailer') {
-        // 全书预告片：需勾选至少一个角色（由 characterImages 收集其立绘）
+        // 全书预告片：关联项目后自动传大纲，用户自选出场角色，带入其参考图（≤5），无素材增强
+        const pool = characters ?? [];
+        const chosen = pool.filter((c) => selectedCharIds.includes(c.id));
+        const charRefs = chosen
+          .flatMap((c) => (c.referenceImages ?? (c.referenceImage ? [c.referenceImage] : [])))
+          .filter((u): u is string => !!u);
+        const refImages = Array.from(new Set(charRefs)).slice(0, 5);
+        const outline = effectiveSteps?.map((s) => s.content).filter(Boolean).join('\n\n').slice(0, 3000) ?? '';
+        const finalPrompt = outline ? `【大纲】\n${outline}\n\n【生成请求】\n${prompt}` : prompt;
         const payload = {
-          ...base, duration: vDuration, aspect: vAspect, style: vStyle,
-          character_ids: characterImages,
-          reference_images: characterImages,
+          ...base, prompt: finalPrompt, duration: vDuration, aspect: vAspect, style: vStyle,
+          ...(chosen.length ? { character_ids: chosen.map((c) => c.id) } : {}),
+          ...(refImages.length ? { reference_images: refImages } : {}),
           storyboard: prompt.trim(),
         };
         await onSubmit(payload);
       } else {
-        // 角色卡动画：单角色
+        // 角色卡动画：选角色后自动带入其参考图（≤5 张），无基于章节、无素材增强
+        const selChar = characterId ? (characters ?? []).find((c) => c.id === characterId) : undefined;
+        const charRefs = selChar
+          ? (selChar.referenceImages ?? (selChar.referenceImage ? [selChar.referenceImage] : [])).filter((u): u is string => !!u)
+          : [];
         const payload = {
-          ...base, duration: vDuration, aspect: vAspect, style: vStyle,
-          ...(characterId ? { characterId, source: 'character' as const, source_ref: characterId, reference_image: undefined } : {}),
-          reference_images: refs.length ? refs : undefined,
+          ...base, prompt, duration: vDuration, aspect: vAspect, style: vStyle,
+          ...(characterId ? { characterId, source: 'character' as const, source_ref: characterId } : {}),
+          ...(charRefs.length ? { reference_images: charRefs.slice(0, 5) } : {}),
           storyboard: prompt.trim(),
         };
         await onSubmit(payload);
@@ -265,6 +287,7 @@ export function useGenerationForm(opts: GenerationFormOptions) {
     chapterArtOnlyChapter: useCase === 'chapter_art',
     selectedStepId, setSelectedStepId,
     selectedStepIds, setSelectedStepIds,
+    selectedCharIds, setSelectedCharIds,
     batchMode, setBatchMode,
     negExpanded, setNegExpanded,
     localUseCase, setLocalUseCase,
