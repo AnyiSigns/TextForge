@@ -1,0 +1,869 @@
+openapi: 3.1.0
+info:
+  title: text-forge Seed API
+  description: |
+    前后端唯一契约事实源（规范第七章「契约先行」）。
+    涵盖前端已使用的端点集合：项目 / 角色 / 生成 / 工作流。
+    由 scripts/gen-api-types.mjs 生成 src/types/generated.ts（components.schemas.*）。
+    后端实现须与该契约保持一致；前端调用处用 zod schema 校验响应以防脏数据白屏。
+  version: 0.1.0
+servers:
+  - url: /api
+    description: 相对路径（由前端 proxy / API_URL 解析）
+tags:
+  - name: projects
+  - name: characters
+  - name: generate
+  - name: workflow
+paths:
+  /projects:
+    get:
+      tags: [projects]
+      operationId: listProjects
+      summary: 获取项目列表
+      responses:
+        '200':
+          description: 项目列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectListResponse'
+    post:
+      tags: [projects]
+      operationId: createProject
+      summary: 创建项目
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProjectRequest'
+      responses:
+        '201':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectResponse'
+  /projects/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      tags: [projects]
+      operationId: getProjectDetail
+      summary: 获取项目详情（含 steps / characters）
+      responses:
+        '200':
+          description: 项目详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectDetail'
+    put:
+      tags: [projects]
+      operationId: updateProject
+      summary: 更新项目（含绑定工作流 workflowId）
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                workflowId:
+                  type: string
+                title:
+                  type: string
+                description:
+                  type: string
+                genre:
+                  type: string
+              additionalProperties: true
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectResponse'
+    delete:
+      tags: [projects]
+      operationId: deleteProject
+      summary: 删除项目
+      responses:
+        '204':
+          description: 删除成功
+  /projects/{id}/steps/{stepId}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - name: stepId
+        in: path
+        required: true
+        schema:
+          type: string
+    put:
+      tags: [projects]
+      operationId: saveStepEdit
+      summary: 保存某步正文
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content:
+                  type: string
+      responses:
+        '200':
+          description: 保存成功
+  /projects/{id}/confirm:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      tags: [projects]
+      operationId: confirmStep
+      summary: 确认某步
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [step_id]
+              properties:
+                step_id:
+                  type: string
+      responses:
+        '200':
+          description: 确认成功
+  /projects/{id}/generate:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      tags: [generate]
+      operationId: generateProject
+      summary: 触发项目生成（SSE / 流式，后端就绪时启用）
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                workflowId:
+                  type: string
+                model_id:
+                  type: string
+                  description: 正文生成语言模型 id（用户模型库主键）；后端凭 id 查 adapter/baseUrl/apiKey/category/tier
+                category:
+                  type: string
+                  enum: [llm, vision, omni, speech, embedding]
+      responses:
+        '200':
+          description: 生成结果（或 SSE 流）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StepsResponse'
+
+  # ---- 图像生成（AI 绘画） ----
+  /generate/image:
+    post:
+      tags: [generate]
+      operationId: generateImage
+      summary: 提交图像生成任务（AI 绘画 / 角色立绘 / 章节插图）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImageGenerationRequest'
+      responses:
+        '200':
+          description: 已提交任务
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaTaskResponse'
+        '202':
+          description: 任务受理（异步轮询）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaTaskResponse'
+
+  # ---- 视频生成（AI 视频 / 章节动画 / 预告片） ----
+  /video/generate:
+    post:
+      tags: [generate]
+      operationId: generateVideo
+      summary: 提交视频生成任务（章节动画 / 预告片 / 角色卡动画）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VideoGenerationRequest'
+      responses:
+        '200':
+          description: 已提交任务
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaTaskResponse'
+        '202':
+          description: 任务受理（异步轮询）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaTaskResponse'
+
+  # ---- 用户模型配置（后端代理：密钥唯一可信保管方） ----
+  /user/models:
+    put:
+      tags: [generate]
+      operationId: putUserModels
+      summary: 同步用户模型配置（全量覆盖）。后端以 model.id 为主键落库；生成请求只需带 model_id，后端凭 id 取 adapter/baseUrl/apiKey/category/modalities/tier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [models]
+              properties:
+                models:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/UserModelConfig'
+      responses:
+        '200':
+          description: 同步成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version:
+                    type: integer
+  /characters:
+    get:
+      tags: [characters]
+      operationId: listCharacters
+      summary: 获取角色列表
+      responses:
+        '200':
+          description: 角色列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CharactersResponse'
+    post:
+      tags: [characters]
+      operationId: createCharacter
+      summary: 创建角色
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCharacterRequest'
+      responses:
+        '201':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CharacterResponse'
+  /characters/{id}:
+    parameters:
+      - $ref: '#/components/parameters/CharacterId'
+    get:
+      tags: [characters]
+      operationId: getCharacterDetail
+      summary: 获取角色详情
+      responses:
+        '200':
+          description: 角色详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CharacterResponse'
+    put:
+      tags: [characters]
+      operationId: updateCharacter
+      summary: 更新角色
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCharacterRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CharacterResponse'
+    delete:
+      tags: [characters]
+      operationId: deleteCharacter
+      summary: 删除角色
+      responses:
+        '204':
+          description: 删除成功
+  /characters/{id}/avatar:
+    parameters:
+      - $ref: '#/components/parameters/CharacterId'
+    post:
+      tags: [characters]
+      operationId: uploadAvatar
+      summary: 上传角色头像
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: 头像地址
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AvatarResponse'
+  /characters/{id}/messages:
+    parameters:
+      - $ref: '#/components/parameters/CharacterId'
+    get:
+      tags: [characters]
+      operationId: listCharacterMessages
+      summary: 获取角色对话历史
+      responses:
+        '200':
+          description: 消息列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessagesResponse'
+  /characters/{id}/chat:
+    parameters:
+      - $ref: '#/components/parameters/CharacterId'
+    post:
+      tags: [characters]
+      operationId: chatWithCharacter
+      summary: 角色对话（SSE / 流式）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatMessageRequest'
+      responses:
+        '200':
+          description: 对话响应（或 SSE 流）
+  /workflows:
+    get:
+      tags: [workflow]
+      operationId: listWorkflows
+      summary: 获取可用创作流水线
+      responses:
+        '200':
+          description: 工作流列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  workflows:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WorkflowSummary'
+components:
+  parameters:
+    ProjectId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    CharacterId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+  schemas:
+    Project:
+      type: object
+      required: [id, title, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+          enum: [draft, generating, completed, paused]
+        genre:
+          type: string
+        description:
+          type: string
+        pinned:
+          type: boolean
+        workflowId:
+          type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+    ProjectListResponse:
+      type: object
+      required: [projects]
+      properties:
+        projects:
+          type: array
+          items:
+            $ref: '#/components/schemas/Project'
+    ProjectResponse:
+      type: object
+      required: [project]
+      properties:
+        project:
+          $ref: '#/components/schemas/Project'
+        version:
+          type: integer
+    ProjectDetail:
+      type: object
+      required: [project, steps]
+      properties:
+        project:
+          $ref: '#/components/schemas/Project'
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/Step'
+        characters:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+              description:
+                type: string
+    Step:
+      type: object
+      required: [id, agent, content, status]
+      properties:
+        id:
+          type: string
+        agent:
+          type: string
+        agentName:
+          type: string
+        content:
+          type: string
+        status:
+          type: string
+        nodeId:
+          type: string
+    StepsResponse:
+      type: object
+      required: [steps]
+      properties:
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/Step'
+    CreateProjectRequest:
+      type: object
+      required: [title, description, genre]
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        genre:
+          type: string
+        version:
+          type: integer
+    Character:
+      type: object
+      required: [id, name, description, createdAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        avatar:
+          type: string
+        aliases:
+          nullable: true
+          type: array
+          items:
+            type: string
+        description:
+          type: string
+        role:
+          type: string
+        status:
+          type: string
+        currentProfile:
+          type: string
+        customRole:
+          type: string
+        relationships:
+          nullable: true
+          type: array
+          items:
+            type: object
+            required: [id, targetId, relation]
+            properties:
+              id:
+                type: string
+              targetId:
+                type: string
+              relation:
+                type: string
+        projectId:
+          nullable: true
+          type: string
+        images:
+          type: array
+          items:
+            type: string
+        referenceImages:
+          nullable: true
+          type: array
+          items:
+            type: string
+        referenceImage:
+          nullable: true
+          type: string
+        imageSeed:
+          nullable: true
+          type: integer
+        createdAt:
+          type: string
+    CharactersResponse:
+      type: object
+      required: [characters]
+      properties:
+        characters:
+          type: array
+          items:
+            $ref: '#/components/schemas/Character'
+    CharacterResponse:
+      type: object
+      required: [character]
+      properties:
+        character:
+          $ref: '#/components/schemas/Character'
+    CreateCharacterRequest:
+      type: object
+      required: [name, description]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        projectId:
+          nullable: true
+          type: string
+        avatar:
+          type: string
+    UpdateCharacterRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        avatar:
+          type: string
+        images:
+          type: array
+          items:
+            type: string
+        role:
+          type: string
+        customRole:
+          type: string
+        status:
+          type: string
+        currentProfile:
+          type: string
+        relationships:
+          nullable: true
+          type: array
+          items:
+            type: object
+            required: [id, targetId, relation]
+            properties:
+              id:
+                type: string
+              targetId:
+                type: string
+              relation:
+                type: string
+        referenceImages:
+          nullable: true
+          type: array
+          items:
+            type: string
+        imageSeed:
+          nullable: true
+          type: integer
+    AvatarResponse:
+      type: object
+      properties:
+        avatar_url:
+          type: string
+        url:
+          type: string
+        avatar:
+          type: string
+    Message:
+      type: object
+      required: [id, role, content]
+      properties:
+        id:
+          type: string
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+    MessagesResponse:
+      type: object
+      required: [messages]
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/Message'
+    ChatMessageRequest:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+        project_id:
+          type: string
+        brief:
+          type: string
+        character_name:
+          type: string
+        character_description:
+          type: string
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/Message'
+    WorkflowSummary:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+    # ---- 生成请求体（模型驱动：model_id 为主键，后端凭 id 取配置） ----
+    ImageGenerationRequest:
+      type: object
+      required: [prompt]
+      properties:
+        prompt:
+          type: string
+        negative_prompt:
+          type: string
+        model_id:
+          type: string
+          description: 视觉模型 id（用户模型库主键，category:vision）；后端凭 id 取 adapter/baseUrl/apiKey
+        project_id:
+          type: string
+        style:
+          type: string
+        size:
+          type: string
+        count:
+          type: integer
+        characterId:
+          type: string
+        reference_images:
+          type: array
+          items:
+            type: string
+        seed:
+          type: integer
+        source_step:
+          type: string
+        character_ids:
+          type: array
+          items:
+            type: string
+        context:
+          $ref: '#/components/schemas/GenerationContext'
+    VideoGenerationRequest:
+      type: object
+      required: [prompt]
+      properties:
+        prompt:
+          type: string
+        model_id:
+          type: string
+          description: 视觉模型 id（用户模型库主键，category:vision）；后端凭 id 取 adapter/baseUrl/apiKey
+        project_id:
+          type: string
+        duration:
+          type: number
+        aspect:
+          type: string
+        reference_images:
+          type: array
+          items:
+            type: string
+        chapter_id:
+          type: string
+        character_ids:
+          type: array
+          items:
+            type: string
+        storyboard:
+          type: string
+        context:
+          $ref: '#/components/schemas/GenerationContext'
+    MediaTaskResponse:
+      type: object
+      properties:
+        task:
+          $ref: '#/components/schemas/MediaTask'
+    # 与前端 GenerationContext（src/types/workflow.ts）对齐
+    GenerationContextCharacterRelation:
+      type: object
+      required: [target, relation]
+      properties:
+        target:
+          type: string
+        relation:
+          type: string
+    GenerationContextCharacter:
+      type: object
+      required: [name, description, status]
+      properties:
+        name:
+          type: string
+        role:
+          type: string
+        description:
+          type: string
+        currentProfile:
+          type: string
+        status:
+          type: string
+        change:
+          type: string
+        relationships:
+          nullable: true
+          type: array
+          items:
+            $ref: '#/components/schemas/GenerationContextCharacterRelation'
+    GenerationContext:
+      type: object
+      properties:
+        project_id:
+          type: string
+        project_title:
+          type: string
+        summary:
+          type: string
+        plot_summary:
+          type: string
+        characters:
+          nullable: true
+          type: array
+          items:
+            $ref: '#/components/schemas/GenerationContextCharacter'
+        outline:
+          type: string
+        outlineTree:
+          nullable: true
+          type: array
+          items:
+            type: object
+        sections:
+          nullable: true
+          type: array
+          items:
+            type: object
+            properties:
+              title:
+                type: string
+              content:
+                type: string
+        source:
+          type: string
+          enum: [character, chapter]
+        source_ref:
+          type: string
+        brief:
+          type: string
+        rag_chunks:
+          nullable: true
+          type: array
+          items:
+            type: object
+    # 用户模型配置（后端代理：密钥唯一可信保管方）
+    UserModelConfig:
+      type: object
+      required: [id, name, category, vendor, adapter, modelId]
+      properties:
+        id:
+          type: string
+          description: 模型主键（前端 uid），即生成请求携带的 model_id
+        name:
+          type: string
+        category:
+          type: string
+          enum: [llm, vision, omni, speech, embedding]
+        deployment:
+          type: string
+          enum: [cloud, local]
+        vendor:
+          type: string
+        adapter:
+          type: string
+          description: 后端据此选择调用库（openai/anthropic/kling/...）
+        baseUrl:
+          type: string
+        apiKey:
+          type: string
+          description: 前端 PUT 同步后由后端保管；前端本地不长期留存明文
+        modelId:
+          type: string
+          description: 实际传给厂商的模型名
+        isDefault:
+          type: boolean
+        modalities:
+          type: array
+          items:
+            type: string
+            enum: [image, video]
+        auxiliary:
+          nullable: true
+          type: array
+          items:
+            type: object
