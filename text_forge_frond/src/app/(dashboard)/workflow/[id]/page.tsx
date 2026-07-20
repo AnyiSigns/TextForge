@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { getWorkflow, type Workflow } from '@/features/workflow';
 import { WorkflowEditor } from '@/features/workflow';
 import { PageHeader } from '@/shared/components';
+import { ErrorBoundary } from '@/shared/components/ErrorBoundary';
 import { Spinner } from '@/shared/components';
 import { Workflow as WorkflowIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -26,7 +27,9 @@ export default function WorkflowDetail() {
   return (
     <div className="page-shell">
       <PageHeader icon={WorkflowIcon} title={wf.name} description="多 Agent 工作流编辑器" />
-      <WorkflowEditor initial={wf} onSaved={() => { /* 列表由 mock 内存维护，无需同步 */ }} />
+      <ErrorBoundary context={{ module: 'workflow-editor', workflowId: id }}>
+        <WorkflowEditor initial={wf} onSaved={() => { /* 列表由 mock 内存维护，无需同步 */ }} />
+      </ErrorBoundary>
       <Button variant="ghost" size="sm" onClick={() => router.push('/workflow')}>← 返回列表</Button>
     </div>
   );

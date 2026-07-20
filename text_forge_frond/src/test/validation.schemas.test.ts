@@ -94,7 +94,9 @@ describe('11.1 单元测试 - 验证 schemas', () => {
     });
 
     it('拒绝空角色名', () => {
-      expect(() => createCharacterSchema.parse({ name: '', description: 'desc' })).toThrow('角色名不能为空');
+      expect(() => createCharacterSchema.parse({ name: '', description: 'desc' })).toThrow(
+        '角色名不能为空',
+      );
     });
   });
 

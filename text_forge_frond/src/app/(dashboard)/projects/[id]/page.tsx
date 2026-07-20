@@ -13,6 +13,7 @@ import { WorkbenchTab } from './WorkbenchTab';
 import { ProjectDialogs } from './ProjectDialogs';
 import { PageHeader } from '@/shared/components';
 import { Spinner } from '@/shared/components';
+import { ErrorBoundary } from '@/shared/components/ErrorBoundary';
 import { Button } from '@/components/ui/button';
 import { ProcessNav, type ProcessTab } from '@/features/projects';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -128,18 +129,20 @@ export default function ProjectWorkbench() {
       />
 
       <ProcessNav tabs={PROCESS_TABS} value={activeTab} onValueChange={setActiveTab}>
-        {activeTab === 'workbench' && (
-          <WorkbenchTab wb={wb} projectId={projectId} />
-        )}
+        <ErrorBoundary context={{ module: 'project-workbench', projectId, tab: activeTab }}>
+          {activeTab === 'workbench' && (
+            <WorkbenchTab wb={wb} projectId={projectId} />
+          )}
 
-        <ProjectDialogs wb={wb} />
+          <ProjectDialogs wb={wb} />
 
-        {activeTab === 'outline' && <OutlinePanel projectId={projectId} />}
-        {activeTab === 'inspiration' && <InspirationBoard projectId={projectId} />}
-        {activeTab === 'brief' && <BriefPanel projectId={projectId} projectTitle={projectTitle} />}
-        {activeTab === 'characters' && <ProjectCharactersTab projectId={projectId} />}
-        {activeTab === 'material' && <ProjectStudio projectId={projectId} steps={steps} mode="character" selectedCharIds={selectedCharIds} />}
-        {activeTab === 'animation' && <ProjectStudio projectId={projectId} steps={steps} mode="chapter" selectedCharIds={selectedCharIds} />}
+          {activeTab === 'outline' && <OutlinePanel projectId={projectId} />}
+          {activeTab === 'inspiration' && <InspirationBoard projectId={projectId} />}
+          {activeTab === 'brief' && <BriefPanel projectId={projectId} projectTitle={projectTitle} />}
+          {activeTab === 'characters' && <ProjectCharactersTab projectId={projectId} />}
+          {activeTab === 'material' && <ProjectStudio projectId={projectId} steps={steps} mode="character" selectedCharIds={selectedCharIds} />}
+          {activeTab === 'animation' && <ProjectStudio projectId={projectId} steps={steps} mode="chapter" selectedCharIds={selectedCharIds} />}
+        </ErrorBoundary>
       </ProcessNav>
     </div>
   );

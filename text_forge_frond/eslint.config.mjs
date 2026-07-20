@@ -11,6 +11,8 @@ export default tseslint.config(
     "e2e/**",
     "src/test/**",
     "public/**",
+    "scripts/**",
+    "*.mjs",
   ]),
   js.configs.recommended,
   ...tseslint.configs.recommended,

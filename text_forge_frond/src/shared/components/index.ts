@@ -8,3 +8,5 @@ export { PageHeader } from './PageHeader';
 export { ProjectPicker, NO_PROJECT } from './ProjectPicker';
 export { Spinner, EmptyState, Skeleton, SkeletonGrid } from './states';
 export { VirtualList } from './VirtualList';
+export { ErrorBoundary } from './ErrorBoundary';
+export { MonitoringInit } from './MonitoringInit';

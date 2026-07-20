@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { Spinner } from '@/shared/components';
 import { Button } from '@/components/ui/button';
+import { ErrorBoundary } from '@/shared/components/ErrorBoundary';
 import { useProjectStore } from '@/features/projects';
 import { useManuscriptStore } from '@/features/manuscript';
 
@@ -50,7 +51,9 @@ export default function ManuscriptProjectPage() {
         </Button>
         <span className="text-sm text-muted-foreground">项目：<span className="text-foreground font-medium">{project?.title ?? '未知项目'}</span></span>
       </div>
-      <ManuscriptEditor projectId={projectId} />
+      <ErrorBoundary context={{ module: 'manuscript-editor', projectId }}>
+        <ManuscriptEditor projectId={projectId} />
+      </ErrorBoundary>
     </div>
   );
 }

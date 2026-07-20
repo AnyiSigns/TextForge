@@ -6,6 +6,7 @@ import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { logger } from '@/lib/logger';
+import { captureException } from '@/lib/monitoring';
 
 type ErrorLike = { name?: string; message?: string; digest?: string };
 
@@ -31,6 +32,7 @@ export default function Error({
     const chunk = isChunkLoadError(error);
     setIsChunk(chunk);
     logger.error(chunk ? 'Chunk load error (dev/turbopack 偶发)' : 'Global error', error);
+    captureException(error, { source: 'app/error.tsx', isChunk });
   }, [error]);
 
   const handleReset = () => {

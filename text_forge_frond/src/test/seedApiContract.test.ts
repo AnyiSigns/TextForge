@@ -11,8 +11,12 @@ import { useCharacterStore } from '@/features/characters';
 const idbMem = new Map<string, unknown>();
 vi.mock('@/lib/storage/indexedDB', () => ({
   getItem: vi.fn(async (k: string) => idbMem.get(k)),
-  setItem: vi.fn(async (k: string, v: unknown) => { idbMem.set(k, v); }),
-  removeItem: vi.fn(async (k: string) => { idbMem.delete(k); }),
+  setItem: vi.fn(async (k: string, v: unknown) => {
+    idbMem.set(k, v);
+  }),
+  removeItem: vi.fn(async (k: string) => {
+    idbMem.delete(k);
+  }),
   putKbDoc: vi.fn(),
   getKbDoc: vi.fn(),
   getAllKbDocs: vi.fn(async () => []),
@@ -31,7 +35,19 @@ function backendSeedResponse(projectId: string, part?: string) {
       sections: [{ id: 'sec-b-1', title: '核心矛盾', content: '后端矛盾', pinned: true }],
     },
     outline: {
-      volumes: [{ id: 'vol-b-1', title: '第一卷', chapters: [{ id: 'ch-b-1', title: '第一章', nodes: [{ id: 'nd-b-1', title: '钩子', content: 'x' }] }] }],
+      volumes: [
+        {
+          id: 'vol-b-1',
+          title: '第一卷',
+          chapters: [
+            {
+              id: 'ch-b-1',
+              title: '第一章',
+              nodes: [{ id: 'nd-b-1', title: '钩子', content: 'x' }],
+            },
+          ],
+        },
+      ],
     },
     characters: [
       { id: 'char-b-1', name: '后端主角', description: 'd', role: 'protagonist', status: '存活' },
@@ -55,7 +71,10 @@ describe('后端 seed 接口契约', () => {
   });
 
   it('generateSeed：后端返回完整 ProjectSeed，前端正确回填三项', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => backendSeedResponse('proj-1')));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => backendSeedResponse('proj-1')),
+    );
     const seed = await generateSeed('proj-1', '一句话开局');
     expect(seed.brief?.genre).toBe('科幻');
     expect(useBriefStore.getState().briefs['proj-1']?.worldview).toBe('后端生成的星海世界观');
@@ -68,9 +87,18 @@ describe('后端 seed 接口契约', () => {
   });
 
   it('generatePart(characters)：后端只返回角色，前端只回填角色不碰其他', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => backendSeedResponse('proj-1', 'characters')));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => backendSeedResponse('proj-1', 'characters')),
+    );
     // 先放一个用户自建 brief（不应被 part 调用影响）
-    useBriefStore.getState().upsertBrief({ projectId: 'proj-1', worldview: '用户世界观', fieldOrigins: { worldview: 'user' } });
+    useBriefStore
+      .getState()
+      .upsertBrief({
+        projectId: 'proj-1',
+        worldview: '用户世界观',
+        fieldOrigins: { worldview: 'user' },
+      });
     const res = await generatePart('proj-1', 'characters', { prompt: '补角色' });
     expect(res.characters?.length).toBe(2);
     // brief 不被 part 调用改动（仍是用户值）
@@ -81,7 +109,12 @@ describe('后端 seed 接口契约', () => {
   });
 
   it('后端失败（网络错误）时回退本地 mock，不抛错', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('network'); }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('network');
+      }),
+    );
     // fetchSeed 应 catch 并回退 mockSeed，applySeed 回填本地占位
     const seed = await generateSeed('proj-1', '科幻拾荒');
     expect(seed.brief?.genre).toBe('科幻');

@@ -6,6 +6,7 @@ import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { logger } from '@/lib/logger';
+import { captureException } from '@/lib/monitoring';
 
 export default function GlobalError({
   error,
@@ -16,6 +17,7 @@ export default function GlobalError({
 }) {
   useEffect(() => {
     logger.error('Global root error', error);
+    captureException(error, { source: 'app/global-error.tsx' });
   }, [error]);
 
   const handleReset = () => {

@@ -1,0 +1,26 @@
+# CODEOWNERS - 按 features 模块划分负责人（默认全局 owner）
+# 修改对应路径需经对应负责人审批。
+
+# 默认全局 owner
+*       @textforge/team
+
+# 业务域模块
+/src/features/projects/      @textforge/projects
+/src/features/characters/    @textforge/characters
+/src/features/workflow/       @textforge/workflow
+/src/features/manuscript/    @textforge/manuscript
+/src/features/settings/       @textforge/settings
+
+# 共享层与基础设施（全员可改，需 CI 通过）
+/src/shared/                 @textforge/team
+/src/lib/monitoring/        @textforge/team
+/src/lib/validation/        @textforge/team
+
+# 契约与生成类型（改动需同步 openapi + typegen）
+/openapi/                   @textforge/team
+/src/types/generated.ts     @textforge/team
+
+# 工程化配置
+/.github/                   @textforge/team
+/commitlint.config.mjs      @textforge/team
+/.husky/                    @textforge/team
