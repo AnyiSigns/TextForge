@@ -71,6 +71,8 @@
     "@commitlint/cli": "^21.2.1",
     "@commitlint/config-conventional": "^21.2.0",
     "@playwright/test": "^1.61.1",
+    "@storybook/addon-a11y": "^10.5.2",
+    "@storybook/react-vite": "^10.5.2",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
@@ -89,10 +91,15 @@
     "next-themes": "^0.4.3",
     "openapi-typescript": "^7.13.0",
     "prettier": "^3.6.2",
+    "storybook": "^10.5.2",
     "tailwindcss": "^4",
     "typescript": "^5",
     "typescript-eslint": "^8.64.0",
     "vite": "^8.1.5",
     "vitest": "^4.1.10"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true,
+    "sharp@0.34.5": true
   }
 }

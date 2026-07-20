@@ -56,3 +56,6 @@ generation-result.png
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# storybook build output
+/storybook-static
