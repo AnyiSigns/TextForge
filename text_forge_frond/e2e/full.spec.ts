@@ -119,7 +119,9 @@ function setupRoutes(page: any) {
       if (pathname.match(/^\/api\/characters\/[^/]+\/messages$/) && method === 'GET') return res(200, { messages: [] });
       const charChatMatch = pathname.match(/^\/api\/characters\/([^/]+)\/chat$/);
       if (charChatMatch && method === 'POST') {
+        const threadId = `mock-th-${charChatMatch[1]}-${Date.now()}`;
         const sse = [
+          `data: ${JSON.stringify({ type: 'meta', thread_id: threadId })}\n\n`,
           'data: {"content":"你好"}\n\n',
           'data: {"content":"！"}\n\n',
           'data: {"content":"我是你的AI助手。"}\n\n',

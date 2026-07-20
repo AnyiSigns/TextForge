@@ -227,8 +227,10 @@ export async function handleCharacterChat(req: NextRequest, id: string) {
 
   // 按字符分片，模拟 SSE 流式输出（前端 sendChatMessage 已按 data: {...} 逐行解析）
   const encoder = new TextEncoder();
+  const threadId = `mock-th-${id}-${Date.now()}`;
   const stream = new ReadableStream({
     async start(controller) {
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'meta', thread_id: threadId })}\n\n`));
       const step = 4;
       for (let i = 0; i < reply.length; i += step) {
         const chunk = reply.slice(i, i + step);

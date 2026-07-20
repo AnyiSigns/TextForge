@@ -8,7 +8,7 @@ export interface ChatMessageRequest {
   brief?: string;
   character_name?: string;
   character_description?: string;
-  // 最近历史上下文（后端无状态时需回传以维持连贯对话）
+  thread_id?: string;
   messages?: { role: 'user' | 'assistant'; content: string }[];
 }
 

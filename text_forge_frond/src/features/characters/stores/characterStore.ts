@@ -6,6 +6,7 @@ import {
   createCharacter as apiCreateCharacter,
   deleteCharacter as apiDeleteCharacter,
   updateCharacter as apiUpdateCharacter,
+  fetchCharacterMessages,
 } from '../api/characters';
 import { uid } from '@/lib/utils/id';
 import { createIdbStorage } from '@/lib/storage/zustandIdb';
@@ -20,6 +21,7 @@ interface CharacterStore {
   messages: Message[];
   isLoading: boolean;
   hasHydrated: boolean;
+  threadMap: Record<string, string>;
   setHasHydrated: (v: boolean) => void;
 
   setCharacters: (chars: Character[]) => void;
@@ -64,6 +66,11 @@ interface CharacterStore {
 
   getVersionMeta: () => { lastSyncAt: string; version?: number };
   setVersionMeta: (meta: { lastSyncAt: string; version?: number }) => void;
+
+  getThreadId: (characterId: string, projectId?: string | null) => string | undefined;
+  setThreadId: (characterId: string, projectId: string | null, threadId: string) => void;
+  clearThreadId: (characterId: string, projectId?: string | null) => void;
+  fetchMessagesWithThread: (characterId: string, projectId?: string | null) => Promise<Message[]>;
 }
 
 let versionMeta: { lastSyncAt: string; version?: number } = {
@@ -80,6 +87,8 @@ export const useCharacterStore = create<CharacterStore>()(
       isLoading: false,
       hasHydrated: false,
       setHasHydrated: (v) => set({ hasHydrated: v }),
+
+      threadMap: {} as Record<string, string>,
 
       setCharacters: (chars) => set({ characters: chars }),
       setCurrentCharacter: (char) => set({ currentCharacter: char, messages: [] }),
@@ -98,6 +107,27 @@ export const useCharacterStore = create<CharacterStore>()(
       getVersionMeta: () => versionMeta,
       setVersionMeta: (meta) => {
         versionMeta = meta;
+      },
+
+      getThreadId: (characterId, projectId) => {
+        const key = `${characterId}:${projectId ?? ''}`;
+        return get().threadMap[key];
+      },
+      setThreadId: (characterId, projectId, threadId) => {
+        const key = `${characterId}:${projectId ?? ''}`;
+        set((s) => ({ threadMap: { ...s.threadMap, [key]: threadId } }));
+      },
+      clearThreadId: (characterId, projectId) => {
+        const key = `${characterId}:${projectId ?? ''}`;
+        const next = { ...get().threadMap };
+        delete next[key];
+        set({ threadMap: next });
+      },
+      fetchMessagesWithThread: async (characterId, projectId) => {
+        const threadId = get().getThreadId(characterId, projectId);
+        const msgs = await fetchCharacterMessages(characterId, threadId);
+        set({ messages: msgs });
+        return msgs;
       },
 
       syncFromBackend: async () => {
@@ -227,7 +257,7 @@ export const useCharacterStore = create<CharacterStore>()(
     {
       name: 'novel-characters',
       storage: createIdbStorage(),
-      partialize: (s) => ({ characters: s.characters }),
+      partialize: (s) => ({ characters: s.characters, threadMap: s.threadMap }),
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
       },

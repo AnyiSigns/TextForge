@@ -74,22 +74,26 @@ export async function fetchCharacterDetail(id: string): Promise<Character> {
   return data.character;
 }
 
-export async function fetchCharacterMessages(id: string): Promise<Message[]> {
-  const { data } = await apiClient.get<MessagesResponse>(`/api/characters/${id}/messages`);
+export async function fetchCharacterMessages(id: string, thread_id?: string): Promise<Message[]> {
+  const params = thread_id ? `?thread_id=${encodeURIComponent(thread_id)}` : '';
+  const { data } = await apiClient.get<MessagesResponse>(`/api/characters/${id}/messages${params}`);
   return data.messages || [];
 }
 
 export async function sendChatMessage(id: string, req: ChatMessageRequest): Promise<Response> {
+  const body: Record<string, unknown> = {
+    message: req.message,
+  };
+  if (req.project_id) body.project_id = req.project_id;
+  if (req.brief) body.brief = req.brief;
+  if (req.character_name) body.character_name = req.character_name;
+  if (req.character_description) body.character_description = req.character_description;
+  if (req.thread_id) body.thread_id = req.thread_id;
+  if (req.messages && req.messages.length) body.messages = req.messages;
+
   const res = await authFetch(`/api/characters/${id}/chat`, {
     method: 'POST',
-    body: JSON.stringify({
-      message: req.message,
-      ...(req.project_id ? { project_id: req.project_id } : {}),
-      ...(req.brief ? { brief: req.brief } : {}),
-      ...(req.character_name ? { character_name: req.character_name } : {}),
-      ...(req.character_description ? { character_description: req.character_description } : {}),
-      ...(req.messages && req.messages.length ? { messages: req.messages } : {}),
-    }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     const err = new Error(`角色对话请求失败（${res.status}）`);

@@ -11,6 +11,7 @@ import type { Character, Message } from '@/types';
 import { CharacterChatHeader } from './CharacterChatHeader';
 import { CharacterChatMessages } from './CharacterChatMessages';
 import { CharacterSettingsSheet } from './CharacterSettingsSheet';
+import { useCharacterStore } from '@/features/characters/stores/characterStore';
 
 export default function CharacterChatPage() {
   const { id: charId } = useParams<{ id: string }>();
@@ -27,9 +28,25 @@ export default function CharacterChatPage() {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const addChapter = useManuscriptStore((s) => s.addChapter);
+  const getThreadId = useCharacterStore((s) => s.getThreadId);
+  const setThreadId = useCharacterStore((s) => s.setThreadId);
 
   const projectId = character?.projectId ?? null;
   const briefLine = useBriefStore((s) => (projectId ? briefToContextLine(s.briefs[projectId]) : ''));
+  const [threadId, setThreadIdState] = useState<string | undefined>(character ? getThreadId(character.id, projectId) : undefined);
+
+  useEffect(() => {
+    setThreadIdState(character ? getThreadId(character.id, projectId) : undefined);
+  }, [character?.id, projectId]);
+
+  useEffect(() => {
+    if (!threadId || !charId) return;
+    let cancelled = false;
+    fetchCharacterMessages(charId, threadId)
+      .then(msgs => { if (!cancelled) setMessages(msgs); })
+      .catch(e => toast.error('加载历史失败', { description: e instanceof Error ? e.message : '未知错误' }));
+    return () => { cancelled = true; };
+  }, [threadId, charId]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -43,7 +60,7 @@ export default function CharacterChatPage() {
   useEffect(() => {
     Promise.all([
       fetchCharacterDetail(charId),
-      fetchCharacterMessages(charId),
+      fetchCharacterMessages(charId, threadId),
     ])
       .then(([char, msgs]) => { setCharacter(char); setMessages(msgs); })
       .catch(e => toast.error('加载失败', { description: e instanceof Error ? e.message : '未知错误' }))
@@ -85,6 +102,7 @@ export default function CharacterChatPage() {
         brief: briefLine || undefined,
         character_name: name,
         character_description: desc,
+        thread_id: threadId,
         messages: history,
       });
       if (!response.body) throw new Error('响应体为空');
@@ -102,7 +120,9 @@ export default function CharacterChatPage() {
           if (data === '[DONE]') continue;
           try {
             const parsed = JSON.parse(data);
-            if (typeof parsed?.content === 'string') {
+            if (parsed?.type === 'meta' && typeof parsed?.thread_id === 'string') {
+              setThreadId(character.id, projectId, parsed.thread_id);
+            } else if (typeof parsed?.content === 'string') {
               aiContent += parsed.content;
               setMessages(prev => prev.map(m => m.id === placeholderId ? { ...m, content: aiContent } : m));
             }
