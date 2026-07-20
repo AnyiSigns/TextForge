@@ -5,14 +5,12 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { toast } from 'sonner';
 import { useManuscriptStore } from '@/lib/stores/manuscriptStore';
-import { useProjectStore } from '@/lib/stores/projectStore';
 import { useProjectCharacters } from '@/lib/hooks/useProjectCharacters';
 import { useBriefStore } from '@/lib/stores/briefStore';
 import { useSettingsStore } from '@/lib/stores/settingsStore';
-import { importManuscriptToProject, importBookToProject } from '@/lib/api/projects';
-import { exportManuscriptBook } from '@/lib/storage/backup';
-import { parseBookText } from '@/lib/utils/bookImport';
 import type { ProjectBrief, ManuscriptChapter } from '@/types';
+import { buildSettingKeywords, buildCharSuggestions, computeSuggestionsFor } from './manuscriptSuggestions';
+import { makeManuscriptIO } from './manuscriptIO';
 
 export type SuggestionKind = 'character' | 'setting' | 'hint';
 export interface Suggestion { kind: SuggestionKind; label: string; detail?: string; }
@@ -148,28 +146,10 @@ export function useManuscriptEditor(projectId: string) {
     };
   }, [activeId, dirty, save]);
 
-  const settingKeywords = useMemo(() => {
-    const list: Suggestion[] = [];
-    if (brief?.worldview) list.push({ kind: 'setting', label: '世界观', detail: brief.worldview.slice(0, 24) });
-    if (brief?.tone) list.push({ kind: 'setting', label: '基调', detail: brief.tone.slice(0, 24) });
-    (brief?.sections ?? []).forEach((s) => list.push({ kind: 'setting', label: s.title, detail: s.content.slice(0, 24) }));
-    return list;
-  }, [brief]);
-
-  const charSuggestions: Suggestion[] = useMemo(
-    () => characters.map((c) => ({ kind: 'character' as const, label: c.name, detail: c.description.slice(0, 24) })),
-    [characters],
-  );
-
-  const computeSuggestions = (kind: SuggestionKind, query: string): Suggestion[] => {
-    // # 设定联想：若项目尚未填写任何设定，给出引导提示而非静默无结果（#10）
-    if (kind === 'setting' && settingKeywords.length === 0) {
-      return [{ kind: 'hint', label: '尚未填写创作设定', detail: '去「创作设定」填写世界观/基调，# 即可联想' }];
-    }
-    const pool = kind === 'character' ? charSuggestions : settingKeywords;
-    if (!query) return pool.slice(0, 6);
-    return pool.filter((s) => s.label.includes(query) || s.detail?.includes(query)).slice(0, 6);
-  };
+  const settingKeywords = useMemo(() => buildSettingKeywords(brief), [brief]);
+  const charSuggestions = useMemo(() => buildCharSuggestions(characters), [characters]);
+  const computeSuggestions = (kind: SuggestionKind, query: string): Suggestion[] =>
+    computeSuggestionsFor(kind, query, settingKeywords, charSuggestions);
 
   // 处理输入：检测 @ 或 # 触发联想；高频时自动提示。
   // 非受控：每次按键只写 ref，节流 commit 到 state（仅驱动字数显示），不打断输入流畅度。
@@ -294,58 +274,19 @@ export function useManuscriptEditor(projectId: string) {
     return () => { delete (window as unknown as { __tfTriggerSuggestion?: () => void }).__tfTriggerSuggestion; };
   }, [freq, charSuggestions, settingKeywords]);
 
-  // 发送到工作台：先确认是否同步为「全局项目 steps」
-  const openSend = () => { if (active) setSendOpen(true); };
-  const confirmSend = async (syncGlobal: boolean) => {
-    if (!active) return;
-    if (syncGlobal) {
-      const step = await importManuscriptToProject(projectId, active.title, active.content);
-      const draft = (await useProjectStore.getState().getDraft(projectId)) ?? [];
-      await useProjectStore.getState().saveDraft(projectId, [...draft, step]);
-      toast.success('已同步到工作台（作为项目步骤，可被 Agent 流读取为前文）');
-    } else {
-      // 仅本地草稿已在手稿，这里提示保持本地
-      toast.success('已留在手稿本地（未同步到工作台）');
-    }
-    setSendOpen(false);
-  };
-
-  // 书籍导入（txt）：解析为章节，可选「仅手稿」或「同步工作台」
-  const onPickBook = async (file: File) => {
-    const text = await file.text();
-    const parsed = parseBookText(text);
-    setBookName(file.name.replace(/\.txt$/i, ''));
-    setBookChapters(parsed);
-  };
-  const confirmBookImport = async (syncGlobal: boolean) => {
-    if (!bookChapters) return;
-    if (syncGlobal) {
-      const steps = await importBookToProject(projectId, bookChapters);
-      const draft = (await useProjectStore.getState().getDraft(projectId)) ?? [];
-      await useProjectStore.getState().saveDraft(projectId, [...draft, ...steps]);
-      toast.success(`已导入 ${steps.length} 章到工作台（Agent 续写将以此为前文）`);
-    } else {
-      for (const c of bookChapters) {
-        await useManuscriptStore.getState().importFromStep(projectId, c.title, c.content);
-      }
-      toast.success(`已导入 ${bookChapters.length} 章到手稿（本地续写）`);
-    }
-    setBookChapters(null);
-  };
-
   const [askBookTxt, setAskBookTxt] = useState(false);
 
-  const handleExportBook = (fmt: 'markdown' | 'txt') => {
-    if (fmt === 'markdown') {
-      exportManuscriptBook(projectId, 'markdown').then(() => setExportOpen(false));
-      return;
-    }
-    setAskBookTxt(true);
-  };
-  const doExportBookTxt = (mode: 'tidy' | 'format') => {
-    exportManuscriptBook(projectId, 'txt', mode)
-      .then(() => { setAskBookTxt(false); setExportOpen(false); });
-  };
+  const { openSend, confirmSend, onPickBook, confirmBookImport, handleExportBook, doExportBookTxt } = makeManuscriptIO({
+    id: projectId,
+    activeId,
+    active,
+    bookChapters,
+    setBookName,
+    setBookChapters,
+    setAskBookTxt,
+    setExportOpen,
+    setSendOpen,
+  });
 
   return {
     // 外部 store 派生

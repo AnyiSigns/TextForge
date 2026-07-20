@@ -8,11 +8,10 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ProjectPicker } from '@/components/shared/ProjectPicker';
-import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
-import { chapterLabel } from '@/lib/utils/chapter';
 import { Wand2, Clapperboard } from 'lucide-react';
 import { useGenerationForm, type GenKind, type GenUseCase } from '@/lib/hooks/useGenerationForm';
+import { UseCaseTabs, GranularitySection } from './GenerationFormSections';
 import type { GenerationContext } from '@/types';
 
 export function GenerationForm({
@@ -68,42 +67,13 @@ export function GenerationForm({
   const icon = kind === 'image' ? <Wand2 className="w-4 h-4 text-primary" /> : <Clapperboard className="w-4 h-4 text-primary" />;
   const title = kind === 'image' ? '生成图片' : '生成视频';
 
-  const useCaseOptions = kind === 'image'
-    ? ([
-        { v: 'portrait' as const, label: '角色立绘' },
-        { v: 'chapter_art' as const, label: '章节插图' },
-        { v: 'book_concept' as const, label: '全书概念图' },
-      ])
-    : ([
-        { v: 'chapter_anim' as const, label: '章节动画' },
-        { v: 'trailer' as const, label: '全书预告片' },
-        { v: 'character_card' as const, label: '角色卡动画' },
-      ]);
-
   return (
     <Card className="glass-surface">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">{icon} {title}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex flex-wrap gap-2">
-          {useCaseOptions.map((opt) => (
-            <button
-              key={opt.v}
-              type="button"
-              onClick={() => { if (!forcedUseCase) f.setLocalUseCase(opt.v); }}
-              disabled={!!forcedUseCase}
-              className={cn(
-                'px-3 py-1.5 rounded-full text-sm border transition-all',
-                (!forcedUseCase && f.useCase === opt.v) || forcedUseCase === opt.v
-                  ? 'bg-primary/12 text-primary border-primary/30 ring-1 ring-primary/20'
-                  : 'border-border text-muted-foreground hover:bg-accent/60',
-              )}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
+        <UseCaseTabs kind={kind} forcedUseCase={forcedUseCase} f={f} />
 
         <div className="space-y-2">
           <Label>提示词</Label>
@@ -232,71 +202,7 @@ export function GenerationForm({
 
         <hr className="ink-divider" />
 
-        <div className="space-y-2">
-          <Label>生成粒度</Label>
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2">
-              <Select value={f.granularity} onValueChange={(v) => f.setGranularity(v as 'chapter' | 'full')}>
-                <SelectTrigger className="w-40">
-                  <SelectValue placeholder="选择粒度">{(v: string) => (v === 'chapter' ? '按章节（推荐）' : v === 'full' ? '整本书' : '选择粒度')}</SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="chapter">按章节（推荐）</SelectItem>
-                  <SelectItem value="full">整本书</SelectItem>
-                </SelectContent>
-              </Select>
-              {f.granularity === 'chapter' && f.effectiveSteps && f.effectiveSteps.length > 0 && (
-                <>
-                  <Select value={f.selectedStepId} onValueChange={(v) => {
-                    f.setSelectedStepId(v ?? '');
-                    f.setSelectedStepIds(v ? [v] : []);
-                  }}>
-                    <SelectTrigger className="flex-1">
-                      <SelectValue placeholder="选择章节">{(v: string) => {
-                        const idx = f.effectiveSteps.findIndex((s) => s.id === v);
-                        return idx >= 0 ? chapterLabel(f.effectiveSteps[idx].agent, idx, f.effectiveSteps[idx].content).full : '选择章节';
-                      }}</SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {f.effectiveSteps.map((s, i) => {
-                        const { full, short } = chapterLabel(s.agent, i, s.content);
-                        return (
-                          <SelectItem key={s.id} value={s.id} title={full}>{short}</SelectItem>
-                        );
-                      })}
-                    </SelectContent>
-                  </Select>
-                  <Button variant="outline" size="sm" onClick={() => f.setBatchMode(m => m === 'single' ? 'batch' : 'single')}>
-                    {f.batchMode === 'single' ? '批量' : '单选'}
-                  </Button>
-                </>
-              )}
-            </div>
-            {f.batchMode === 'batch' && f.granularity === 'chapter' && f.effectiveSteps && f.effectiveSteps.length > 0 && (
-              <div className="flex flex-col gap-1.5 max-h-32 overflow-y-auto border border-border/40 rounded-lg p-2">
-                {f.effectiveSteps.map((s, i) => {
-                  const { full, short } = chapterLabel(s.agent, i, s.content);
-                  return (
-                    <div key={s.id} className="flex items-center gap-2">
-                      <Checkbox
-                        checked={f.selectedStepIds.includes(s.id)}
-                        onCheckedChange={(c) => f.setSelectedStepIds(ids => c ? [...ids, s.id] : ids.filter(id => id !== s.id))}
-                      />
-                      <span className="text-xs truncate" title={full}>{short}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            {f.granularity === 'chapter' && (f.selectedStep || f.selectedStepIds.length > 0) && f.effectiveSteps && (
-              <p className="text-xs text-muted-foreground truncate">
-                将基于 {f.batchMode === 'batch'
-                  ? `${f.selectedStepIds.length} 个章节`
-                  : `「${chapterLabel(f.effectiveSteps.find((s) => s.id === f.selectedStepId)?.agent, f.effectiveSteps.findIndex((s) => s.id === f.selectedStepId), f.effectiveSteps.find((s) => s.id === f.selectedStepId)?.content).full}」`} 内容生成
-              </p>
-            )}
-          </div>
-        </div>
+        <GranularitySection f={f} />
 
             {chapterOptions.length > 0 && (
               <div className="space-y-2">
