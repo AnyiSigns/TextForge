@@ -55,7 +55,7 @@ export function ProjectCharactersTab({ projectId }: { projectId: string }) {
     relTarget, setRelTarget, relDraft, openRelations, addRelation, updateRelation, removeRelation, applyRelations,
     charNameById, statusTarget, setStatusTarget, statusDraft, setStatusDraft, openStatus, applyStatus,
     detailChar, setDetailChar, detailRole, setDetailRole, detailCustomRole, setDetailCustomRole,
-    openDetailRoleEdit, saveDetailRole, saveCurrentProfile, toggleReferenceImage, exportImages,
+    openDetailRoleEdit, saveDetailRole, saveCurrentProfile, saveAliases, toggleReferenceImage, exportImages,
     avatarInputRefs, handleAvatarChange, isSeedingChars, handleSeedChars, handleDelete, studioTarget, setStudioTarget,
   } = useProjectCharactersTab(projectId);
 
@@ -202,6 +202,7 @@ export function ProjectCharactersTab({ projectId }: { projectId: string }) {
         onDetailCustomRole={setDetailCustomRole}
         onSaveDetailRole={saveDetailRole}
         onSaveCurrentProfile={saveCurrentProfile}
+        onSaveAliases={saveAliases}
         onOpenRelations={openRelations}
         onSetDetailChar={setDetailChar}
         toggleReferenceImage={toggleReferenceImage}

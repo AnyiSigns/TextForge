@@ -129,7 +129,7 @@ export default function ProjectWorkbench() {
 
       <ProcessNav tabs={PROCESS_TABS} value={activeTab} onValueChange={setActiveTab}>
         {activeTab === 'workbench' && (
-          <WorkbenchTab wb={wb} />
+          <WorkbenchTab wb={wb} projectId={projectId} />
         )}
 
         <ProjectDialogs wb={wb} />

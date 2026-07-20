@@ -33,9 +33,13 @@ export default function AssetsPage() {
   // 角色页「生成立绘」深链：?character=ID&project=PID → 预选角色并自动拼提示词
   const deepCharacterId = searchParams.get('character');
   const deepProjectId = searchParams.get('project');
+  const deepChapterId = searchParams.get('chapter');
   const deepCharacter = deepCharacterId ? characters.find((c) => c.id === deepCharacterId) : undefined;
   const defaultCharacterId = deepCharacter?.id ?? null;
   const defaultProjectId = deepProjectId ?? deepCharacter?.projectId ?? null;
+  // 工作台「章节插图」深链：?project=PID&chapter=STEPID → 预选章节插图用例
+  const defaultUseCase = deepChapterId ? 'chapter_art' : undefined;
+  const defaultChapterId = deepChapterId ?? null;
   const defaultPrompt = deepCharacter
     ? `${deepCharacter.name}，${deepCharacter.description || ''}。角色立绘，全身像，清晰五官，风格统一。`.slice(0, 1000)
     : '';
@@ -44,8 +48,9 @@ export default function AssetsPage() {
     ? (deepCharacter.referenceImages ?? (deepCharacter.referenceImage ? [deepCharacter.referenceImage] : [])).slice(0, 5)
     : [];
 
+  // 项目内角色：下拉与选项统一使用同一份（深链时也与底层 matching 用的 characters 同源，避免口径分裂）
   const projectCharacters = projectId
-    ? characters.filter((c) => (c.projectId ?? null) === projectId).map((c) => ({ id: c.id, name: c.name }))
+    ? characters.filter((c) => (c.projectId ?? null) === projectId)
     : [];
 
   useEffect(() => {
@@ -112,14 +117,16 @@ export default function AssetsPage() {
         {tab === 'images' && (
           <div className="grid lg:grid-cols-[1.1fr_1fr] gap-6 items-start">
             <GenerationForm
-              key={defaultCharacterId}
+              key={`${defaultCharacterId ?? ''}-${defaultChapterId ?? ''}`}
               kind="image"
               defaultProjectId={defaultProjectId}
               defaultCharacterId={defaultCharacterId}
+              defaultChapterId={defaultChapterId}
+              useCase={defaultUseCase}
               defaultPrompt={defaultPrompt}
               context={genContext}
               characterImages={characterImages}
-              projectCharacters={deepCharacter ? [{ id: deepCharacter.id, name: deepCharacter.name }] : projectCharacters}
+              projectCharacters={projectCharacters}
               characters={projectId ? characters.filter((c) => (c.projectId ?? null) === projectId) : []}
               onProjectChange={setProjectId}
               onSubmit={handleGenerate}

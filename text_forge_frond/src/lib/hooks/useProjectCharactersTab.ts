@@ -207,6 +207,18 @@ export function useProjectCharactersTab(projectId: string) {
     toast.success(next.includes(img) ? '已加入参考图，后续生图会更一致' : '已移出参考图');
   };
 
+  // 详情 Sheet：保存别名（称呼），用于章节正文用别名提及角色时也能自动匹配
+  const saveAliases = async (aliases: string[]) => {
+    if (!detailChar) return;
+    try {
+      await updateCharacter(detailChar.id, { aliases });
+      toast.success('别名已保存');
+      setDetailChar((c) => (c ? { ...c, aliases } : c));
+    } catch (e) {
+      toast.error('别名保存失败', { description: e instanceof Error ? e.message : '未知错误' });
+    }
+  };
+
   // 详情 Sheet：导出全部立绘
   const exportImages = async () => {
     if (!detailChar?.images) return;
@@ -280,6 +292,7 @@ export function useProjectCharactersTab(projectId: string) {
     openDetailRoleEdit,
     saveDetailRole,
     saveCurrentProfile,
+    saveAliases,
     toggleReferenceImage,
     exportImages,
     // 头像 / 种子 / 删除 / studio

@@ -4,9 +4,10 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { useState, useEffect } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
-import { CircleDot, Eye, Pencil, Link2, Images, Lock, Unlock } from 'lucide-react';
+import { CircleDot, Eye, Pencil, Link2, Images, Lock, Unlock, Tag } from 'lucide-react';
 import Image from 'next/image';
 import { Character, CharacterRole } from '@/types';
 
@@ -24,6 +25,7 @@ interface CharacterDetailSheetProps {
   onDetailCustomRole: (v: string) => void;
   onSaveDetailRole: () => void;
   onSaveCurrentProfile: () => void;
+  onSaveAliases: (aliases: string[]) => void;
   onOpenRelations: (c: Character) => void;
   onSetDetailChar: (c: Character | null) => void;
   toggleReferenceImage: (img: string) => void;
@@ -34,8 +36,15 @@ export function CharacterDetailSheet(props: CharacterDetailSheetProps) {
   const {
     detailChar, detailRole, detailCustomRole, charNameById, rolePresets, roleLabel, statusBadge,
     onOpenStatus, onOpenDetailRoleEdit, onDetailRole, onDetailCustomRole, onSaveDetailRole,
-    onSaveCurrentProfile, onOpenRelations, onSetDetailChar, toggleReferenceImage, exportImages,
+    onSaveCurrentProfile, onSaveAliases, onOpenRelations, onSetDetailChar, toggleReferenceImage, exportImages,
   } = props;
+  const [aliasesDraft, setAliasesDraft] = useState(
+    (detailChar?.aliases ?? []).join('、'),
+  );
+  useEffect(() => {
+    setAliasesDraft((detailChar?.aliases ?? []).join('、'));
+  }, [detailChar?.id, detailChar?.aliases]);
+
 
   return (
     <Sheet open={!!detailChar} onOpenChange={(o) => !o && onSetDetailChar(null)}>
@@ -135,6 +144,24 @@ export function CharacterDetailSheet(props: CharacterDetailSheetProps) {
 
               <div className="space-y-2">
                 <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.12em] flex items-center gap-1.5">
+                  <Tag className="w-3.5 h-3.5" /> 别名 / 称呼
+                </p>
+                <Input
+                  value={aliasesDraft}
+                  onChange={(e) => setAliasesDraft(e.target.value)}
+                  placeholder="如：林公子、惊羽（顿号/逗号分隔）"
+                  className="text-sm rounded-2xl bg-background/40 border-border/30"
+                />
+                <Button size="sm" variant="outline" className="rounded-xl" onClick={() => onSaveAliases(
+                  aliasesDraft.split(/[、,，]/).map((s) => s.trim()).filter(Boolean),
+                )}>
+                  保存别名
+                </Button>
+                <p className="text-[11px] text-muted-foreground mt-1.5">章节正文用别名提及角色时，也能自动匹配并带入其参考图。</p>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.12em] flex items-center gap-1.5">
                   <Images className="w-3.5 h-3.5" /> 角色图库（{detailChar.images?.length ?? 0}）
                 </p>
                 {detailChar.images && detailChar.images.length > 0 ? (
@@ -164,7 +191,7 @@ export function CharacterDetailSheet(props: CharacterDetailSheetProps) {
                     })}
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">该角色暂无可图片。可在「AI 绘画」选择本项目与角色生成，完成后会自动加入此处。</p>
+                   <p className="text-sm text-muted-foreground">该角色暂无图片。可在「AI 绘画」选择本项目与角色生成，完成后会自动加入此处。</p>
                 )}
                 {detailChar.images && detailChar.images.length > 0 && (
                   <Button

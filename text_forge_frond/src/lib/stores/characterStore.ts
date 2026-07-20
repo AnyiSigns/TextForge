@@ -27,7 +27,7 @@ interface CharacterStore {
 
   syncFromBackend: () => Promise<void>;
   addCharacter: (input: { name: string; description: string; projectId?: string | null; avatar?: string }) => Promise<Character>;
-  updateCharacter: (id: string, patch: Partial<Pick<Character, 'name' | 'description' | 'avatar' | 'images' | 'role' | 'status' | 'currentProfile' | 'customRole' | 'relationships'>> & { referenceImage?: string | null; referenceImages?: string[] | null; imageSeed?: number | null }) => Promise<Character>;
+  updateCharacter: (id: string, patch: Partial<Pick<Character, 'name' | 'description' | 'avatar' | 'images' | 'role' | 'status' | 'currentProfile' | 'customRole' | 'relationships' | 'aliases'>> & { referenceImage?: string | null; referenceImages?: string[] | null; imageSeed?: number | null }) => Promise<Character>;
   addCharacterImage: (id: string, imageUrl: string) => Promise<Character>;
   removeCharacter: (id: string) => Promise<void>;
 

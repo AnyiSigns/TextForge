@@ -94,6 +94,18 @@ export function useGenerationForm(opts: GenerationFormOptions) {
   const DURATION_UNIT = isCharCard ? '秒' : '分钟';
 
   const MAX_REFS = 8;
+
+  // 按章节正文匹配出场角色：角色名或别名（称呼）任一出现在正文中即命中，
+  // 解决「林公子」「惊羽」等别名漏匹配问题（疏漏2）
+  const matchCharsByText = (
+    pool: { id: string; name?: string; aliases?: string[] | null; referenceImages?: string[] | null; referenceImage?: string | null }[],
+    text: string,
+  ) =>
+    pool.filter((c) => {
+      const keys = [c.name, ...(c.aliases ?? [])].filter((k): k is string => !!k && k.trim().length > 0);
+      return keys.some((k) => text.includes(k));
+    });
+
   const [refText, setRefText] = useState('');
 
   // 素材增强：把粘贴的多张图 URL（换行 / 逗号分隔）拆分、去重、校验，最多 MAX_REFS 张
@@ -185,20 +197,23 @@ export function useGenerationForm(opts: GenerationFormOptions) {
           const step = selectedStep ?? (chapterId ? effectiveSteps?.find((s) => s.id === chapterId) : undefined);
           const stepContent = step?.content;
           const pool = characters ?? [];
-          const matched = stepContent
-            ? pool.filter((c) => c.name && stepContent.includes(c.name))
-            : [];
+          // 章节插图必须显式选章节：未选章节则降级为普通图片（不挂 chapter 源、不强行带参考图/章节内容）
+          if (!step) {
+            await onSubmit({ ...base, prompt: prompt.trim(), style, size, count });
+            return;
+          }
+          const matched = matchCharsByText(pool, stepContent!);
           const charRefs = matched
             .flatMap((c) => (c.referenceImages ?? (c.referenceImage ? [c.referenceImage] : [])))
             .filter((u): u is string => !!u);
           const refImages = Array.from(new Set(charRefs)).slice(0, 5);
-          const chapterText = stepContent ? `\n\n【章节内容】\n${stepContent.slice(0, 2000)}` : '';
+          const chapterText = `\n\n【章节内容】\n${stepContent!.slice(0, 2000)}`;
           const payload = {
             ...base,
             prompt: `${prompt.trim()}${chapterText}`,
             style, size, count,
             source: 'chapter' as const,
-            source_step: (step?.id ?? selectedStepId) || undefined,
+            source_step: step.id,
             ...(matched.length ? { character_ids: matched.map((c) => c.id) } : {}),
             ...(refImages.length ? { reference_images: refImages } : {}),
           };
@@ -215,7 +230,7 @@ export function useGenerationForm(opts: GenerationFormOptions) {
         const stepContent = step?.content;
         const pool = characters ?? [];
         const matched = stepContent
-          ? pool.filter((c) => c.name && stepContent.includes(c.name))
+          ? matchCharsByText(pool, stepContent)
           : [];
         const refImages = Array.from(new Set(
           matched.flatMap((c) => (c.referenceImages ?? (c.referenceImage ? [c.referenceImage] : []))).filter((u): u is string => !!u),

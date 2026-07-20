@@ -5,7 +5,8 @@ import { useState, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Check, Edit2, Loader2, PauseCircle, CheckCircle2, Expand, RefreshCw, Minimize2, SkipForward, RotateCcw, BookOpen, Sparkles } from 'lucide-react';
+import { Check, Edit2, Loader2, PauseCircle, CheckCircle2, Expand, RefreshCw, Minimize2, SkipForward, RotateCcw, BookOpen, Sparkles, Image as ImageIcon, Clapperboard } from 'lucide-react';
+import Link from 'next/link';
 import { Step } from '@/types';
 import { AGENTS } from './WorkflowGraph';
 
@@ -24,13 +25,15 @@ interface Props {
   onAiAction?: (action: 'expand' | 'rewrite' | 'summarize', text: string, stepId: string) => void;
   onSkip?: (stepId: string) => void;
   onRetry?: (stepId: string) => void;
+  /** 项目 id，用于「去 AI绘画/视频」带当前章节深链 */
+  projectId?: string;
 }
 
 export function StepCard({
   step, index, isLast, isEditing, editContent,
   onEditChange, onEditStart, onEditCancel, onSaveEdit, onConfirm, onAiAction,
   onSendToManuscript,
-  onSkip, onRetry,
+  onSkip, onRetry, projectId,
 }: Props) {
   const agentLabel = step.agentName || AGENTS.find(a => a.id === step.agent)?.label || '步骤';
   const [showAiMenu, setShowAiMenu] = useState(false);
@@ -141,6 +144,22 @@ export function StepCard({
               <BookOpen className="w-4 h-4 mr-1.5" /> 发到手稿
             </Button>
           )}
+        </div>
+      )}
+
+      {step.status === 'completed' && projectId && (
+        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border/30">
+          <span className="text-xs text-muted-foreground">用本章生成：</span>
+          <Button size="sm" variant="ghost" className="text-muted-foreground" asChild>
+            <Link href={`/assets?project=${projectId}&chapter=${step.id}`}>
+              <ImageIcon className="w-4 h-4 mr-1.5" /> 章节插图
+            </Link>
+          </Button>
+          <Button size="sm" variant="ghost" className="text-muted-foreground" asChild>
+            <Link href={`/tasks?project=${projectId}&chapter=${step.id}`}>
+              <Clapperboard className="w-4 h-4 mr-1.5" /> 章节动画
+            </Link>
+          </Button>
         </div>
       )}
     </Card>

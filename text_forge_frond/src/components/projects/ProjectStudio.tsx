@@ -158,7 +158,8 @@ export function ProjectStudio({ projectId, steps, mode, selectedCharIds }: { pro
     useCharacterStore.setState((s) => ({
       characters: s.characters.map((c) => (c.id === charId ? { ...c, avatar: url } : c)),
     }));
-    toast.success('已设为角色头像（本地）');
+    useCharacterStore.getState().updateCharacter(charId, { avatar: url }).catch(() => {});
+    toast.success('已设为角色头像');
   };
 
   return (

@@ -1,8 +1,9 @@
 // src/app/(dashboard)/tasks/page.tsx
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -22,10 +23,16 @@ import { Video, Clapperboard, Film, Link as LinkIcon, LayoutGrid, BookOpen, Down
 import { downloadSingleImage, downloadImagesZip } from '@/lib/storage/imageExport';
 
 export default function TasksPage() {
+  const searchParams = useSearchParams();
+  // 工作台「章节动画」深链：?project=PID&chapter=STEPID → 默认选中项目与章节
+  const deepProjectId = searchParams.get('project');
+  const deepChapterId = searchParams.get('chapter');
+  const defaultProjectId = deepProjectId ?? null;
+  const defaultChapterId = deepChapterId ?? null;
   const [tasks, setTasks] = useState<MediaTask[]>([]);
   const [tab, setTab] = useState('videos');
-  const [chapterOptions, setChapterOptions] = useState<{ id: string; label: string }[]>([]);
-  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const [projectSteps, setProjectSteps] = useState<{ id: string; agent?: string; nodeId?: string; content?: string }[]>([]);
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(defaultProjectId);
   const { characters } = useCharacterStore();
   const brief = useBriefStore((s) => (activeProjectId ? s.briefs[activeProjectId] : undefined));
   const genContext: GenerationContext | undefined = activeProjectId
@@ -34,21 +41,26 @@ export default function TasksPage() {
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // 当关联项目变化：加载该项目的章节作为"从章节生成"选项，并收集其角色立绘（3.1 资产树）
+  // 与 GenerationForm 内部匹配角色用的 effectiveSteps 同源（同一份 steps），避免两次加载口径不一致
   useEffect(() => {
     let cancelled = false;
-    if (!activeProjectId) { setChapterOptions([]); return; }
+    if (!activeProjectId) { setProjectSteps([]); return; }
     (async () => {
       try {
         const steps = await fetchProjectDetail(activeProjectId);
         if (cancelled) return;
-        const opts = steps
-          .filter((s) => s.agent === 'writer' || s.nodeId === 'writer')
-          .map((s, i) => ({ id: s.id, label: `第${i + 1}章 · ${(s.content.match(/^#\s*(.+)$/m)?.[1] || '未命名').slice(0, 16)}` }));
-        setChapterOptions(opts);
+        setProjectSteps(steps.map((s) => ({ id: s.id, agent: s.agent, nodeId: s.nodeId, content: s.content })));
       } catch { /* mock 期可能为空，忽略 */ }
     })();
     return () => { cancelled = true; };
   }, [activeProjectId]);
+
+  const chapterOptions = useMemo(
+    () => projectSteps
+      .filter((s) => s.agent === 'writer' || s.nodeId === 'writer')
+      .map((s, i) => ({ id: s.id, label: `第${i + 1}章 · ${(s.content?.match(/^#\s*(.+)$/m)?.[1] || '未命名').slice(0, 16)}` })),
+    [projectSteps],
+  );
 
   useEffect(() => {
     const fetchTasks = async () => {
@@ -102,8 +114,12 @@ export default function TasksPage() {
         {tab === 'videos' && (
           <div className="grid lg:grid-cols-[1.1fr_1fr] gap-6 items-start">
             <GenerationForm
+              key={defaultChapterId ?? ''}
               kind="video"
               defaultProjectId={activeProjectId}
+              defaultChapterId={defaultChapterId}
+              useCase={deepChapterId ? 'chapter_anim' : undefined}
+              steps={projectSteps}
               chapterOptions={chapterOptions}
               characters={activeProjectId ? characters.filter((c) => (c.projectId ?? null) === activeProjectId) : []}
               projectCharacters={activeProjectId ? characters.filter((c) => (c.projectId ?? null) === activeProjectId) : []}

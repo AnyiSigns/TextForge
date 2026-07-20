@@ -253,7 +253,6 @@ export function GenerationForm({
             <p className="text-xs text-muted-foreground/80">指定后，生成完成的图片会自动加入该角色的详情图库；并自动带入该角色已锁定的参考图（最多 5 张）保证多图一致。</p>
           </div>
         )}
-
         {(kind === 'image' && (f.useCase === 'portrait' || f.useCase === 'chapter_art')) || (kind === 'video' && (f.useCase === 'chapter_anim' || f.useCase === 'trailer' || f.useCase === 'character_card')) ? (
           <p className="text-xs text-muted-foreground/80">
             {f.useCase === 'portrait'

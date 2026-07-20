@@ -26,6 +26,8 @@ export interface Character {
   id: string;
   name: string;
   avatar?: string;
+  /** 角色别名/称呼（如「林公子」「惊羽」），章节正文用别名提及角色时也能自动匹配并带入参考图 */
+  aliases?: string[] | null;
   description: string;        // 静态人设（初始卡）
   role?: CharacterRole;       // 故事定位：主角/女主/配角/反派…
   status?: string;            // 当前状态：存活/死亡/自定义（string 支持任意）

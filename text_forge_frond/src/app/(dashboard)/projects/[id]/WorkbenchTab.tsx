@@ -10,8 +10,10 @@ import { useWorkbench } from '@/lib/hooks/useWorkbench';
 
 export function WorkbenchTab({
   wb,
+  projectId,
 }: {
   wb: ReturnType<typeof useWorkbench>;
+  projectId: string;
 }) {
   const {
     brief,
@@ -173,6 +175,7 @@ export function WorkbenchTab({
               onSkip={handleSkip}
               onRetry={handleConfirm}
               onAiAction={handleAiAction}
+              projectId={projectId}
             />
           ))}
         </div>
