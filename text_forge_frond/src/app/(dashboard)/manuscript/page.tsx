@@ -4,8 +4,8 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { PenLine, Search, FolderKanban, FileText, ArrowRight, LayoutGrid, List } from 'lucide-react';
-import { PageHeader } from '@/components/shared/PageHeader';
-import { Spinner, EmptyState } from '@/components/shared/states';
+import { PageHeader } from '@/shared/components';
+import { Spinner, EmptyState } from '@/shared/components';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';

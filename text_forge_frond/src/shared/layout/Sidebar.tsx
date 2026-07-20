@@ -25,7 +25,7 @@ import { useAuthStore } from '@/lib/stores/authStore';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-import { BackendBadge } from '@/components/layout/BackendBadge';
+import { BackendBadge } from './BackendBadge';
 
 const menuItems = [
   { icon: LayoutDashboard, label: '仪表盘', href: '/' },

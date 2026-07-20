@@ -5,7 +5,7 @@ import { StepCard } from '@/features/projects';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Users, Layers, Check, Sparkles, Info, Wand2, PenLine, Pause, Play, Send, FileText, FileCog } from 'lucide-react';
-import { EmptyState } from '@/components/shared/states';
+import { EmptyState } from '@/shared/components';
 import { useWorkbench } from '@/features/projects';
 
 export function WorkbenchTab({

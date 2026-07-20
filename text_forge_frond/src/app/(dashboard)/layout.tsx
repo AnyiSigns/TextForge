@@ -3,15 +3,15 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Sidebar } from '@/components/layout/Sidebar';
-import { BackgroundProvider } from '@/components/layout/BackgroundProvider';
-import { AppearanceProvider } from '@/components/layout/AppearanceProvider';
+import { Sidebar } from '@/shared/layout';
+import { BackgroundProvider } from '@/shared/layout';
+import { AppearanceProvider } from '@/shared/layout';
 import { Toaster, toast } from 'sonner';
-import { GlobalShortcuts } from '@/components/shared/globalShortcuts';
-import { GlobalSearch } from '@/components/shared/GlobalSearch';
-import { ConflictDialog } from '@/components/shared/ConflictDialog';
-import { Footer } from '@/components/layout/Footer';
-import { Spinner } from '@/components/shared/states';
+import { GlobalShortcuts } from '@/shared/components';
+import { GlobalSearch } from '@/shared/components';
+import { ConflictDialog } from '@/shared/components';
+import { Footer } from '@/shared/layout';
+import { Spinner } from '@/shared/components';
 import { motion } from 'framer-motion';
 import { syncManager } from '@/lib/storage/syncManager';
 import { useAuthStore } from '@/lib/stores/authStore';

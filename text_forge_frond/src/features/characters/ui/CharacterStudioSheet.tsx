@@ -12,7 +12,7 @@ import { fetchProjectDetail, saveStepEdit } from '@/features/projects';
 import { loadOutline, saveOutline, type OutlineVolume } from '@/lib/storage/backup';
 import { downloadImagesZip } from '@/lib/storage/imageExport';
 import { useProjectStore } from '@/features/projects';
-import { GenerationForm } from '@/components/shared/GenerationForm';
+import { GenerationForm } from '@/shared/components';
 import { submitImage } from '@/lib/api/generation';
 import { toast } from 'sonner';
 

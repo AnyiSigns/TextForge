@@ -61,6 +61,7 @@ export type {
 
 // ---- Stores ----
 export { useProjectStore } from './stores/projectStore';
+export { usePortfolioStore } from './stores/portfolioStore';
 export { useBriefStore, briefToContextLine, briefSectionsToContext } from './stores/briefStore';
 
 // ---- 类型 ----

@@ -11,8 +11,8 @@ import { Plus, Search, FolderKanban, Pin, PinOff, LayoutGrid, List, Trash2, File
 import type { LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { Project } from '@/types';
-import { PageHeader } from '@/components/shared/PageHeader';
-import { Spinner, EmptyState } from '@/components/shared/states';
+import { PageHeader } from '@/shared/components';
+import { Spinner, EmptyState } from '@/shared/components';
 import { useProjectStore } from '@/features/projects';
 import { generateSeed } from '@/lib/seed/generate';
 

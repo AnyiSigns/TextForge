@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowLeft, Plus, BookPlus, LayoutTemplate } from 'lucide-react';
 import { toast } from 'sonner';
-import { PageHeader } from '@/components/shared/PageHeader';
+import { PageHeader } from '@/shared/components';
 import { cn } from '@/lib/utils';
 import { useProjectStore } from '@/features/projects';
 

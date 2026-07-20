@@ -5,11 +5,11 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Workflow as WorkflowIcon, Trash2, Pencil, Users, Play } from 'lucide-react';
 import { listWorkflowsWithBuiltin, deleteWorkflow, countWorkflowUsages, runWorkflow, type Workflow, type WorkflowRunStep } from '@/features/workflow';
-import { PageHeader } from '@/components/shared/PageHeader';
+import { PageHeader } from '@/shared/components';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { EmptyState } from '@/components/shared/states';
+import { EmptyState } from '@/shared/components';
 import { Input } from '@/components/ui/input';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,

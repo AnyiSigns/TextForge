@@ -9,12 +9,12 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, Search, Drama, ArrowDownAz, Clock, LayoutGrid, List, MessageCircle, Trash2, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
-import { PageHeader } from '@/components/shared/PageHeader';
-import { Spinner, EmptyState } from '@/components/shared/states';
+import { PageHeader } from '@/shared/components';
+import { Spinner, EmptyState } from '@/shared/components';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useProjectStore } from '@/features/projects';
 import { useCharacterStore } from '@/features/characters';
-import { NO_PROJECT } from '@/components/shared/ProjectPicker';
+import { NO_PROJECT } from '@/shared/components';
 import type { Character } from '@/types';
 
 type SortKey = 'recent' | 'name';

@@ -6,7 +6,7 @@ import dynamic from 'next/dynamic';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Loader2 } from 'lucide-react';
-import { Spinner } from '@/components/shared/states';
+import { Spinner } from '@/shared/components';
 import { Button } from '@/components/ui/button';
 import { useProjectStore } from '@/features/projects';
 import { useManuscriptStore } from '@/features/manuscript';

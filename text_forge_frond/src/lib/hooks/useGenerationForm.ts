@@ -4,7 +4,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useModelStore } from '@/features/settings';
-import { NO_PROJECT } from '@/components/shared/ProjectPicker';
+import { NO_PROJECT } from '@/shared/components';
 import type { GenerationContext } from '@/types';
 
 const IMAGE_STYLES = ['写实', '水彩', '水墨', '二次元', '像素', '油画', '3D 渲染'];

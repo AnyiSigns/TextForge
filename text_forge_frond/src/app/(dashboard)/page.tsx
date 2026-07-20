@@ -12,7 +12,7 @@ import apiClient from '@/lib/api/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { BookOpen, Clock, LayoutDashboard, Target, Users, BarChart3 } from 'lucide-react';
 import { toast } from 'sonner';
-import { PageHeader } from '@/components/shared/PageHeader';
+import { PageHeader } from '@/shared/components';
 import { Button } from '@/components/ui/button';
 
 export default function DashboardPage() {

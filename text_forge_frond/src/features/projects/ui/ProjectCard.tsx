@@ -10,7 +10,7 @@ import type { LucideIcon } from 'lucide-react';
 import { Project } from '@/types';
 import { useCharacterStore } from '@/features/characters';
 import { useBriefStore } from '@/features/projects';
-import { usePortfolioStore } from '@/lib/stores/portfolioStore';
+import { usePortfolioStore } from '@/features/projects';
 import { useProjectStore } from '@/features/projects';
 import { useShallow } from 'zustand/react/shallow';
 import { toast } from 'sonner';

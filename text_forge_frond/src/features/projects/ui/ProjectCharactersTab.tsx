@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { EmptyState, Spinner } from '@/components/shared/states';
+import { EmptyState, Spinner } from '@/shared/components';
 import { CHARACTER_ROLE_LABELS, characterRoleLabel } from '@/shared/lib/agentRoles';
 import { Plus, Search, Users, UserPlus, Sparkles, List, LayoutGrid } from 'lucide-react';
 import { Character, CharacterRole } from '@/types';

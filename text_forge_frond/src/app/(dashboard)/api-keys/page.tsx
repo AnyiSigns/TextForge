@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Copy, Trash2, Plus, KeyRound, Smartphone } from 'lucide-react';
 import { toast } from 'sonner';
-import { PageHeader } from '@/components/shared/PageHeader';
+import { PageHeader } from '@/shared/components';
 import { API_URL } from '@/lib/config/env';
 
 interface ApiKey {

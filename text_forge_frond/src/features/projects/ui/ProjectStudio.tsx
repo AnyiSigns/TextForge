@@ -9,7 +9,7 @@ import {
 import { useModelStore } from '@/features/settings';
 import { useBriefStore, briefToContextLine } from '@/features/projects';
 import { useCharacterStore } from '@/features/characters';
-import { usePortfolioStore } from '@/lib/stores/portfolioStore';
+import { usePortfolioStore } from '@/features/projects';
 import { useShallow } from 'zustand/react/shallow';
 import { toast } from 'sonner';
 import { Image as ImageIcon, Clapperboard, ChevronDown } from 'lucide-react';

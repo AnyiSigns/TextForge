@@ -4,7 +4,7 @@
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { EmptyState } from '@/components/shared/states';
+import { EmptyState } from '@/shared/components';
 import { Sparkles, User, BookOpen, Link as LinkIcon, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { isSafeMediaUrl } from '@/lib/utils/url';

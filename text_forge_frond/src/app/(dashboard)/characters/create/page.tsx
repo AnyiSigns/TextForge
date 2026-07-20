@@ -13,8 +13,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ArrowLeft, UserPlus, Upload } from 'lucide-react';
 import { toast } from 'sonner';
-import { PageHeader } from '@/components/shared/PageHeader';
-import { ProjectPicker } from '@/components/shared/ProjectPicker';
+import { PageHeader } from '@/shared/components';
+import { ProjectPicker } from '@/shared/components';
 
 function readPresetProjectId(): string | null {
   if (typeof window === 'undefined') return null;

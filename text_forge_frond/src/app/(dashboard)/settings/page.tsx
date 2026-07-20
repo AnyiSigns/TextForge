@@ -6,7 +6,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useAuthStore } from '@/lib/stores/authStore';
 import { useSettingsStore } from '@/features/settings';
 import { ProcessNav } from '@/features/projects';
-import { PageHeader } from '@/components/shared/PageHeader';
+import { PageHeader } from '@/shared/components';
 import { ModelsSettings } from '@/features/settings';
 import { SlidersHorizontal, User, Palette, Sparkles, Boxes } from 'lucide-react';
 import { EMBED_TIERS, isTierDownloaded, downloadEmbedModel } from '@/lib/rag/embed';
