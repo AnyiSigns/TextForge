@@ -1,4 +1,4 @@
-﻿// src/components/manuscript/ManuscriptEditor.tsx
+// src/components/manuscript/ManuscriptEditor.tsx
 'use client';
 
 import { cn } from '@/lib/utils';
@@ -12,7 +12,7 @@ import { toast } from 'sonner';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose,
 } from '@/components/ui/dialog';
-import { useManuscriptEditor } from '@/lib/hooks/useManuscriptEditor';
+import { useManuscriptEditor } from '@/features/manuscript';
 
 export function ManuscriptEditor({ projectId }: { projectId: string }) {
   const {

@@ -2,7 +2,7 @@
 // 项目工作台「开局/手稿」动作：一句话开局、手写第一章、发送到手稿。纯逻辑，依赖注入。
 import { toast } from 'sonner';
 import { generateSeed } from '@/lib/seed/generate';
-import { useManuscriptStore } from '@/lib/stores/manuscriptStore';
+import { useManuscriptStore } from '@/features/manuscript';
 import type { Step } from '@/types';
 import type { Workflow } from '@/features/workflow';
 

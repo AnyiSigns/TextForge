@@ -9,7 +9,7 @@ import type { Project, Step, Character, ProjectBrief, ManuscriptChapter } from '
 import { useProjectStore } from '@/features/projects';
 import { useCharacterStore } from '@/features/characters';
 import { useBriefStore } from '@/features/projects';
-import { useManuscriptStore } from '@/lib/stores/manuscriptStore';
+import { useManuscriptStore } from '@/features/manuscript';
 
 export interface SingleProjectBundle {
   project: Project;

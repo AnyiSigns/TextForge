@@ -9,12 +9,12 @@ import { ArrowLeft, Loader2 } from 'lucide-react';
 import { Spinner } from '@/components/shared/states';
 import { Button } from '@/components/ui/button';
 import { useProjectStore } from '@/features/projects';
-import { useManuscriptStore } from '@/lib/stores/manuscriptStore';
+import { useManuscriptStore } from '@/features/manuscript';
 
 // 编辑器单独成 chunk：其依赖较重（联想/导入/导出），懒加载可缩小首屏 chunk。
 // 关键是带 loading fallback——避免因 dev/turbopack 偶发 chunk 失效导致 textarea 直接空白。
 const ManuscriptEditor = dynamic(
-  () => import('@/components/manuscript/ManuscriptEditor').then((m) => m.ManuscriptEditor),
+  () => import('@/features/manuscript').then((m) => m.ManuscriptEditor),
   {
     loading: () => (
       <div className="flex flex-col items-center justify-center gap-3 h-[60vh] rounded-2xl border border-border/40 bg-background/40 text-muted-foreground">

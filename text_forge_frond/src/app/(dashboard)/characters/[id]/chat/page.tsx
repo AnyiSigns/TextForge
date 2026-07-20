@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { fetchCharacterDetail, fetchCharacterMessages, sendChatMessage } from '@/features/characters';
 import { useBriefStore, briefToContextLine } from '@/features/projects';
-import { useManuscriptStore } from '@/lib/stores/manuscriptStore';
+import { useManuscriptStore } from '@/features/manuscript';
 import { loadInspiration, saveInspiration, type InspirationItem } from '@/lib/storage/backup';
 import { toast } from 'sonner';
 import type { Character, Message } from '@/types';

@@ -11,7 +11,7 @@ import { onInsertStep } from '@/lib/events/projectEvents';
 import { useProjectStore } from '@/features/projects';
 import { useBriefStore } from '@/features/projects';
 import { useCharacterStore } from '@/features/characters';
-import { useManuscriptStore } from '@/lib/stores/manuscriptStore';
+import { useManuscriptStore } from '@/features/manuscript';
 import { listWorkflowsWithBuiltin, type Workflow } from '@/features/workflow';
 import { API_URL } from '@/lib/config/env';
 import { loadOutline, type OutlineVolume } from '@/lib/storage/backup';

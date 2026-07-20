@@ -4,7 +4,7 @@
 // 行为与抽离前保持一致，未做功能改动。
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { toast } from 'sonner';
-import { useManuscriptStore } from '@/lib/stores/manuscriptStore';
+import { useManuscriptStore } from '../stores/manuscriptStore';
 import { useProjectCharacters } from '@/features/projects';
 import { useBriefStore } from '@/features/projects';
 import { useSettingsStore } from '@/lib/stores/settingsStore';

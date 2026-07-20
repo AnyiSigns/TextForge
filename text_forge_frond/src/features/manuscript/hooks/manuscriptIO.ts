@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { importManuscriptToProject, importBookToProject } from '@/features/projects';
 import { exportManuscriptBook } from '@/lib/storage/backup';
 import { parseBookText } from '@/lib/utils/bookImport';
-import { useManuscriptStore } from '@/lib/stores/manuscriptStore';
+import { useManuscriptStore } from '../stores/manuscriptStore';
 import { useProjectStore } from '@/features/projects';
 import type { ManuscriptChapter } from '@/types';
 
