@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { generateSeed } from '@/lib/seed/generate';
 import { useManuscriptStore } from '@/lib/stores/manuscriptStore';
 import type { Step } from '@/types';
-import type { Workflow } from '@/lib/api/workflow';
+import type { Workflow } from '@/features/workflow';
 
 export interface SeedActionDeps {
   projectId: string;

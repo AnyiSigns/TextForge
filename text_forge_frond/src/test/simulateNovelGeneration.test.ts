@@ -4,9 +4,9 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { runWorkflow, type WorkflowNode } from '@/lib/api/workflow';
+import { runWorkflow, type WorkflowNode } from '@/features/workflow';
 import { type RagChunk } from '@/types';
-import { AGENT_ROLE_MAP } from '@/lib/workflow/agentRoles';
+import { AGENT_ROLE_MAP } from '@/shared/lib/agentRoles';
 
 // jsdom 不实现 indexedDB；内置流水线本不依赖它，但为兼容兜底分支，
 // 注入一个极简内存 stub，保证测试环境可跑通。

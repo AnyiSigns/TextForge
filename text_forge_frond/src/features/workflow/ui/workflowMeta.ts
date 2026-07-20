@@ -1,6 +1,6 @@
 // src/components/workflow/workflowMeta.ts
 import { LogIn, LogOut, Bot, Wrench } from 'lucide-react';
-import type { WorkflowNodeKind } from '@/lib/api/workflow';
+import type { WorkflowNodeKind } from '@/features/workflow';
 
 export const KIND_META: Record<WorkflowNodeKind, { label: string; icon: typeof Bot; color: string }> = {
   input: { label: '输入', icon: LogIn, color: '#0891b2' },

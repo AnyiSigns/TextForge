@@ -6,8 +6,8 @@ import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Step } from '@/types';
-import type { Workflow } from '@/lib/api/workflow';
-import { BUILTIN_AGENT_LABELS } from '@/lib/workflow/agentRoles';
+import type { Workflow } from '@/features/workflow';
+import { BUILTIN_AGENT_LABELS } from '@/shared/lib/agentRoles';
 
 // 内置 7-Agent 流水线映射（与 BUILTIN_NOVEL_PIPELINE 节点对齐），作为缺省展示。
 // label 复用 lib 层 BUILTIN_AGENT_LABELS，避免与 lib/chapter.ts 重复定义。

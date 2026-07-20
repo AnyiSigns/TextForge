@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { generateWithWorkflow } from '@/features/projects';
 import { useProjectStore } from '@/features/projects';
 import type { Step, GenerationContext } from '@/types';
-import type { Workflow } from '@/lib/api/workflow';
+import type { Workflow } from '@/features/workflow';
 
 export interface GenerationDeps {
   projectId: string;

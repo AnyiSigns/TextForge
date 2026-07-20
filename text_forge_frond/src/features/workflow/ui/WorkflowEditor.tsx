@@ -2,10 +2,10 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import type { Workflow, WorkflowNode, WorkflowNodeKind } from '@/lib/api/workflow';
-import { runWorkflow, saveWorkflow, workflowToSteps } from '@/lib/api/workflow';
+import type { Workflow, WorkflowNode, WorkflowNodeKind } from '@/features/workflow';
+import { runWorkflow, saveWorkflow, workflowToSteps } from '@/features/workflow';
 import { loadOutline, type OutlineVolume } from '@/lib/storage/backup';
-import { DEFAULT_TEAM_TEMPLATE, agentRoleById } from '@/lib/workflow/agentRoles';
+import { DEFAULT_TEAM_TEMPLATE, agentRoleById } from '@/shared/lib/agentRoles';
 import { useProjectStore } from '@/features/projects';
 import { toast } from 'sonner';
 import { WorkflowNodePanel } from './WorkflowNodePanel';

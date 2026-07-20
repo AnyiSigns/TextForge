@@ -11,9 +11,9 @@ import { cn } from '@/lib/utils';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import type { Workflow } from '@/lib/api/workflow';
+import type { Workflow } from '@/features/workflow';
 import { KIND_META } from './workflowMeta';
-import { AGENT_ROLES } from '@/lib/workflow/agentRoles';
+import { AGENT_ROLES } from '@/shared/lib/agentRoles';
 
 interface WorkflowCanvasProps {
   wf: Workflow;

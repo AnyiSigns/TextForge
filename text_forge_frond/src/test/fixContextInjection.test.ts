@@ -4,7 +4,7 @@
 //  2) generate 第 6 参数 projectContext 被透传（对 LangGraph 后端友好）；
 //  3) 下游 writer 经 fan-in 继承全部上游产出。
 import { describe, it, expect, beforeAll } from 'vitest';
-import { runWorkflow, type WorkflowNode } from '@/lib/api/workflow';
+import { runWorkflow, type WorkflowNode } from '@/features/workflow';
 import type { GenerationContext } from '@/types';
 
 beforeAll(() => {

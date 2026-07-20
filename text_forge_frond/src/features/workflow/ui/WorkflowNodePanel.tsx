@@ -3,8 +3,8 @@
 
 import { Button } from '@/components/ui/button';
 import { Plus, Bot } from 'lucide-react';
-import { AGENT_ROLES } from '@/lib/workflow/agentRoles';
-import type { WorkflowNodeKind } from '@/lib/api/workflow';
+import { AGENT_ROLES } from '@/shared/lib/agentRoles';
+import type { WorkflowNodeKind } from '@/features/workflow';
 
 const KIND_META: Record<WorkflowNodeKind, { label: string }> = {
   input: { label: '输入' },

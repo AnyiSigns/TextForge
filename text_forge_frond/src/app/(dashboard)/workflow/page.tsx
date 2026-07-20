@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Workflow as WorkflowIcon, Trash2, Pencil, Users, Play } from 'lucide-react';
-import { listWorkflowsWithBuiltin, deleteWorkflow, countWorkflowUsages, runWorkflow, type Workflow, type WorkflowRunStep } from '@/lib/api/workflow';
+import { listWorkflowsWithBuiltin, deleteWorkflow, countWorkflowUsages, runWorkflow, type Workflow, type WorkflowRunStep } from '@/features/workflow';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';

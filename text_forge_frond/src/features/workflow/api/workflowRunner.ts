@@ -158,7 +158,7 @@ export async function runWorkflow(
     }
     if (tools.includes('web')) toolNote += '\n[web检索由后端 agent 自主调用]';
 
-    const { agentRoleById } = await import('@/lib/workflow/agentRoles');
+    const { agentRoleById } = await import('@/shared/lib/agentRoles');
     const role = (node.roleId && agentRoleById(node.roleId)) || agentRoleById(node.label) || undefined;
     const tier = node.tier ?? role?.tier ?? 'standard';
 

@@ -3,7 +3,7 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { saveWorkflow, type Workflow } from '@/lib/api/workflow';
+import { saveWorkflow, type Workflow } from '@/features/workflow';
 import { Spinner } from '@/components/shared/states';
 
 export default function NewWorkflow() {

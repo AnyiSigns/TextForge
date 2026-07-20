@@ -7,9 +7,9 @@ import { Label } from '@/components/ui/label';
 import { Cpu } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { KIND_META } from './workflowMeta';
-import { RAG_SCOPE_LABEL } from '@/lib/workflow/agentRoles';
+import { RAG_SCOPE_LABEL } from '@/shared/lib/agentRoles';
 import { RagConfigPopover } from './RagConfigPopover';
-import type { Workflow, WorkflowNode } from '@/lib/api/workflow';
+import type { Workflow, WorkflowNode } from '@/features/workflow';
 
 interface WorkflowInspectorProps {
   wf: Workflow;

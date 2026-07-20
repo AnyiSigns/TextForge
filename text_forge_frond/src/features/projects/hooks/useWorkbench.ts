@@ -12,7 +12,7 @@ import { useProjectStore } from '@/features/projects';
 import { useBriefStore } from '@/features/projects';
 import { useCharacterStore } from '@/features/characters';
 import { useManuscriptStore } from '@/lib/stores/manuscriptStore';
-import { listWorkflowsWithBuiltin, type Workflow } from '@/lib/api/workflow';
+import { listWorkflowsWithBuiltin, type Workflow } from '@/features/workflow';
 import { API_URL } from '@/lib/config/env';
 import { loadOutline, type OutlineVolume } from '@/lib/storage/backup';
 import { makeBuildContext, makeSummarizePlot, makeDepositCharacterProfiles } from './workbenchContext';

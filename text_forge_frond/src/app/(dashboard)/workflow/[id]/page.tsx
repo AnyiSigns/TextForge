@@ -3,8 +3,8 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { getWorkflow, type Workflow } from '@/lib/api/workflow';
-import { WorkflowEditor } from '@/components/workflow/WorkflowEditor';
+import { getWorkflow, type Workflow } from '@/features/workflow';
+import { WorkflowEditor } from '@/features/workflow';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Spinner } from '@/components/shared/states';
 import { Workflow as WorkflowIcon } from 'lucide-react';

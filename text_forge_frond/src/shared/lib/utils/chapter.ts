@@ -1,7 +1,7 @@
 // src/lib/utils/chapter.ts
 // 从章节内容里提取章节标题（如「第一章：星海初现」），提取不到则回退 agent 标签。
 // 同时生成「第 N 章：标题」的展示标签，过长截断为 …
-import { builtinAgentLabel } from '@/lib/workflow/agentRoles';
+import { builtinAgentLabel } from '@/shared/lib/agentRoles';
 
 function extractChapterTitle(content?: string): string | null {
   if (!content) return null;
