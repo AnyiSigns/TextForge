@@ -13,6 +13,7 @@ export interface WorkflowNode {
   dependsOn?: string[];      // 依赖的节点 id（等价 edges）
   tier?: 'cheap' | 'standard'; // 模型档位（显式，避免后端按中文 label 反解角色）
   roleId?: string;             // 关联角色预设 id（agentRoles），优先于 label 反查角色
+  auxiliaryModelIds?: string[]; // C12: 节点关联的辅助模型 id（设置页为 llm 主模型配的 auxiliary 角色模型）
   // RAG 检索配置（仅 rag:personal / rag:both 节点生效）
   ragFilter?: RagFilter;     // 限定范围：文档/作者；sample 覆盖自动 query
   ragTopK?: number;          // 返回片段数（默认 4）
@@ -67,6 +68,9 @@ export interface RunWorkflowOptions {
     projectContext?: import('@/types').GenerationContext,
     /** C4/C10/C11: 该节点实际采用的语言模型 id（按 tier 解析用户 category:llm 默认模型），后端凭 id 取配置 */
     modelId?: string,
+    /** C12: 该节点关联的用户辅助模型 id 列表（设置页为 llm 主模型配的 auxiliary 角色模型），
+     *  后端用于 planner/critic/summarizer 等子角色调用，前端不塞密钥，仅传 id */
+    auxiliaryModelIds?: string[],
   ) => Promise<string> | string;
   /** 是否在 agent 节点间演示流式延迟（mock 观感） */
   simulateDelay?: boolean;

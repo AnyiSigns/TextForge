@@ -88,10 +88,12 @@ export function useWorkbench(projectId: string) {
       try {
         const loadedSteps = await fetchProjectDetail(projectId);
         setSteps(loadedSteps);
+        // A6: 草稿恢复越界判定修正——本地空草稿绝覆盖服务端真实草稿；
+        // 仅当本地草稿非空、且逐内容比较确有差异时才恢复本地草稿。
         const draft = await useProjectStore.getState().getDraft(projectId);
-        const draftChanged = !!draft && (
+        const draftChanged = !!draft && draft.length > 0 && (
           draft.length !== loadedSteps.length ||
-          draft.slice(0, loadedSteps.length).some((d, i) => d.content !== loadedSteps[i]?.content)
+          draft.slice(0, loadedSteps.length).some((d, i) => d.content !== (loadedSteps[i]?.content ?? ''))
         );
         if (draftChanged) {
           setSteps(draft);

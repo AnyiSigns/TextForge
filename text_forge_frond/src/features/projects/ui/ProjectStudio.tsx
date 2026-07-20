@@ -57,8 +57,9 @@ export function ProjectStudio({ projectId, steps, mode, selectedCharIds, project
     };
   }, [steps, characters, selectedCharIds]);
 
+  // A3: 全量正文折叠为 outline 时截断上限，避免长文爆 token（章节源已在 buildContext 内单独 slice(3000)）
   const outline = useMemo(
-    () => steps.map((s) => s.content).filter(Boolean).join('\n\n'),
+    () => steps.map((s) => s.content).filter(Boolean).join('\n\n').slice(0, 6000),
     [steps],
   );
 

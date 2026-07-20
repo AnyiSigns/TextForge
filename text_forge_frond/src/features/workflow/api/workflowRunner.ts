@@ -166,6 +166,8 @@ export async function runWorkflow(
     // 后端 LangGraph 凭 model_id 查 adapter/baseUrl/apiKey/category，前端不塞密钥。
     // 节点显式绑定 modelId 时优先使用；否则按 tier 解析。
     let modelId: string | undefined;
+    // C12: 解析节点关联的辅助模型 id（设置页为 llm 主模型配的 auxiliary 角色模型）
+    let auxiliaryModelIds: string[] | undefined;
     try {
       const { useModelStore } = await import('@/features/settings');
       const llmDefault = useModelStore.getState().getDefaultModel('llm');
@@ -173,6 +175,13 @@ export async function runWorkflow(
         ? useModelStore.getState().models.find((m) => m.id === node.modelId)
         : useModelStore.getState().resolveModelByTier('llm', tier);
       modelId = resolved?.id ?? llmDefault?.id;
+      // 节点显式声明的辅助模型 + 当前 llm 主模型上配置的 auxiliary 角色模型，合并去重
+      const auxFromModel = (resolved?.auxiliary ?? llmDefault?.auxiliary ?? [])
+        .map((a) => a.modelRef)
+        .filter((id): id is string => !!id && useModelStore.getState().models.some((m) => m.id === id));
+      const auxFromNode = (node.auxiliaryModelIds ?? []).filter((id) => useModelStore.getState().models.some((m) => m.id === id));
+      const merged = Array.from(new Set([...auxFromNode, ...auxFromModel]));
+      auxiliaryModelIds = merged.length ? merged : undefined;
     } catch { /* 模型库未就绪时留空，后端按自身默认兜底 */ }
 
     const systemPrompt = node.systemPrompt?.trim()
@@ -181,7 +190,7 @@ export async function runWorkflow(
 
     const context = ctx + toolNote;
     const out = opts?.generate
-      ? await opts.generate(node, context, tier, ragChunks, systemPrompt, projectContext, modelId)
+      ? await opts.generate(node, context, tier, ragChunks, systemPrompt, projectContext, modelId, auxiliaryModelIds)
       : `[${node.label}][${tier === 'cheap' ? '本地/便宜模型' : '默认模型'}${modelId ? ` · ${modelId}` : ''}]\n${context.slice(0, 120)}…（生成结果占位）`;
 
     steps.push({ nodeId: nid, label: node.label, output: out, status: 'done', systemPrompt });

@@ -1,7 +1,12 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-import { fetchCharacters, createCharacter as apiCreateCharacter, deleteCharacter as apiDeleteCharacter, updateCharacter as apiUpdateCharacter } from '../api/characters';
+import {
+  fetchCharacters,
+  createCharacter as apiCreateCharacter,
+  deleteCharacter as apiDeleteCharacter,
+  updateCharacter as apiUpdateCharacter,
+} from '../api/characters';
 import { uid } from '@/lib/utils/id';
 import { createIdbStorage } from '@/lib/storage/zustandIdb';
 import type { Character, Message } from '@/types';
@@ -26,8 +31,34 @@ interface CharacterStore {
   updateLastMessage: (content: string) => void;
 
   syncFromBackend: () => Promise<void>;
-  addCharacter: (input: { name: string; description: string; projectId?: string | null; avatar?: string }) => Promise<Character>;
-  updateCharacter: (id: string, patch: Partial<Pick<Character, 'name' | 'description' | 'avatar' | 'images' | 'role' | 'status' | 'currentProfile' | 'customRole' | 'relationships' | 'aliases'>> & { referenceImage?: string | null; referenceImages?: string[] | null; imageSeed?: number | null }) => Promise<Character>;
+  addCharacter: (input: {
+    name: string;
+    description: string;
+    projectId?: string | null;
+    avatar?: string;
+  }) => Promise<Character>;
+  updateCharacter: (
+    id: string,
+    patch: Partial<
+      Pick<
+        Character,
+        | 'name'
+        | 'description'
+        | 'avatar'
+        | 'images'
+        | 'role'
+        | 'status'
+        | 'currentProfile'
+        | 'customRole'
+        | 'relationships'
+        | 'aliases'
+      >
+    > & {
+      referenceImage?: string | null;
+      referenceImages?: string[] | null;
+      imageSeed?: number | null;
+    },
+  ) => Promise<Character>;
   addCharacterImage: (id: string, imageUrl: string) => Promise<Character>;
   removeCharacter: (id: string) => Promise<void>;
 
@@ -35,7 +66,10 @@ interface CharacterStore {
   setVersionMeta: (meta: { lastSyncAt: string; version?: number }) => void;
 }
 
-let versionMeta: { lastSyncAt: string; version?: number } = { lastSyncAt: new Date(0).toISOString(), version: 0 };
+let versionMeta: { lastSyncAt: string; version?: number } = {
+  lastSyncAt: new Date(0).toISOString(),
+  version: 0,
+};
 
 export const useCharacterStore = create<CharacterStore>()(
   persist(
@@ -53,21 +87,26 @@ export const useCharacterStore = create<CharacterStore>()(
       setMessages: (msgs) => set({ messages: msgs }),
       clearMessages: () => set({ messages: [] }),
       setIsLoading: (loading) => set({ isLoading: loading }),
-      updateLastMessage: (content) => set((state) => {
-        const msgs = [...state.messages];
-        const last = msgs[msgs.length - 1];
-        if (last?.role === 'assistant') msgs[msgs.length - 1] = { ...last, content };
-        return { messages: msgs };
-      }),
+      updateLastMessage: (content) =>
+        set((state) => {
+          const msgs = [...state.messages];
+          const last = msgs[msgs.length - 1];
+          if (last?.role === 'assistant') msgs[msgs.length - 1] = { ...last, content };
+          return { messages: msgs };
+        }),
 
       getVersionMeta: () => versionMeta,
-      setVersionMeta: (meta) => { versionMeta = meta; },
+      setVersionMeta: (meta) => {
+        versionMeta = meta;
+      },
 
       syncFromBackend: async () => {
         try {
           const chars = await fetchCharacters();
           if (Array.isArray(chars) && chars.length) set({ characters: chars });
-        } catch { /* 后端未就绪，保留本地 */ }
+        } catch {
+          /* 后端未就绪，保留本地 */
+        }
       },
 
       addCharacter: async (input) => {
@@ -83,7 +122,11 @@ export const useCharacterStore = create<CharacterStore>()(
         set((s) => ({ characters: [optimistic, ...s.characters] }));
         try {
           const created = await apiCreateCharacter(input);
-          set((s) => ({ characters: s.characters.map((c) => (c.id === optimistic.id ? { ...created, id: created.id || optimistic.id } : c)) }));
+          set((s) => ({
+            characters: s.characters.map((c) =>
+              c.id === optimistic.id ? { ...created, id: created.id || optimistic.id } : c,
+            ),
+          }));
           return created ?? optimistic;
         } catch (e) {
           set((s) => ({ characters: s.characters.filter((c) => c.id !== optimistic.id) }));
@@ -104,12 +147,26 @@ export const useCharacterStore = create<CharacterStore>()(
 
       updateCharacter: async (id, patch) => {
         const prev = get().characters;
-        const normalize = (c: Character & { referenceImage?: string | null; referenceImages?: string[] | null; imageSeed?: number | null }): Character => ({
-          ...c,
-          referenceImage: c.referenceImage ?? undefined,
-          referenceImages: c.referenceImages ?? undefined,
-          imageSeed: c.imageSeed ?? undefined,
-        });
+        // B2: 旧字段 referenceImage（单张）向 referenceImages（数组）归一，消除双源口径；
+        // 合并去重、最多 5 张，下游统一只读 referenceImages。
+        const normalize = (
+          c: Character & {
+            referenceImage?: string | null;
+            referenceImages?: string[] | null;
+            imageSeed?: number | null;
+          },
+        ): Character => {
+          const legacy = c.referenceImage ? [c.referenceImage] : [];
+          const refs = Array.from(
+            new Set([...(c.referenceImages ?? []).filter(Boolean), ...legacy]),
+          ).slice(0, 5);
+          return {
+            ...c,
+            referenceImage: c.referenceImage ?? undefined,
+            referenceImages: refs.length ? refs : undefined,
+            imageSeed: c.imageSeed ?? undefined,
+          };
+        };
         set((s) => ({
           characters: s.characters.map((c) =>
             c.id === id ? normalize({ ...c, ...patch, origin: 'user' }) : c,
@@ -117,9 +174,12 @@ export const useCharacterStore = create<CharacterStore>()(
         }));
         try {
           const updated = await apiUpdateCharacter(id, patch);
-          if (updated) set((s) => ({
-            characters: s.characters.map((c) => (c.id === id ? normalize({ ...c, ...updated }) : c)),
-          }));
+          if (updated)
+            set((s) => ({
+              characters: s.characters.map((c) =>
+                c.id === id ? normalize({ ...c, ...updated }) : c,
+              ),
+            }));
           return updated;
         } catch (e) {
           set({ characters: prev });
@@ -140,15 +200,23 @@ export const useCharacterStore = create<CharacterStore>()(
             const nextRefs = existingRefs.includes(imageUrl)
               ? existingRefs
               : [...existingRefs, imageUrl].slice(0, 5);
-            return { ...c, images: nextImages, referenceImages: nextRefs.length ? nextRefs : c.referenceImages };
+            return {
+              ...c,
+              images: nextImages,
+              referenceImages: nextRefs.length ? nextRefs : c.referenceImages,
+            };
           }),
         }));
         try {
           const target = get().characters.find((c) => c.id === id);
-          const updated = await apiUpdateCharacter(id, { images: target?.images ?? [imageUrl], referenceImages: target?.referenceImages ?? null });
-          if (updated) set((s) => ({
-            characters: s.characters.map((c) => (c.id === id ? { ...c, ...updated } : c)),
-          }));
+          const updated = await apiUpdateCharacter(id, {
+            images: target?.images ?? [imageUrl],
+            referenceImages: target?.referenceImages ?? null,
+          });
+          if (updated)
+            set((s) => ({
+              characters: s.characters.map((c) => (c.id === id ? { ...c, ...updated } : c)),
+            }));
           return updated ?? (get().characters.find((c) => c.id === id) as Character);
         } catch (e) {
           set({ characters: prev });
