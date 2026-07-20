@@ -10,65 +10,85 @@ jobs:
   lint:
     name: Lint (ESLint + Prettier 校验)
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: text-forge-frond
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
+          cache-dependency-path: text-forge-frond/package-lock.json
       - run: npm ci
       - run: npm run lint
 
   typecheck:
     name: Typecheck
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: text-forge-frond
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
+          cache-dependency-path: text-forge-frond/package-lock.json
       - run: npm ci
       - run: npm run typecheck
 
   test:
     name: Unit Tests + Coverage
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: text-forge-frond
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
+          cache-dependency-path: text-forge-frond/package-lock.json
       - run: npm ci
       - run: npm run test -- --coverage
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: coverage
-          path: coverage/
+          path: text-forge-frond/coverage/
 
   typegen-check:
     name: Contract Drift Check (OpenAPI -> types)
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: text-forge-frond
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
+          cache-dependency-path: text-forge-frond/package-lock.json
       - run: npm ci
       - run: npm run typegen:check
 
   e2e:
     name: E2E Tests (Playwright)
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: text-forge-frond
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
+          cache-dependency-path: text-forge-frond/package-lock.json
       - run: npm ci
       - run: npx playwright install --with-deps msedge
       - run: npm run test:e2e
@@ -76,16 +96,20 @@ jobs:
         if: always()
         with:
           name: playwright-report
-          path: playwright-report/
+          path: text-forge-frond/playwright-report/
 
   build:
     name: Build
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: text-forge-frond
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
+          cache-dependency-path: text-forge-frond/package-lock.json
       - run: npm ci
       - run: npm run build
