@@ -356,6 +356,11 @@ Content-Type: application/json
 
 - 登录失败返回 `401 { "message": "邮箱或密码错误" }`。
 
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "邮箱或密码错误" }` |
+| `400` | `{ "message": "请求参数错误" }` |
+
 ### 4.2 POST `/api/auth/register` —— 注册（必做）
 
 ```http
@@ -375,6 +380,11 @@ Content-Type: application/json
 ```
 
 - 邮箱已存在返回 `400 { "message": "邮箱已被注册" }`。
+
+| 错误码 | 响应体 |
+|---|---|
+| `400` | `{ "message": "邮箱已被注册" }` |
+| `422` | `{ "message": "参数校验失败", "details": "..." }` |
 
 ### 4.3 POST `/api/auth/refresh` —— 刷新 token（强依赖，必做）
 
@@ -399,6 +409,10 @@ Content-Type: application/json
 
 - `user` 可选，有就更新前端用户态，没有只更新 token。
 
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "refresh token 无效或过期" }` |
+
 ### 4.4 POST `/api/auth/verify-email` —— 邮箱验证（必做）
 
 ```http
@@ -410,6 +424,10 @@ Content-Type: application/json
 
 **响应 200：** `{ "message": "ok" }`
 
+| 错误码 | 响应体 |
+|---|---|
+| `400` | `{ "message": "验证码无效或已过期" }` |
+
 > 补充：e2e 测试还出现了 `/api/auth/send-verify-code`（发验证码）和 `/api/auth/resend-verify`（重发），如后端有验证码流程请一并实现，前端目前走 mock。
 
 ### 4.5 POST `/api/auth/logout` —— 退出（必做，带 `.catch` 兜底）
@@ -419,6 +437,10 @@ POST /api/auth/logout
 ```
 
 **响应 200：** `{}`（或不返回 body）。前端本地会清掉登录态，后端清 cookie 即可。
+
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
 
 ### 4.6 PUT `/api/user/profile` —— 保存个人资料（必做）
 
@@ -444,6 +466,11 @@ Content-Type: application/json
 }
 ```
 
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `400` | `{ "message": "参数错误" }` |
+
 ### 4.7 POST `/api/user/change-password` —— 修改密码（设置页，必做）
 
 ```http
@@ -455,6 +482,11 @@ Content-Type: application/json
 ```
 
 **响应 200：** `{}`
+
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `400` | `{ "message": "旧密码错误" }` |
 
 ### 4.8 POST `/api/user/change-password-by-email` —— 邮箱改密（设置页，必做）
 
@@ -468,6 +500,11 @@ Content-Type: application/json
 ```
 
 **响应 200：** `{}`
+
+| 错误码 | 响应体 |
+|---|---|
+| `400` | `{ "message": "验证码无效或已过期" }` |
+| `404` | `{ "message": "用户不存在" }` |
 
 ### 4.9 POST `/api/user/avatar` —— 头像上传（必做）
 
@@ -490,6 +527,11 @@ Content-Type: image/png
 ```json
 { "avatar_url": "https://.../uploads/avatar.png" }
 ```
+
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `400` | `{ "message": "文件格式不支持" }` |
 
 ### 4.10 PUT `/api/user/models` —— 同步用户模型配置（强依赖，必做）
 
@@ -526,6 +568,11 @@ Content-Type: application/json
 { "version": 12 }   // version 可选，用于乐观锁/同步
 ```
 
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `400` | `{ "message": "模型配置无效" }` |
+
 > `UserModelConfig` 详见 `openapi/seed-api.yaml`。生成请求只带 `model_id`（用户模型主键）；后端凭 id 取配置，**不要要求前端直传 apiKey**。
 
 ---
@@ -561,6 +608,10 @@ Authorization: Bearer <token>
 }
 ```
 
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+
 ### 5.2 POST `/api/projects` —— 创建项目（必做）
 
 ```http
@@ -588,6 +639,10 @@ Content-Type: application/json
   "version": 1            // 可选
 }
 ```
+
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
 
 ### 5.3 GET `/api/projects/{id}` —— 项目详情（强依赖，必做）
 
@@ -617,6 +672,11 @@ Authorization: Bearer <token>
 }
 ```
 
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `404` | `{ "message": "项目不存在" }` |
+
 ### 5.4 PUT `/api/projects/{id}` —— 更新项目（必做）
 
 ```http
@@ -634,6 +694,12 @@ Content-Type: application/json
 
 **响应 200：** `{ "project": {...}, "version": 2 }`
 
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `404` | `{ "message": "项目不存在" }` |
+| `412` | `{ "message": "版本冲突，数据已被他人修改" }` |
+
 ### 5.5 DELETE `/api/projects/{id}` —— 删除项目（必做）
 
 ```http
@@ -644,6 +710,12 @@ If-Match: 2            // 可选乐观锁；版本不符返回 412
 
 **响应 204**（无 body）或 `{}`。
 
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `404` | `{ "message": "项目不存在" }` |
+| `412` | `{ "message": "版本冲突" }` |
+
 ### 5.6 GET `/api/projects/{id}/characters` —— 项目角色列表（必做）
 
 **响应 200：**
@@ -651,6 +723,11 @@ If-Match: 2            // 可选乐观锁；版本不符返回 412
 ```json
 { "characters": [ { "id": "char_1", "name": "林墨", "description": "..." } ] }
 ```
+
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `404` | `{ "message": "项目不存在" }` |
 
 ### 5.7 PUT `/api/projects/{id}/steps/{stepId}` —— 保存某步正文（强依赖，必做）
 
@@ -664,6 +741,11 @@ Content-Type: application/json
 
 **响应 200：** `{ "step": {...} }` 或 `{ "ok": true }`（前端两种都兼容）。
 
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `404` | `{ "message": "项目或步骤不存在" }` |
+
 ### 5.8 POST `/api/projects/{id}/confirm` —— 确认某步（必做）
 
 ```http
@@ -675,6 +757,11 @@ Content-Type: application/json
 ```
 
 **响应 200：** `{ "ok": true }` 或 `{ "project": {...} }`。
+
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `404` | `{ "message": "项目或步骤不存在" }` |
 
 ### 5.9 POST `/api/projects/{id}/generate` —— 触发项目正文生成（SSE，强依赖，必做）
 
@@ -703,6 +790,12 @@ data: [DONE]
 
 或一次性返回：`{ "steps": [ Step, ... ], "thread_id": "th_proj_p_001_wf_builtin" }`。
 
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `404` | `{ "message": "项目不存在" }` |
+| `500` | `{ "message": "生成失败" }` |
+
 ### 5.10 POST `/api/projects/{id}/brief` —— 保存创作设定（必做，写库）
 
 ```http
@@ -729,6 +822,11 @@ Content-Type: application/json
 
 **响应 200：** `{ "ok": true }`
 
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `404` | `{ "message": "项目不存在" }` |
+
 ### 5.11 POST `/api/projects/{id}/summarize` —— 大纲摘要（必做，带本地回退）
 
 ```http
@@ -740,6 +838,11 @@ Content-Type: application/json
 ```
 
 **响应 200：** `{ "summary": "压缩后的摘要文本……" }`
+
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `404` | `{ "message": "项目不存在" }` |
 
 ### 5.12 POST `/api/projects/{id}/seed` —— 一句话开局（必做，带本地 mock 回退）
 
@@ -797,6 +900,12 @@ Content-Type: application/json
 }
 ```
 
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `404` | `{ "message": "项目不存在" }` |
+| `500` | `{ "message": "开局生成失败" }` |
+
 > 兼容说明：前端 `fetchSeed` 读取 `data.data` 且忽略 `data.mocked` 为真的情况；后端也可直接返回扁平的 `{ brief, outline, characters }`，前端回填逻辑会自适应。
 
 ### 5.13 POST `/api/projects/{id}/seed/stream` —— 开局流式（可选，回退整包）
@@ -812,6 +921,11 @@ Content-Type: application/json
 ```
 
 > `thread_id` 可选：首轮省略由后端新建并返回（流式首条 `meta` 事件），续补时前端回传以复用同一开局会话。
+
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `404` | `{ "message": "项目不存在" }` |
 
 ### 5.14 GET `/api/projects/{id}/portfolio` —— 作品集聚合（必做，带子接口回退）
 
@@ -829,6 +943,11 @@ Authorization: Bearer <token>
   ]
 }
 ```
+
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `404` | `{ "message": "项目不存在" }` |
 
 ---
 
@@ -870,6 +989,10 @@ Authorization: Bearer <token>
 }
 ```
 
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+
 ### 6.2 POST `/api/characters` —— 创建角色（必做）
 
 ```http
@@ -887,9 +1010,19 @@ Content-Type: application/json
 
 **响应 201（或 200）：** `{ "character": { ...Character } }`
 
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `400` | `{ "message": "参数错误" }` |
+
 ### 6.3 GET `/api/characters/{id}` —— 角色详情（必做）
 
 **响应 200：** `{ "character": { ...Character } }`
+
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `404` | `{ "message": "角色不存在" }` |
 
 ### 6.4 PUT `/api/characters/{id}` —— 更新角色（必做）
 
@@ -915,9 +1048,19 @@ Content-Type: application/json
 
 **响应 200：** `{ "character": { ...Character } }`
 
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `404` | `{ "message": "角色不存在" }` |
+
 ### 6.5 DELETE `/api/characters/{id}` —— 删除角色（必做）
 
 **响应 204** 或 `{}`。
+
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `404` | `{ "message": "角色不存在" }` |
 
 ### 6.6 POST `/api/characters/{id}/avatar` —— 头像上传（必做）
 
@@ -930,6 +1073,12 @@ Content-Type: multipart/form-data
 ```
 
 **响应 200：** `{ "avatar_url": "https://.../a.png" }`（前端取 `avatar_url | url | avatar` 三者之一）
+
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `404` | `{ "message": "角色不存在" }` |
+| `400` | `{ "message": "文件格式不支持" }` |
 
 ### 6.7 GET `/api/characters/{id}/messages` —— 对话历史（必做）
 
@@ -952,6 +1101,11 @@ Authorization: Bearer <token>
   ]
 }
 ```
+
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `404` | `{ "message": "角色或会话不存在" }` |
 
 ### 6.8 POST `/api/characters/{id}/chat` —— 角色对话（SSE，必做）
 
@@ -983,6 +1137,12 @@ data: [DONE]
 ```
 
 > 前端从首条 `meta` 事件取出 `thread_id` 缓存，下一轮同一会话请求带上即可续聊。
+
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `404` | `{ "message": "角色不存在" }` |
+| `500` | `{ "message": "对话服务异常" }` |
 
 ---
 
@@ -1032,6 +1192,12 @@ Content-Type: application/json
 }
 ```
 
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `400` | `{ "message": "生成参数无效" }` |
+| `500` | `{ "message": "图像生成失败" }` |
+
 ### 7.2 GET `/api/generate/image/results` —— 图片结果轮询（必做）
 
 ```http
@@ -1040,6 +1206,10 @@ Authorization: Bearer <token>
 ```
 
 **响应 200：** `{ "tasks": [ MediaTask ], "results": [ MediaTask ] }`（两个键前端任取其一）
+
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
 
 ### 7.3 POST `/api/video/generate` —— AI 视频（强依赖，必做）
 
@@ -1064,6 +1234,12 @@ Content-Type: application/json
 
 **响应 200 / 202：** `{ "task": { ...MediaTask, "kind":"video" } }`
 
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `400` | `{ "message": "视频生成参数无效" }` |
+| `500` | `{ "message": "视频生成失败" }` |
+
 ### 7.4 GET `/api/video/tasks` —— 视频任务轮询（必做）
 
 ```http
@@ -1072,6 +1248,10 @@ Authorization: Bearer <token>
 ```
 
 **响应 200：** `{ "tasks": [ MediaTask ] }`
+
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
 
 ### 7.5 POST `/api/projects/{id}/generate` —— 见 §5.9（SSE 正文生成）
 
@@ -1088,6 +1268,11 @@ Content-Type: application/json
 - `action`：`expand`（扩写）| `rewrite`（改写）| `summarize`（摘要）。
 
 **响应 200：** `{ "output": "处理后的文本……" }`
+
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `400` | `{ "message": "action 参数不支持" }` |
 
 ---
 
@@ -1114,9 +1299,18 @@ Authorization: Bearer <token>
 }
 ```
 
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+
 ### 8.2 GET `/api/workflows/{id}` —— 流水线详情（必做，回退本地）
 
 **响应 200：** `{ "workflow": { ...Workflow }, "mocked": false }`
+
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `404` | `{ "message": "流水线不存在" }` |
 
 ### 8.3 PUT `/api/workflows/{id}` —— 保存流水线（必做，回退本地）
 
@@ -1140,13 +1334,29 @@ Content-Type: application/json
 
 **响应 200：** `{ "workflow": { ...Workflow } }`
 
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `404` | `{ "message": "流水线不存在" }` |
+
 ### 8.4 POST `/api/workflows` —— 新建流水线（必做，回退本地）
 
 请求体同上（无 `id` 或后端生成 id）。**响应 200：** `{ "workflow": { ...Workflow } }`
 
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `400` | `{ "message": "流水线配置无效" }` |
+
 ### 8.5 DELETE `/api/workflows/{id}` —— 删除流水线（必做，回退本地）
 
 **响应 200：** `{}` 或 `{ "ok": true, "mocked": false }`
+
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `404` | `{ "message": "流水线不存在" }` |
+| `403` | `{ "message": "内置流水线不可删除" }` |
 
 ### 8.6 POST `/api/workflows/{id}/run` —— 运行流水线（可选，预留 SSE）
 
@@ -1167,6 +1377,11 @@ data: {"type":"chunk","content":"……"}
 data: [DONE]
 ```
 
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `404` | `{ "message": "流水线不存在" }` |
+
 ---
 
 ## 9. 知识库（knowledge / RAG）
@@ -1183,6 +1398,10 @@ Authorization: Bearer <token>
 
 **响应 200：** `{ "documents": [ KbDocMeta ], "mocked": false }`
 
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+
 ### 9.2 POST `/api/knowledge/upload` —— 个人库上传（必做，回退本地建索引）
 
 ```http
@@ -1197,21 +1416,45 @@ Content-Type: application/octet-stream   // 注意：直接传文件二进制 bo
 
 **响应 200：** `{}` 或 `{ "document": KbDocMeta }`
 
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `400` | `{ "message": "文件格式不支持或过大" }` |
+
 ### 9.3 DELETE `/api/knowledge/{id}` —— 个人库删除（必做，回退本地）
 
 **响应 200：** `{}`
+
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `404` | `{ "message": "文档不存在" }` |
 
 ### 9.4 GET `/api/knowledge/public` —— 公共库列表（必做，回退演示语料）
 
 **响应 200：** `{ "documents": [ KbDocMeta ], "mocked": false }`
 
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+
 ### 9.5 GET `/api/knowledge/public/{id}` —— 公共库内容（必做，回退演示）
 
 **响应 200：** `{ "content": "文档正文文本……" }`
 
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `404` | `{ "message": "文档不存在" }` |
+
 ### 9.6 GET `/api/knowledge/public/{id}/download` —— 公共库下载（必做，回退演示）
 
 **响应 200：** `blob`（文件流，前端直接下载）
+
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `404` | `{ "message": "文档不存在" }` |
 
 ### 9.7 GET `/api/knowledge/search?scope=public&q=关键词` —— 公共库检索（必做，回退演示）
 
@@ -1231,6 +1474,10 @@ Authorization: Bearer <token>     // 可选
   ]
 }
 ```
+
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
 
 > 个人库默认端侧向量检索（浏览器本地），不依赖后端；仅上传/列表/删除需后端对齐。
 
@@ -1257,6 +1504,10 @@ Authorization: Bearer <token>
 }
 ```
 
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+
 ### 10.2 POST `/api/api-keys` —— 创建密钥（必做）
 
 ```http
@@ -1275,9 +1526,19 @@ Content-Type: application/json
 }
 ```
 
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `400` | `{ "message": "密钥名称不能为空" }` |
+
 ### 10.3 DELETE `/api/api-keys/{id}` —— 删除密钥（必做）
 
 **响应 200：** `{}`
+
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+| `404` | `{ "message": "密钥不存在" }` |
 
 ---
 
@@ -1294,6 +1555,10 @@ Authorization: Bearer <token>
 
 **响应 200：** `{ "updates": [ ...变更记录 ], "version": 12 }`
 
+| 错误码 | 响应体 |
+|---|---|
+| `401` | `{ "message": "未登录" }` |
+
 ### 11.2 GET `/api/health` —— 在线探活（强依赖，必做）
 
 ```http
@@ -1304,9 +1569,16 @@ GET /api/health
 - **返回 2xx = 在线**；**返回 404 = 离线**（前端据此显示「本地模式」徽标）。
 - 不需要 body，返回 `200` 空响应即可（`HEAD` 请求也支持）。
 
+| 状态码 | 响应体 |
+|---|---|
+| `200` | 空 body |
+| `404` | 空 body 或 `{ "message": "后端离线" }` |
+
 ### 11.3 POST `/api/{exception|message}` —— 监控上报（可选）
 
 Sentry 兼容上报，仅前端配置了 DSN 才发。后端按监控方案实现即可，不影响业务。
+
+**响应 200：** `{}` 或 `{ "ok": true }`
 
 ---
 
