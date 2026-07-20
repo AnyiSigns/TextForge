@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings,SettingsConfigDict
 
 def get_abs_path(path:str)->str:
     """获取绝对路径"""
-    root_dir = Path(__file__).resolve().parent.parent.parent
+    root_dir = Path(__file__).resolve().parent.parent
     return str(root_dir / path.lstrip("/"))
 
 
@@ -30,6 +30,22 @@ class Settings(BaseSettings):
     DASHSCOPE_BASE_URL:str= "https://ws-6rnv50cb3kvs261t.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
     DASHSCOPE_API_KEY:str= "sk-da98029948304384b660c0f07656e020"
     DASHSCOPE_TEXT_MODEL:str= "text-embedding-v4"
+
+    #email config
+    EMAIL_SERVER:str="smtp.qq.com"
+    EMAIL_PORT:int=587
+    EMAIL_USERNAME:str="653740169@qq.com"
+    EMAIL_PASSWORD:str="iqtpyhnwsiktbede"
+    EMAIL_FROM:str="653740169@qq.com"
+    EMAIL_USE_TLS:bool=True
+
+    CAPTCHA_TIME:int=300    #验证码有效期
+
+    #redis config
+    REDIS_HOST:str="localhost"
+    REDIS_PORT:int=6379
+    REDIS_DB:int=0
+
 
     model_config=SettingsConfigDict(
         env_file=get_abs_path(".env"),

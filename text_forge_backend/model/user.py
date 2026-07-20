@@ -13,7 +13,6 @@ class User(Base):
     id:Mapped[int]=mapped_column(Integer,primary_key=True,comment="用户ID",autoincrement=True)
     user_name:Mapped[str]=mapped_column(String(64),nullable=False,default="默认用户",comment="用户名")
     hash_password:Mapped[str]=mapped_column(String(255),nullable=False,comment="密码")
-    phone:Mapped[str]=mapped_column(String(20),unique=True,index=True,nullable=True,comment="手机号")
     email:Mapped[str]=mapped_column(String(80),unique=True,nullable=False,index=True,comment="邮箱")
 
     create_at:Mapped[datetime]=mapped_column(DateTime,server_default=func.now(),comment="创建时间")

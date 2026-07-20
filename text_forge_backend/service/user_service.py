@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 from config.settings import settings
 from infrastructure.database import db_manager
 from utils.logger import get_logger
@@ -27,29 +28,21 @@ class UserAuthService:
             phone:Optional[str]=None
     ):
         """用户注册"""
-        exists_name=await self.user_repo.get_by_user_name(user_name)
+        # exists_name=await self.user_repo.get_by_user_name(user_name)
         exists_email=await self.user_repo.query_user_email(email)
 
-        if exists_name is not None:
-            logger.info("用户名已存在")
-            return None,"用户名已被注册"
+        # if exists_name is not None:
+        #     logger.info("用户名已存在")
+        #     return None,"用户名已被注册"
         if exists_email:
             logger.info("邮箱已存在")
             return None,"邮箱已被注册"
 
-        if phone:
-            exists_phone=await self.user_repo.query_user_phone(phone)
-            if exists_phone:
-                logger.info("手机号已存在")
-                return None, "手机号已被注册"
-
         try:
             hash_pwd=encode_pwd(pwd)
             user=await self.user_repo.add(
-                user_name=user_name,
                 hash_password=hash_pwd,
                 email=email,
-                phone=phone if phone else None
             )
             logger.info("用户成功载入数据库")
             return user,None
