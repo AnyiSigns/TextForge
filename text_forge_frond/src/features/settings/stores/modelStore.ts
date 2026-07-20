@@ -50,6 +50,10 @@ interface ModelStore {
   setDefault: (id: string, category: ModelCategory) => void;
   getVersionMeta: () => { lastSyncAt: string; version?: number };
   setVersionMeta: (meta: { lastSyncAt: string; version?: number }) => void;
+  /** 取某 category 的默认模型（isDefault 优先）；无默认则回退该 category 首个模型；无则 undefined */
+  getDefaultModel: (category: ModelCategory) => ModelConfig | undefined;
+  /** 按 tier 解析某 category 的默认模型：cheap 优先取额外便宜模型，否则取该 category 默认模型 */
+  resolveModelByTier: (category: ModelCategory, tier: 'cheap' | 'standard') => ModelConfig | undefined;
 }
 
 let modelVersionMeta: { lastSyncAt: string; version?: number } = { lastSyncAt: new Date(0).toISOString(), version: 0 };
@@ -105,11 +109,31 @@ export const useModelStore = create<ModelStore>()(
           enqueueSync('models', run);
         });
       },
+      getDefaultModel: (category) => {
+        const list = get().models.filter((m) => m.category === category);
+        if (!list.length) return undefined;
+        return list.find((m) => m.isDefault) ?? list[0];
+      },
+      resolveModelByTier: (category, tier) => {
+        const list = get().models.filter((m) => m.category === category);
+        if (!list.length) return undefined;
+        if (tier === 'cheap') {
+          // cheap 档优先取本地部署模型（零成本），回退到无云端计费的默认模型
+          const cheap = list.find((m) => m.deployment === 'local')
+            ?? list.find((m) => m.isDefault && m.deployment !== 'cloud');
+          if (cheap) return cheap;
+        }
+        return list.find((m) => m.isDefault) ?? list[0];
+      },
     }),
     {
       name: 'novel-models',
       storage: createIdbStorage(),
-      partialize: (s) => ({ models: s.models }),
+      // C9: 安全收口——本地 IndexedDB 不再持久化 apiKey 明文；
+      // 密钥由后端（PUT /api/user/models）作为唯一可信保管方，前端仅保留 id 引用。
+      partialize: (s) => ({
+        models: s.models.map((m) => ({ ...m, apiKey: undefined })),
+      }),
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
       },

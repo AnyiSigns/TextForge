@@ -140,8 +140,8 @@ export default function ProjectWorkbench() {
           {activeTab === 'inspiration' && <InspirationBoard projectId={projectId} />}
           {activeTab === 'brief' && <BriefPanel projectId={projectId} projectTitle={projectTitle} />}
           {activeTab === 'characters' && <ProjectCharactersTab projectId={projectId} />}
-          {activeTab === 'material' && <ProjectStudio projectId={projectId} steps={steps} mode="character" selectedCharIds={selectedCharIds} />}
-          {activeTab === 'animation' && <ProjectStudio projectId={projectId} steps={steps} mode="chapter" selectedCharIds={selectedCharIds} />}
+          {activeTab === 'material' && <ProjectStudio projectId={projectId} projectTitle={projectTitle} steps={steps} mode="character" selectedCharIds={selectedCharIds} />}
+          {activeTab === 'animation' && <ProjectStudio projectId={projectId} projectTitle={projectTitle} steps={steps} mode="chapter" selectedCharIds={selectedCharIds} />}
         </ErrorBoundary>
       </ProcessNav>
     </div>

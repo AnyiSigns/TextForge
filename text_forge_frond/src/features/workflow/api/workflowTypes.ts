@@ -65,6 +65,8 @@ export interface RunWorkflowOptions {
     ragChunks?: RagChunk[],
     systemPrompt?: string,
     projectContext?: import('@/types').GenerationContext,
+    /** C4/C10/C11: 该节点实际采用的语言模型 id（按 tier 解析用户 category:llm 默认模型），后端凭 id 取配置 */
+    modelId?: string,
   ) => Promise<string> | string;
   /** 是否在 agent 节点间演示流式延迟（mock 观感） */
   simulateDelay?: boolean;

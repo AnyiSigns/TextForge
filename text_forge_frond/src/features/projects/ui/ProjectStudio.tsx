@@ -7,7 +7,7 @@ import {
   submitImage, submitVideo, fetchProjectPortfolio, type MediaTask, type GenerationContext, type ImageRequest, type VideoRequest,
 } from '@/lib/api/generation';
 import { useModelStore } from '@/features/settings';
-import { useBriefStore, briefToContextLine } from '@/features/projects';
+import { useBriefStore, briefToContextLine, briefSectionsToContext } from '@/features/projects';
 import { useCharacterStore } from '@/features/characters';
 import { usePortfolioStore } from '@/features/projects';
 import { useShallow } from 'zustand/react/shallow';
@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { Image as ImageIcon, Clapperboard, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { uid } from '@/lib/utils/id';
+import { characterRoleLabel } from '@/shared/lib/agentRoles';
 import { CharacterMaterialPanel } from './CharacterMaterialPanel';
 import { ChapterAnimationPanel } from './ChapterAnimationPanel';
 import { PortfolioGrid } from './PortfolioGrid';
@@ -22,7 +23,7 @@ import type { Character } from '@/types';
 
 type StudioMode = 'character' | 'chapter';
 
-export function ProjectStudio({ projectId, steps, mode, selectedCharIds }: { projectId: string; steps: { id: string; agent: string; content: string }[]; mode: StudioMode; selectedCharIds?: string[] }) {
+export function ProjectStudio({ projectId, steps, mode, selectedCharIds, projectTitle }: { projectId: string; steps: { id: string; agent: string; content: string }[]; mode: StudioMode; selectedCharIds?: string[]; projectTitle?: string }) {
   const [isExpanded, setIsExpanded] = useState(mode === 'character');
   const [trailerChars, setTrailerChars] = useState<string[]>([]);
   const portfolio = usePortfolioStore((s) => s.portfolio);
@@ -35,6 +36,11 @@ export function ProjectStudio({ projectId, steps, mode, selectedCharIds }: { pro
 
   const imageModels = useModelStore(useShallow((s) => s.models.filter((m) => m.category === 'vision' && (m.modalities ?? ['image']).includes('image'))));
   const videoModels = useModelStore(useShallow((s) => s.models.filter((m) => m.category === 'vision' && (m.modalities ?? []).includes('video'))));
+  // C1/B5: 工作台内嵌生成入口复用视觉模型列表，默认取该类别 isDefault；未选则不传（后端按默认兜底）
+  const defaultImageModelId = imageModels.find((m) => m.isDefault)?.id ?? imageModels[0]?.id ?? '';
+  const defaultVideoModelId = videoModels.find((m) => m.isDefault)?.id ?? videoModels[0]?.id ?? '';
+  const [imageModelId, setImageModelId] = useState(defaultImageModelId);
+  const [videoModelId, setVideoModelId] = useState(defaultVideoModelId);
 
   const charRefsForChapter = useCallback((stepId: string): { ids: string[]; images: string[] } => {
     const step = steps.find((s) => s.id === stepId);
@@ -62,20 +68,44 @@ export function ProjectStudio({ projectId, steps, mode, selectedCharIds }: { pro
     return map;
   }, [steps]);
 
+  const projectChars = useCharacterStore(useShallow((s) => s.characters.filter((c: Character) => (c.projectId ?? null) === projectId)));
+  const charNameById = useCallback((id: string) => projectChars.find((c) => c.id === id)?.name ?? id, [projectChars]);
+
   const buildContext = useCallback((source?: GenerationContext['source'], sourceRef?: string): GenerationContext => {
     const chapter = source === 'chapter' && sourceRef ? chapterMap.get(sourceRef) : undefined;
-    const projectCharacters = characters.map((c) => ({ name: c.name, description: c.description, status: c.status ?? '存活' }));
+    // A2: 与工作台 makeBuildContext 口径一致——补齐角色 role/relationships/currentProfile、自定义维度 sections
+    const projectCharacters = characters.map((c) => ({
+      name: c.name,
+      role: c.role && c.role !== 'custom' ? characterRoleLabel(c.role) : c.role === 'custom' ? (c.customRole ?? undefined) : undefined,
+      description: c.description,
+      currentProfile: c.currentProfile,
+      status: c.status ?? '存活',
+      relationships: c.relationships?.length
+        ? c.relationships
+            .filter((r) => r.targetId && r.relation.trim())
+            .map((r) => ({ target: charNameById(r.targetId) || r.targetId, relation: r.relation.trim() }))
+        : undefined,
+    }));
+    const sectionLine = briefSectionsToContext(brief?.sections, brief?.sections?.map((s) => s.id) ?? []);
+    const sections = sectionLine
+      ? sectionLine.split('；').map((s) => {
+          const idx = s.indexOf('：');
+          return idx > -1 ? { title: s.slice(0, idx), content: s.slice(idx + 1) } : { title: '', content: s };
+        })
+      : undefined;
     return {
       project_id: projectId,
-      project_title: projectId,
-      summary: '',
+      // A1: 用真实作品标题，而非 projectId
+      project_title: projectTitle || brief?.genre || projectId,
+      summary: briefToContextLine(brief) || undefined,
       characters: projectCharacters,
+      sections,
       outline: chapter ? chapter.content.slice(0, 3000) : outline,
       source,
       source_ref: sourceRef,
       brief: briefToContextLine(brief),
     };
-  }, [projectId, characters, outline, brief, chapterMap]);
+  }, [projectId, characters, outline, brief, chapterMap, projectTitle, charNameById]);
 
   const upsertOptimistic = useCallback((task: MediaTask) => {
     const updateInPortfolio = usePortfolioStore.getState().updateInPortfolio;
@@ -188,6 +218,9 @@ export function ProjectStudio({ projectId, steps, mode, selectedCharIds }: { pro
               characters={characters}
               projectId={projectId}
               imageModelsCount={imageModels.length}
+              imageModels={imageModels}
+              imageModelId={imageModelId}
+              onImageModelChange={setImageModelId}
               buildContext={buildContext}
               onImage={handleImage}
             />
@@ -197,6 +230,9 @@ export function ProjectStudio({ projectId, steps, mode, selectedCharIds }: { pro
               projectId={projectId}
               steps={steps}
               videoModelsCount={videoModels.length}
+              videoModels={videoModels}
+              videoModelId={videoModelId}
+              onVideoModelChange={setVideoModelId}
               trailerChars={trailerChars}
               buildContext={buildContext}
               charRefsForChapter={charRefsForChapter}

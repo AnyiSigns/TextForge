@@ -154,6 +154,12 @@ paths:
               properties:
                 workflowId:
                   type: string
+                model_id:
+                  type: string
+                  description: 正文生成语言模型 id（用户模型库主键）；后端凭 id 查 adapter/baseUrl/apiKey/category/tier
+                category:
+                  type: string
+                  enum: [llm, vision, omni, speech, embedding]
       responses:
         '200':
           description: 生成结果（或 SSE 流）
@@ -161,6 +167,87 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StepsResponse'
+
+  # ---- 图像生成（AI 绘画） ----
+  /generate/image:
+    post:
+      tags: [generate]
+      operationId: generateImage
+      summary: 提交图像生成任务（AI 绘画 / 角色立绘 / 章节插图）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImageGenerationRequest'
+      responses:
+        '200':
+          description: 已提交任务
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaTaskResponse'
+        '202':
+          description: 任务受理（异步轮询）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaTaskResponse'
+
+  # ---- 视频生成（AI 视频 / 章节动画 / 预告片） ----
+  /video/generate:
+    post:
+      tags: [generate]
+      operationId: generateVideo
+      summary: 提交视频生成任务（章节动画 / 预告片 / 角色卡动画）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VideoGenerationRequest'
+      responses:
+        '200':
+          description: 已提交任务
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaTaskResponse'
+        '202':
+          description: 任务受理（异步轮询）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaTaskResponse'
+
+  # ---- 用户模型配置（后端代理：密钥唯一可信保管方） ----
+  /user/models:
+    put:
+      tags: [generate]
+      operationId: putUserModels
+      summary: 同步用户模型配置（全量覆盖）。后端以 model.id 为主键落库；生成请求只需带 model_id，后端凭 id 取 adapter/baseUrl/apiKey/category/modalities/tier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [models]
+              properties:
+                models:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/UserModelConfig'
+      responses:
+        '200':
+          description: 同步成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version:
+                    type: integer
   /characters:
     get:
       tags: [characters]
@@ -594,3 +681,189 @@ components:
           type: string
         description:
           type: string
+    # ---- 生成请求体（模型驱动：model_id 为主键，后端凭 id 取配置） ----
+    ImageGenerationRequest:
+      type: object
+      required: [prompt]
+      properties:
+        prompt:
+          type: string
+        negative_prompt:
+          type: string
+        model_id:
+          type: string
+          description: 视觉模型 id（用户模型库主键，category:vision）；后端凭 id 取 adapter/baseUrl/apiKey
+        project_id:
+          type: string
+        style:
+          type: string
+        size:
+          type: string
+        count:
+          type: integer
+        characterId:
+          type: string
+        reference_images:
+          type: array
+          items:
+            type: string
+        seed:
+          type: integer
+        source_step:
+          type: string
+        character_ids:
+          type: array
+          items:
+            type: string
+        context:
+          $ref: '#/components/schemas/GenerationContext'
+    VideoGenerationRequest:
+      type: object
+      required: [prompt]
+      properties:
+        prompt:
+          type: string
+        model_id:
+          type: string
+          description: 视觉模型 id（用户模型库主键，category:vision）；后端凭 id 取 adapter/baseUrl/apiKey
+        project_id:
+          type: string
+        duration:
+          type: number
+        aspect:
+          type: string
+        reference_images:
+          type: array
+          items:
+            type: string
+        chapter_id:
+          type: string
+        character_ids:
+          type: array
+          items:
+            type: string
+        storyboard:
+          type: string
+        context:
+          $ref: '#/components/schemas/GenerationContext'
+    MediaTaskResponse:
+      type: object
+      properties:
+        task:
+          $ref: '#/components/schemas/MediaTask'
+    # 与前端 GenerationContext（src/types/workflow.ts）对齐
+    GenerationContextCharacterRelation:
+      type: object
+      required: [target, relation]
+      properties:
+        target:
+          type: string
+        relation:
+          type: string
+    GenerationContextCharacter:
+      type: object
+      required: [name, description, status]
+      properties:
+        name:
+          type: string
+        role:
+          type: string
+        description:
+          type: string
+        currentProfile:
+          type: string
+        status:
+          type: string
+        change:
+          type: string
+        relationships:
+          nullable: true
+          type: array
+          items:
+            $ref: '#/components/schemas/GenerationContextCharacterRelation'
+    GenerationContext:
+      type: object
+      properties:
+        project_id:
+          type: string
+        project_title:
+          type: string
+        summary:
+          type: string
+        plot_summary:
+          type: string
+        characters:
+          nullable: true
+          type: array
+          items:
+            $ref: '#/components/schemas/GenerationContextCharacter'
+        outline:
+          type: string
+        outlineTree:
+          nullable: true
+          type: array
+          items:
+            type: object
+        sections:
+          nullable: true
+          type: array
+          items:
+            type: object
+            properties:
+              title:
+                type: string
+              content:
+                type: string
+        source:
+          type: string
+          enum: [character, chapter]
+        source_ref:
+          type: string
+        brief:
+          type: string
+        rag_chunks:
+          nullable: true
+          type: array
+          items:
+            type: object
+    # 用户模型配置（后端代理：密钥唯一可信保管方）
+    UserModelConfig:
+      type: object
+      required: [id, name, category, vendor, adapter, modelId]
+      properties:
+        id:
+          type: string
+          description: 模型主键（前端 uid），即生成请求携带的 model_id
+        name:
+          type: string
+        category:
+          type: string
+          enum: [llm, vision, omni, speech, embedding]
+        deployment:
+          type: string
+          enum: [cloud, local]
+        vendor:
+          type: string
+        adapter:
+          type: string
+          description: 后端据此选择调用库（openai/anthropic/kling/...）
+        baseUrl:
+          type: string
+        apiKey:
+          type: string
+          description: 前端 PUT 同步后由后端保管；前端本地不长期留存明文
+        modelId:
+          type: string
+          description: 实际传给厂商的模型名
+        isDefault:
+          type: boolean
+        modalities:
+          type: array
+          items:
+            type: string
+            enum: [image, video]
+        auxiliary:
+          nullable: true
+          type: array
+          items:
+            type: object

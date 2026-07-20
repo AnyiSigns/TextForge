@@ -9,12 +9,16 @@ import { toast } from 'sonner';
 import type { Character } from '@/types';
 import type { VideoRequest } from '@/lib/api/generation';
 import type { GenerationContext } from '@/types';
+import type { ModelConfig } from '@/types';
 
 interface ChapterAnimationPanelProps {
   characters: Character[];
   projectId: string;
   steps: { id: string; agent: string; content: string }[];
   videoModelsCount: number;
+  videoModels: ModelConfig[];
+  videoModelId: string;
+  onVideoModelChange: (id: string) => void;
   trailerChars: string[];
   buildContext: (source?: GenerationContext['source'], sourceRef?: string) => GenerationContext;
   charRefsForChapter: (stepId: string) => { ids: string[]; images: string[] };
@@ -24,7 +28,7 @@ interface ChapterAnimationPanelProps {
 
 export function ChapterAnimationPanel(props: ChapterAnimationPanelProps) {
   const {
-    characters, projectId, steps, videoModelsCount, trailerChars,
+    characters, projectId, steps, videoModelsCount, videoModels, videoModelId, onVideoModelChange, trailerChars,
     buildContext, charRefsForChapter, onTrailerToggle, onVideo,
   } = props;
 
@@ -37,6 +41,7 @@ export function ChapterAnimationPanel(props: ChapterAnimationPanelProps) {
     onVideo({
       prompt: `根据整部小说的世界观、角色与剧情，生成一支宣传预告片，风格统一、节奏紧凑。`,
       project_id: projectId,
+      model_id: videoModelId || undefined,
       context: buildContext('chapter'),
       chapter_id: undefined,
       character_ids: chosen.map((c) => c.id),
@@ -46,6 +51,20 @@ export function ChapterAnimationPanel(props: ChapterAnimationPanelProps) {
 
   return (
     <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <label className="text-xs text-muted-foreground">视频模型</label>
+        <select
+          className="text-xs rounded-md border border-border bg-background px-2 py-1"
+          value={videoModelId}
+          onChange={(e) => onVideoModelChange(e.target.value)}
+          disabled={!videoModelsCount}
+        >
+          {videoModels.length === 0 && <option value="">未配置视频模型</option>}
+          {videoModels.map((m) => (
+            <option key={m.id} value={m.id}>{m.name}{m.isDefault ? '（默认）' : ''}</option>
+          ))}
+        </select>
+      </div>
       <div className="rounded-xl border border-dashed border-primary/25 bg-primary/5 p-4 space-y-3">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
           <Clapperboard className="w-3.5 h-3.5" /> 项目预告片
@@ -123,6 +142,7 @@ export function ChapterAnimationPanel(props: ChapterAnimationPanelProps) {
                     onClick={() => onVideo({
                       prompt: `根据以下小说片段生成短视频分镜动画：${s.content.slice(0, 300)}`,
                       project_id: projectId,
+                      model_id: videoModelId || undefined,
                       context: buildContext('chapter', s.id),
                       chapter_id: s.id,
                       character_ids: refs.ids,

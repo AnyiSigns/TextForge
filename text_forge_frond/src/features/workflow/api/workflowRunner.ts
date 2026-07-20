@@ -162,14 +162,27 @@ export async function runWorkflow(
     const role = (node.roleId && agentRoleById(node.roleId)) || agentRoleById(node.label) || undefined;
     const tier = node.tier ?? role?.tier ?? 'standard';
 
+    // C4/C10/C11: 解析该节点实际采用的语言模型 id（按 tier 取用户 category:llm 默认/便宜模型）。
+    // 后端 LangGraph 凭 model_id 查 adapter/baseUrl/apiKey/category，前端不塞密钥。
+    // 节点显式绑定 modelId 时优先使用；否则按 tier 解析。
+    let modelId: string | undefined;
+    try {
+      const { useModelStore } = await import('@/features/settings');
+      const llmDefault = useModelStore.getState().getDefaultModel('llm');
+      const resolved = node.modelId
+        ? useModelStore.getState().models.find((m) => m.id === node.modelId)
+        : useModelStore.getState().resolveModelByTier('llm', tier);
+      modelId = resolved?.id ?? llmDefault?.id;
+    } catch { /* 模型库未就绪时留空，后端按自身默认兜底 */ }
+
     const systemPrompt = node.systemPrompt?.trim()
       ? (role?.defaultPrompt ? `${role.defaultPrompt}\n\n（节点补充）${node.systemPrompt}` : node.systemPrompt)
       : (role?.defaultPrompt ?? '');
 
     const context = ctx + toolNote;
     const out = opts?.generate
-      ? await opts.generate(node, context, tier, ragChunks, systemPrompt, projectContext)
-      : `[${node.label}][${tier === 'cheap' ? '本地/便宜模型' : '默认模型'}]\n${context.slice(0, 120)}…（生成结果占位）`;
+      ? await opts.generate(node, context, tier, ragChunks, systemPrompt, projectContext, modelId)
+      : `[${node.label}][${tier === 'cheap' ? '本地/便宜模型' : '默认模型'}${modelId ? ` · ${modelId}` : ''}]\n${context.slice(0, 120)}…（生成结果占位）`;
 
     steps.push({ nodeId: nid, label: node.label, output: out, status: 'done', systemPrompt });
     opts?.onStep?.(nid, node.label, out, systemPrompt);
