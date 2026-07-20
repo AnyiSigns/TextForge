@@ -21,7 +21,7 @@ import { toast } from 'sonner';
 type Format = 'json' | 'markdown' | 'txt';
 type Busy = Format | 'all' | 'import' | null;
 
-  const FORMATS: { key: Format; label: string; icon: typeof FileJson; hint: string }[] = [
+const FORMATS: { key: Format; label: string; icon: typeof FileJson; hint: string }[] = [
     { key: 'json', label: 'JSON', icon: FileJson, hint: '完整备份（含设定/角色/大纲）' },
     { key: 'markdown', label: 'MD', icon: FileType, hint: '含标题格式的完整内容' },
     { key: 'txt', label: '纯正文', icon: FileText, hint: '仅导出正文，不含设定/角色/图片' },

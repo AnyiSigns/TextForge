@@ -36,10 +36,7 @@ interface ProjectStore {
   getDraft: (projectId: string) => Promise<Step[] | null>;
   saveVersion: (projectId: string, steps: Step[], brief?: ProjectBrief) => Promise<void>;
   getVersionHistory: (projectId: string) => Promise<ProjectVersion[]>;
-  loadTemplates: () => Promise<void>;
-  createProject: (templateId?: string) => Promise<Project>;
 }
-
 function emptyVersionMeta(): ProjectVersionMeta {
   return { lastSyncAt: new Date(0).toISOString(), version: 0 };
 }
@@ -146,20 +143,6 @@ addProject: async (input) => {
 
       getVersionHistory: async (projectId) => {
         return getVersionHistory(projectId);
-      },
-
-      loadTemplates: async () => {
-        set({ templates: DEFAULT_TEMPLATES });
-      },
-
-      createProject: async (templateId) => {
-        const template = templateId ? DEFAULT_TEMPLATES.find((t) => t.id === templateId) : undefined;
-        const input = {
-          title: `新${template?.name || '项目'}`,
-          description: template?.description || '',
-          genre: template?.genre || 'general',
-        };
-        return get().addProject(input);
       },
     }),
     {

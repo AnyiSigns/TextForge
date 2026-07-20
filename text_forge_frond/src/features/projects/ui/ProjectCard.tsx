@@ -5,23 +5,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Eye, Trash2, Download, FileText, Loader2, CheckCircle2, PauseCircle, FileJson, FileType } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+import { Eye, Trash2, Download, FileText, FileJson, FileType } from 'lucide-react';
 import { Project } from '@/types';
 import { useCharacterStore } from '@/features/characters';
-import { useBriefStore } from '@/features/projects';
-import { usePortfolioStore } from '@/features/projects';
-import { useProjectStore } from '@/features/projects';
+import { useBriefStore, usePortfolioStore, STATUS_MAP } from '@/features/projects';
+import { useManuscriptStore } from '@/features/manuscript';
 import { useShallow } from 'zustand/react/shallow';
 import { toast } from 'sonner';
 import { exportProjectJson, exportProjectMarkdown, exportProjectText } from '@/lib/storage/backup';
-
-const STATUS_MAP: Record<Project['status'], { label: string; icon: LucideIcon; variant: 'outline' | 'secondary' | 'default' }> = {
-  draft:      { label: '草稿', icon: FileText, variant: 'outline' },
-  generating: { label: '生成中', icon: Loader2, variant: 'secondary' },
-  completed:  { label: '已完成', icon: CheckCircle2, variant: 'default' },
-  paused:     { label: '已暂停', icon: PauseCircle, variant: 'outline' },
-};
 
 interface Props {
   project: Project;
@@ -32,9 +23,9 @@ export function ProjectCard({ project, onDelete }: Props) {
   const characters = useCharacterStore(useShallow((s) => s.characters.filter((c) => c.projectId === project.id)));
   const brief = useBriefStore((s) => s.briefs[project.id]);
   const portfolio = usePortfolioStore(useShallow((s) => s.portfolio.filter((t) => t.project_id === project.id)));
-  const projects = useProjectStore((s) => s.projects);
+  const chapters = useManuscriptStore(useShallow((s) => s.chapters.filter((c) => c.projectId === project.id)));
   const totalWordGoal = brief?.wordCountGoal ?? 0;
-  const currentWords = projects.find((p) => p.id === project.id)?.description?.length ?? project.description?.length ?? 0;
+  const currentWords = chapters.reduce((acc, c) => acc + (c.content?.length || 0), 0);
   const progress = totalWordGoal > 0 ? Math.min(100, (currentWords / totalWordGoal) * 100) : 0;
 
   return (

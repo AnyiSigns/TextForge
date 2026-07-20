@@ -16,7 +16,16 @@ const state = {
 vi.mock('@/features/characters', () => ({
   useCharacterStore: (sel: (s: unknown) => unknown) => sel({ characters: state.characters }),
 }));
+vi.mock('@/features/manuscript', () => ({
+  useManuscriptStore: (sel: (s: unknown) => unknown) => sel({ chapters: [] as unknown[] }),
+}));
 vi.mock('@/features/projects', () => ({
+  STATUS_MAP: {
+    draft: { label: '草稿', icon: vi.fn(), variant: 'outline' },
+    generating: { label: '生成中', icon: vi.fn(), variant: 'secondary' },
+    completed: { label: '已完成', icon: vi.fn(), variant: 'default' },
+    paused: { label: '已暂停', icon: vi.fn(), variant: 'outline' },
+  },
   useBriefStore: (sel: (s: unknown) => unknown) => sel({ briefs: state.briefs }),
   usePortfolioStore: (sel: (s: unknown) => unknown) => sel({ portfolio: state.portfolio }),
   useProjectStore: (sel: (s: unknown) => unknown) => sel({ projects: state.projects }),

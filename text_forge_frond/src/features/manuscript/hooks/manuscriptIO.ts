@@ -1,7 +1,7 @@
 // src/lib/hooks/manuscriptIO.ts
 // 手稿编辑器「导入/导出/同步」动作：书籍 txt 导入、导出、发送到工作台。纯逻辑，依赖注入。
 import { toast } from 'sonner';
-import { importManuscriptToProject, importBookToProject } from '@/features/projects';
+import { buildStepFromManuscript, buildBookSteps } from '@/features/projects';
 import { exportManuscriptBook } from '@/lib/storage/backup';
 import { parseBookText } from '@/lib/utils/bookImport';
 import { useManuscriptStore } from '../stores/manuscriptStore';
@@ -27,7 +27,7 @@ export function makeManuscriptIO(d: ManuscriptIO) {
   const confirmSend = async (syncGlobal: boolean) => {
     if (!active) return;
     if (syncGlobal) {
-      const step = await importManuscriptToProject(projectId, active.title, active.content);
+      const step = buildStepFromManuscript(projectId, active.title, active.content);
       const draft = (await useProjectStore.getState().getDraft(projectId)) ?? [];
       await useProjectStore.getState().saveDraft(projectId, [...draft, step]);
       toast.success('已同步到工作台（作为项目步骤，可被 Agent 流读取为前文）');
@@ -46,7 +46,7 @@ export function makeManuscriptIO(d: ManuscriptIO) {
   const confirmBookImport = async (syncGlobal: boolean) => {
     if (!bookChapters) return;
     if (syncGlobal) {
-      const steps = await importBookToProject(projectId, bookChapters);
+      const steps = buildBookSteps(projectId, bookChapters);
       const draft = (await useProjectStore.getState().getDraft(projectId)) ?? [];
       await useProjectStore.getState().saveDraft(projectId, [...draft, ...steps]);
       toast.success(`已导入 ${steps.length} 章到工作台（Agent 续写将以此为前文）`);

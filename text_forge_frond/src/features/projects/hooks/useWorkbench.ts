@@ -91,7 +91,7 @@ export function useWorkbench(projectId: string) {
         const draft = await useProjectStore.getState().getDraft(projectId);
         const draftChanged = !!draft && (
           draft.length !== loadedSteps.length ||
-          draft.some((d, i) => d.content !== loadedSteps[i]?.content)
+          draft.slice(0, loadedSteps.length).some((d, i) => d.content !== loadedSteps[i]?.content)
         );
         if (draftChanged) {
           setSteps(draft);
@@ -104,10 +104,6 @@ export function useWorkbench(projectId: string) {
       }
     };
     loadProject();
-    loadOutline(projectId).then((vols) => {
-      setOutlineVolumes(vols ?? []);
-      setOutlineReady((vols ?? []).length > 0);
-    }).catch(() => setOutlineReady(false));
     fetchProjectMeta(projectId).then((p) => setProjectTitle(p.title)).catch(() => {});
     listWorkflowsWithBuiltin().then((list) => {
       setWorkflows(list);
@@ -130,13 +126,15 @@ export function useWorkbench(projectId: string) {
       if (detail.projectId !== projectId) return;
       if (detail.target?.kind === 'chapter') {
         const stepId = detail.target.stepId;
-        setSteps((prev) => prev.map((s) => {
-          if (s.id !== stepId) return s;
-          const tail = s.content && !s.content.endsWith('\n') ? '\n' : '';
-          return { ...s, content: `${s.content || ''}${tail}${detail.content}`, status: 'completed' };
-        }));
-        const ch = steps.find((s) => s.id === stepId);
-        toast.success(`已把角色图插入到「${ch?.content?.match(/^#\s*(.+)$/m)?.[1] || '该章'}」正文`);
+        setSteps((prev) => {
+          const ch = prev.find((s) => s.id === stepId);
+          toast.success(`已把角色图插入到「${ch?.content?.match(/^#\s*(.+)$/m)?.[1] || '该章'}」正文`);
+          return prev.map((s) => {
+            if (s.id !== stepId) return s;
+            const tail = s.content && !s.content.endsWith('\n') ? '\n' : '';
+            return { ...s, content: `${s.content || ''}${tail}${detail.content}`, status: 'completed' };
+          });
+        });
         return;
       }
       const step: Step = {
@@ -148,7 +146,7 @@ export function useWorkbench(projectId: string) {
       setSteps((prev) => [...prev, step]);
       toast.success('已插入章节，可在下方续写');
     });
-  }, [projectId, steps]);
+  }, [projectId]);
 
   useEffect(() => {
     if (steps.length > 0 && !isStreaming) {

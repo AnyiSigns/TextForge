@@ -46,8 +46,8 @@ export {
   saveStepEdit,
   bindWorkflow,
   generateWithWorkflow,
-  importManuscriptToProject,
-  importBookToProject,
+  buildStepFromManuscript,
+  buildBookSteps,
 } from './api/projects';
 export type {
   CreateProjectResponse,
@@ -66,3 +66,6 @@ export { useBriefStore, briefToContextLine, briefSectionsToContext } from './sto
 
 // ---- 类型 ----
 export type { ProcessTab } from './ui/ProcessNav';
+
+// ---- 共享工具 ----
+export { STATUS_MAP } from './utils/status';

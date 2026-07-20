@@ -66,7 +66,7 @@ export function makeGeneration(d: GenerationDeps) {
         isAborted: () => !!abortRef.current?.signal.aborted,
         onStep: (step) => {
           enqueueStepUpdate((prev) => {
-            const idx = prev.findIndex((s) => (step.nodeId && s.nodeId === step.nodeId) || s.agent === step.agent);
+            const idx = step.nodeId ? prev.findIndex((s) => s.nodeId === step.nodeId) : -1;
             if (idx >= 0) {
               const existing = prev[idx];
               const next = [...prev];

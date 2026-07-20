@@ -7,24 +7,16 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, Search, FolderKanban, Pin, PinOff, LayoutGrid, List, Trash2, FileText, Loader2, CheckCircle2, PauseCircle, Sparkles } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+import { Plus, Search, FolderKanban, Pin, PinOff, LayoutGrid, List, Trash2, Loader2, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { Project } from '@/types';
 import { PageHeader } from '@/shared/components';
 import { Spinner, EmptyState } from '@/shared/components';
-import { useProjectStore } from '@/features/projects';
+import { useProjectStore, STATUS_MAP } from '@/features/projects';
 import { generateSeed } from '@/lib/seed/generate';
 
 type ViewMode = 'grid' | 'list';
 type FilterStatus = 'all' | Project['status'];
-
-const STATUS_MAP: Record<Project['status'], { label: string; icon: LucideIcon; variant: 'outline' | 'secondary' | 'default' }> = {
-  draft:      { label: '草稿', icon: FileText, variant: 'outline' },
-  generating: { label: '生成中', icon: Loader2, variant: 'secondary' },
-  completed:  { label: '已完成', icon: CheckCircle2, variant: 'default' },
-  paused:     { label: '已暂停', icon: PauseCircle, variant: 'outline' },
-};
 
 export default function ProjectsPage() {
   const projects = useProjectStore((s) => s.projects);
@@ -56,12 +48,13 @@ export default function ProjectsPage() {
   };
 
   const handleBatchDelete = async () => {
-    if (selectedIds.size === 0) return;
-    if (!confirm(`确定要删除选中的 ${selectedIds.size} 个项目吗？`)) return;
+    const count = selectedIds.size;
+    if (count === 0) return;
+    if (!confirm(`确定要删除选中的 ${count} 个项目吗？`)) return;
     try {
       await Promise.all(Array.from(selectedIds).map(id => removeProject(id)));
       setSelectedIds(new Set());
-      toast.success(`已删除 ${selectedIds.size} 个项目`);
+      toast.success(`已删除 ${count} 个项目`);
     } catch (e) {
       toast.error('删除失败', { description: e instanceof Error ? e.message : '未知错误' });
     }
@@ -94,7 +87,10 @@ export default function ProjectsPage() {
   }, [projects]);
 
   const filtered = sorted.filter(p => {
-    const matchesSearch = p.title.includes(searchTerm);
+    const term = searchTerm.trim().toLowerCase();
+    const matchesSearch = !term
+      || p.title.toLowerCase().includes(term)
+      || (p.description ?? '').toLowerCase().includes(term);
     const matchesStatus = filterStatus === 'all' || p.status === filterStatus;
     return matchesSearch && matchesStatus;
   });

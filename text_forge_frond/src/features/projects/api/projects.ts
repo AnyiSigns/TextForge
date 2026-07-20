@@ -50,7 +50,18 @@ export async function fetchProjectDetail(id: string): Promise<Step[]> {
 
 export async function fetchProjectMeta(id: string): Promise<ProjectDetail['project']> {
   const { data } = await apiClient.get(`/api/projects/${id}`);
-  return data.project || { id, title: '', status: 'draft', createdAt: '', updatedAt: '' };
+  return (
+    data.project || {
+      id,
+      title: '',
+      description: '',
+      genre: '',
+      status: 'draft',
+      pinned: false,
+      createdAt: '',
+      updatedAt: '',
+    }
+  );
 }
 
 export async function fetchProjectCharacters(id: string): Promise<NonNullable<ProjectDetail['characters']>> {
@@ -143,7 +154,7 @@ function runStepToStreamStep(run: WorkflowRunStep): Step | null {
 
 /** 把一段正文转为工作台 step（手稿 → 工作台 互导）。
  *  仅负责构造 step，草稿落库由调用方负责（API 层不耦合 store）。 */
-export async function importManuscriptToProject(projectId: string, title: string, content: string): Promise<Step> {
+export function buildStepFromManuscript(projectId: string, title: string, content: string): Step {
   return {
     id: `step-manuscript-${Date.now()}`,
     agent: 'writer',
@@ -155,10 +166,10 @@ export async function importManuscriptToProject(projectId: string, title: string
 // 把整本书（已拆好的章节）转为工作台 steps（completed），
 // 让工作台「续写下一章」能把这些已导入章节当作上下文注入 Agent 流。
 // 仅负责构造 steps，草稿落库由调用方负责（API 层不耦合 store）。
-export async function importBookToProject(
+export function buildBookSteps(
   projectId: string,
   chapters: { title: string; content: string }[],
-): Promise<Step[]> {
+): Step[] {
   return chapters.map((c, i) => ({
     id: `step-book-${Date.now()}-${i}`,
     agent: 'writer',

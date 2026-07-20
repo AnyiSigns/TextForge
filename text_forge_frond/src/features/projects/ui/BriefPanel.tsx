@@ -37,10 +37,6 @@ export function BriefPanel({ projectId, projectTitle }: { projectId: string; pro
     setForm((p) => ({ ...p, [key]: value }));
 
   useEffect(() => {
-    // syncFromBackend 通过 syncManager 自动调度
-  }, [projectId]);
-
-  useEffect(() => {
     if (!brief) return;
     const t = setTimeout(() => setForm((prev) => ({ ...prev, ...brief })), 0);
     return () => clearTimeout(t);
