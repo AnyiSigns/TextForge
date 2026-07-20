@@ -12,12 +12,12 @@ import { Image as ImageIcon, Link as LinkIcon, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
 import { EmptyState } from '@/components/shared/states';
-import { ProcessNav } from '@/components/projects/ProcessNav';
-import { PortfolioGallery } from '@/components/projects/PortfolioGallery';
+import { ProcessNav } from '@/features/projects';
+import { PortfolioGallery } from '@/features/projects';
 import { Images, LayoutGrid, Download } from 'lucide-react';
 import { downloadSingleImage, downloadImagesZip } from '@/lib/storage/imageExport';
 import { useCharacterStore } from '@/lib/stores/characterStore';
-import { useBriefStore, briefToContextLine } from '@/lib/stores/briefStore';
+import { useBriefStore, briefToContextLine } from '@/features/projects';
 import type { GenerationContext } from '@/types';
 
 export default function AssetsPage() {

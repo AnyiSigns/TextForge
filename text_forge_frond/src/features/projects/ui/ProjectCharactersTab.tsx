@@ -1,4 +1,4 @@
-﻿// src/components/projects/ProjectCharactersTab.tsx
+// src/components/projects/ProjectCharactersTab.tsx
 'use client';
 
 import Link from 'next/link';
@@ -8,7 +8,7 @@ import { EmptyState, Spinner } from '@/components/shared/states';
 import { CHARACTER_ROLE_LABELS, characterRoleLabel } from '@/lib/workflow/agentRoles';
 import { Plus, Search, Users, UserPlus, Sparkles, List, LayoutGrid } from 'lucide-react';
 import { Character, CharacterRole } from '@/types';
-import { useProjectCharactersTab } from '@/lib/hooks/useProjectCharactersTab';
+import { useProjectCharactersTab } from '@/features/projects';
 import { CharacterCard, type CharacterCardActions } from './CharacterCard';
 import { CharacterDetailSheet } from './CharacterDetailSheet';
 import { CharacterStatusSheet } from './CharacterStatusSheet';

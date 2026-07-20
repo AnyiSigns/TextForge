@@ -1,11 +1,11 @@
 // src/lib/hooks/manuscriptIO.ts
 // 手稿编辑器「导入/导出/同步」动作：书籍 txt 导入、导出、发送到工作台。纯逻辑，依赖注入。
 import { toast } from 'sonner';
-import { importManuscriptToProject, importBookToProject } from '@/lib/api/projects';
+import { importManuscriptToProject, importBookToProject } from '@/features/projects';
 import { exportManuscriptBook } from '@/lib/storage/backup';
 import { parseBookText } from '@/lib/utils/bookImport';
 import { useManuscriptStore } from '@/lib/stores/manuscriptStore';
-import { useProjectStore } from '@/lib/stores/projectStore';
+import { useProjectStore } from '@/features/projects';
 import type { ManuscriptChapter } from '@/types';
 
 export interface ManuscriptIO {

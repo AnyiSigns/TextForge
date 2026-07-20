@@ -7,7 +7,7 @@ import {
   submitImage, submitVideo, fetchProjectPortfolio, type MediaTask, type GenerationContext, type ImageRequest, type VideoRequest,
 } from '@/lib/api/generation';
 import { useModelStore } from '@/lib/stores/modelStore';
-import { useBriefStore, briefToContextLine } from '@/lib/stores/briefStore';
+import { useBriefStore, briefToContextLine } from '@/features/projects';
 import { useCharacterStore } from '@/lib/stores/characterStore';
 import { usePortfolioStore } from '@/lib/stores/portfolioStore';
 import { useShallow } from 'zustand/react/shallow';

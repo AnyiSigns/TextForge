@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { saveDraft, getDraft, saveVersion, getVersionHistory, type ProjectVersion, type ProjectTemplate } from '@/lib/storage/indexedDB';
-import { fetchProjects, createProject as apiCreateProject, deleteProject as apiDeleteProject } from '@/lib/api/projects';
+import { fetchProjects, createProject as apiCreateProject, deleteProject as apiDeleteProject } from '@/features/projects';
 import { uid } from '@/lib/utils/id';
 import { createIdbStorage } from '@/lib/storage/zustandIdb';
 import type { Project, ProjectBrief, Step } from '@/types';

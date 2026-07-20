@@ -2,7 +2,7 @@
 // 工作台上下文构造与章节级辅助：buildContext（注入生成基座）、summarizePlot（压缩前文）、
 // depositCharacterProfiles（复盘沉淀角色状态）。均为接收依赖的纯函数工厂，便于复用与测试。
 import type { Character } from '@/types';
-import { briefToContextLine, briefSectionsToContext } from '@/lib/stores/briefStore';
+import { briefToContextLine, briefSectionsToContext } from '@/features/projects';
 import { characterRoleLabel } from '@/lib/workflow/agentRoles';
 import type { OutlineVolume } from '@/lib/storage/backup';
 import type { ProjectBrief } from '@/types';

@@ -2,23 +2,23 @@
 
 import { useState } from 'react';
 import { useParams } from 'next/navigation';
-import { ProjectStudio } from '@/components/projects/ProjectStudio';
-import { ProjectGuide } from '@/components/projects/ProjectGuide';
-import { BriefPanel } from '@/components/projects/BriefPanel';
-import { OutlinePanel } from '@/components/projects/OutlinePanel';
-import { InspirationBoard } from '@/components/projects/InspirationBoard';
-import { ProjectCharactersTab } from '@/components/projects/ProjectCharactersTab';
-import { ProjectExport } from '@/components/projects/ProjectExport';
+import { ProjectStudio } from '@/features/projects';
+import { ProjectGuide } from '@/features/projects';
+import { BriefPanel } from '@/features/projects';
+import { OutlinePanel } from '@/features/projects';
+import { InspirationBoard } from '@/features/projects';
+import { ProjectCharactersTab } from '@/features/projects';
+import { ProjectExport } from '@/features/projects';
 import { WorkbenchTab } from './WorkbenchTab';
 import { ProjectDialogs } from './ProjectDialogs';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Spinner } from '@/components/shared/states';
 import { Button } from '@/components/ui/button';
-import { ProcessNav, type ProcessTab } from '@/components/projects/ProcessNav';
+import { ProcessNav, type ProcessTab } from '@/features/projects';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 import { FileText, ListTree, Lightbulb, FileCog, Users, ImageIcon, Clapperboard, BookOpen, Info, Wand2, Check, CheckCircle2, PenLine, Sparkles } from 'lucide-react';
-import { useWorkbench } from '@/lib/hooks/useWorkbench';
+import { useWorkbench } from '@/features/projects';
 
 export default function ProjectWorkbench() {
   const { id: projectId } = useParams<{ id: string }>();

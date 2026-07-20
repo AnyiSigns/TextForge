@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { fetchCharacterDetail, fetchCharacterMessages, sendChatMessage } from '@/lib/api/characters';
-import { useBriefStore, briefToContextLine } from '@/lib/stores/briefStore';
+import { useBriefStore, briefToContextLine } from '@/features/projects';
 import { useManuscriptStore } from '@/lib/stores/manuscriptStore';
 import { loadInspiration, saveInspiration, type InspirationItem } from '@/lib/storage/backup';
 import { toast } from 'sonner';

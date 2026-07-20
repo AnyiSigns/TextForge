@@ -5,8 +5,8 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { toast } from 'sonner';
 import { useManuscriptStore } from '@/lib/stores/manuscriptStore';
-import { useProjectCharacters } from '@/lib/hooks/useProjectCharacters';
-import { useBriefStore } from '@/lib/stores/briefStore';
+import { useProjectCharacters } from '@/features/projects';
+import { useBriefStore } from '@/features/projects';
 import { useSettingsStore } from '@/lib/stores/settingsStore';
 import type { ProjectBrief, ManuscriptChapter } from '@/types';
 import { buildSettingKeywords, buildCharSuggestions, computeSuggestionsFor } from './manuscriptSuggestions';

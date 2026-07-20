@@ -8,7 +8,7 @@ import Link from 'next/link';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { Spinner } from '@/components/shared/states';
 import { Button } from '@/components/ui/button';
-import { useProjectStore } from '@/lib/stores/projectStore';
+import { useProjectStore } from '@/features/projects';
 import { useManuscriptStore } from '@/lib/stores/manuscriptStore';
 
 // 编辑器单独成 chunk：其依赖较重（联想/导入/导出），懒加载可缩小首屏 chunk。

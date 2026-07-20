@@ -139,7 +139,7 @@ export function useGenerationForm(opts: GenerationFormOptions) {
   useEffect(() => {
     let cancelled = false;
     if (!steps && projectId && projectId !== NO_PROJECT) {
-      import('@/lib/api/projects').then(({ fetchProjectDetail }) =>
+      import('@/features/projects').then(({ fetchProjectDetail }) =>
         fetchProjectDetail(projectId)
           .then((s) => { if (!cancelled) setInternalSteps(s.map((x) => ({ id: x.id, agent: x.agent, content: x.content }))); })
           .catch(() => {})

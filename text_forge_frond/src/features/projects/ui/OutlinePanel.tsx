@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 import { loadOutline, saveOutline, type OutlineVolume, type OutlineChapter, type OutlineNode, type OutlineNodeStatus } from '@/lib/storage/backup';
 import { dispatchInsertStep } from '@/lib/events/projectEvents';
 import { useCharacterStore } from '@/lib/stores/characterStore';
-import { useBriefStore } from '@/lib/stores/briefStore';
+import { useBriefStore } from '@/features/projects';
 import { toast } from 'sonner';
 import { uid } from '@/lib/utils/id';
 const STATUS_META: Record<OutlineNodeStatus, { label: string; cls: string; icon: typeof Circle }> = {

@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useProjectStore } from '@/lib/stores/projectStore';
+import { useProjectStore } from '@/features/projects';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';

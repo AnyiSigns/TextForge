@@ -11,7 +11,7 @@ import { Upload, FileText, Trash2, BookOpen, Globe2, FolderOpen, Sparkles, Shiel
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { EmptyState } from '@/components/shared/states';
-import { ProcessNav } from '@/components/projects/ProcessNav';
+import { ProcessNav } from '@/features/projects';
 import { useAuthStore } from '@/lib/stores/authStore';
 import { useSettingsStore } from '@/lib/stores/settingsStore';
 import { ragClient, type KbDocMeta } from '@/lib/knowledge';

@@ -4,7 +4,7 @@ import type { WorkflowRunStep } from './workflowTypes';
 import type { Step } from '@/types';
 import { BUILTIN_WORKFLOW_ID } from '@/types';
 import type { OutlineVolume, OutlineChapter, OutlineNode } from '@/lib/storage/backup';
-import { useProjectStore } from '@/lib/stores/projectStore';
+import { useProjectStore } from '@/features/projects';
 
 // 把 DAG 运行结果转为项目 steps：仅 agent 节点生成步骤；
 // writer 节点（写作）标记为待确认正文（waiting），其余 completed。

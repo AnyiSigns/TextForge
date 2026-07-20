@@ -12,7 +12,7 @@ import { toast } from 'sonner';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Spinner, EmptyState } from '@/components/shared/states';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { useProjectStore } from '@/lib/stores/projectStore';
+import { useProjectStore } from '@/features/projects';
 import { useCharacterStore } from '@/lib/stores/characterStore';
 import { NO_PROJECT } from '@/components/shared/ProjectPicker';
 import type { Character } from '@/types';

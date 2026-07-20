@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useAuthStore } from '@/lib/stores/authStore';
-import { useBriefStore } from '@/lib/stores/briefStore';
-import { useProjectStore } from '@/lib/stores/projectStore';
+import { useBriefStore } from '@/features/projects';
+import { useProjectStore } from '@/features/projects';
 import { useCharacterStore } from '@/lib/stores/characterStore';
 import { getManuscriptChapters } from '@/lib/storage/indexedDB';
 import { fetchVideoTasks, type MediaTask } from '@/lib/api/generation';

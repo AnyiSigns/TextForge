@@ -9,9 +9,9 @@ import { Eye, Trash2, Download, FileText, Loader2, CheckCircle2, PauseCircle, Fi
 import type { LucideIcon } from 'lucide-react';
 import { Project } from '@/types';
 import { useCharacterStore } from '@/lib/stores/characterStore';
-import { useBriefStore } from '@/lib/stores/briefStore';
+import { useBriefStore } from '@/features/projects';
 import { usePortfolioStore } from '@/lib/stores/portfolioStore';
-import { useProjectStore } from '@/lib/stores/projectStore';
+import { useProjectStore } from '@/features/projects';
 import { useShallow } from 'zustand/react/shallow';
 import { toast } from 'sonner';
 import { exportProjectJson, exportProjectMarkdown, exportProjectText } from '@/lib/storage/backup';

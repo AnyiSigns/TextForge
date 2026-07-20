@@ -5,9 +5,9 @@ import { useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Download, Upload, FileJson, FileText, FileType, HelpCircle } from 'lucide-react';
-import { useProjectStore } from '@/lib/stores/projectStore';
+import { useProjectStore } from '@/features/projects';
 import { useCharacterStore } from '@/lib/stores/characterStore';
-import { useBriefStore } from '@/lib/stores/briefStore';
+import { useBriefStore } from '@/features/projects';
 import { useModelStore } from '@/lib/stores/modelStore';
 import { useSettingsStore } from '@/lib/stores/settingsStore';
 import {

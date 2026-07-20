@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sparkles, Loader2 } from 'lucide-react';
-import { useWorkbench } from '@/lib/hooks/useWorkbench';
+import { useWorkbench } from '@/features/projects';
 
 export function ProjectDialogs({ wb }: { wb: ReturnType<typeof useWorkbench> }) {
   const { aiDialog, setAiDialog, applyAiResult, seedOpen, setSeedOpen, seedPrompt, setSeedPrompt, handleSeed, isSeeding } = wb;

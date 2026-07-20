@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Character, CharacterRole, CharacterRelationship } from '@/types';
 import { useCharacterStore } from '@/lib/stores/characterStore';
-import { useProjectCharacters } from '@/lib/hooks/useProjectCharacters';
+import { useProjectCharacters } from '@/features/projects';
 import { uploadAvatar } from '@/lib/api/characters';
 import { generatePart } from '@/lib/seed/generate';
 import { downloadImagesZip } from '@/lib/storage/imageExport';

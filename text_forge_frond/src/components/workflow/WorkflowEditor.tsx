@@ -6,7 +6,7 @@ import type { Workflow, WorkflowNode, WorkflowNodeKind } from '@/lib/api/workflo
 import { runWorkflow, saveWorkflow, workflowToSteps } from '@/lib/api/workflow';
 import { loadOutline, type OutlineVolume } from '@/lib/storage/backup';
 import { DEFAULT_TEAM_TEMPLATE, agentRoleById } from '@/lib/workflow/agentRoles';
-import { useProjectStore } from '@/lib/stores/projectStore';
+import { useProjectStore } from '@/features/projects';
 import { toast } from 'sonner';
 import { WorkflowNodePanel } from './WorkflowNodePanel';
 import { WorkflowCanvas } from './WorkflowCanvas';

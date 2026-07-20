@@ -3,8 +3,8 @@
 // 纯逻辑层，依赖由 useWorkbench 注入；行为与抽离前一致。
 import { useRef, useCallback } from 'react';
 import { toast } from 'sonner';
-import { generateWithWorkflow } from '@/lib/api/projects';
-import { useProjectStore } from '@/lib/stores/projectStore';
+import { generateWithWorkflow } from '@/features/projects';
+import { useProjectStore } from '@/features/projects';
 import type { Step, GenerationContext } from '@/types';
 import type { Workflow } from '@/lib/api/workflow';
 

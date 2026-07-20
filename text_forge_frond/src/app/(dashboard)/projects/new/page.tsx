@@ -12,7 +12,7 @@ import { ArrowLeft, Plus, BookPlus, LayoutTemplate } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { cn } from '@/lib/utils';
-import { useProjectStore } from '@/lib/stores/projectStore';
+import { useProjectStore } from '@/features/projects';
 
 const PRESET_GENRES = ['科幻', '奇幻', '言情', '悬疑', '武侠', '都市', '历史', '仙侠', '末世', '轻小说'];
 

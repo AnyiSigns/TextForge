@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { ProjectCard } from '@/components/projects/ProjectCard';
+import { ProjectCard } from '@/features/projects';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -13,7 +13,7 @@ import { toast } from 'sonner';
 import { Project } from '@/types';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Spinner, EmptyState } from '@/components/shared/states';
-import { useProjectStore } from '@/lib/stores/projectStore';
+import { useProjectStore } from '@/features/projects';
 import { generateSeed } from '@/lib/seed/generate';
 
 type ViewMode = 'grid' | 'list';

@@ -1,12 +1,12 @@
 // src/app/(dashboard)/projects/[id]/WorkbenchTab.tsx
 // 项目工作台「工作台」标签页内容：上下文选择器、流水线图、步骤列表与生成控制区。
-import { WorkflowGraph } from '@/components/projects/WorkflowGraph';
-import { StepCard } from '@/components/projects/StepCard';
+import { WorkflowGraph } from '@/features/projects';
+import { StepCard } from '@/features/projects';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Users, Layers, Check, Sparkles, Info, Wand2, PenLine, Pause, Play, Send, FileText, FileCog } from 'lucide-react';
 import { EmptyState } from '@/components/shared/states';
-import { useWorkbench } from '@/lib/hooks/useWorkbench';
+import { useWorkbench } from '@/features/projects';
 
 export function WorkbenchTab({
   wb,

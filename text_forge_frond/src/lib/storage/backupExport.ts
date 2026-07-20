@@ -6,9 +6,9 @@ import { getItem } from './indexedDB';
 import { loadOutline, loadInspiration } from './backupOutline';
 import type { OutlineVolume, InspirationItem } from './backupSchema';
 import type { Project, Step, Character, ProjectBrief, ManuscriptChapter } from '@/types';
-import { useProjectStore } from '@/lib/stores/projectStore';
+import { useProjectStore } from '@/features/projects';
 import { useCharacterStore } from '@/lib/stores/characterStore';
-import { useBriefStore } from '@/lib/stores/briefStore';
+import { useBriefStore } from '@/features/projects';
 import { useManuscriptStore } from '@/lib/stores/manuscriptStore';
 
 export interface SingleProjectBundle {

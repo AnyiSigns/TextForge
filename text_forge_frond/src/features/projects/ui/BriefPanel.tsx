@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Save, Sparkles, ChevronDown, Target, Plus, Trash2, Pin, PinOff } from 'lucide-react';
 import { toast } from 'sonner';
-import { useBriefStore, briefToContextLine } from '@/lib/stores/briefStore';
+import { useBriefStore, briefToContextLine } from '@/features/projects';
 import type { ProjectBrief, BriefSection } from '@/types';
 import { cn } from '@/lib/utils';
 import { uid } from '@/lib/utils/id';

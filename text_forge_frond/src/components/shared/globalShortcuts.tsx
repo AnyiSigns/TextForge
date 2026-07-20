@@ -3,7 +3,7 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useProjectStore } from '@/lib/stores/projectStore';
+import { useProjectStore } from '@/features/projects';
 import { exportWorkspace, downloadBackup } from '@/lib/storage/backup';
 import { toast } from 'sonner';
 
@@ -39,7 +39,7 @@ export function GlobalShortcuts() {
         void (async () => {
           const { projects } = useProjectStore.getState();
           const { characters } = (await import('@/lib/stores/characterStore')).useCharacterStore.getState();
-          const { briefs } = (await import('@/lib/stores/briefStore')).useBriefStore.getState();
+          const { briefs } = (await import('@/features/projects')).useBriefStore.getState();
           const { models } = (await import('@/lib/stores/modelStore')).useModelStore.getState();
           const s = (await import('@/lib/stores/settingsStore')).useSettingsStore.getState();
           const settingsData = {

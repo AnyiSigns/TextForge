@@ -17,7 +17,7 @@
 
 import { API_URL } from '@/lib/config/env';
 import { useAuthStore } from '@/lib/stores/authStore';
-import { useBriefStore } from '@/lib/stores/briefStore';
+import { useBriefStore } from '@/features/projects';
 import { useCharacterStore } from '@/lib/stores/characterStore';
 import { loadOutline, saveOutline } from '@/lib/storage/backup';
 import { mergeBrief, mergeOutline, mergeCharacters } from './merge';
