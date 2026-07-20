@@ -86,7 +86,12 @@ export function useGenerationForm(opts: GenerationFormOptions) {
   const [negExpanded, setNegExpanded] = useState(false);
   const [localUseCase, setLocalUseCase] = useState<GenUseCase>(kind === 'image' ? 'portrait' : 'chapter_anim');
   const useCase: GenUseCase = forcedUseCase ?? localUseCase;
-  const MAX_DURATION_MIN = useCase === 'character_card' ? 15 : 5;
+  // 时长配置：角色卡动画最长 15 秒（秒级），其余视频最长 5 分钟（分钟级）
+  const isCharCard = useCase === 'character_card';
+  const DURATION_MAX = isCharCard ? 15 : 5;
+  const DURATION_MIN = isCharCard ? 1 : 0.5;
+  const DURATION_STEP = isCharCard ? 1 : 0.5;
+  const DURATION_UNIT = isCharCard ? '秒' : '分钟';
 
   const MAX_REFS = 8;
   const [refText, setRefText] = useState('');
@@ -260,7 +265,10 @@ export function useGenerationForm(opts: GenerationFormOptions) {
 
   return {
     // 常量 / 派生
-    MAX_DURATION_MIN,
+    MAX_DURATION_MIN: DURATION_MAX,
+    durationMin: DURATION_MIN,
+    durationStep: DURATION_STEP,
+    durationUnit: DURATION_UNIT,
     MAX_REFS,
     kind,
     useCase,

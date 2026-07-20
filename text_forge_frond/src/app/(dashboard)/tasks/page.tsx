@@ -102,7 +102,6 @@ export default function TasksPage() {
         {tab === 'videos' && (
           <div className="grid lg:grid-cols-[1.1fr_1fr] gap-6 items-start">
             <GenerationForm
-              key={activeProjectId ?? 'none'}
               kind="video"
               defaultProjectId={activeProjectId}
               chapterOptions={chapterOptions}
