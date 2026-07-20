@@ -2,11 +2,11 @@
 'use client';
 
 import { useState } from 'react';
-import { useModelStore } from '@/lib/stores/modelStore';
-import { useSettingsStore } from '@/lib/stores/settingsStore';
+import { useModelStore } from '../stores/modelStore';
+import { useSettingsStore } from '../stores/settingsStore';
 import {
   MODEL_TEMPLATES, CATEGORY_LABELS,
-} from '@/lib/models/templates';
+} from '../api/templates';
 import type { AuxiliaryModel, ModelCategory, ModelConfig } from '@/types';
 import {
   Card, CardContent, CardHeader, CardTitle,

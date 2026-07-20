@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useSettingsStore } from '@/lib/stores/settingsStore';
+import { useSettingsStore } from '@/features/settings';
 
 export function AppearanceProvider({ children }: { children: React.ReactNode }) {
   const cardGlassOpacity = useSettingsStore((s) => s.cardGlassOpacity);

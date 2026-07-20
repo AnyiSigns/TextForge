@@ -15,7 +15,7 @@ import { Plus, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   MODEL_TEMPLATES, AUX_ROLE_LABELS,
-} from '@/lib/models/templates';
+} from '../api/templates';
 import type { AuxiliaryModel, ModelConfig } from '@/types';
 
 interface ModelEditDialogProps {

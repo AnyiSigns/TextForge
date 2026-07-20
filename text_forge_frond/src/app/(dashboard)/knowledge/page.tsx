@@ -13,7 +13,7 @@ import { PageHeader } from '@/components/shared/PageHeader';
 import { EmptyState } from '@/components/shared/states';
 import { ProcessNav } from '@/features/projects';
 import { useAuthStore } from '@/lib/stores/authStore';
-import { useSettingsStore } from '@/lib/stores/settingsStore';
+import { useSettingsStore } from '@/features/settings';
 import { ragClient, type KbDocMeta } from '@/lib/knowledge';
 import { initDownloadedTiers, isTierDownloaded } from '@/lib/rag/embed';
 import { EMBED_TIERS } from '@/lib/rag/embed';

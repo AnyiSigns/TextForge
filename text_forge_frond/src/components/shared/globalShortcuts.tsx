@@ -40,8 +40,8 @@ export function GlobalShortcuts() {
           const { projects } = useProjectStore.getState();
           const { characters } = (await import('@/features/characters')).useCharacterStore.getState();
           const { briefs } = (await import('@/features/projects')).useBriefStore.getState();
-          const { models } = (await import('@/lib/stores/modelStore')).useModelStore.getState();
-          const s = (await import('@/lib/stores/settingsStore')).useSettingsStore.getState();
+          const { models } = (await import('@/features/settings')).useModelStore.getState();
+          const s = (await import('@/features/settings')).useSettingsStore.getState();
           const settingsData = {
             bgImage: s.bgImage, bgOpacity: s.bgOpacity, bgBlur: s.bgBlur, bgArea: s.bgArea,
             cardGlassOpacity: s.cardGlassOpacity, cardGlassBlur: s.cardGlassBlur,

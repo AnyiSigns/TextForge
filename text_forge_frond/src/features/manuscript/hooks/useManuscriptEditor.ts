@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { useManuscriptStore } from '../stores/manuscriptStore';
 import { useProjectCharacters } from '@/features/projects';
 import { useBriefStore } from '@/features/projects';
-import { useSettingsStore } from '@/lib/stores/settingsStore';
+import { useSettingsStore } from '@/features/settings';
 import type { ProjectBrief, ManuscriptChapter } from '@/types';
 import { buildSettingKeywords, buildCharSuggestions, computeSuggestionsFor } from './manuscriptSuggestions';
 import { makeManuscriptIO } from './manuscriptIO';

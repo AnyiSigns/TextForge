@@ -3,7 +3,7 @@
 
 import { useShallow } from 'zustand/react/shallow';
 import { useTheme } from 'next-themes';
-import { useSettingsStore, type BgArea } from '@/lib/stores/settingsStore';
+import { useSettingsStore, type BgArea } from '@/features/settings';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';

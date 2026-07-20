@@ -8,8 +8,8 @@ import { Download, Upload, FileJson, FileText, FileType, HelpCircle } from 'luci
 import { useProjectStore } from '@/features/projects';
 import { useCharacterStore } from '@/features/characters';
 import { useBriefStore } from '@/features/projects';
-import { useModelStore } from '@/lib/stores/modelStore';
-import { useSettingsStore } from '@/lib/stores/settingsStore';
+import { useModelStore } from '@/features/settings';
+import { useSettingsStore } from '@/features/settings';
 import {
   exportWorkspace, downloadBackup, importWorkspace,
   exportProjectJson, exportProjectMarkdown, exportProjectText,

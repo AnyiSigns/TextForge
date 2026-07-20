@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware';
 
 import { enqueueSync } from '@/lib/storage/syncQueue';
 import apiClient from '@/lib/api/client';
-import { MODEL_TEMPLATES } from '@/lib/models/templates';
+import { MODEL_TEMPLATES } from '../api/templates';
 import { uid } from '@/lib/utils/id';
 import { createIdbStorage } from '@/lib/storage/zustandIdb';
 import type { ModelConfig, ModelCategory } from '@/types';

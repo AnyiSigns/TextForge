@@ -16,7 +16,7 @@ import { motion } from 'framer-motion';
 import { syncManager } from '@/lib/storage/syncManager';
 import { useAuthStore } from '@/lib/stores/authStore';
 import { useNetworkStatus } from '@/lib/hooks/useNetworkStatus';
-import { useSettingsStore } from '@/lib/stores/settingsStore';
+import { useSettingsStore } from '@/features/settings';
 
 export default function DashboardLayout({
   children,

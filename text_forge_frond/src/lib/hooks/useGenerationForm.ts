@@ -3,7 +3,7 @@
 // 让 GenerationForm 组件退化为纯视图（页面=布局 / hooks=逻辑 分层）。
 import { useState, useMemo, useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { useModelStore } from '@/lib/stores/modelStore';
+import { useModelStore } from '@/features/settings';
 import { NO_PROJECT } from '@/components/shared/ProjectPicker';
 import type { GenerationContext } from '@/types';
 

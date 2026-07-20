@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   submitImage, submitVideo, fetchProjectPortfolio, type MediaTask, type GenerationContext, type ImageRequest, type VideoRequest,
 } from '@/lib/api/generation';
-import { useModelStore } from '@/lib/stores/modelStore';
+import { useModelStore } from '@/features/settings';
 import { useBriefStore, briefToContextLine } from '@/features/projects';
 import { useCharacterStore } from '@/features/characters';
 import { usePortfolioStore } from '@/lib/stores/portfolioStore';

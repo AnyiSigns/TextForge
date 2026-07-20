@@ -1,7 +1,7 @@
 // src/app/(dashboard)/settings/sections/AiPrefSection.tsx
 'use client';
 
-import { useSettingsStore } from '@/lib/stores/settingsStore';
+import { useSettingsStore } from '@/features/settings';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';

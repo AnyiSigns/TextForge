@@ -1,7 +1,7 @@
 // src/components/layout/BackgroundProvider.tsx
 'use client';
 
-import { useSettingsStore } from '@/lib/stores/settingsStore';
+import { useSettingsStore } from '@/features/settings';
 import { usePathname } from 'next/navigation';
 
 export function BackgroundProvider({ children }: { children: React.ReactNode }) {
