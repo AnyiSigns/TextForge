@@ -27,7 +27,7 @@ interface CharacterStore {
 
   syncFromBackend: () => Promise<void>;
   addCharacter: (input: { name: string; description: string; projectId?: string | null; avatar?: string }) => Promise<Character>;
-  updateCharacter: (id: string, patch: Partial<Pick<Character, 'name' | 'description' | 'avatar' | 'images' | 'role' | 'status' | 'currentProfile' | 'customRole' | 'relationships'>> & { referenceImage?: string | null; imageSeed?: number | null }) => Promise<Character>;
+  updateCharacter: (id: string, patch: Partial<Pick<Character, 'name' | 'description' | 'avatar' | 'images' | 'role' | 'status' | 'currentProfile' | 'customRole' | 'relationships'>> & { referenceImage?: string | null; referenceImages?: string[] | null; imageSeed?: number | null }) => Promise<Character>;
   addCharacterImage: (id: string, imageUrl: string) => Promise<Character>;
   removeCharacter: (id: string) => Promise<void>;
 
@@ -104,9 +104,10 @@ export const useCharacterStore = create<CharacterStore>()(
 
       updateCharacter: async (id, patch) => {
         const prev = get().characters;
-        const normalize = (c: Character & { referenceImage?: string | null; imageSeed?: number | null }): Character => ({
+        const normalize = (c: Character & { referenceImage?: string | null; referenceImages?: string[] | null; imageSeed?: number | null }): Character => ({
           ...c,
           referenceImage: c.referenceImage ?? undefined,
+          referenceImages: c.referenceImages ?? undefined,
           imageSeed: c.imageSeed ?? undefined,
         });
         set((s) => ({
@@ -129,13 +130,22 @@ export const useCharacterStore = create<CharacterStore>()(
       addCharacterImage: async (id, imageUrl) => {
         const prev = get().characters;
         set((s) => ({
-          characters: s.characters.map((c) =>
-            c.id === id ? { ...c, images: [imageUrl, ...(c.images ?? [])] } : c,
-          ),
+          characters: s.characters.map((c) => {
+            if (c.id !== id) return c;
+            const images = c.images ?? [];
+            if (images.includes(imageUrl)) return c;
+            const nextImages = [imageUrl, ...images];
+            // 自动锁定：若尚未设参考图则把首图锁进参考图（最多 5 张，去重）
+            const existingRefs = (c.referenceImages ?? []).filter(Boolean);
+            const nextRefs = existingRefs.includes(imageUrl)
+              ? existingRefs
+              : [...existingRefs, imageUrl].slice(0, 5);
+            return { ...c, images: nextImages, referenceImages: nextRefs.length ? nextRefs : c.referenceImages };
+          }),
         }));
         try {
           const target = get().characters.find((c) => c.id === id);
-          const updated = await apiUpdateCharacter(id, { images: target?.images ?? [imageUrl] });
+          const updated = await apiUpdateCharacter(id, { images: target?.images ?? [imageUrl], referenceImages: target?.referenceImages ?? null });
           if (updated) set((s) => ({
             characters: s.characters.map((c) => (c.id === id ? { ...c, ...updated } : c)),
           }));

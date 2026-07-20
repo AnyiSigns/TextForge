@@ -196,12 +196,15 @@ export function useProjectCharactersTab(projectId: string) {
     }
   };
 
-  // 详情 Sheet：设置/取消参考图
-  const setReferenceImage = (img: string | null) => {
+  // 详情 Sheet：切换某张图为参考图（多选，最多 5 张）
+  const toggleReferenceImage = (img: string) => {
     if (!detailChar) return;
-    updateCharacter(detailChar.id, { referenceImage: img }).catch(() => {});
-    if (img) toast.success('已设为参考图，后续生成立绘会更一致');
-    else toast.success('已取消参考图，后续生图不再强制一致');
+    const current = (detailChar.referenceImages ?? []).filter(Boolean);
+    const next = current.includes(img)
+      ? current.filter((u) => u !== img)
+      : [...current, img].slice(0, 5);
+    updateCharacter(detailChar.id, { referenceImages: next, referenceImage: next[0] ?? null }).catch(() => {});
+    toast.success(next.includes(img) ? '已加入参考图，后续生图会更一致' : '已移出参考图');
   };
 
   // 详情 Sheet：导出全部立绘
@@ -277,7 +280,7 @@ export function useProjectCharactersTab(projectId: string) {
     openDetailRoleEdit,
     saveDetailRole,
     saveCurrentProfile,
-    setReferenceImage,
+    toggleReferenceImage,
     exportImages,
     // 头像 / 种子 / 删除 / studio
     avatarInputRefs,

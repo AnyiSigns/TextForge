@@ -47,7 +47,7 @@ export interface UpdateCharacterRequest {
   status?: string;        // 当前状态：存活/死亡/自定义
   currentProfile?: string; // 当前时间点详情：心理/关系/处境/变化
   relationships?: { id: string; targetId: string; relation: string }[]; // 结构化角色关系
-  referenceImage?: string | null; // 角色一致性参考图（取消时传 null）
+  referenceImages?: string[] | null; // 角色一致性参考图（多张，取消时传 null）
   imageSeed?: number | null;
 }
 

@@ -29,7 +29,7 @@ export function ChapterAnimationPanel(props: ChapterAnimationPanelProps) {
   } = props;
 
   const chosen = trailerChars.map((id) => characters.find((c) => c.id === id)).filter((c): c is Character => !!c);
-  const refs = chosen.map((c) => c.referenceImage).filter((u): u is string => !!u);
+  const refs = Array.from(new Set(chosen.flatMap((c) => (c.referenceImages ?? (c.referenceImage ? [c.referenceImage] : []))).filter((u): u is string => !!u))).slice(0, 5);
 
   const handleTrailer = () => {
     if (chosen.length === 0) { toast.error('请先选择重要角色'); return; }
@@ -71,7 +71,7 @@ export function ChapterAnimationPanel(props: ChapterAnimationPanelProps) {
                   >
                     {on && <User className="w-3 h-3" />}
                     {c.name}
-                    {c.referenceImage ? <Video className="w-3 h-3 text-emerald-500" /> : <Info className="w-3 h-3 text-amber-500" />}
+                    {c.referenceImages?.length || c.referenceImage ? <Video className="w-3 h-3 text-emerald-500" /> : <Info className="w-3 h-3 text-amber-500" />}
                   </button>
                 );
               })}
@@ -84,7 +84,10 @@ export function ChapterAnimationPanel(props: ChapterAnimationPanelProps) {
               >
                 <Clapperboard className="w-4 h-4 mr-1.5" /> 生成预告片
               </Button>
-              {trailerChars.some((id) => !characters.find((c) => c.id === id)?.referenceImage) && (
+                {trailerChars.some((id) => {
+                  const c = characters.find((x) => x.id === id);
+                  return !(c?.referenceImages?.length || c?.referenceImage);
+                }) && (
                 <span className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
                   <Info className="w-3.5 h-3.5" /> 有角色尚未生成立绘，片中其样貌可能不稳定
                 </span>

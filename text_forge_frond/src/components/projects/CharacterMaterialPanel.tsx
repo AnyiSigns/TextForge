@@ -29,9 +29,9 @@ export function CharacterMaterialPanel(props: CharacterMaterialPanelProps) {
           <div className="min-w-0">
             <p className="text-sm font-medium truncate">{c.name}</p>
             <p className="text-xs text-muted-foreground truncate">{c.description || '无设定'}</p>
-            {c.referenceImage && (
+            {c.referenceImages && c.referenceImages.length > 0 && (
               <p className="text-[11px] text-primary mt-0.5 flex items-center gap-1">
-                <ImageIcon className="w-3 h-3" /> 已锁定参考图，生图将保持一致
+                <ImageIcon className="w-3 h-3" /> 已锁定 {c.referenceImages.length} 张参考图，生图将保持一致
               </p>
             )}
           </div>
@@ -44,7 +44,8 @@ export function CharacterMaterialPanel(props: CharacterMaterialPanelProps) {
               project_id: projectId,
               context: buildContext('character', c.id),
               characterId: c.id,
-              ...(c.referenceImage ? { reference_image: c.referenceImage } : {}),
+              ...(c.referenceImages && c.referenceImages.length ? { reference_images: c.referenceImages.slice(0, 5) } : {}),
+              ...(c.referenceImage && !c.referenceImages?.length ? { reference_images: [c.referenceImage] } : {}),
               ...(c.imageSeed != null ? { seed: c.imageSeed } : {}),
             })}
           >

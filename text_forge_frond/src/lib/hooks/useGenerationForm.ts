@@ -22,7 +22,7 @@ const VIDEO_STYLE_PRESETS: { value: string; label: string; aspect: string; durat
 export type GenKind = 'image' | 'video';
 type Granularity = 'chapter' | 'full';
 export type BatchMode = 'single' | 'batch';
-type ImageUseCase = 'portrait' | 'chapter_art' | 'book_concept';
+type ImageUseCase = 'portrait' | 'chapter_art';
 type VideoUseCase = 'chapter_anim' | 'trailer' | 'character_card';
 export type GenUseCase = ImageUseCase | VideoUseCase;
 
@@ -35,6 +35,8 @@ export interface GenerationFormOptions {
   context?: GenerationContext;
   steps?: { id: string; agent?: string; content?: string }[];
   forcedUseCase?: GenUseCase;
+  /** 项目内角色列表（章节插图按章节自动匹配出场角色参考图用） */
+  characters?: { id: string; name: string; referenceImages?: string[] | null; referenceImage?: string | null }[];
 }
 
 export interface GenerationSubmitPayload {
@@ -58,7 +60,7 @@ export interface GenerationSubmitPayload {
 }
 
 export function useGenerationForm(opts: GenerationFormOptions) {
-  const { kind, defaultPrompt = '', defaultProjectId = null, defaultCharacterId = null, defaultChapterId = null, context, steps, forcedUseCase } = opts;
+  const { kind, defaultPrompt = '', defaultProjectId = null, defaultCharacterId = null, defaultChapterId = null, context, steps, forcedUseCase, characters } = opts;
 
   const models = useModelStore(useShallow((s) =>
     s.models.filter((m) => m.category === 'vision' && (m.modalities ?? ['image']).includes(kind === 'video' ? 'video' : 'image'))
@@ -134,6 +136,11 @@ export function useGenerationForm(opts: GenerationFormOptions) {
 
   const selectedStep = useMemo(() => effectiveSteps?.find((s) => s.id === selectedStepId), [effectiveSteps, selectedStepId]);
 
+  // 章节插图只支持按章节：切换用例或进入时强制 granularity 为 chapter
+  useEffect(() => {
+    if (useCase === 'chapter_art' && granularity !== 'chapter') setGranularity('chapter');
+  }, [useCase, granularity, setGranularity]);
+
   const handleSubmit = async (onSubmit: (payload: GenerationSubmitPayload) => void | Promise<void>, characterImages: string[] = []) => {
     if (!prompt.trim()) return;
     setIsLoading(true);
@@ -154,26 +161,35 @@ export function useGenerationForm(opts: GenerationFormOptions) {
       // 图片：按用途组装，修 P0（不再把章节原文塞进立绘 prompt）
       if (kind === 'image') {
         if (useCase === 'portrait') {
-          // 角色立绘：只传角色一致性信息（characterId + 角色参考图 + seed + 描述），不拼章节正文，也不混入素材增强图
+          // 角色立绘：只传角色一致性信息（characterId + 多张参考图 + seed + 描述），不拼章节正文，也不混入素材增强图
           const payload = {
             ...base,
             style, size, count,
             ...(characterId ? { characterId, source: 'character' as const, source_ref: characterId } : {}),
+            ...(characterImages.length ? { reference_images: characterImages.slice(0, 5) } : {}),
           };
           await onSubmit(payload);
         } else if (useCase === 'chapter_art') {
-          // 章节插图：章节原文 + 该章角色参考图
+          // 章节插图：选章节后自动匹配该章出场角色并带入其参考图（≤5 张），同时传入章节内容供生成
+          const step = selectedStep ?? (chapterId ? effectiveSteps?.find((s) => s.id === chapterId) : undefined);
+          const stepContent = step?.content;
+          const pool = characters ?? [];
+          const matched = stepContent
+            ? pool.filter((c) => c.name && stepContent.includes(c.name))
+            : [];
+          const charRefs = matched
+            .flatMap((c) => (c.referenceImages ?? (c.referenceImage ? [c.referenceImage] : [])))
+            .filter((u): u is string => !!u);
+          const refImages = Array.from(new Set(charRefs)).slice(0, 5);
+          const chapterText = stepContent ? `\n\n【章节内容】\n${stepContent.slice(0, 2000)}` : '';
           const payload = {
-            ...base, style, size, count,
-            source_step: selectedStepId || undefined,
-            reference_images: refs.length ? refs : undefined,
-          };
-          await onSubmit(payload);
-        } else {
-          // 全书概念图：世界观摘要 + 主要角色立绘，不传单章全文
-          const payload = {
-            ...base, style, size, count,
-            reference_images: refs.length ? refs : undefined,
+            ...base,
+            prompt: `${prompt.trim()}${chapterText}`,
+            style, size, count,
+            source: 'chapter' as const,
+            source_step: (step?.id ?? selectedStepId) || undefined,
+            ...(matched.length ? { character_ids: matched.map((c) => c.id) } : {}),
+            ...(refImages.length ? { reference_images: refImages } : {}),
           };
           await onSubmit(payload);
         }
@@ -246,6 +262,7 @@ export function useGenerationForm(opts: GenerationFormOptions) {
     stylePreset, setStylePreset,
     isLoading,
     granularity, setGranularity,
+    chapterArtOnlyChapter: useCase === 'chapter_art',
     selectedStepId, setSelectedStepId,
     selectedStepIds, setSelectedStepIds,
     batchMode, setBatchMode,

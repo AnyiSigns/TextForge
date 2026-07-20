@@ -35,10 +35,12 @@ export interface ImageRequest extends GenerationBaseRequest {
   size?: string;
   count?: number;
   characterId?: string;
-  /** 角色一致性：用作参考图的 URL（后端据此保持同一角色多图一致） */
-  reference_image?: string;
+  /** 角色一致性：用作参考图的多张 URL（后端据此保持同一角色多图一致，最多 5 张） */
+  reference_images?: string[];
   /** 角色一致性：固定随机种子（同一 seed 产出更稳定的角色外观） */
   seed?: number;
+  /** 章节插图：本图命中的出场角色 id 列表（用于生成完成后回写角色图库） */
+  character_ids?: string[];
 }
 
 export interface VideoRequest extends GenerationBaseRequest {

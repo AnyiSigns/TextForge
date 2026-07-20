@@ -37,7 +37,9 @@ export interface Character {
   novelId?: string;
   projectId?: string | null;
   images?: string[];
-  /** 角色一致性：锁定用作参考图的 URL（出图时作为 reference_image 透传） */
+  /** 角色一致性：锁定的多张参考图 URL（出图时作为 reference_images 透传，最多 5 张） */
+  referenceImages?: string[] | null;
+  /** 角色一致性：兼容旧单张参考图（优先使用 referenceImages） */
   referenceImage?: string | null;
   /** 角色一致性：锁定的随机种子（出图时作为 seed 透传） */
   imageSeed?: number | null;

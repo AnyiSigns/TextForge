@@ -27,6 +27,7 @@ export function GenerationForm({
   submitLabel,
   steps,
   projectCharacters,
+  characters,
   onProjectChange,
   useCase: forcedUseCase,
 }: {
@@ -60,10 +61,11 @@ export function GenerationForm({
   submitLabel?: string;
   steps?: { id: string; agent?: string; content?: string }[];
   projectCharacters?: { id: string; name: string }[];
+  characters?: { id: string; name: string; referenceImages?: string[] | null; referenceImage?: string | null }[];
   onProjectChange?: (projectId: string | null) => void;
   useCase?: GenUseCase;
 }) {
-  const f = useGenerationForm({ kind, defaultPrompt, defaultProjectId, defaultCharacterId, defaultChapterId, context, steps, forcedUseCase });
+  const f = useGenerationForm({ kind, defaultPrompt, defaultProjectId, defaultCharacterId, defaultChapterId, context, steps, forcedUseCase, characters });
   const icon = kind === 'image' ? <Wand2 className="w-4 h-4 text-primary" /> : <Clapperboard className="w-4 h-4 text-primary" />;
   const title = kind === 'image' ? '生成图片' : '生成视频';
 
@@ -202,7 +204,7 @@ export function GenerationForm({
 
         <hr className="ink-divider" />
 
-        <GranularitySection f={f} />
+        {kind === 'image' && f.useCase !== 'portrait' && <GranularitySection f={f} />}
 
             {chapterOptions.length > 0 && (
               <div className="space-y-2">
@@ -231,12 +233,12 @@ export function GenerationForm({
               label="关联项目（可选）"
             />
 
-        {kind === 'image' && projectCharacters && projectCharacters.length > 0 && (
+        {kind === 'image' && projectCharacters && projectCharacters.length > 0 && f.useCase !== 'chapter_art' && (
           <div className="space-y-2">
-            <Label>生成到角色（可选）</Label>
+            <Label>角色（可选，自动带入其参考图）</Label>
             <Select value={f.characterId ?? '__none__'} onValueChange={(v) => f.setCharacterId(v === '__none__' ? null : v)}>
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="选择项目内角色，生成图将加入其图库">{(v: string) => {
+                <SelectValue placeholder="选择项目内角色，生图将自动带入其参考图">{(v: string) => {
                   if (v === '__none__') return '不指定角色';
                   return projectCharacters.find((c) => c.id === v)?.name ?? '选择角色';
                 }}</SelectValue>
@@ -248,31 +250,39 @@ export function GenerationForm({
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground/80">指定后，生成完成的图片会自动加入该角色的详情图库</p>
+            <p className="text-xs text-muted-foreground/80">指定后，生成完成的图片会自动加入该角色的详情图库；并自动带入该角色已锁定的参考图（最多 5 张）保证多图一致。</p>
           </div>
         )}
 
-        <div className="space-y-2">
-          <Label>素材增强（可选，最多 {f.MAX_REFS} 张）</Label>
-          <Textarea
-            value={f.refText}
-            onChange={(e) => f.setRefText(e.target.value)}
-            placeholder="粘贴参考图链接，每行一个或用逗号分隔；将作为参考图提升细节一致性"
-            rows={2}
-            className="text-sm"
-          />
-          {f.refImages.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {f.refImages.map((u) => (
-                <span key={u} className="text-[10px] px-2 py-0.5 rounded-full bg-primary/12 text-primary border border-primary/25 max-w-[12rem] truncate">
-                  {u.replace(/^https?:\/\//, '').slice(0, 28)}
-                </span>
-              ))}
-            </div>
-          )}
-          {f.refError && <p className="text-[11px] text-amber-500">{f.refError}</p>}
-          <p className="text-xs text-muted-foreground/80">与所选角色的参考图自动合并，去重后最多取 {f.MAX_REFS} 张。</p>
-        </div>
+        {kind === 'image' && (f.useCase === 'portrait' || f.useCase === 'chapter_art') ? (
+          <p className="text-xs text-muted-foreground/80">
+            {f.useCase === 'portrait'
+              ? '角色立绘将自动带入所选角色的参考图（最多 5 张），无需在此粘贴素材增强图。'
+              : '章节插图将自动带入该章出场角色的参考图（最多 5 张），无需在此粘贴素材增强图。'}
+          </p>
+        ) : (
+          <div className="space-y-2">
+            <Label>素材增强（可选，最多 {f.MAX_REFS} 张）</Label>
+            <Textarea
+              value={f.refText}
+              onChange={(e) => f.setRefText(e.target.value)}
+              placeholder="粘贴参考图链接，每行一个或用逗号分隔；将作为参考图提升细节一致性"
+              rows={2}
+              className="text-sm"
+            />
+            {f.refImages.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {f.refImages.map((u) => (
+                  <span key={u} className="text-[10px] px-2 py-0.5 rounded-full bg-primary/12 text-primary border border-primary/25 max-w-[12rem] truncate">
+                    {u.replace(/^https?:\/\//, '').slice(0, 28)}
+                  </span>
+                ))}
+              </div>
+            )}
+            {f.refError && <p className="text-[11px] text-amber-500">{f.refError}</p>}
+            <p className="text-xs text-muted-foreground/80">与所选角色的参考图自动合并，去重后最多取 {f.MAX_REFS} 张。</p>
+          </div>
+        )}
 
         <Button onClick={() => f.handleSubmit(onSubmit, characterImages)} disabled={f.isLoading || (kind === 'video' && f.useCase === 'trailer' && characterImages.length === 0)} className={cn('w-full')}>
           {f.isLoading ? '提交中...' : (submitLabel ?? (kind === 'image' ? '生成图片' : '提交任务'))}

@@ -44,9 +44,10 @@ export function ProjectStudio({ projectId, steps, mode, selectedCharIds }: { pro
     const pool = chosen.length ? chosen : characters;
     const matched = pool.filter((c) => step?.content && step.content.includes(c.name));
     const used = matched.length ? matched : pool;
+    const images = used.flatMap((c) => (c.referenceImages ?? (c.referenceImage ? [c.referenceImage] : []))).filter((u): u is string => !!u);
     return {
       ids: used.map((c) => c.id),
-      images: used.map((c) => c.referenceImage).filter((u): u is string => !!u),
+      images: Array.from(new Set(images)).slice(0, 5),
     };
   }, [steps, characters, selectedCharIds]);
 

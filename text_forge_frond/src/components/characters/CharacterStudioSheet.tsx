@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
-import { Sparkles, Lock, Pin, FileText, ListTree, Download } from 'lucide-react';
+import { Sparkles, Lock, Unlock, Pin, FileText, ListTree, Download } from 'lucide-react';
 import Image from 'next/image';
 import { Character } from '@/types';
 import { useCharacterStore } from '@/lib/stores/characterStore';
@@ -140,7 +140,7 @@ export function CharacterStudioSheet({
             {images.length > 0 ? (
               <div className="grid grid-cols-3 gap-2">
                 {images.slice(0, 9).map((img, i) => {
-                  const isRef = character.referenceImage === img;
+                  const isRef = (character.referenceImages ?? []).includes(img);
                   return (
                     <div key={i} className="relative aspect-square rounded-lg overflow-hidden border border-border/40 group">
                       <Image src={img} alt={`${character.name} ${i + 1}`} fill unoptimized className="object-cover" />
@@ -150,19 +150,18 @@ export function CharacterStudioSheet({
                       <div className="absolute inset-0 flex items-center justify-center gap-1 bg-black/45 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
                           type="button"
-                          title={isRef ? 'unset reference' : 'set reference'}
+                          title={isRef ? '取消参考图' : '设为参考图'}
                           onClick={() => {
-                            if (isRef) {
-                              updateCharacter(character.id, { referenceImage: null }).catch(() => {});
-                              toast.success('reference cleared');
-                            } else {
-                              updateCharacter(character.id, { referenceImage: img }).catch(() => {});
-                              toast.success('reference set');
-                            }
+                            const current = (character.referenceImages ?? []).filter(Boolean);
+                            const next = current.includes(img)
+                              ? current.filter((u) => u !== img)
+                              : [...current, img].slice(0, 5);
+                            updateCharacter(character.id, { referenceImages: next, referenceImage: next[0] ?? null }).catch(() => {});
+                            toast.success(isRef ? '已移出参考图' : '已加入参考图');
                           }}
-                          className={isRef ? 'w-6 h-6 grid place-items-center rounded-full bg-primary text-primary-foreground' : 'w-6 h-6 grid place-items-center rounded-full bg-white/90 text-foreground'}
+                          className="w-6 h-6 grid place-items-center rounded-full bg-black text-white"
                         >
-                          <Lock className="w-3 h-3" />
+                          {isRef ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
                         </button>
                         <button
                           type="button"
@@ -182,12 +181,12 @@ export function CharacterStudioSheet({
                 暂无可图片。先点「生成立绘」生成几张，再回来设一张为参考图。
               </p>
             )}
-            {character.referenceImage ? (
+            {character.referenceImages && character.referenceImages.length > 0 ? (
               <p className="text-[11px] text-primary flex items-center gap-1">
-                <Lock className="w-3 h-3" /> 已锁定参考图，生成立绘会尽量保持一致；可在上方取消。
+                <Lock className="w-3 h-3" /> 已锁定 {character.referenceImages.length} 张参考图，生成立绘会尽量保持一致；可再次点击取消。
               </p>
             ) : (
-              <p className="text-[11px] text-muted-foreground">未设参考图：生图每次外观可能不同。设一张为参考图可保证多图一致。</p>
+              <p className="text-[11px] text-muted-foreground">未设参考图：生图每次外观可能不同。点图中黑底白锁可设为参考图（最多 5 张）。</p>
             )}
           </div>
 
@@ -255,7 +254,7 @@ export function CharacterStudioSheet({
               kind="image"
               defaultCharacterId={character.id}
               defaultProjectId={character.projectId}
-              characterImages={character.referenceImage ? [character.referenceImage] : []}
+              characterImages={character.referenceImages?.length ? character.referenceImages.slice(0, 5) : []}
               submitLabel="生成并加入图库"
               onSubmit={async (payload) => {
                 try {
@@ -268,7 +267,7 @@ export function CharacterStudioSheet({
                     model_id: payload.model_id,
                     project_id: payload.project_id,
                     characterId: character.id,
-                    reference_image: character.referenceImage ?? undefined,
+                    reference_images: character.referenceImages?.length ? character.referenceImages.slice(0, 5) : undefined,
                   });
                   const url = task?.result_url || `https://picsum.photos/seed/${character.id}-${Date.now()}/512`;
                   await addCharacterImage(character.id, url);

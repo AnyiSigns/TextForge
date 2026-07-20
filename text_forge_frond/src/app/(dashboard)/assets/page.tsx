@@ -30,11 +30,6 @@ export default function AssetsPage() {
   const genContext: GenerationContext | undefined = projectId
     ? { project_id: projectId, summary: briefToContextLine(brief) || undefined, outline: brief?.worldview || brief?.tone || undefined }
     : undefined;
-  // 全书概念图用：主要角色立绘（取项目全部角色图，去重）
-  const projectImages = projectId
-    ? Array.from(new Set(characters.filter((c) => (c.projectId ?? null) === projectId).flatMap((c) => c.images ?? []).filter(Boolean)))
-    : [];
-
   // 角色页「生成立绘」深链：?character=ID&project=PID → 预选角色并自动拼提示词
   const deepCharacterId = searchParams.get('character');
   const deepProjectId = searchParams.get('project');
@@ -45,6 +40,10 @@ export default function AssetsPage() {
     ? `${deepCharacter.name}，${deepCharacter.description || ''}。角色立绘，全身像，清晰五官，风格统一。`.slice(0, 1000)
     : '';
 
+  const characterImages = deepCharacter
+    ? (deepCharacter.referenceImages ?? (deepCharacter.referenceImage ? [deepCharacter.referenceImage] : [])).slice(0, 5)
+    : [];
+
   const projectCharacters = projectId
     ? characters.filter((c) => (c.projectId ?? null) === projectId).map((c) => ({ id: c.id, name: c.name }))
     : [];
@@ -54,13 +53,22 @@ export default function AssetsPage() {
       try {
         const list = await fetchImageResults(projectId ?? undefined);
         setItems(list);
-        // 生成完成的角色图片自动写回角色图库（后端未回写时本地兜底）
+        // 生成完成的图片自动写回角色图库（后端未回写时本地兜底）
         const { addCharacterImage } = useCharacterStore.getState();
         for (const it of list) {
-          if (it.status === 'completed' && it.result_url && it.source === 'character' && it.source_ref) {
+          if (it.status !== 'completed' || !it.result_url) continue;
+          if (it.source === 'character' && it.source_ref) {
             const char = useCharacterStore.getState().characters.find((c) => c.id === it.source_ref);
             if (char && !(char.images ?? []).includes(it.result_url)) {
               await addCharacterImage(it.source_ref, it.result_url).catch(() => {});
+            }
+          } else if (it.source === 'chapter' && it.character_ids && it.character_ids.length) {
+            // 章节插图：自动加入该章出场角色的角色素材
+            for (const cid of it.character_ids) {
+              const char = useCharacterStore.getState().characters.find((c) => c.id === cid);
+              if (char && !(char.images ?? []).includes(it.result_url)) {
+                await addCharacterImage(cid, it.result_url).catch(() => {});
+              }
             }
           }
         }
@@ -73,11 +81,12 @@ export default function AssetsPage() {
 
   const handleGenerate = async (p: ImageRequest) => {
     try {
-      // 角色一致性：按提交的角色 id 取该角色自身锁定的参考图/种子（避免深链角色与表单所选角色错配）
+      // 角色一致性：按提交的角色 id 取该角色自身锁定的多张参考图/种子（避免深链角色与表单所选角色错配）
       const selChar = p.characterId ? characters.find((c) => c.id === p.characterId) : undefined;
+      const refImages = selChar ? (selChar.referenceImages ?? (selChar.referenceImage ? [selChar.referenceImage] : [])).slice(0, 5) : undefined;
       const payload: ImageRequest = {
         ...p,
-        ...(selChar?.referenceImage ? { reference_image: selChar.referenceImage } : {}),
+        ...(refImages?.length ? { reference_images: refImages } : {}),
         ...(selChar?.imageSeed != null ? { seed: selChar.imageSeed } : {}),
       };
       await submitImage(payload);
@@ -109,8 +118,9 @@ export default function AssetsPage() {
               defaultCharacterId={defaultCharacterId}
               defaultPrompt={defaultPrompt}
               context={genContext}
-              characterImages={projectImages}
+              characterImages={characterImages}
               projectCharacters={deepCharacter ? [{ id: deepCharacter.id, name: deepCharacter.name }] : projectCharacters}
+              characters={projectId ? characters.filter((c) => (c.projectId ?? null) === projectId) : []}
               onProjectChange={setProjectId}
               onSubmit={handleGenerate}
             />

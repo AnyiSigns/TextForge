@@ -14,6 +14,8 @@ type FormHandle = {
   setLocalUseCase: (v: GenUseCase) => void;
   granularity: 'chapter' | 'full';
   setGranularity: (v: 'chapter' | 'full') => void;
+  /** 章节插图只支持按章节，不显示「整本书」选项 */
+  chapterArtOnlyChapter?: boolean;
   effectiveSteps?: { id: string; agent?: string; content?: string }[];
   selectedStepId: string;
   setSelectedStepId: (v: string) => void;
@@ -28,7 +30,6 @@ const USE_CASE_OPTIONS: Record<GenKind, { v: GenUseCase; label: string }[]> = {
   image: [
     { v: 'portrait', label: '角色立绘' },
     { v: 'chapter_art', label: '章节插图' },
-    { v: 'book_concept', label: '全书概念图' },
   ],
   video: [
     { v: 'chapter_anim', label: '章节动画' },
@@ -62,6 +63,7 @@ export function UseCaseTabs({ kind, forcedUseCase, f }: { kind: GenKind; forcedU
 }
 
 export function GranularitySection({ f }: { f: FormHandle }) {
+  const onlyChapter = f.chapterArtOnlyChapter;
   return (
     <div className="space-y-2">
       <Label>生成粒度</Label>
@@ -73,7 +75,7 @@ export function GranularitySection({ f }: { f: FormHandle }) {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="chapter">按章节（推荐）</SelectItem>
-              <SelectItem value="full">整本书</SelectItem>
+              {!onlyChapter && <SelectItem value="full">整本书</SelectItem>}
             </SelectContent>
           </Select>
           {f.granularity === 'chapter' && f.effectiveSteps && f.effectiveSteps.length > 0 && (

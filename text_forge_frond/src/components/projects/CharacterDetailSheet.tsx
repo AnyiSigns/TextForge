@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
-import { CircleDot, Eye, Pencil, Link2, Images, Lock, ImageOff } from 'lucide-react';
+import { CircleDot, Eye, Pencil, Link2, Images, Lock, Unlock } from 'lucide-react';
 import Image from 'next/image';
 import { Character, CharacterRole } from '@/types';
 
@@ -26,7 +26,7 @@ interface CharacterDetailSheetProps {
   onSaveCurrentProfile: () => void;
   onOpenRelations: (c: Character) => void;
   onSetDetailChar: (c: Character | null) => void;
-  setReferenceImage: (img: string | null) => void;
+  toggleReferenceImage: (img: string) => void;
   exportImages: () => void;
 }
 
@@ -34,7 +34,7 @@ export function CharacterDetailSheet(props: CharacterDetailSheetProps) {
   const {
     detailChar, detailRole, detailCustomRole, charNameById, rolePresets, roleLabel, statusBadge,
     onOpenStatus, onOpenDetailRoleEdit, onDetailRole, onDetailCustomRole, onSaveDetailRole,
-    onSaveCurrentProfile, onOpenRelations, onSetDetailChar, setReferenceImage, exportImages,
+    onSaveCurrentProfile, onOpenRelations, onSetDetailChar, toggleReferenceImage, exportImages,
   } = props;
 
   return (
@@ -140,33 +140,24 @@ export function CharacterDetailSheet(props: CharacterDetailSheetProps) {
                 {detailChar.images && detailChar.images.length > 0 ? (
                   <div className="grid grid-cols-2 gap-2">
                     {detailChar.images?.map((img, i) => {
-                      const isRef = detailChar.referenceImage === img;
+                      const refList = (detailChar.referenceImages ?? []).filter(Boolean);
+                      const isRef = refList.includes(img);
+                      const refIndex = refList.indexOf(img);
                       return (
                         <div key={i} className="relative aspect-square rounded-2xl overflow-hidden border border-border/30 ring-1 ring-inset ring-white/5 group">
                           <Image src={img} alt={`${detailChar.name} 图${i + 1}`} fill className="object-cover" />
                           {isRef && (
-                            <span className="absolute top-0.5 left-0.5 text-[9px] px-1 rounded-full bg-primary text-primary-foreground">参考</span>
+                            <span className="absolute top-0.5 left-0.5 text-[9px] px-1 rounded-full bg-primary text-primary-foreground">参考 {refIndex + 1}</span>
                           )}
                           <div className="absolute inset-0 flex items-center justify-center gap-1 bg-black/45 opacity-0 group-hover:opacity-100 transition-opacity">
-                            {isRef ? (
-                              <button
-                                type="button"
-                                title="取消参考图"
-                                onClick={() => setReferenceImage(null)}
-                                className="w-6 h-6 grid place-items-center rounded-full bg-white/90 text-foreground"
-                              >
-                                <ImageOff className="w-3 h-3" />
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                title="设为参考图"
-                                onClick={() => setReferenceImage(img)}
-                                className="w-6 h-6 grid place-items-center rounded-full bg-primary text-primary-foreground"
-                              >
-                                <Lock className="w-3 h-3" />
-                              </button>
-                            )}
+                            <button
+                              type="button"
+                              title={isRef ? '取消参考图' : '设为参考图'}
+                              onClick={() => toggleReferenceImage(img)}
+                              className="w-6 h-6 grid place-items-center rounded-full bg-black text-white"
+                            >
+                              {isRef ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
+                            </button>
                           </div>
                         </div>
                       );
@@ -185,12 +176,12 @@ export function CharacterDetailSheet(props: CharacterDetailSheetProps) {
                     <Eye className="w-3.5 h-3.5 mr-1.5" /> 导出全部立绘（{detailChar.images.length}）
                   </Button>
                 )}
-                {detailChar.referenceImage ? (
+                {detailChar.referenceImages && detailChar.referenceImages.length > 0 ? (
                   <p className="text-[11px] text-primary flex items-center gap-1 mt-1.5">
-                    <Lock className="w-3 h-3" /> 已锁定参考图，生成立绘会尽量保持一致；可在上方取消。
+                    <Lock className="w-3 h-3" /> 已锁定 {detailChar.referenceImages.length} 张参考图，生成立绘会尽量保持一致；可再次点击取消。
                   </p>
                 ) : (
-                  <p className="text-[11px] text-muted-foreground mt-1.5">未设参考图：生图每次外观可能不同。设一张为参考图可保证多图一致。</p>
+                  <p className="text-[11px] text-muted-foreground mt-1.5">未设参考图：生图每次外观可能不同。点图中黑底白锁可设为参考图（最多 5 张）。</p>
                 )}
               </div>
             </div>
