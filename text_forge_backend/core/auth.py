@@ -45,14 +45,6 @@ async def get_current(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    user_repo = UserRepository(db)
-    user = await user_repo.get(int(user_id))
-    if not user:
-        logger.warning("用户不存在")
-        raise HTTPException(
-            status_code=401, detail="用户不存在", headers={"WWW-Authenticate": "Bearer"}
-        )
-
     jti = payload.get("jti")
     if not jti:
         logger.warning("令牌中无JTI")
@@ -61,14 +53,4 @@ async def get_current(
             detail="令牌中无JTI",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    user_token_repo = UserTokenRepository(db)
-    user_token = await user_token_repo.get_by_user_and_jti(jti, int(user_id))
-    if not user_token:
-        logger.warning("令牌不存在")
-        raise HTTPException(
-            status_code=401, detail="令牌不存在", headers={"WWW-Authenticate": "Bearer"}
-        )
-    if datetime.now() > user_token.expired_at:
-        raise HTTPException(status_code=401, detail="令牌已过期")
-
-    return user
+    return int(user_id)

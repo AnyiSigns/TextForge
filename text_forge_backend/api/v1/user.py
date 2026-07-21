@@ -1,3 +1,4 @@
+from re import I
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
@@ -8,6 +9,7 @@ from service.user_service import user_db_serve, UserAuthService
 from model.user import User
 from utils import get_logger
 from core.auth import get_current
+from core.security import verify_token
 from service.verification_service import verifacation
 from service.email_service import email_service
 
@@ -16,10 +18,12 @@ router = APIRouter(prefix="/auth", tags=["认证"])
 
 
 @router.post("/refresh", response_model=RefreshResponse)
-async def refresh_at(user_data: Annotated[User, Depends(get_current)]):
-    return RefreshResponse(
-        access_token=user_data["access_token"], user=user_data["user"]
-    )
+async def refresh_at(request: str):
+    payload = verify_token(request)
+    user_id = payload.get("sub")
+    user_id = int(user_id)
+    if not redis.sismember(f"refrensh_token_{user_id}", request):
+        raise HTTPException(status_code=401, detail="令牌不存在")
 
 
 @router.post("/resend-verify")
