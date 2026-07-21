@@ -61,9 +61,6 @@ class UserAuthService:
                 expire=settings.JWT_ACCESS_TIME,
             )
 
-            data = {"access_token": access_token, "user_id": user.id}
-            redis.setex("user_access_token", 900, json.dumps(data))
-
             rt_jti = str(uuid.uuid4())
             expired_rt = datetime.now() + settings.JWT_EXPIRE_TIME
             refresh_token = create_token(

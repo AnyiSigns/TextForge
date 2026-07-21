@@ -1,9 +1,11 @@
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials
 from config.redis_config import redis_client as redis
 from schema.request.user import EmailRequest, VerifyEmailRequest, UserRequest, UserLogin
-from schema.response.user import TokenRes, UserResponse
+from schema.response.user import RefreshResponse, TokenRes, UserResponse
 from service.user_service import user_db_serve, UserAuthService
+from model.user import User
 from utils import get_logger
 from core.auth import get_current
 from service.verification_service import verifacation
@@ -13,9 +15,11 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/auth", tags=["认证"])
 
 
-@router.post("/refresh")
-async def refresh_at():
-    pass
+@router.post("/refresh", response_model=RefreshResponse)
+async def refresh_at(user_data: Annotated[User, Depends(get_current)]):
+    return RefreshResponse(
+        access_token=user_data["access_token"], user=user_data["user"]
+    )
 
 
 @router.post("/resend-verify")

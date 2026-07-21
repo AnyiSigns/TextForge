@@ -29,3 +29,8 @@ class TokenRes(BaseModel):
     token_type: str = Field(default="bearer", description="令牌类型，固定为 bearer")
 
     user: UserResponse
+
+
+class RefreshResponse(BaseModel):
+    access_token: str
+    user: UserResponse
