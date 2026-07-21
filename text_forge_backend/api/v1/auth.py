@@ -30,7 +30,7 @@ async def logout(
     request: RfreshRequest,
     user_serve: Annotated[UserAuthService, Depends(user_db_serve)],
 ):
-    payload = verify_token(request)
+    payload = verify_token(request.refresh_token)
     user_id = payload.get("sub")
     jti = payload.get("jti")
     user_id = int(user_id)
@@ -43,7 +43,7 @@ async def refresh_at(
     request: RfreshRequest,
     user_serve: Annotated[UserAuthService, Depends(user_db_serve)],
 ):
-    payload = verify_token(request)
+    payload = verify_token(request.refresh_token)
     user_id = payload.get("sub")
     user_id = int(user_id)
     rt_jti = payload.get("jti")
@@ -53,7 +53,7 @@ async def refresh_at(
     user_token = await user_serve.token_repo.get_by_user_and_jti(rt_jti, user.id)
     if not user_token:
         raise HTTPException(status_code=401, detail="用户/令牌不存在")
-    if not redis.sismember(f"refrensh_token_{user_id}", request):
+    if not redis.sismember(f"refrensh_token_{user_id}", request.refresh_token):
         raise HTTPException(status_code=401, detail="令牌不存在")
     at_jti = str(uuid.uuid4())
     access_token = create_token(

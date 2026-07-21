@@ -127,7 +127,8 @@ let refreshPromise: Promise<void> | null = null;
 
 async function refreshAccessToken(): Promise<void> {
   if (refreshPromise) return refreshPromise;
-  refreshPromise = axios.post(`${API_URL}/api/auth/refresh`, {}, { withCredentials: true })
+  const refreshToken = useAuthStore.getState().refreshToken;
+  refreshPromise = axios.post(`${API_URL}/api/auth/refresh`, { refresh_token: refreshToken }, { withCredentials: true })
     .then((res) => {
       const newToken = res.data.access_token;
       useAuthStore.getState().setAccessToken(newToken);

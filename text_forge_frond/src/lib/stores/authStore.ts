@@ -77,7 +77,8 @@ export const useAuthStore = create<AuthStore>()(
 
       logout: async () => {
         try {
-          await apiClient.post('/api/auth/logout').catch(() => {});
+          const refreshToken = useAuthStore.getState().refreshToken;
+          await apiClient.post('/api/auth/logout', { refresh_token: refreshToken }).catch(() => {});
         } finally {
           clearRefreshCookie();
           set({ user: null, accessToken: null, refreshToken: null, isLoggedIn: false });
@@ -91,9 +92,11 @@ export const useAuthStore = create<AuthStore>()(
       // 造成的「加载 ↔ 跳转」死循环。失败则保持未登录，由 layout 跳登录页。
       restoreFromCookie: async () => {
         try {
+          const refreshToken = useAuthStore.getState().refreshToken;
           const res = await fetch(`${API_URL}/api/auth/refresh`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refresh_token: refreshToken }),
             credentials: 'include',
             cache: 'no-store',
           });

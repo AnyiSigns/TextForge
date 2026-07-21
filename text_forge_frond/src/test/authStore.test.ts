@@ -48,6 +48,7 @@ describe('11.1 单元测试 - authStore', () => {
         id: 'u1',
         username: 'testuser',
         email: 'test@example.com',
+        avatar: '',
         isVerified: true,
         createdAt: new Date().toISOString(),
       };
@@ -64,6 +65,7 @@ describe('11.1 单元测试 - authStore', () => {
         id: 'u1',
         username: 'testuser',
         email: 'test@example.com',
+        avatar: '',
         isVerified: true,
         createdAt: new Date().toISOString(),
       };
@@ -82,6 +84,7 @@ describe('11.1 单元测试 - authStore', () => {
         id: 'u1',
         username: 'testuser',
         email: 'test@example.com',
+        avatar: '',
         isVerified: true,
         createdAt: new Date().toISOString(),
       };
@@ -92,6 +95,23 @@ describe('11.1 单元测试 - authStore', () => {
       expect(useAuthStore.getState().user).toBe(null);
       expect(useAuthStore.getState().accessToken).toBe(null);
       expect(useAuthStore.getState().isLoggedIn).toBe(false);
+    });
+
+    it('发送 refresh_token 到后端', async () => {
+      const user: User = {
+        id: 'u1',
+        username: 'testuser',
+        email: 'test@example.com',
+        avatar: '',
+        isVerified: true,
+        createdAt: new Date().toISOString(),
+      };
+
+      useAuthStore.getState().setAuth(user, 'token', 'my-refresh-token');
+      await useAuthStore.getState().logout();
+
+      const apiClient = (await import('@/lib/api/client')).default;
+      expect(apiClient.post).toHaveBeenCalledWith('/api/auth/logout', { refresh_token: 'my-refresh-token' });
     });
   });
 
