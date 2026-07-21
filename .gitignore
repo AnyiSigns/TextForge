@@ -41,6 +41,7 @@ text_forge_backend/.next/
 # ===================== 临时/生成物 =====================
 simulation-context-sample.txt
 generation-result.png
+api-contract.md
 
 # test / e2e artifacts (不限层级)
 test-results/
