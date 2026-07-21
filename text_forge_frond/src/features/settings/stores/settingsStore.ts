@@ -156,38 +156,35 @@ export const useSettingsStore = create<SettingsStore>()(
   )
 );
 
-// 注册统一同步管理器
-syncManager.register({
-  name: 'settings',
-  applyUpdates: (updates, version) => {
-    const update = (updates as SettingsStore[])[0];
-    if (update) {
-      useSettingsStore.setState({
-        bgImage: update.bgImage,
-        bgOpacity: update.bgOpacity,
-        bgBlur: update.bgBlur,
-        bgArea: update.bgArea,
-        cardGlassOpacity: update.cardGlassOpacity,
-        cardGlassBlur: update.cardGlassBlur,
-        sidebarGlassOpacity: update.sidebarGlassOpacity,
-        sidebarGlassBlur: update.sidebarGlassBlur,
-        glassEnabled: update.glassEnabled,
-        inkEnabled: update.inkEnabled,
-        inkOpacity: update.inkOpacity,
-        motionEnabled: update.motionEnabled,
-        suggestionFrequency: update.suggestionFrequency,
-        theme: update.theme,
-        processNavPosition: update.processNavPosition,
-        contentScale: update.contentScale,
-        fontFamily: update.fontFamily,
-        bgSolidOpacity: update.bgSolidOpacity,
-        embedTierId: update.embedTierId,
-      });
-    }
-    if (version !== undefined) {
-      settingsVersionMeta = { ...settingsVersionMeta, lastSyncAt: now(), version };
-    }
-  },
-  getMeta: () => useSettingsStore.getState().getVersionMeta(),
-  setMeta: (meta) => useSettingsStore.getState().setVersionMeta(meta),
-});
+// 注册统一同步管理器（延迟执行，避免循环依赖）
+setTimeout(() => {
+  syncManager.register({
+    name: 'settings',
+    applyUpdates: (updates, version) => {
+      const update = (updates as SettingsStore[])[0];
+      if (update) {
+        useSettingsStore.setState({
+          bgImage: update.bgImage,
+          bgOpacity: update.bgOpacity,
+          bgBlur: update.bgBlur,
+          bgArea: update.bgArea,
+          cardGlassOpacity: update.cardGlassOpacity,
+          cardGlassBlur: update.cardGlassBlur,
+          sidebarGlassOpacity: update.sidebarGlassOpacity,
+          sidebarGlassBlur: update.sidebarGlassBlur,
+          glassEnabled: update.glassEnabled,
+          inkEnabled: update.inkEnabled,
+          inkOpacity: update.inkOpacity,
+          motionEnabled: update.motionEnabled,
+          suggestionFrequency: update.suggestionFrequency,
+          theme: update.theme,
+        });
+      }
+      if (version !== undefined) {
+        settingsVersionMeta = { ...settingsVersionMeta, lastSyncAt: new Date().toISOString(), version };
+      }
+    },
+    getMeta: () => useSettingsStore.getState().getVersionMeta(),
+    setMeta: (meta) => useSettingsStore.getState().setVersionMeta(meta),
+  });
+}, 0);

@@ -41,6 +41,11 @@ export function ChatMessage({ message: msg, characterName, characterAvatar, isLo
   const isUser = msg.role === 'user';
   const user = useAuthStore((s) => s.user);
   const userInitial = (user?.username || '我').slice(0, 2);
+  const userAvatarUrl = user?.avatar
+    ? user.avatar.startsWith('http')
+      ? user.avatar
+      : `http://localhost${user.avatar}`
+    : undefined;
   const charName = characterName ?? '';
   const showTime =
     !prevTimestamp ||
@@ -58,7 +63,7 @@ export function ChatMessage({ message: msg, characterName, characterAvatar, isLo
       <div className={cn('flex gap-3 animate-in fade-in slide-in-from-bottom-2 duration-200', isUser && 'flex-row-reverse')}>
         {isUser ? (
           <Avatar className="w-8 h-8 shrink-0">
-            <AvatarImage src={user?.avatar} />
+            <AvatarImage src={userAvatarUrl} />
             <AvatarFallback className="text-xs">{userInitial}</AvatarFallback>
           </Avatar>
         ) : (

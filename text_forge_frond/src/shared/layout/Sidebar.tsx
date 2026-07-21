@@ -45,6 +45,12 @@ function DesktopSidebar() {
   const pathname = usePathname();
   const { user, logout } = useAuthStore();
 
+  const avatarUrl = user?.avatar
+    ? user.avatar.startsWith('http')
+      ? user.avatar
+      : `http://localhost${user.avatar}`
+    : undefined;
+
   const [collapsed, setCollapsed] = useState(
     typeof document !== 'undefined' && document.documentElement.classList.contains('sidebar-collapsed')
   );
@@ -124,7 +130,7 @@ function DesktopSidebar() {
           collapsed && "justify-center px-0"
         )}>
           <Avatar className="w-8 h-8 shrink-0 ring-2 ring-primary/10">
-            <AvatarImage src={user?.avatar} />
+            <AvatarImage src={avatarUrl} />
             <AvatarFallback className="text-xs bg-primary/10 text-primary font-semibold">{user?.username?.slice(0, 2).toUpperCase() || 'U'}</AvatarFallback>
           </Avatar>
           <div className={cn(
@@ -162,6 +168,12 @@ function MobileSidebar() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const { user, logout } = useAuthStore();
+
+  const avatarUrl = user?.avatar
+    ? user.avatar.startsWith('http')
+      ? user.avatar
+      : `http://localhost${user.avatar}`
+    : undefined;
 
   const handleLogout = async () => {
     await logout();
@@ -213,7 +225,7 @@ function MobileSidebar() {
             </div>
             <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-accent/40 transition-colors">
               <Avatar className="w-8 h-8 shrink-0 ring-2 ring-primary/10">
-                <AvatarImage src={user?.avatar} />
+                <AvatarImage src={avatarUrl} />
                 <AvatarFallback className="text-xs bg-primary/10 text-primary font-semibold">{user?.username?.slice(0, 2).toUpperCase() || 'U'}</AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">

@@ -32,12 +32,38 @@ function buildFromTemplate(templateKey: string, overrides: Partial<ModelConfig> 
   };
 }
 
+// 精简后端存储字段：adapter / modelId / baseUrl / apiKey
+function toBackendModel(m: ModelConfig) {
+  return {
+    id: m.id,
+    adapter: m.adapter,
+    modelId: m.modelId,
+    baseUrl: m.baseUrl,
+    apiKey: m.apiKey,
+  };
+}
+
+// 按 category 分组，分别同步到不同端点
+async function syncModelsByCategory(models: ModelConfig[]) {
+  const groups = models.reduce<Record<string, ModelConfig[]>>((acc, m) => {
+    (acc[m.category] = acc[m.category] || []).push(m);
+    return acc;
+  }, {});
+  const apiClient = (await import('@/lib/api/client')).default;
+  await Promise.all(
+    Object.entries(groups).map(([category, group]) =>
+      apiClient.put(`/api/user/models/${category}`, { models: group.map(toBackendModel) })
+    )
+  );
+}
+
 function defaultModels(): ModelConfig[] {
-  const openai = buildFromTemplate('openai', { name: 'GPT-4o (默认)', isDefault: true });
   const ollama = buildFromTemplate('ollama');
-  const kling = buildFromTemplate('kling');
+  const dashscope = buildFromTemplate('dashscope');
+  const deepseek = buildFromTemplate('deepseek');
+  const openaiCompat = buildFromTemplate('openai-compat');
   const embed = buildFromTemplate('openai-embed');
-  return [openai, ollama, kling, embed];
+  return [ollama, dashscope, deepseek, openaiCompat, embed];
 }
 
 interface ModelStore {
@@ -70,9 +96,8 @@ export const useModelStore = create<ModelStore>()(
 
       addModel: (m) => {
         set({ models: [...get().models, m] });
-        // 后端未就绪时入队重试
         const run = async () => {
-          await apiClient.put('/api/user/models', { models: get().models });
+          await syncModelsByCategory(get().models);
         };
         run().catch(() => {
           enqueueSync('models', run);
@@ -81,7 +106,7 @@ export const useModelStore = create<ModelStore>()(
       updateModel: (id, patch) => {
         set({ models: get().models.map((m) => (m.id === id ? { ...m, ...patch } : m)) });
         const run = async () => {
-          await apiClient.put('/api/user/models', { models: get().models });
+          await syncModelsByCategory(get().models);
         };
         run().catch(() => {
           enqueueSync('models', run);
@@ -90,7 +115,7 @@ export const useModelStore = create<ModelStore>()(
       removeModel: (id) => {
         set({ models: get().models.filter((m) => m.id !== id) });
         const run = async () => {
-          await apiClient.put('/api/user/models', { models: get().models });
+          await syncModelsByCategory(get().models);
         };
         run().catch(() => {
           enqueueSync('models', run);
@@ -103,7 +128,7 @@ export const useModelStore = create<ModelStore>()(
           ),
         });
         const run = async () => {
-          await apiClient.put('/api/user/models', { models: get().models });
+          await syncModelsByCategory(get().models);
         };
         run().catch(() => {
           enqueueSync('models', run);
@@ -141,19 +166,21 @@ export const useModelStore = create<ModelStore>()(
   )
 );
 
-// 注册统一同步管理器
-syncManager.register({
-  name: 'models',
-  applyUpdates: (updates, version) => {
-    useModelStore.setState((s) => {
-      const map = new Map((updates as ModelConfig[]).map((u) => [u.id, u]));
-      const models = s.models.map((m) => map.get(m.id) || m);
-      return { models };
-    });
-    if (version !== undefined) {
-      modelVersionMeta = { ...modelVersionMeta, lastSyncAt: new Date().toISOString(), version };
-    }
-  },
-  getMeta: () => useModelStore.getState().getVersionMeta(),
-  setMeta: (meta) => useModelStore.getState().setVersionMeta(meta),
-});
+// 注册统一同步管理器（延迟执行，避免循环依赖 modelStore→syncManager→apiClient→authStore→settingsStore→syncManager）
+setTimeout(() => {
+  syncManager.register({
+    name: 'models',
+    applyUpdates: (updates, version) => {
+      useModelStore.setState((s) => {
+        const map = new Map((updates as ModelConfig[]).map((u) => [u.id, u]));
+        const models = s.models.map((m) => map.get(m.id) || m);
+        return { models };
+      });
+      if (version !== undefined) {
+        modelVersionMeta = { ...modelVersionMeta, lastSyncAt: new Date().toISOString(), version };
+      }
+    },
+    getMeta: () => useModelStore.getState().getVersionMeta(),
+    setMeta: (meta) => useModelStore.getState().setVersionMeta(meta),
+  });
+}, 0);

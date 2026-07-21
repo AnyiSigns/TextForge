@@ -51,6 +51,12 @@ export function ProfileSection(props: ProfileSectionProps) {
     onUpdateProfile, onChangePassword, onSendCode, onAvatarUpload, fileInputRef,
   } = props;
 
+  const avatarUrl = user?.avatar
+    ? user.avatar.startsWith('http')
+      ? user.avatar
+      : `http://localhost${user.avatar}`
+    : undefined;
+
   return (
     <Card className="glass-card">
       <CardHeader>
@@ -116,7 +122,7 @@ export function ProfileSection(props: ProfileSectionProps) {
             <Label>头像</Label>
             <div className="flex items-center gap-4">
               <Avatar className="w-20 h-20 border-2 border-border">
-                <AvatarImage src={user?.avatar} />
+                <AvatarImage src={avatarUrl} />
                 <AvatarFallback className="text-2xl">{user?.username?.slice(0, 2).toUpperCase() || 'U'}</AvatarFallback>
               </Avatar>
               <div>

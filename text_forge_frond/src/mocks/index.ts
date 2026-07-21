@@ -113,7 +113,7 @@ export async function handleDevApi(req: NextRequest) {
   if (url === '/api/api-keys' && method === 'GET') return json({ keys: [] });
   if (url === '/api/api-keys' && method === 'POST') return json({ key: { id: 'mock-key', name: '测试密钥', key: 'sk-mock', createdAt: new Date().toISOString(), lastUsed: null } });
   if (url.startsWith('/api/api-keys/') && method === 'DELETE') return json({});
-  if (url === '/api/user/models' && method === 'PUT') return json({ ok: true });
+  if (url.startsWith('/api/user/models/') && method === 'PUT') return json({ ok: true });
   if (url === '/api/user/change-password' && method === 'POST') return json({});
   if (url === '/api/user/change-password-by-email' && method === 'POST') return json({});
   if (url === '/api/workflows' && method === 'GET') return json({ workflows: [], mocked: true });
