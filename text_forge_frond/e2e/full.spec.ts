@@ -50,8 +50,16 @@ function setupRoutes(page: any) {
         return res(200, { message: '验证邮件已发送', email: body.email });
       }
       if (pathname === '/api/auth/send-verify-code' && method === 'POST') return res(200, { message: '验证码已发送' });
-      if (pathname === '/api/auth/verify-email' && method === 'POST') return res(200, { message: 'ok' });
-      if (pathname === '/api/auth/resend-verify' && method === 'POST') return res(200, { message: 'ok' });
+      if (pathname === '/api/auth/verify-email' && method === 'POST') {
+        const body = await json();
+        if (!body.email || !body.code) return res(400, { message: '邮箱和验证码必填' });
+        return res(200, { message: 'ok' });
+      }
+      if (pathname === '/api/auth/resend-verify' && method === 'POST') {
+        const body = await json();
+        if (!body.email) return res(400, { message: '邮箱必填' });
+        return res(200, { message: 'ok' });
+      }
       if (pathname === '/api/auth/logout' && method === 'POST') return res(200, {});
 
       // ===== 项目管理 =====
