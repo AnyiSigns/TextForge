@@ -202,7 +202,7 @@ test.beforeEach(async ({ page }) => {
 test.describe('认证与路由守卫', () => {
   test('未登录访问受保护页面重定向到登录页', async ({ page }) => {
     await page.context().clearCookies();
-    await page.goto('/zh/projects');
+    await page.goto('/projects');
     await expect(page).toHaveURL(/\/zh\/login/);
     await expect(page.getByText('欢迎回来')).toBeVisible();
   });
@@ -215,7 +215,7 @@ test.describe('认证与路由守卫', () => {
 
   test('登录失败显示错误提示', async ({ page }) => {
     setupRoutes(page);
-    await page.goto('/zh/login');
+    await page.goto('/login');
     await page.fill('#email', 'test@example.com');
     await page.fill('#password', 'wrongpass');
     await page.click('button[type="submit"]');
@@ -223,13 +223,13 @@ test.describe('认证与路由守卫', () => {
   });
 
   test('验证邮箱页无需登录即可访问', async ({ page }) => {
-    await page.goto('/zh/verify-email?email=test@example.com');
+    await page.goto('/verify-email?email=test@example.com');
     await expect(page).not.toHaveURL(/\/zh\/login/);
     await expect(page.getByText('请查收邮件')).toBeVisible();
   });
 
   test('404 页面', async ({ page }) => {
-    const response = await page.goto('/zh/this-page-does-not-exist');
+    const response = await page.goto('/this-page-does-not-exist');
     expect(response?.status()).toBe(404);
   });
 });
@@ -247,14 +247,14 @@ test.describe('侧边栏导航与仪表盘', () => {
 
   test('侧边栏可导航到所有页面', async ({ page }) => {
     const nav: Array<[string, string, string]> = [
-      ['仪表盘', '/zh/', '仪表盘'],
-      ['项目管理', '/zh/projects', '项目管理'],
-      ['角色模拟', '/zh/characters', '角色模拟'],
-      ['AI绘画', '/zh/assets', 'AI 绘画'],
-      ['AI视频', '/zh/tasks', 'AI 视频'],
-      ['知识库', '/zh/knowledge', '知识库'],
-      ['开放平台', '/zh/api-keys', '开放平台'],
-      ['设置', '/zh/settings', '设置'],
+      ['仪表盘', '/', '仪表盘'],
+      ['项目管理', '/projects', '项目管理'],
+      ['角色模拟', '/characters', '角色模拟'],
+      ['AI绘画', '/assets', 'AI 绘画'],
+      ['AI视频', '/tasks', 'AI 视频'],
+      ['知识库', '/knowledge', '知识库'],
+      ['开放平台', '/api-keys', '开放平台'],
+      ['设置', '/settings', '设置'],
     ];
     for (const [label, href, title] of nav) {
       await page.locator('aside').getByRole('link', { name: label }).click();
@@ -268,13 +268,13 @@ test.describe('项目管理（创建/生成/确认/修改/删除）', () => {
   test.beforeEach(async ({ page }) => { setupRoutes(page); await login(page); });
 
   test('搜索项目', async ({ page }) => {
-    await page.goto('/zh/projects');
+    await page.goto('/projects');
     await expect(page.locator('h1')).toContainText('项目管理');
     await expect(page.getByPlaceholder('搜索项目名...')).toBeVisible();
   });
 
   test('创建项目并进入详情', async ({ page }) => {
-    await page.goto('/zh/projects/new');
+    await page.goto('/projects/new');
     await page.fill('#title', '全功能测试项目');
     await page.selectOption('#genre', '奇幻');
     await page.fill('#description', '用于离线浏览器测试');
@@ -284,7 +284,7 @@ test.describe('项目管理（创建/生成/确认/修改/删除）', () => {
   });
 
   test('流式生成并确认/修改步骤', async ({ page }) => {
-    await page.goto('/zh/projects/new');
+    await page.goto('/projects/new');
     await page.fill('#title', '生成测试项目');
     await page.click('button[type="submit"]');
     await page.waitForURL((url: URL) => /^\/zh\/projects\/[^/]+$/.test(url.pathname) && !url.pathname.endsWith('/new'));
@@ -308,15 +308,15 @@ test.describe('项目管理（创建/生成/确认/修改/删除）', () => {
   });
 
   test('删除测试项目', async ({ page }) => {
-    await page.goto('/zh/projects/new');
+    await page.goto('/projects/new');
     await page.fill('#title', '待删除项目');
     await page.click('button[type="submit"]');
     await page.waitForURL((url: URL) => /^\/zh\/projects\/[^/]+$/.test(url.pathname) && !url.pathname.endsWith('/new'));
     const pid = await page.evaluate(() => window.location.pathname.split('/').pop());
 
-    await page.goto('/zh/projects');
+    await page.goto('/projects');
     page.once('dialog', (d: any) => d.accept());
-    const card = page.locator(`a[href="/zh/projects/${pid}"]`).locator('xpath=ancestor::*[@data-slot="card"]');
+    const card = page.locator(`a[href="/projects/${pid}"]`).locator('xpath=ancestor::*[@data-slot="card"]');
     await card.locator('button:has(.lucide-trash-2)').click();
     await page.waitForTimeout(400);
     await expect(page.getByText('待删除项目')).toHaveCount(0);
@@ -327,13 +327,13 @@ test.describe('角色管理（创建/对话/表情/删除）', () => {
   test.beforeEach(async ({ page }) => { setupRoutes(page); await login(page); });
 
   test('搜索角色', async ({ page }) => {
-    await page.goto('/zh/characters');
+    await page.goto('/characters');
     await expect(page.locator('h1')).toContainText('角色模拟');
     await expect(page.getByPlaceholder('搜索角色名或设定...')).toBeVisible();
   });
 
   test('创建角色并进入对话，流式回复', async ({ page }) => {
-    await page.goto('/zh/characters/create');
+    await page.goto('/characters/create');
     await page.fill('#name', '全功能测试角色');
     await page.fill('#description', '用于离线浏览器测试');
     await page.click('button[type="submit"]');
@@ -352,7 +352,7 @@ test.describe('角色管理（创建/对话/表情/删除）', () => {
   });
 
   test('对话页表情选择器与返回', async ({ page }) => {
-    await page.goto('/zh/characters/create');
+    await page.goto('/characters/create');
     await page.fill('#name', '表情测试角色');
     await page.fill('#description', '测试表情面板');
     await page.click('button[type="submit"]');
@@ -371,7 +371,7 @@ test.describe('角色管理（创建/对话/表情/删除）', () => {
   });
 
   test('删除测试角色', async ({ page }) => {
-    await page.goto('/zh/characters/create');
+    await page.goto('/characters/create');
     await page.fill('#name', '待删除角色');
     await page.fill('#description', '测试删除');
     await page.click('button[type="submit"]');
@@ -389,7 +389,7 @@ test.describe('知识库 / AI 视频 / AI 绘画', () => {
   test.beforeEach(async ({ page }) => { setupRoutes(page); await login(page); });
 
   test('知识库：Tab、上传文件、删除', async ({ page }) => {
-    await page.goto('/zh/knowledge');
+    await page.goto('/knowledge');
     await expect(page.locator('h1')).toContainText('知识库');
     await expect(page.getByRole('tab', { name: /个人文档/ })).toBeVisible();
     await expect(page.getByRole('tab', { name: /公共文档库/ })).toBeVisible();
@@ -407,7 +407,7 @@ test.describe('知识库 / AI 视频 / AI 绘画', () => {
   });
 
   test('AI 视频：提交任务并查看结果', async ({ page }) => {
-    await page.goto('/zh/tasks');
+    await page.goto('/tasks');
     await expect(page.locator('h1')).toContainText('AI 视频');
     await page.fill('input[placeholder="描述你想要的视频内容"]', '测试视频提示词');
     await page.click('button:has-text("提交任务")');
@@ -417,7 +417,7 @@ test.describe('知识库 / AI 视频 / AI 绘画', () => {
   });
 
   test('AI 绘画：生成图片', async ({ page }) => {
-    await page.goto('/zh/assets');
+    await page.goto('/assets');
     await expect(page.locator('h1')).toContainText('AI 绘画');
     await page.fill('input[placeholder*="黑色风衣"]', '一个赛博朋克风格的剑客');
     await page.click('button:has-text("生成图片")');
@@ -429,7 +429,7 @@ test.describe('开放平台（API Key）', () => {
   test.beforeEach(async ({ page }) => { setupRoutes(page); await login(page); });
 
   test('生成 / 复制 / 删除 API Key', async ({ page }) => {
-    await page.goto('/zh/api-keys');
+    await page.goto('/api-keys');
     await expect(page.locator('h1')).toContainText('开放平台');
     await page.fill('#keyName', '全功能测试Key');
     await page.click('button:has-text("生成")');
@@ -449,7 +449,7 @@ test.describe('设置（资料/安全/外观/AI 偏好）', () => {
   test.beforeEach(async ({ page }) => { setupRoutes(page); await login(page); });
 
   test('更新个人资料', async ({ page }) => {
-    await page.goto('/zh/settings');
+    await page.goto('/settings');
     await expect(page.locator('h1')).toContainText('设置');
     await page.fill('#username', '新用户名');
     await page.fill('#email', 'new@example.com');
@@ -458,7 +458,7 @@ test.describe('设置（资料/安全/外观/AI 偏好）', () => {
   });
 
   test('安全：旧密码与邮箱验证两种方式改密', async ({ page }) => {
-    await page.goto('/zh/settings');
+    await page.goto('/settings');
     await page.click('button:has-text("安全")');
     await expect(page.getByText('修改密码', { exact: true })).toBeVisible();
 
@@ -475,7 +475,7 @@ test.describe('设置（资料/安全/外观/AI 偏好）', () => {
   });
 
   test('外观：切换主题并上传背景', async ({ page }) => {
-    await page.goto('/zh/settings');
+    await page.goto('/settings');
     await page.click('button:has-text("外观")');
     await expect(page.getByText('主题与背景')).toBeVisible();
     await page.click('button:has-text("暗色")');
@@ -487,7 +487,7 @@ test.describe('设置（资料/安全/外观/AI 偏好）', () => {
   });
 
   test('AI 偏好：设置提示频率', async ({ page }) => {
-    await page.goto('/zh/settings');
+    await page.goto('/settings');
     await page.click('button:has-text("AI 偏好")');
     await expect(page.getByText('AI 联想设置')).toBeVisible();
     await page.locator('[data-slot="select-trigger"]').click();

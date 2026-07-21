@@ -1,7 +1,6 @@
-import select
 import uuid
-from datetime import datetime, timezone
-from typing import Optional
+import json
+from datetime import datetime
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from config.settings import settings
@@ -10,6 +9,7 @@ from utils.logger import get_logger
 from repository.user_repo import UserTokenRepository, UserRepository
 from core.security import encode_pwd, verify_pwd
 from core.security import create_token
+from config.redis_config import redis_client as redis
 
 logger = get_logger(__name__)
 
@@ -60,6 +60,10 @@ class UserAuthService:
                 {"sub": str(user.id), "user_name": user.user_name, "jti": at_jti},
                 expire=settings.JWT_ACCESS_TIME,
             )
+
+            data = {"access_token": access_token, "user_id": user.id}
+            redis.setex("user_access_token", 900, json.dumps(data))
+
             rt_jti = str(uuid.uuid4())
             expired_rt = datetime.now() + settings.JWT_EXPIRE_TIME
             refresh_token = create_token(
@@ -68,6 +72,10 @@ class UserAuthService:
             await self.token_repo.add(
                 user_id=user.id, jti=rt_jti, expired_at=expired_rt
             )
+
+            data = {"refresh_token": refresh_token, "user_id": user.id}
+            redis.setex("user_refresh_token", 604800, json.dumps(data))
+
             logger.info("用户登录成功")
             return user, access_token, refresh_token, None
         except Exception as e:

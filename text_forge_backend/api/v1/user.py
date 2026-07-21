@@ -1,5 +1,6 @@
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
+from config.redis_config import redis_client as redis
 from schema.request.user import EmailRequest, VerifyEmailRequest, UserRequest, UserLogin
 from schema.response.user import TokenRes, UserResponse
 from service.user_service import user_db_serve, UserAuthService
@@ -10,6 +11,20 @@ from service.email_service import email_service
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/auth", tags=["认证"])
+
+
+@router.post("/refresh")
+async def refresh_at():
+    pass
+
+
+@router.post("/resend-verify")
+async def resend_verify(request: EmailRequest):
+    """重发邮件"""
+    code = verifacation.generate_code()
+    await verifacation.save_code(request.email, code)
+    await email_service.send_verification_email(request.email, code)
+    return {"message": "验证邮件成功发送"}
 
 
 @router.post("/register", summary="用户注册")

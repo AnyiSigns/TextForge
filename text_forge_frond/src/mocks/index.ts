@@ -57,7 +57,10 @@ export async function handleDevApi(req: NextRequest) {
   if (url === '/api/auth/login' && method === 'POST') return handleLogin();
   if (url === '/api/auth/register' && method === 'POST') return json({ message: '验证邮件已发送', email: MOCK_USER.email });
   if (url === '/api/auth/refresh' && method === 'POST') return json({ access_token: 'dev-access-token' });
-  if (url.startsWith('/api/auth/verify-email') && method === 'POST') return json({ message: 'ok' });
+  if (url === '/api/auth/send-verify-code' && method === 'POST') return json({ message: '验证码已发送' });
+  if (url === '/api/auth/verify-email' && method === 'POST') return json({ message: 'ok' });
+  if (url === '/api/auth/resend-verify' && method === 'POST') return json({ message: '验证邮件已重新发送' });
+  if (url === '/api/auth/logout' && method === 'POST') return json({});
   if (url === '/api/user/profile' && method === 'PUT') return json({ user: MOCK_USER });
   if (url === '/api/user/avatar' && method === 'POST') return json({ avatar_url: '' });
 
@@ -104,9 +107,15 @@ export async function handleDevApi(req: NextRequest) {
   // ---- 知识库 / 模型 / API Key / 工作流 / 同步 ----
   // 注意：这些路由标注 mocked:true，告知前端"后端未就绪"，前端据此回退本地数据。
   if (url === '/api/knowledge' && method === 'GET') return json({ documents: [], mocked: true });
+  if (url === '/api/knowledge' && method === 'POST') return json({ document: { id: 'mock-doc', name: 'uploaded.txt', status: 'indexed', createdAt: new Date().toISOString() } });
   if (url === '/api/knowledge/public' && method === 'GET') return json({ documents: [], mocked: true });
+  if (url.startsWith('/api/knowledge/') && method === 'DELETE') return json({});
   if (url === '/api/api-keys' && method === 'GET') return json({ keys: [] });
+  if (url === '/api/api-keys' && method === 'POST') return json({ key: { id: 'mock-key', name: '测试密钥', key: 'sk-mock', createdAt: new Date().toISOString(), lastUsed: null } });
+  if (url.startsWith('/api/api-keys/') && method === 'DELETE') return json({});
   if (url === '/api/user/models' && method === 'PUT') return json({ ok: true });
+  if (url === '/api/user/change-password' && method === 'POST') return json({});
+  if (url === '/api/user/change-password-by-email' && method === 'POST') return json({});
   if (url === '/api/workflows' && method === 'GET') return json({ workflows: [], mocked: true });
   if (url.startsWith('/api/workflows/') && method === 'GET') return json({ workflow: null, mocked: true });
   if (url.startsWith('/api/workflows/') && method === 'DELETE') return json({ ok: true, mocked: true });
