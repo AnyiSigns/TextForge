@@ -38,6 +38,8 @@ export default function SettingsPage() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [emailCode, setEmailCode] = useState('');
+  const [oldEmailCode, setOldEmailCode] = useState('');
+  const [isOldEmailVerified, setIsOldEmailVerified] = useState(false);
   const [showOldPwd, setShowOldPwd] = useState(false);
   const [showNewPwd, setShowNewPwd] = useState(false);
   const [passwordMode, setPasswordMode] = useState<'old' | 'email'>('old');
@@ -51,6 +53,11 @@ export default function SettingsPage() {
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
+    const isEmailChanged = email !== user?.email;
+    if (isEmailChanged && !isOldEmailVerified) {
+      toast.error('请先验证旧邮箱');
+      return;
+    }
     setIsLoading(true);
     try {
       const { data } = await (await import('@/lib/api/client')).default.put('/api/user/profile', { username, email });
@@ -58,6 +65,10 @@ export default function SettingsPage() {
         updateUser(data.user);
       }
       toast.success('个人资料已更新');
+      if (isEmailChanged) {
+        setIsOldEmailVerified(false);
+        setOldEmailCode('');
+      }
     } catch (error: unknown) {
       const err = error instanceof Error ? error : new Error(String(error));
       toast.error('更新失败', { description: err.message });
@@ -118,6 +129,49 @@ export default function SettingsPage() {
       toast.error('发送失败', { description: err.message });
     } finally {
       setIsSendingCode(false);
+    }
+  };
+
+  const handleSendOldEmailCode = async () => {
+    const emailToSend = user?.email;
+    if (!emailToSend) {
+      toast.error('无法获取邮箱地址');
+      return;
+    }
+    setIsSendingCode(true);
+    try {
+      const apiClient = (await import('@/lib/api/client')).default;
+      await apiClient.post('/api/auth/send-verify-code', { email: emailToSend });
+      toast.success('验证码已发送到你的旧邮箱');
+    } catch (error: unknown) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      toast.error('发送失败', { description: err.message });
+    } finally {
+      setIsSendingCode(false);
+    }
+  };
+
+  const handleVerifyOldEmail = async (code: string) => {
+    if (!code || code.length < 4) {
+      toast.error('请输入验证码');
+      return;
+    }
+    const emailToVerify = user?.email;
+    if (!emailToVerify) {
+      toast.error('无法获取旧邮箱地址');
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const apiClient = (await import('@/lib/api/client')).default;
+      await apiClient.post('/api/auth/verify-email', { email: emailToVerify, code });
+      setIsOldEmailVerified(true);
+      toast.success('旧邮箱验证通过');
+    } catch (error: unknown) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      toast.error('验证失败', { description: err.message });
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -251,24 +305,30 @@ export default function SettingsPage() {
             newPassword={newPassword}
             confirmPassword={confirmPassword}
             emailCode={emailCode}
+            oldEmailCode={oldEmailCode}
             passwordMode={passwordMode}
             isLoading={isLoading}
             isAvatarLoading={isAvatarLoading}
             showOldPwd={showOldPwd}
             showNewPwd={showNewPwd}
             isSendingCode={isSendingCode}
+            isEmailChanged={email !== user?.email}
+            isOldEmailVerified={isOldEmailVerified}
             onUsername={setUsername}
             onEmail={setEmail}
             onOldPassword={setOldPassword}
             onNewPassword={setNewPassword}
             onConfirmPassword={setConfirmPassword}
             onEmailCode={setEmailCode}
+            onOldEmailCode={setOldEmailCode}
             onPasswordMode={setPasswordMode}
             onShowOldPwd={setShowOldPwd}
             onShowNewPwd={setShowNewPwd}
             onUpdateProfile={handleUpdateProfile}
             onChangePassword={handleChangePassword}
             onSendCode={handleSendCode}
+            onSendOldEmailCode={handleSendOldEmailCode}
+            onVerifyOldEmail={handleVerifyOldEmail}
             onAvatarUpload={handleAvatarUpload}
             fileInputRef={fileInputRef}
           />
