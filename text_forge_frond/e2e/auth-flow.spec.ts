@@ -42,10 +42,8 @@ test.describe('核心流 - 鉴权', () => {
     await password.press('Enter');
 
     // dev mock 登录成功应落到受保护区域（dashboard / projects），至多等待 5s
-    await expect(page).toHaveURL(
-      /^\/(dashboard|projects|workflow|assets|characters|manuscript|tasks)?$/,
-      { timeout: 8000 },
-    );
+    const url1 = new URL(page.url());
+    expect(url1.pathname).toMatch(/^\/(dashboard|projects|workflow|assets|characters|manuscript|tasks)?$/);
   });
 
   test('登出后可回到公开页', async ({ page }) => {
@@ -59,10 +57,8 @@ test.describe('核心流 - 鉴权', () => {
     await email.fill('demo@textforge.dev');
     await password.fill('password123');
     await password.press('Enter');
-    await expect(page).toHaveURL(
-      /^\/(dashboard|projects|workflow|assets|characters|manuscript|tasks)?$/,
-      { timeout: 8000 },
-    );
+    const url2 = new URL(page.url());
+    expect(url2.pathname).toMatch(/^\/(dashboard|projects|workflow|assets|characters|manuscript|tasks)?$/);
 
     // 尝试访问受保护的根并点击登出（若存在）
     await page.goto('/');

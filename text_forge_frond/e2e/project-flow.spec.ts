@@ -22,7 +22,8 @@ test.describe('核心流 - 项目', () => {
     await email.fill('demo@textforge.dev');
     await password.fill('password123');
     await password.press('Enter');
-    await expect(page).toHaveURL(/^\/(dashboard|projects|workflow|assets|characters|manuscript|tasks)?$/, { timeout: 8000 });
+    const url = new URL(page.url());
+    expect(url.pathname).toMatch(/^\/(dashboard|projects|workflow|assets|characters|manuscript|tasks)?$/);
   }
 
   test('项目列表页可访问', async ({ page }) => {

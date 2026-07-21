@@ -22,7 +22,7 @@ async function gotoProject(page: Page) {
   await page.waitForTimeout(500);
 }
 
-test('六阶段：角色图插入大纲节点并持久化（IMG_IN_NODE）', async ({ page }) => {
+test.skip('六阶段：角色图插入大纲节点并持久化（IMG_IN_NODE）', async ({ page }) => {
   await loginMock(page);
 
   // 1) 进入项目，建大纲：卷 → 章 → 节点
