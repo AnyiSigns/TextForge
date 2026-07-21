@@ -70,7 +70,7 @@ async def refresh_at(
 
 @router.post("/resend-verify")
 async def resend_verify(request: EmailRequest):
-    """重发邮件"""
+    """发送邮件"""
     code = verifacation.generate_code()
     await verifacation.save_code(request.email, code)
     await email_service.send_verification_email(request.email, code)

@@ -17,7 +17,6 @@ interface ProfileSectionProps {
   newPassword: string;
   confirmPassword: string;
   emailCode: string;
-  oldEmailCode: string;
   passwordMode: 'old' | 'email';
   isLoading: boolean;
   isAvatarLoading: boolean;
@@ -25,22 +24,18 @@ interface ProfileSectionProps {
   showNewPwd: boolean;
   isSendingCode: boolean;
   isEmailChanged: boolean;
-  isOldEmailVerified: boolean;
   onUsername: (v: string) => void;
   onEmail: (v: string) => void;
   onOldPassword: (v: string) => void;
   onNewPassword: (v: string) => void;
   onConfirmPassword: (v: string) => void;
   onEmailCode: (v: string) => void;
-  onOldEmailCode: (v: string) => void;
   onPasswordMode: (m: 'old' | 'email') => void;
   onShowOldPwd: (v: boolean) => void;
   onShowNewPwd: (v: boolean) => void;
   onUpdateProfile: (e: React.FormEvent) => void;
   onChangePassword: (e: React.FormEvent) => void;
   onSendCode: () => void;
-  onSendOldEmailCode: () => void;
-  onVerifyOldEmail: (code: string) => void;
   onAvatarUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
 }
@@ -48,12 +43,12 @@ interface ProfileSectionProps {
 export function ProfileSection(props: ProfileSectionProps) {
   const { user } = useAuthStore();
   const {
-    username, email, oldPassword, newPassword, confirmPassword, emailCode, oldEmailCode,
+    username, email, oldPassword, newPassword, confirmPassword, emailCode,
     passwordMode, isLoading, isAvatarLoading, showOldPwd, showNewPwd, isSendingCode,
-    isEmailChanged, isOldEmailVerified,
-    onUsername, onEmail, onOldPassword, onNewPassword, onConfirmPassword, onEmailCode, onOldEmailCode,
+    isEmailChanged,
+    onUsername, onEmail, onOldPassword, onNewPassword, onConfirmPassword, onEmailCode,
     onPasswordMode, onShowOldPwd, onShowNewPwd,
-    onUpdateProfile, onChangePassword, onSendCode, onSendOldEmailCode, onVerifyOldEmail, onAvatarUpload, fileInputRef,
+    onUpdateProfile, onChangePassword, onSendCode, onAvatarUpload, fileInputRef,
   } = props;
 
   return (
@@ -88,40 +83,29 @@ export function ProfileSection(props: ProfileSectionProps) {
               onChange={(e) => onEmail(e.target.value)}
               placeholder="输入新邮箱"
             />
-            {isEmailChanged && !isOldEmailVerified && (
+            {isEmailChanged && (
               <div className="mt-2 p-3 bg-muted/30 rounded-md space-y-2">
                 <p className="text-sm text-muted-foreground">
-                  更改邮箱前，请先验证旧邮箱 {user?.email}
+                  更改邮箱前，请先验证当前邮箱 {user?.email}
                 </p>
                 <div className="flex items-center gap-2">
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={onSendOldEmailCode}
+                    onClick={onSendCode}
                     disabled={isSendingCode}
                   >
                     {isSendingCode ? '发送中...' : '发送验证码'}
                   </Button>
                   <Input
                     placeholder="输入验证码"
-                    value={oldEmailCode}
-                    onChange={(e) => onOldEmailCode(e.target.value)}
+                    value={emailCode}
+                    onChange={(e) => onEmailCode(e.target.value)}
                     className="max-w-[120px]"
                   />
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() => onVerifyOldEmail(oldEmailCode)}
-                    disabled={!oldEmailCode || oldEmailCode.length < 4}
-                  >
-                    验证
-                  </Button>
                 </div>
               </div>
-            )}
-            {isEmailChanged && isOldEmailVerified && (
-              <p className="text-xs text-green-600 mt-1">旧邮箱已验证</p>
             )}
           </div>
 

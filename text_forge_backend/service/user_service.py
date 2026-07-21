@@ -1,7 +1,8 @@
+from typing import Optional
 import uuid
 import json
 from datetime import datetime
-from fastapi import Depends
+from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from config.settings import settings
 from infrastructure.database import db_manager
@@ -10,6 +11,7 @@ from repository.user_repo import UserTokenRepository, UserRepository
 from core.security import encode_pwd, verify_pwd
 from core.security import create_token
 from config.redis_config import redis_client as redis
+from service.verification_service import verifacation
 
 logger = get_logger(__name__)
 
@@ -78,6 +80,30 @@ class UserAuthService:
         except Exception as e:
             logger.error(f"用户登录失败:***{e}***")
             return None, None, None, "服务器错误,请稍后尝试"
+
+    async def old_new_password(self, old_pwd: str, new_pwd: str, user_id: int):
+        """更改密码"""
+        user = await self.user_repo.get(user_id)
+        hash_pwd = user.hash_password
+        if not verify_pwd(old_pwd, hash_pwd):
+            raise HTTPException(status_code=400, detail="旧密码错误")
+        new_hash_pwd = encode_pwd(new_pwd)
+        user.hash_password = new_hash_pwd
+        await self.session.commit()
+        return
+
+    async def change_password_by_email(self, email: str, code: str, new_pwd: str):
+        """通过邮箱验证码更改密码"""
+        verified = await verifacation.verify_code(email, code)
+        if not verified:
+            raise HTTPException(status_code=400, detail="验证码无效或已过期")
+        user = await self.user_repo.query_user_email(email)
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        new_hash_pwd = encode_pwd(new_pwd)
+        user.hash_password = new_hash_pwd
+        await self.session.commit()
+        return
 
 
 async def user_db_serve(db: AsyncSession = Depends(db_manager.get_db)):
