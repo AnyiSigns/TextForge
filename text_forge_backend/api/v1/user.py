@@ -100,7 +100,7 @@ async def upload_avatar(
 
     filename = f"{user_id}_{uuid.uuid4().hex[:8]}{ext}"
     save_dir = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
         "static",
         "avatars",
     )
