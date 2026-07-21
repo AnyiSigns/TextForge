@@ -42,9 +42,3 @@ text_forge_backend/.next/
 simulation-context-sample.txt
 generation-result.png
 api-contract.md
-
-# test / e2e artifacts (不限层级)
-test-results/
-playwright-report/
-blob-report/
-.playwright-mcp/

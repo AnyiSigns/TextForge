@@ -1,4 +1,3 @@
-import re
 from typing import Optional
 from pydantic import BaseModel, Field, EmailStr, field_validator, AliasChoices
 
@@ -9,6 +8,10 @@ class EmailRequest(BaseModel):
 
 class VerifyEmailRequest(EmailRequest):
     code: str = Field(..., min_length=1, description="验证码")
+
+
+class RfreshRequest(BaseModel):
+    refresh_token: str
 
 
 class UserLogin(EmailRequest):

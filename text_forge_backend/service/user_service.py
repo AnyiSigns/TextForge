@@ -64,7 +64,8 @@ class UserAuthService:
             rt_jti = str(uuid.uuid4())
             expired_rt = datetime.now() + settings.JWT_EXPIRE_TIME
             refresh_token = create_token(
-                {"sub": str(user.id), "jti": rt_jti}, settings.JWT_EXPIRE_TIME
+                {"sub": str(user.id), "user_name": user.user_name, "jti": rt_jti},
+                settings.JWT_EXPIRE_TIME,
             )
             await self.token_repo.add(
                 user_id=user.id, jti=rt_jti, expired_at=expired_rt

@@ -1,3 +1,4 @@
+from ast import stmt
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -56,9 +57,22 @@ class UserTokenRepository(BaseRepository[UserToken]):
         self.session = session
         super().__init__(UserToken, session)
 
+    async def delete_user_and_jti(self, user_id: int, jti: str):
+        """根据用户id和jti删除单个"""
+        stmt = delete(UserToken).where(
+            UserToken.user_id == user_id, UserToken.jti == jti
+        )
+        await self.session.execute(stmt)
+        await self.session.commit()
+
     async def delete_by_jti(self, jti: str):
         """删除jti"""
         stmt = delete(UserToken).where(UserToken.jti == jti)
+        await self.session.execute(stmt)
+        await self.session.commit()
+
+    async def delete_by_user(self, user_id: int):
+        stmt = delete(UserToken).where(UserToken.user_id == user_id)
         await self.session.execute(stmt)
         await self.session.commit()
 

@@ -1,9 +1,14 @@
-from re import I
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from config.redis_config import redis_client as redis
-from schema.request.user import EmailRequest, VerifyEmailRequest, UserRequest, UserLogin
+from schema.request.user import (
+    EmailRequest,
+    VerifyEmailRequest,
+    RfreshRequest,
+    UserRequest,
+    UserLogin,
+)
 from schema.response.user import RefreshResponse, TokenRes, UserResponse
 from service.user_service import user_db_serve, UserAuthService
 from model.user import User
@@ -12,18 +17,51 @@ from core.auth import get_current
 from core.security import verify_token
 from service.verification_service import verifacation
 from service.email_service import email_service
+import uuid
+from core.security import create_token
+from config.settings import settings
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/auth", tags=["认证"])
 
 
+@router.post("/logout")
+async def logout(
+    request: RfreshRequest,
+    user_serve: Annotated[UserAuthService, Depends(user_db_serve)],
+):
+    payload = verify_token(request)
+    user_id = payload.get("sub")
+    jti = payload.get("jti")
+    user_id = int(user_id)
+    await user_serve.token_repo.delete_user_and_jti(user_id, jti)
+    return
+
+
 @router.post("/refresh", response_model=RefreshResponse)
-async def refresh_at(request: str):
+async def refresh_at(
+    request: RfreshRequest,
+    user_serve: Annotated[UserAuthService, Depends(user_db_serve)],
+):
     payload = verify_token(request)
     user_id = payload.get("sub")
     user_id = int(user_id)
+    rt_jti = payload.get("jti")
+    user = await user_serve.user_repo.get(user_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="用户不存在")
+    user_token = await user_serve.token_repo.get_by_user_and_jti(rt_jti, user.id)
+    if not user_token:
+        raise HTTPException(status_code=401, detail="用户/令牌不存在")
     if not redis.sismember(f"refrensh_token_{user_id}", request):
         raise HTTPException(status_code=401, detail="令牌不存在")
+    at_jti = str(uuid.uuid4())
+    access_token = create_token(
+        {"sub": str(user.id), "user_name": user.user_name, "jti": at_jti},
+        expire=settings.JWT_ACCESS_TIME,
+    )
+    user = UserResponse.model_validate(user)
+    return RefreshResponse(access_token=access_token, user=user)
 
 
 @router.post("/resend-verify")
