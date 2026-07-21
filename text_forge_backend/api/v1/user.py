@@ -53,4 +53,4 @@ async def user_login(
     if msg:
         raise HTTPException(status_code=401, detail=msg)
     user = UserResponse.model_validate(user)
-    return TokenRes(access_token=access_token, refresh_token=refresh_token, user=user)
+    return TokenRes(access_token=access_token, refresh_token=refresh_token, user=user)  # type: ignore

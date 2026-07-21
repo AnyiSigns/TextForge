@@ -24,7 +24,7 @@ def create_token(data: dict[str, Any], expire: Optional[timedelta | datetime] = 
     """创建token"""
     temp = data.copy()
     if expire:
-        expire = datetime.now(timezone.utc) + expire
+        expire = datetime.now(timezone.utc) + expire  # type: ignore
     else:
         expire = datetime.now(timezone.utc) + settings.JWT_EXPIRE_TIME
     temp.update({"exp": expire})
