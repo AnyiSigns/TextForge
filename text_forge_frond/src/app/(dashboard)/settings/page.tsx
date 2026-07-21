@@ -139,7 +139,7 @@ export default function SettingsPage() {
     try {
       const apiClient = (await import('@/lib/api/client')).default;
       const formData = new FormData();
-      formData.append('avatar', file);
+      formData.append('file', file);
       const { data } = await apiClient.post('/api/user/avatar', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });

@@ -16,16 +16,17 @@ const nextConfig: NextConfig = {
     ],
   },
   async rewrites() {
-    // 仅生产环境把 /api/* 代理到后端。开发期留空，使 /api/* 由 proxy.ts 的 dev mock 处理。
-    if (process.env.NODE_ENV === 'production') {
-      return [
-        {
-          source: '/api/:path*',
-          destination: 'http://localhost:8000/api/:path*',
-        },
-      ];
-    }
-    return [];
+    // 开发和生产统一由 Nginx 或此 rewrites 处理静态文件与 API 路由
+    return [
+      {
+        source: '/api/:path*',
+        destination: 'http://localhost:8000/api/:path*',
+      },
+      {
+        source: '/static/:path*',
+        destination: 'http://localhost:8000/static/:path*',
+      },
+    ];
   },
 };
 

@@ -3,7 +3,11 @@ from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
 from fastapi.responses import JSONResponse
 from service.user_service import UserAuthService, user_db_serve
 from core.auth import get_current
-from schema.request.user import ChangePasswordReq, ChangePasswordByEmailReq, ProfileRequest
+from schema.request.user import (
+    ChangePasswordReq,
+    ChangePasswordByEmailReq,
+    ProfileRequest,
+)
 from schema.response.user import ProfileResponse
 from service.verification_service import verifacation
 import os
@@ -83,8 +87,8 @@ async def update_change_pwd_by_email(
 
 @router.post("/avatar")
 async def upload_avatar(
-    file: UploadFile = File(...),
     user_serve: Annotated[UserAuthService, Depends(user_db_serve)],
+    file: UploadFile = File(...),
     user_id=Depends(get_current),
 ):
     if not file.content_type or not file.content_type.startswith("image/"):

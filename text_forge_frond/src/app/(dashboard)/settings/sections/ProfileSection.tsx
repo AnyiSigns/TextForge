@@ -133,8 +133,6 @@ export function ProfileSection(props: ProfileSectionProps) {
               </div>
             </div>
           </div>
-
-          <Button type="submit" disabled={isLoading}>保存个人资料</Button>
         </form>
 
         <Separator />
