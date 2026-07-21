@@ -2,14 +2,18 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from config.redis_config import redis_client as redis
-from schema.request.user import (
+from schema.request.auth import (
     EmailRequest,
     VerifyEmailRequest,
     RfreshRequest,
     UserRequest,
     UserLogin,
 )
-from schema.response.user import RefreshResponse, TokenRes, UserResponse
+from schema.response.auth import (
+    RefreshResponse,
+    TokenRes,
+    UserResponse,
+)
 from service.user_service import user_db_serve, UserAuthService
 from model.user import User
 from utils import get_logger
