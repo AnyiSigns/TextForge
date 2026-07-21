@@ -37,8 +37,7 @@ class UserAuthService:
         try:
             hash_pwd = encode_pwd(pwd)
             user = await self.user_repo.add(
-                hash_password=hash_pwd,
-                email=email,
+                hash_password=hash_pwd, email=email, user_name=user_name
             )
             logger.info("用户成功载入数据库")
             return user, None

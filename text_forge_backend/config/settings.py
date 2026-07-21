@@ -54,6 +54,8 @@ class Settings(BaseSettings):
     REDIS_PORT: int = 6379
     REDIS_DB: int = 0
 
+    STATIC_URL: str = get_abs_path("/static")
+
     model_config = SettingsConfigDict(
         env_file=get_abs_path(".env"),
         env_file_encoding="utf-8",

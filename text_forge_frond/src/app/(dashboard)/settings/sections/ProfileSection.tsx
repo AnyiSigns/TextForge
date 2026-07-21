@@ -107,6 +107,9 @@ export function ProfileSection(props: ProfileSectionProps) {
                 </div>
               </div>
             )}
+            <div className="flex justify-end">
+              <Button type="submit" disabled={isLoading}>保存个人资料</Button>
+            </div>
           </div>
 
           <div className="space-y-2">

@@ -1,10 +1,13 @@
-from typing import Annotated, Optional
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Annotated
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
+from fastapi.responses import JSONResponse
 from service.user_service import UserAuthService, user_db_serve
 from core.auth import get_current
 from schema.request.user import ChangePasswordReq, ChangePasswordByEmailReq, ProfileRequest
 from schema.response.user import ProfileResponse
 from service.verification_service import verifacation
+import os
+import uuid
 
 router = APIRouter(prefix="/user", tags=["用户"])
 
@@ -76,3 +79,34 @@ async def update_change_pwd_by_email(
         raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/avatar")
+async def upload_avatar(
+    file: UploadFile = File(...),
+    user_serve: Annotated[UserAuthService, Depends(user_db_serve)],
+    user_id=Depends(get_current),
+):
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="请上传图片文件")
+
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in (".png", ".jpg", ".jpeg", ".gif", ".webp"):
+        ext = ".png"
+
+    filename = f"{user_id}_{uuid.uuid4().hex[:8]}{ext}"
+    save_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
+        "static",
+        "avatars",
+    )
+    os.makedirs(save_dir, exist_ok=True)
+    save_path = os.path.join(save_dir, filename)
+
+    content = await file.read()
+    with open(save_path, "wb") as f:
+        f.write(content)
+
+    avatar_url = f"/static/avatars/{filename}"
+    await user_serve.user_repo.update(user_id, avatar=avatar_url)
+    return {"avatar_url": avatar_url}
