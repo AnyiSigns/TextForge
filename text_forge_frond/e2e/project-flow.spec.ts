@@ -50,7 +50,8 @@ test.describe('核心流 - 项目', () => {
     await submit.click();
 
     // 提交后应进入项目工作台（路由形如 /projects/[id]）
-    await expect(page).toHaveURL(/\/projects\/.+/, { timeout: 8000 });
+    const projectUrl = new URL(page.url());
+    expect(projectUrl.pathname).toMatch(/^\/projects\/[^/]+$/);
     await expect(page.locator('body')).toBeVisible();
   });
 });
