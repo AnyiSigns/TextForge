@@ -62,8 +62,10 @@ class UserTokenRepository(BaseRepository[UserToken]):
         await self.session.execute(stmt)
         await self.session.commit()
 
-    async def get_by_jti(self, jti: str):
+    async def get_by_user_and_jti(self, jti: str, user_id: int):
         """查询jti"""
-        stmt = select(UserToken).where(UserToken.jti == jti)
+        stmt = select(UserToken).where(
+            UserToken.jti == jti, UserToken.user_id == user_id
+        )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()

@@ -6,6 +6,7 @@ from core.security import verify_token
 from infrastructure.database import db_manager
 from repository.user_repo import UserRepository, UserTokenRepository
 from utils.logger import get_logger
+from config.redis_config import redis_client as r
 
 logger = get_logger(__name__)
 security = HTTPBearer()  # HTTPBearer实例，用于从HTTP请求头中提取JWT令牌
@@ -49,6 +50,8 @@ async def get_current(
         )
 
     jti = payload.get("jti")
+    user_id = payload.get("user_id")
+    user_id = int(user_id)
     if not jti:
         logger.warning("令牌中无JTI")
         raise HTTPException(
@@ -57,7 +60,7 @@ async def get_current(
             headers={"WWW-Authenticate": "Bearer"},
         )
     user_token_repo = UserTokenRepository(db)
-    user_token = await user_token_repo.get_by_jti(jti)
+    user_token = await user_token_repo.get_by_user_and_jti(jti, user_id)
     if not user_token:
         logger.warning("令牌不存在")
         raise HTTPException(
