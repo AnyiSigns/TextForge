@@ -43,7 +43,7 @@ test.describe('核心流 - 鉴权', () => {
 
     // dev mock 登录成功应落到受保护区域（dashboard / projects），至多等待 5s
     await expect(page).toHaveURL(
-      /\/(dashboard|projects|workflow|assets|characters|manuscript|tasks).*/,
+      /^\/(dashboard|projects|workflow|assets|characters|manuscript|tasks)?$/,
       { timeout: 8000 },
     );
   });
@@ -60,7 +60,7 @@ test.describe('核心流 - 鉴权', () => {
     await password.fill('password123');
     await password.press('Enter');
     await expect(page).toHaveURL(
-      /\/(dashboard|projects|workflow|assets|characters|manuscript|tasks).*/,
+      /^\/(dashboard|projects|workflow|assets|characters|manuscript|tasks)?$/,
       { timeout: 8000 },
     );
 

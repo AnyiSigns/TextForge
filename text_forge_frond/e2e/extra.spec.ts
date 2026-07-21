@@ -28,11 +28,11 @@ const store = {
 function genId() { return Math.random().toString(36).slice(2, 10); }
 
 async function login(page: any) {
-  await page.goto('/zh/login');
+  await page.goto('/login');
   await page.fill('#email', 'test@example.com');
   await page.fill('#password', '123456');
   await page.click('button[type="submit"]');
-  await page.waitForURL((url: URL) => url.pathname.startsWith('/zh/'));
+  await page.waitForURL((url: URL) => url.pathname.startsWith('/'));
 }
 
 function setupRoutes(page: any) {
@@ -112,7 +112,7 @@ test.describe('知识库 / AI 视频 / AI 绘画 / 角色对话', () => {
   });
 
   test('知识库：加载、添加 URL、删除文档', async ({ page }) => {
-    await page.goto('/zh/knowledge');
+    await page.goto('/knowledge');
     await expect(page.locator('h1')).toContainText('知识库');
     await expect(page.getByRole('tab', { name: /个人文档/ })).toBeVisible();
 
@@ -128,7 +128,7 @@ test.describe('知识库 / AI 视频 / AI 绘画 / 角色对话', () => {
   });
 
   test('AI 视频：加载并提交任务', async ({ page }) => {
-    await page.goto('/zh/tasks');
+    await page.goto('/tasks');
     await expect(page.locator('h1')).toContainText('AI 视频');
     await page.fill('input[placeholder="描述你想要的视频内容"]', '测试视频提示词');
     await page.click('button:has-text("提交任务")');
@@ -138,7 +138,7 @@ test.describe('知识库 / AI 视频 / AI 绘画 / 角色对话', () => {
   });
 
   test('AI 绘画：加载并生成图片', async ({ page }) => {
-    await page.goto('/zh/assets');
+    await page.goto('/assets');
     await expect(page.locator('h1')).toContainText('AI 绘画');
     await page.fill('input[placeholder*="黑色风衣"]', '一个赛博朋克风格的剑客');
     await page.click('button:has-text("生成图片")');
@@ -146,7 +146,7 @@ test.describe('知识库 / AI 视频 / AI 绘画 / 角色对话', () => {
   });
 
   test('角色对话：创建角色并通过流式 SSE 对话', async ({ page }) => {
-    await page.goto('/zh/characters/create');
+    await page.goto('/characters/create');
     await page.fill('#name', '对话测试角色');
     await page.fill('#description', '用于测试对话功能');
     await page.click('button[type="submit"]');
@@ -168,7 +168,7 @@ test.describe('知识库 / AI 视频 / AI 绘画 / 角色对话', () => {
     });
     expect(charId).toBeTruthy();
 
-    await page.goto(`/zh/characters/${charId}/chat`);
+    await page.goto(`/characters/${charId}/chat`);
     await expect(page.getByText('对话测试角色')).toBeVisible();
 
     await page.fill('input[placeholder*="说点什么"]', '你好，介绍一下自己');
@@ -176,9 +176,9 @@ test.describe('知识库 / AI 视频 / AI 绘画 / 角色对话', () => {
     await expect(page.getByText('我是你的AI助手。')).toBeVisible();
     await expect(page.getByText('你好，介绍一下自己')).toBeVisible();
 
-    await page.goto('/zh/characters');
+    await page.goto('/characters');
     await page.once('dialog', (d: any) => d.accept());
-    const card = page.locator(`a[href="/zh/characters/${charId}/chat"]`).locator('xpath=ancestor::*[@data-slot="card"]');
+    const card = page.locator(`a[href="/characters/${charId}/chat"]`).locator('xpath=ancestor::*[@data-slot="card"]');
     await card.locator('button:has(.lucide-trash-2)').click();
     await page.waitForTimeout(400);
     await expect(page.getByText('对话测试角色')).toHaveCount(0);
