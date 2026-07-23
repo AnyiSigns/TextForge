@@ -1,12 +1,11 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-import { enqueueSync } from '@/lib/storage/syncQueue';
-import { MODEL_TEMPLATES } from '../api/templates';
 import { uid } from '@/lib/utils/id';
 import { createIdbStorage } from '@/lib/storage/zustandIdb';
 import type { ModelConfig, ModelRole, RoleModelConfig } from '@/types';
 import { syncManager } from '@/lib/storage/syncManager';
+import { MODEL_TEMPLATES } from '../api/templates';
 
 function buildRoleModel(templateKey: string, role: ModelRole, overrides: Partial<RoleModelConfig> = {}): RoleModelConfig {
   const t = MODEL_TEMPLATES.find((x) => x.key === templateKey)!;
@@ -43,7 +42,6 @@ interface ModelStore {
   hasHydrated: boolean;
   setHasHydrated: (v: boolean) => void;
 
-  // 通用视觉/向量模型操作（保留现状）
   addModel: (m: ModelConfig) => void;
   updateModel: (id: string, patch: Partial<ModelConfig>) => void;
   removeModel: (id: string) => void;
@@ -51,7 +49,6 @@ interface ModelStore {
   getDefaultModel: (category: ModelConfig['category']) => ModelConfig | undefined;
   resolveModelByTier: (category: ModelConfig['category'], tier: 'cheap' | 'standard') => ModelConfig | undefined;
 
-  // 文本角色模型操作
   setTextRoleModel: (role: ModelRole, model: RoleModelConfig | null) => void;
   getTextRoleModel: (role: ModelRole) => RoleModelConfig | null;
   getMainModel: () => RoleModelConfig | null;
@@ -73,46 +70,12 @@ export const useModelStore = create<ModelStore>()(
       getVersionMeta: () => modelVersionMeta,
       setVersionMeta: (meta: { lastSyncAt: string; version?: number }) => { modelVersionMeta = meta; },
 
-      addModel: (m) => {
-        set({ models: [...get().models, m] });
-        const run = async () => {
-          await syncModelsByCategory(get().models);
-        };
-        run().catch(() => {
-          enqueueSync('models', run);
-        });
-      },
-      updateModel: (id, patch) => {
-        set({ models: get().models.map((m) => (m.id === id ? { ...m, ...patch } : m)) });
-        const run = async () => {
-          await syncModelsByCategory(get().models);
-        };
-        run().catch(() => {
-          enqueueSync('models', run);
-        });
-      },
-      removeModel: (id) => {
-        set({ models: get().models.filter((m) => m.id !== id) });
-        const run = async () => {
-          await syncModelsByCategory(get().models);
-        };
-        run().catch(() => {
-          enqueueSync('models', run);
-        });
-      },
-      setDefault: (id, category) => {
-        set({
-          models: get().models.map((m) =>
-            m.category === category ? { ...m, isDefault: m.id === id } : m
-          ),
-        });
-        const run = async () => {
-          await syncModelsByCategory(get().models);
-        };
-        run().catch(() => {
-          enqueueSync('models', run);
-        });
-      },
+      addModel: (m) => set({ models: [...get().models, m] }),
+      updateModel: (id, patch) => set({ models: get().models.map((m) => (m.id === id ? { ...m, ...patch } : m)) }),
+      removeModel: (id) => set({ models: get().models.filter((m) => m.id !== id) }),
+      setDefault: (id, category) => set({
+        models: get().models.map((m) => m.category === category ? { ...m, isDefault: m.id === id } : m),
+      }),
       getDefaultModel: (category) => {
         const list = get().models.filter((m) => m.category === category);
         if (!list.length) return undefined;
@@ -153,33 +116,7 @@ export const useModelStore = create<ModelStore>()(
   )
 );
 
-// 精简后端存储字段
-function toBackendVisionModel(m: ModelConfig) {
-  return {
-    id: m.id,
-    adapter: m.adapter,
-    modelId: m.modelId,
-    baseUrl: m.baseUrl,
-    apiKey: m.apiKey,
-    category: m.category,
-  };
-}
-
-// 按 category 分组同步视觉/向量模型
-async function syncModelsByCategory(models: ModelConfig[]) {
-  const groups = models.reduce<Record<string, ModelConfig[]>>((acc, m) => {
-    (acc[m.category] = acc[m.category] || []).push(m);
-    return acc;
-  }, {});
-  const apiClient = (await import('@/lib/api/client')).default;
-  await Promise.all(
-    Object.entries(groups).map(([category, group]) =>
-      apiClient.put(`/api/user/models/${category}`, { models: group.map(toBackendVisionModel) })
-    )
-  );
-}
-
-// 注册统一同步管理器（延迟执行，避免循环依赖）
+// 注册统一同步管理器（延迟执行）
 setTimeout(() => {
   syncManager.register({
     name: 'models',

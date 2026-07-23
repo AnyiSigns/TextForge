@@ -15,7 +15,6 @@ import { useProjectStore } from '@/features/projects';
 import { useCharacterStore } from '@/features/characters';
 import { useBriefStore } from '@/features/projects';
 import { useModelStore } from '@/features/settings';
-import type { ModelCategory } from '@/types';
 import { exportWorkspace, downloadBackup } from '@/lib/storage/backup';
 import { ProfileSection } from './sections/ProfileSection';
 import { AppearanceSection } from './sections/AppearanceSection';
@@ -30,7 +29,6 @@ export default function SettingsPage() {
     setBgImage: s.setBgImage, setEmbedTierId: s.setEmbedTierId,
   })));
   const [activeTab, setActiveTab] = useState('profile');
-  const [modelsInitialCategory, setModelsInitialCategory] = useState<ModelCategory>('llm');
 
   const [username, setUsername] = useState(user?.username || '');
   const [email, setEmail] = useState(user?.email || '');
@@ -226,7 +224,6 @@ export default function SettingsPage() {
     if (!ok) return;
     setEmbedTierId(id);
     setActiveTab('models');
-    setModelsInitialCategory('embedding');
     (async () => {
       try {
         const { resetForTier } = await import('@/lib/rag/vectorStore');
@@ -299,7 +296,7 @@ export default function SettingsPage() {
         )}
 
         {activeTab === 'models' && (
-          <ModelsSettings initialCategory={modelsInitialCategory} />
+          <ModelsSettings />
         )}
 
         {activeTab === 'advanced' && (
