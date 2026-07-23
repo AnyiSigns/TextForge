@@ -71,8 +71,8 @@ class UserAuthService:
             await self.token_repo.add(
                 user_id=user.id, jti=rt_jti, expired_at=expired_rt
             )
-            redis.sadd(f"refresh_token_{user.id}", refresh_token)
-            redis.expire(f"refresh_token_{user.id}", 604800)
+            await redis.sadd(f"refresh_token_{user.id}", refresh_token)
+            await redis.expire(f"refresh_token_{user.id}", 604800)
 
             logger.info("用户登录成功")
             return user, access_token, refresh_token, None

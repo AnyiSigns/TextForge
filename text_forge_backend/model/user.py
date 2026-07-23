@@ -38,6 +38,12 @@ class User(Base):
         back_populates="users", cascade="all, delete-orphan"
     )
     conversations: Mapped[List["Conversation"]] = relationship(back_populates="users", cascade="all, delete-orphan")  # type: ignore
+    projects: Mapped[List["Project"]] = relationship(
+        back_populates="users", cascade="all,delete-orphan"
+    )
+    characters: Mapped[List["Character"]] = relationship(
+        back_populates="users", cascade="all,delete-orphan"
+    )
 
 
 class UserToken(Base):

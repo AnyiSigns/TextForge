@@ -23,15 +23,17 @@ export const MODEL_TEMPLATES: ModelTemplate[] = [
   { key: 'deepseek', vendor: 'DeepSeek', adapter: 'deepseek', category: 'llm', deployment: 'cloud', defaultModelId: 'deepseek-chat', defaultBaseUrl: 'https://api.deepseek.com', needsApiKey: true },
   { key: 'openai-compat', vendor: 'OpenAI 兼容', adapter: 'openai', category: 'llm', deployment: 'cloud', defaultModelId: '', defaultBaseUrl: '', needsApiKey: false, hint: '任意兼容 OpenAI 接口的服务（含自建）' },
 
-  // ---------- 视觉模型 (vision) ----------
-  { key: 'kling', vendor: 'Kling (快手)', adapter: 'kling', category: 'vision', deployment: 'cloud', defaultModelId: 'kling-v1', defaultBaseUrl: 'https://api.klingai.com/v1', needsApiKey: true },
-  { key: 'runway', vendor: 'Runway', adapter: 'runway', category: 'vision', deployment: 'cloud', defaultModelId: 'gen-3', defaultBaseUrl: 'https://api.runwayml.com/v1', needsApiKey: true },
-  { key: 'luma', vendor: 'Luma', adapter: 'luma', category: 'vision', deployment: 'cloud', defaultModelId: 'luma-v1', defaultBaseUrl: 'https://api.lumalabs.ai/v1', needsApiKey: true },
-  { key: 'pika', vendor: 'Pika', adapter: 'custom', category: 'vision', deployment: 'cloud', defaultModelId: 'pika-v1', defaultBaseUrl: 'https://api.pika.art/v1', needsApiKey: true },
+   // ---------- 视觉模型 (vision) ----------
+   { key: 'kling', vendor: 'Kling (快手)', adapter: 'kling', category: 'vision', deployment: 'cloud', defaultModelId: 'kling-v1', defaultBaseUrl: 'https://api.klingai.com/v1', needsApiKey: true },
+   { key: 'runway', vendor: 'Runway', adapter: 'runway', category: 'vision', deployment: 'cloud', defaultModelId: 'gen-3', defaultBaseUrl: 'https://api.runwayml.com/v1', needsApiKey: true },
+   { key: 'luma', vendor: 'Luma', adapter: 'luma', category: 'vision', deployment: 'cloud', defaultModelId: 'luma-v1', defaultBaseUrl: 'https://api.lumalabs.ai/v1', needsApiKey: true },
+   { key: 'pika', vendor: 'Pika', adapter: 'custom', category: 'vision', deployment: 'cloud', defaultModelId: 'pika-v1', defaultBaseUrl: 'https://api.pika.art/v1', needsApiKey: true },
+   { key: 'ollama-vision', vendor: 'Ollama (本地视觉)', adapter: 'ollama', category: 'vision', deployment: 'local', defaultModelId: 'llava', defaultBaseUrl: 'http://localhost:11434/v1', needsApiKey: false, hint: '本地运行，无需 API Key' },
 
-  // ---------- 向量模型 (embedding) ----------
-  { key: 'openai-embed', vendor: 'OpenAI Embeddings', adapter: 'openai', category: 'embedding', deployment: 'cloud', defaultModelId: 'text-embedding-3-small', defaultBaseUrl: 'https://api.openai.com/v1', needsApiKey: true },
-  { key: 'dashscope-embed', vendor: 'DashScope 文本向量', adapter: 'dashscope', category: 'embedding', deployment: 'cloud', defaultModelId: 'text-embedding-v4', defaultBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', needsApiKey: true },
+   // ---------- 向量模型 (embedding) ----------
+   { key: 'openai-embed', vendor: 'OpenAI Embeddings', adapter: 'openai', category: 'embedding', deployment: 'cloud', defaultModelId: 'text-embedding-3-small', defaultBaseUrl: 'https://api.openai.com/v1', needsApiKey: true },
+   { key: 'dashscope-embed', vendor: 'DashScope 文本向量', adapter: 'dashscope', category: 'embedding', deployment: 'cloud', defaultModelId: 'text-embedding-v4', defaultBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', needsApiKey: true },
+   { key: 'ollama-embed', vendor: 'Ollama (本地向量)', adapter: 'ollama', category: 'embedding', deployment: 'local', defaultModelId: 'nomic-embed-text', defaultBaseUrl: 'http://localhost:11434/v1', needsApiKey: false, hint: '本地运行，无需 API Key' },
 ];
 
 export const CATEGORY_LABELS: Record<ModelCategory, string> = {

@@ -6,7 +6,8 @@ import { useModelStore } from '../stores/modelStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { EmbedModelManager } from './EmbedModelManager';
 import { ModelEditDialog } from './ModelEditDialog';
-import type { ModelRole, RoleModelConfig } from '@/types';
+import type { AdapterType, ModelRole, RoleModelConfig } from '@/types';
+import { MODEL_TEMPLATES } from '../api/templates';
 import {
   Card, CardContent, CardHeader, CardTitle,
 } from '@/components/ui/card';
@@ -36,24 +37,24 @@ export function ModelsSettings() {
     setVisionConfig({
       id: 'vision-config',
       role: 'main',
-      name: '',
-      provider: '',
+      name: 'Kling (快手)',
+      provider: 'Kling (快手)',
       adapter: 'kling',
-      baseUrl: '',
+      baseUrl: 'https://api.klingai.com/v1',
       apiKey: '',
-      modelId: '',
+      modelId: 'kling-v1',
       deployment: 'cloud',
       createdAt: new Date().toISOString(),
     });
     setEmbeddingPublicConfig({
       id: 'embedding-public-config',
       role: 'main',
-      name: '',
-      provider: '',
+      name: 'OpenAI Embeddings',
+      provider: 'OpenAI Embeddings',
       adapter: 'openai',
-      baseUrl: '',
+      baseUrl: 'https://api.openai.com/v1',
       apiKey: '',
-      modelId: '',
+      modelId: 'text-embedding-3-small',
       deployment: 'cloud',
       createdAt: new Date().toISOString(),
     });
@@ -229,17 +230,26 @@ function label(role: ModelRole): string {
 }
 
 function buildEmpty(role: ModelRole): RoleModelConfig {
-  const adapter = role === 'main' ? 'deepseek' : role === 'compression' ? 'ollama' : role === 'router' ? 'deepseek' : 'deepseek';
+  const map: Record<ModelRole, { adapter: AdapterType; baseUrl: string; modelId: string }> = {
+    main: { adapter: 'deepseek', baseUrl: 'https://api.deepseek.com', modelId: 'deepseek-chat' },
+    compression: { adapter: 'ollama', baseUrl: 'http://localhost:11434/v1', modelId: 'llama3' },
+    router: { adapter: 'deepseek', baseUrl: 'https://api.deepseek.com', modelId: 'deepseek-chat' },
+    tool: { adapter: 'deepseek', baseUrl: 'https://api.deepseek.com', modelId: 'deepseek-chat' },
+  };
+  const cfg = map[role];
+  const names: Record<ModelRole, string> = { main: 'DeepSeek', compression: 'Ollama (本地)', router: 'DeepSeek', tool: 'DeepSeek' };
+  const providers: Record<ModelRole, string> = { main: 'DeepSeek', compression: 'Ollama (本地)', router: 'DeepSeek', tool: 'DeepSeek' };
+  const deployment = MODEL_TEMPLATES.find((t) => t.adapter === cfg.adapter && t.category === 'llm')?.deployment ?? 'cloud';
   return {
     id: role === 'main' ? 'main-config' : role === 'compression' ? 'compression-config' : role === 'router' ? 'router-config' : 'tool-config',
     role,
-    name: '',
-    provider: '',
-    adapter,
-    baseUrl: '',
+    name: names[role],
+    provider: providers[role],
+    adapter: cfg.adapter,
+    baseUrl: cfg.baseUrl,
     apiKey: '',
-    modelId: '',
-    deployment: 'cloud',
+    modelId: cfg.modelId,
+    deployment,
     createdAt: new Date().toISOString(),
   };
 }
