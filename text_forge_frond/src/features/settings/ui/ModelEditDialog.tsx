@@ -11,33 +11,37 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import {
-  MODEL_TEMPLATES,
-} from '../api/templates';
-import type { ModelConfig, RoleModelConfig } from '@/types';
+import { MODEL_TEMPLATES } from '../api/templates';
+import type { RoleModelConfig } from '@/types';
 
 interface ModelEditDialogProps {
-  editing: ModelConfig | RoleModelConfig | null;
+  editing: RoleModelConfig | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onPatch: (patch: Partial<ModelConfig>) => void;
-  onTemplateChange: (key: string) => void;
-  onSave: () => void;
+  onSave: (model: RoleModelConfig) => void;
+  isRole?: boolean;
 }
 
 export function ModelEditDialog(props: ModelEditDialogProps) {
-  const { editing, open, onOpenChange, onPatch, onTemplateChange, onSave } = props;
+  const { editing, open, onOpenChange, onSave, isRole = true } = props;
 
   if (!editing) return null;
 
-  const isRole = 'role' in editing;
+  const onPatch = (patch: Partial<RoleModelConfig>) => {
+    const next = { ...editing, ...patch } as RoleModelConfig;
+    if (patch.adapter) {
+      const t = MODEL_TEMPLATES.find((x) => x.adapter === patch.adapter);
+      if (t) {
+        next.provider = t.vendor;
+        if (!patch.name) next.name = t.vendor;
+        if (!patch.modelId) next.modelId = t.defaultModelId;
+        if (!patch.baseUrl) next.baseUrl = t.defaultBaseUrl ?? '';
+      }
+    }
+    Object.assign(editing, next);
+  };
 
-  const templateKey = editing
-    ? MODEL_TEMPLATES.find((t) => {
-        if ('vendor' in editing) return t.vendor === (editing as ModelConfig).vendor && t.adapter === editing.adapter;
-        return t.adapter === editing.adapter;
-      })?.key
-    : undefined;
+  const templateKey = MODEL_TEMPLATES.find((t) => t.adapter === editing.adapter && (!isRole || t.category === 'llm'))?.key;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -49,7 +53,10 @@ export function ModelEditDialog(props: ModelEditDialogProps) {
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">
             <Label>厂商 / 模板</Label>
-            <Select value={templateKey} onValueChange={(v) => onTemplateChange(v ?? '')}>
+            <Select value={templateKey} onValueChange={(v) => {
+              const t = MODEL_TEMPLATES.find((x) => x.key === v);
+              if (t) onPatch({ adapter: t.adapter, provider: t.vendor, name: t.vendor, modelId: t.defaultModelId, baseUrl: t.defaultBaseUrl ?? '' });
+            }}>
               <SelectTrigger className="w-full"><SelectValue placeholder="选择厂商模板" /></SelectTrigger>
               <SelectContent>
                 {MODEL_TEMPLATES.filter((t) => !isRole || t.category === 'llm').map((t) => (
@@ -100,7 +107,7 @@ export function ModelEditDialog(props: ModelEditDialogProps) {
               <Input
                 type={f.type === 'number' ? 'number' : 'text'}
                 value={String(editing.extra?.[f.key] ?? '')}
-                onChange={(e) => onPatch({ extra: { ...editing.extra, [f.key]: f.type === 'number' ? Number(e.target.value) : e.target.value } })}
+                onChange={(e) => onPatch({ extra: { ...(editing.extra ?? {}), [f.key]: f.type === 'number' ? Number(e.target.value) : e.target.value } })}
                 placeholder={f.placeholder}
               />
             </div>
@@ -109,7 +116,7 @@ export function ModelEditDialog(props: ModelEditDialogProps) {
 
         <DialogFooter>
           <DialogClose render={<Button variant="outline" />}>取消</DialogClose>
-          <Button onClick={onSave}>保存</Button>
+          <Button onClick={() => onSave(editing)}>保存</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

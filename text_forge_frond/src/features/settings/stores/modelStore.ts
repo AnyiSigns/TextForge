@@ -1,11 +1,13 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+import { enqueueSync } from '@/lib/storage/syncQueue';
+import { MODEL_TEMPLATES } from '../api/templates';
 import { uid } from '@/lib/utils/id';
 import { createIdbStorage } from '@/lib/storage/zustandIdb';
 import type { ModelConfig, ModelRole, RoleModelConfig } from '@/types';
 import { syncManager } from '@/lib/storage/syncManager';
-import { MODEL_TEMPLATES } from '../api/templates';
+import apiClient from '@/lib/api/client';
 
 function buildRoleModel(templateKey: string, role: ModelRole, overrides: Partial<RoleModelConfig> = {}): RoleModelConfig {
   const t = MODEL_TEMPLATES.find((x) => x.key === templateKey)!;
@@ -96,6 +98,13 @@ export const useModelStore = create<ModelStore>()(
         set((s) => ({
           textRoleModels: { ...s.textRoleModels, [role]: model },
         }));
+        const run = async () => {
+          const key = role === 'main' ? 'main_config' : role === 'compression' ? 'compression_config' : role === 'router' ? 'router_config' : 'tool_config';
+          await syncTextConfig({ [key]: model });
+        };
+        run().catch(() => {
+          enqueueSync('models', run);
+        });
       },
       getTextRoleModel: (role) => get().textRoleModels[role],
       getMainModel: () => get().textRoleModels.main,
@@ -116,7 +125,15 @@ export const useModelStore = create<ModelStore>()(
   )
 );
 
-// 注册统一同步管理器（延迟执行）
+async function syncTextConfig(payload: Record<string, RoleModelConfig | null>) {
+  try {
+    await apiClient.put('/api/user/models/text-config', payload);
+  } catch {
+    enqueueSync('models', () => syncTextConfig(payload));
+  }
+}
+
+// 注册统一同步管理器（延迟执行，避免循环依赖）
 setTimeout(() => {
   syncManager.register({
     name: 'models',
