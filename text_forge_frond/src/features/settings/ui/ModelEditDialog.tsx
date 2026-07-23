@@ -19,18 +19,21 @@ interface ModelEditDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (model: RoleModelConfig) => void;
-  isRole?: boolean;
+  mode: 'text' | 'vision' | 'embedding';
 }
 
 export function ModelEditDialog(props: ModelEditDialogProps) {
-  const { editing, open, onOpenChange, onSave, isRole = true } = props;
+  const { editing, open, onOpenChange, onSave, mode } = props;
 
   if (!editing) return null;
+
+  const categoryMap: Record<string, string> = { text: 'llm', vision: 'vision', embedding: 'embedding' };
+  const category = categoryMap[mode];
 
   const onPatch = (patch: Partial<RoleModelConfig>) => {
     const next = { ...editing, ...patch } as RoleModelConfig;
     if (patch.adapter) {
-      const t = MODEL_TEMPLATES.find((x) => x.adapter === patch.adapter);
+      const t = MODEL_TEMPLATES.find((x) => x.adapter === patch.adapter && x.category === category);
       if (t) {
         next.provider = t.vendor;
         if (!patch.name) next.name = t.vendor;
@@ -41,13 +44,15 @@ export function ModelEditDialog(props: ModelEditDialogProps) {
     Object.assign(editing, next);
   };
 
-  const templateKey = MODEL_TEMPLATES.find((t) => t.adapter === editing.adapter && (!isRole || t.category === 'llm'))?.key;
+  const templateKey = MODEL_TEMPLATES.find((t) => t.adapter === editing.adapter && t.category === category)?.key;
+
+  const filteredTemplates = MODEL_TEMPLATES.filter((t) => t.category === category);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{open && editing ? (editing.id ? '编辑模型' : '添加模型') : '添加模型'}</DialogTitle>
+          <DialogTitle>{open ? (editing.id ? '编辑模型' : '添加模型') : '编辑模型'}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
@@ -59,7 +64,7 @@ export function ModelEditDialog(props: ModelEditDialogProps) {
             }}>
               <SelectTrigger className="w-full"><SelectValue placeholder="选择厂商模板" /></SelectTrigger>
               <SelectContent>
-                {MODEL_TEMPLATES.filter((t) => !isRole || t.category === 'llm').map((t) => (
+                {filteredTemplates.map((t) => (
                   <SelectItem key={t.key} value={t.key}>{t.vendor}</SelectItem>
                 ))}
               </SelectContent>
@@ -72,8 +77,8 @@ export function ModelEditDialog(props: ModelEditDialogProps) {
               <Input value={editing.name} onChange={(e) => onPatch({ name: e.target.value })} placeholder="模型显示名" />
             </div>
             <div className="space-y-1.5">
-              <Label>模型 ID</Label>
-              <Input value={editing.modelId} onChange={(e) => onPatch({ modelId: e.target.value })} placeholder="如 gpt-4o" />
+              <Label>模型名</Label>
+              <Input value={editing.modelId} onChange={(e) => onPatch({ modelId: e.target.value })} placeholder="如 deepseek-chat" />
             </div>
           </div>
 
@@ -101,7 +106,7 @@ export function ModelEditDialog(props: ModelEditDialogProps) {
             <Input type="password" value={editing.apiKey ?? ''} onChange={(e) => onPatch({ apiKey: e.target.value })} placeholder="sk-..." />
           </div>
 
-          {MODEL_TEMPLATES.find((t) => t.adapter === editing.adapter && (!isRole || t.category === 'llm'))?.extraFields?.map((f) => (
+          {MODEL_TEMPLATES.find((t) => t.adapter === editing.adapter && t.category === category)?.extraFields?.map((f) => (
             <div key={f.key} className="space-y-1.5">
               <Label>{f.label}</Label>
               <Input
@@ -116,7 +121,7 @@ export function ModelEditDialog(props: ModelEditDialogProps) {
 
         <DialogFooter>
           <DialogClose render={<Button variant="outline" />}>取消</DialogClose>
-          <Button onClick={() => onSave(editing)}>保存</Button>
+          <Button onClick={() => onSave({ ...editing })}>保存</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -29,6 +29,7 @@ export function ModelsSettings() {
   const [editRole, setEditRole] = useState<ModelRole | null>(null);
   const [editVision, setEditVision] = useState(false);
   const [editEmbedding, setEditEmbedding] = useState(false);
+  const [mode, setMode] = useState<'text' | 'vision' | 'embedding'>('text');
   const [testStatus, setTestStatus] = useState<Record<string, 'idle' | 'testing' | 'success' | 'error'>>({});
 
   useEffect(() => {
@@ -59,16 +60,17 @@ export function ModelsSettings() {
   }, []);
 
   const handleSave = async (model: RoleModelConfig) => {
+    const next = { ...model };
     if (editRole) {
-      setTextRoleModel(editRole, model);
+      setTextRoleModel(editRole, next);
       const key = editRole === 'main' ? 'main_config' : editRole === 'compression' ? 'compression_config' : editRole === 'router' ? 'router_config' : 'tool_config';
-      await syncTextConfig({ [key]: model });
+      await syncTextConfig({ [key]: next });
     } else if (editVision) {
-      setVisionConfig(model);
-      await syncVision(model);
+      setVisionConfig(next);
+      await syncVision(next);
     } else if (editEmbedding) {
-      setEmbeddingPublicConfig(model);
-      await syncEmbedding(model);
+      setEmbeddingPublicConfig(next);
+      await syncEmbedding(next);
     }
     toast.success('已保存');
     setOpen(false);
@@ -107,6 +109,14 @@ export function ModelsSettings() {
         ? embeddingPublicConfig
         : null;
 
+  const openDialog = (editType: 'text' | 'vision' | 'embedding', roleOrNull: ModelRole | null = null) => {
+    setMode(editType);
+    setEditRole(roleOrNull);
+    setEditVision(editType === 'vision');
+    setEditEmbedding(editType === 'embedding');
+    setOpen(true);
+  };
+
   return (
     <Card className="glass-card">
       <CardHeader>
@@ -127,24 +137,24 @@ export function ModelsSettings() {
                     <span className="text-xs font-medium text-muted-foreground">{label(role)}</span>
                     {isMain && <Badge variant="secondary" className="text-[10px]">必须</Badge>}
                   </div>
-                  {m ? (
+                  {m && m.modelId ? (
                     <div className="space-y-1.5">
-                      <p className="text-sm font-medium truncate">{m.name}</p>
+                      <p className="text-sm font-medium truncate">{m.name || label(role)}</p>
                       <p className="text-xs text-muted-foreground truncate">{m.provider} · {m.modelId}</p>
                       <div className="flex items-center gap-1">
                         <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => testConnection(m)}>
                           {testStatus[m.id] === 'success' ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : testStatus[m.id] === 'error' ? <AlertCircle className="w-3.5 h-3.5 text-destructive" /> : <AlertCircle className="w-3.5 h-3.5" />}
                         </Button>
-                        <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => { setEditRole(role); setEditVision(false); setEditEmbedding(false); setOpen(true); }}>
+                        <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => openDialog('text', role)}>
                           <Pencil className="w-3.5 h-3.5" />
                         </Button>
                       </div>
                     </div>
-                  ) : isMain ? (
-                    <Button variant="outline" size="sm" className="w-full mt-1" onClick={() => { setEditRole(role); setEditVision(false); setEditEmbedding(false); setOpen(true); }}>
+                  ) : (
+                    <Button variant="outline" size="sm" className="w-full mt-1" onClick={() => openDialog('text', role)}>
                       <Plus className="w-3.5 h-3.5 mr-1" /> 添加
                     </Button>
-                  ) : null}
+                  )}
                 </div>
               );
             })}
@@ -153,7 +163,7 @@ export function ModelsSettings() {
 
         <div className="space-y-2">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">视觉模型（图片/视频）</p>
-          {visionConfig && visionConfig.name ? (
+          {visionConfig && visionConfig.modelId ? (
             <div className="rounded-xl border border-border/40 bg-background/40 p-3 space-y-2">
               <p className="text-sm font-medium truncate">{visionConfig.name}</p>
               <p className="text-xs text-muted-foreground truncate">{visionConfig.provider} · {visionConfig.modelId}</p>
@@ -161,13 +171,13 @@ export function ModelsSettings() {
                 <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => testConnection(visionConfig)}>
                   {testStatus[visionConfig.id] === 'success' ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : testStatus[visionConfig.id] === 'error' ? <AlertCircle className="w-3.5 h-3.5 text-destructive" /> : <AlertCircle className="w-3.5 h-3.5" />}
                 </Button>
-                <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => { setEditVision(true); setEditRole(null); setEditEmbedding(false); setOpen(true); }}>
+                <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => openDialog('vision', null)}>
                   <Pencil className="w-3.5 h-3.5" />
                 </Button>
               </div>
             </div>
           ) : (
-            <Button variant="outline" size="sm" onClick={() => { setEditVision(true); setEditRole(null); setEditEmbedding(false); setOpen(true); }}>
+            <Button variant="outline" size="sm" onClick={() => openDialog('vision', null)}>
               <Plus className="w-3.5 h-3.5 mr-1" /> 添加视觉模型
             </Button>
           )}
@@ -175,7 +185,7 @@ export function ModelsSettings() {
 
         <div className="space-y-2">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">公共文档库向量模型</p>
-          {embeddingPublicConfig && embeddingPublicConfig.name ? (
+          {embeddingPublicConfig && embeddingPublicConfig.modelId ? (
             <div className="rounded-xl border border-border/40 bg-background/40 p-3 space-y-2">
               <p className="text-sm font-medium truncate">{embeddingPublicConfig.name}</p>
               <p className="text-xs text-muted-foreground truncate">{embeddingPublicConfig.provider} · {embeddingPublicConfig.modelId}</p>
@@ -183,13 +193,13 @@ export function ModelsSettings() {
                 <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => testConnection(embeddingPublicConfig)}>
                   {testStatus[embeddingPublicConfig.id] === 'success' ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : testStatus[embeddingPublicConfig.id] === 'error' ? <AlertCircle className="w-3.5 h-3.5 text-destructive" /> : <AlertCircle className="w-3.5 h-3.5" />}
                 </Button>
-                <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => { setEditEmbedding(true); setEditRole(null); setEditVision(false); setOpen(true); }}>
+                <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => openDialog('embedding', null)}>
                   <Pencil className="w-3.5 h-3.5" />
                 </Button>
               </div>
             </div>
           ) : (
-            <Button variant="outline" size="sm" onClick={() => { setEditEmbedding(true); setEditRole(null); setEditVision(false); setOpen(true); }}>
+            <Button variant="outline" size="sm" onClick={() => openDialog('embedding', null)}>
               <Plus className="w-3.5 h-3.5 mr-1" /> 添加公共向量模型
             </Button>
           )}
@@ -206,7 +216,7 @@ export function ModelsSettings() {
             open={open}
             onOpenChange={(v) => { setOpen(v); if (!v) { setEditRole(null); setEditVision(false); setEditEmbedding(false); } }}
             onSave={handleSave}
-            isRole={editRole !== null}
+            mode={mode}
           />
         )}
       </CardContent>
@@ -219,12 +229,13 @@ function label(role: ModelRole): string {
 }
 
 function buildEmpty(role: ModelRole): RoleModelConfig {
+  const adapter = role === 'main' ? 'deepseek' : role === 'compression' ? 'ollama' : role === 'router' ? 'deepseek' : 'deepseek';
   return {
     id: role === 'main' ? 'main-config' : role === 'compression' ? 'compression-config' : role === 'router' ? 'router-config' : 'tool-config',
     role,
     name: '',
     provider: '',
-    adapter: 'deepseek',
+    adapter,
     baseUrl: '',
     apiKey: '',
     modelId: '',
