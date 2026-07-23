@@ -47,7 +47,6 @@ export function GenerationForm({
     count?: number;
     duration?: number;
     aspect?: string;
-    model_id?: string;
     project_id?: string;
     context?: GenerationContext;
     source_step?: string;
@@ -101,23 +100,6 @@ export function GenerationForm({
           </div>
         )}
         <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-2">
-            <Label>模型</Label>
-            {f.models.length === 0 ? (
-              <p className="text-xs text-muted-foreground rounded-lg border border-dashed border-border/50 px-3 py-2">
-                尚未添加{kind === 'video' ? '视频' : '图片'}类模型，请到「设置 → 模型」中添加
-              </p>
-            ) : (
-              <Select value={f.modelId} onValueChange={(v) => f.setModelId(v ?? '')}>
-                <SelectTrigger><SelectValue placeholder={`选择${kind === 'video' ? '视频' : '图片'}模型`} /></SelectTrigger>
-                <SelectContent>
-                  {f.models.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          </div>
           {kind === 'image' ? (
             <div className="space-y-2">
               <Label>风格</Label>

@@ -264,7 +264,6 @@ export function CharacterStudioSheet({
                     style: payload.style,
                     size: payload.size,
                     count: payload.count,
-                    model_id: payload.model_id,
                     project_id: payload.project_id,
                     characterId: character.id,
                     reference_images: character.referenceImages?.length ? character.referenceImages.slice(0, 5) : undefined,

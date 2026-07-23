@@ -24,7 +24,6 @@ export interface Message {
 export type GenerationBaseRequest = {
   prompt: string;
   negative_prompt?: string;
-  model_id?: string;
   project_id?: string;
   context?: GenerationContext;
   source_step?: string;

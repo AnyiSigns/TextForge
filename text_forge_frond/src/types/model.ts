@@ -8,19 +8,36 @@ import type {
   ModelModality,
 } from './common';
 
+export type ModelRole = 'main' | 'compression' | 'router' | 'tool';
+
+export interface RoleModelConfig {
+  id: string;
+  role: ModelRole;
+  name: string;
+  provider: string;
+  adapter: AdapterType;
+  baseUrl: string;
+  apiKey: string;
+  modelId: string;
+  deployment: ModelDeployment;
+  extra?: Record<string, string | number>;
+  createdAt: string;
+}
+
 export interface ModelConfig {
   id: string;
   name: string;
   category: ModelCategory;
   deployment: ModelDeployment;
-  vendor: string; // e.g. 'OpenAI', 'Ollama', 'Kling'
+  vendor: string;
   adapter: AdapterType;
   baseUrl?: string;
   apiKey?: string;
-  modelId: string; // actual model name passed to backend
+  modelId: string;
   isDefault?: boolean;
   extra?: Record<string, string | number>;
-  auxiliary?: AuxiliaryModel[]; // only for category 'text'
-  modalities?: ModelModality[]; // 支持的能力：图片/视频（仅 vision/omni 有意义）
+  auxiliary?: AuxiliaryModel[];
+  modalities?: ModelModality[];
   createdAt: string;
+  role?: ModelRole;
 }

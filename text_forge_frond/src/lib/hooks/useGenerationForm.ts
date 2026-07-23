@@ -2,8 +2,6 @@
 // GenerationForm 的表单逻辑层：承载全部受控 state、派生值与提交组装，
 // 让 GenerationForm 组件退化为纯视图（页面=布局 / hooks=逻辑 分层）。
 import { useState, useMemo, useEffect } from 'react';
-import { useShallow } from 'zustand/react/shallow';
-import { useModelStore } from '@/features/settings';
 import { NO_PROJECT } from '@/shared/components';
 import { collectReferenceImages, matchCharsByText } from '@/features/characters/lib/characterRefs';
 import type { GenerationContext } from '@/types';
@@ -48,7 +46,6 @@ export interface GenerationSubmitPayload {
   count?: number;
   duration?: number;
   aspect?: string;
-  model_id?: string;
   project_id?: string;
   context?: GenerationContext;
   source_step?: string;
@@ -63,15 +60,6 @@ export interface GenerationSubmitPayload {
 export function useGenerationForm(opts: GenerationFormOptions) {
   const { kind, defaultPrompt = '', defaultProjectId = null, defaultCharacterId = null, defaultChapterId = null, context, steps, forcedUseCase, characters } = opts;
 
-  const models = useModelStore(useShallow((s) =>
-    s.models.filter((m) => m.category === 'vision' && (m.modalities ?? ['image']).includes(kind === 'video' ? 'video' : 'image'))
-  ));
-  // C2: 默认选中该类别的 isDefault 模型，避免未选时误传 undefined 导致后端无 model_id
-  const defaultModelId = useModelStore((s) => {
-    const list = s.models.filter((m) => m.category === 'vision' && (m.modalities ?? ['image']).includes(kind === 'video' ? 'video' : 'image'));
-    return (list.find((m) => m.isDefault) ?? list[0])?.id;
-  });
-  const [modelId, setModelId] = useState(defaultModelId ?? '');
   const [prompt, setPrompt] = useState(defaultPrompt);
   const [negative, setNegative] = useState('');
   const [style, setStyle] = useState(IMAGE_STYLES[0]);
@@ -171,7 +159,6 @@ export function useGenerationForm(opts: GenerationFormOptions) {
       const base = {
         prompt: prompt.trim(),
         negative_prompt: negative.trim() || undefined,
-        model_id: modelId || undefined,
         project_id: projectId && projectId !== NO_PROJECT ? projectId : undefined,
         context,
       };
@@ -278,13 +265,10 @@ export function useGenerationForm(opts: GenerationFormOptions) {
     MAX_REFS,
     kind,
     useCase,
-    models,
     effectiveSteps,
     selectedStep,
     refImages,
     refError,
-    // state
-    modelId, setModelId,
     prompt, setPrompt,
     negative, setNegative,
     style, setStyle,

@@ -1,4 +1,4 @@
-import type { AdapterType, ModelCategory, ModelDeployment, AuxiliaryModel } from '@/types';
+import type { AdapterType, ModelCategory, ModelDeployment, AuxiliaryModel, ModelRole } from '@/types';
 
 export interface ModelTemplate {
   key: string;
@@ -43,4 +43,11 @@ export const AUX_ROLE_LABELS: Record<AuxiliaryModel['role'], string> = {
   reviewer: '审查',
   translator: '翻译',
   custom: '自定义',
+};
+
+export const ROLE_LABELS: Record<ModelRole, string> = {
+  main: '主模型',
+  compression: '压缩模型',
+  router: '路由模型',
+  tool: '工具调用模型',
 };

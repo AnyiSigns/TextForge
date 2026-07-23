@@ -5,9 +5,9 @@ import { useState } from 'react';
 import { useModelStore } from '../stores/modelStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import {
-  MODEL_TEMPLATES, CATEGORY_LABELS,
+  MODEL_TEMPLATES, CATEGORY_LABELS, ROLE_LABELS,
 } from '../api/templates';
-import type { AuxiliaryModel, ModelCategory, ModelConfig } from '@/types';
+import type { ModelCategory, ModelConfig, ModelRole, RoleModelConfig } from '@/types';
 import {
   Card, CardContent, CardHeader, CardTitle,
 } from '@/components/ui/card';
@@ -21,10 +21,13 @@ import { uid } from '@/lib/utils/id';
 import { EmbedModelManager } from './EmbedModelManager';
 import { ModelEditDialog } from './ModelEditDialog';
 
+const MODEL_ROLES: ModelRole[] = ['main', 'compression', 'router', 'tool'];
 const CATEGORIES: ModelCategory[] = ['llm', 'vision', 'omni', 'speech', 'embedding'];
 
 export function ModelsSettings({ initialCategory = 'llm' }: { initialCategory?: ModelCategory }) {
   const models = useModelStore((s) => s.models);
+  const textRoleModels = useModelStore((s) => s.textRoleModels);
+  const setTextRoleModel = useModelStore((s) => s.setTextRoleModel);
   const addModel = useModelStore((s) => s.addModel);
   const updateModel = useModelStore((s) => s.updateModel);
   const removeModel = useModelStore((s) => s.removeModel);
@@ -32,18 +35,48 @@ export function ModelsSettings({ initialCategory = 'llm' }: { initialCategory?: 
   const setEmbedTierId = useSettingsStore((s) => s.setEmbedTierId);
 
   const [category, setCategory] = useState<ModelCategory>(initialCategory);
-  const [editing, setEditing] = useState<ModelConfig | null>(null);
+  const [editingRole, setEditingRole] = useState<ModelRole | null>(null);
+  const [editingVision, setEditingVision] = useState<ModelConfig | null>(null);
   const [open, setOpen] = useState(false);
   const [testStatus, setTestStatus] = useState<Record<string, 'idle' | 'testing' | 'success' | 'error'>>({});
 
-  const list = models.filter((m) => m.category === category);
-  const textModels = models.filter((m) => m.category === 'llm');
+  const visionList = models.filter((m) => m.category === category);
 
-  const startNew = () => {
+  const startNewRole = (role: ModelRole) => {
+    const extra: Record<string, string | number> = {};
+    MODEL_TEMPLATES.forEach((t) => {
+      t.extraFields?.forEach((f) => { if (f.default !== undefined) extra[f.key] = f.default; });
+    });
+    setEditingRole(role);
+    setEditingVision(null);
+    setOpen(true);
+  };
+
+  const startEditRole = (role: ModelRole) => {
+    setEditingRole(role);
+    setEditingVision(null);
+    setOpen(true);
+  };
+
+  const saveRole = (model: RoleModelConfig) => {
+    if (!editingRole) return;
+    setTextRoleModel(editingRole, model);
+    toast.success(`已保存${ROLE_LABELS[editingRole]}`);
+    setOpen(false);
+    setEditingRole(null);
+  };
+
+  const removeRole = (role: ModelRole) => {
+    if (!confirm(`确定删除「${ROLE_LABELS[role]}」配置？`)) return;
+    setTextRoleModel(role, null);
+    toast.success('已删除');
+  };
+
+  const startNewVision = () => {
     const t = MODEL_TEMPLATES.find((x) => x.category === category)!;
     const extra: Record<string, string | number> = {};
     t.extraFields?.forEach((f) => { if (f.default !== undefined) extra[f.key] = f.default; });
-    setEditing({
+    setEditingVision({
       id: uid(),
       name: t.vendor,
       category,
@@ -53,56 +86,42 @@ export function ModelsSettings({ initialCategory = 'llm' }: { initialCategory?: 
       baseUrl: t.defaultBaseUrl,
       apiKey: '',
       modelId: t.defaultModelId,
-      isDefault: list.length === 0,
+      isDefault: visionList.length === 0,
       extra: Object.keys(extra).length ? extra : undefined,
-      auxiliary: category === 'llm' ? [] : undefined,
       createdAt: new Date().toISOString(),
     });
+    setEditingRole(null);
     setOpen(true);
   };
 
-  const startEdit = (m: ModelConfig) => {
-    setEditing({ ...m, auxiliary: m.auxiliary ? [...m.auxiliary] : (m.category === 'llm' ? [] : undefined) });
+  const startEditVision = (m: ModelConfig) => {
+    setEditingVision(m);
+    setEditingRole(null);
     setOpen(true);
   };
 
-  const handleTemplateChange = (key: string) => {
-    const t = MODEL_TEMPLATES.find((x) => x.key === key);
-    if (!t || !editing) return;
-    const extra: Record<string, string | number> = {};
-    t.extraFields?.forEach((f) => { if (f.default !== undefined) extra[f.key] = f.default; });
-    setEditing({
-      ...editing,
-      vendor: t.vendor,
-      adapter: t.adapter,
-      deployment: t.deployment,
-      baseUrl: t.defaultBaseUrl ?? editing.baseUrl,
-      modelId: t.defaultModelId,
-      extra: Object.keys(extra).length ? extra : undefined,
-    });
-  };
-
-  const save = () => {
-    if (!editing) return;
-    if (!editing.name.trim()) { toast.error('请填写模型名称'); return; }
-    if (!editing.modelId.trim()) { toast.error('请填写模型 ID'); return; }
-    const exists = models.some((m) => m.id === editing.id);
-    if (exists) updateModel(editing.id, editing);
-    else addModel(editing);
+  const saveVision = () => {
+    if (!editingVision) return;
+    if (!editingVision.name.trim()) { toast.error('请填写模型名称'); return; }
+    if (!editingVision.modelId.trim()) { toast.error('请填写模型 ID'); return; }
+    const exists = models.some((m) => m.id === editingVision.id);
+    if (exists) updateModel(editingVision.id, editingVision);
+    else addModel(editingVision);
     toast.success('已保存模型');
     setOpen(false);
+    setEditingVision(null);
   };
 
-  const remove = (m: ModelConfig) => {
+  const removeVision = (m: ModelConfig) => {
     if (!confirm(`确定删除模型「${m.name}」？`)) return;
     removeModel(m.id);
     toast.success('已删除');
   };
 
-  const testConnection = async (m: ModelConfig) => {
+  const testConnection = async (m: RoleModelConfig | ModelConfig) => {
     setTestStatus(s => ({ ...s, [m.id]: 'testing' }));
     try {
-      await apiClient.post(`/api/models/test`, {
+      await apiClient.post('/api/models/test', {
         adapter: m.adapter,
         baseUrl: m.baseUrl,
         apiKey: m.apiKey,
@@ -116,20 +135,105 @@ export function ModelsSettings({ initialCategory = 'llm' }: { initialCategory?: 
     }
   };
 
-  const handlePatch = (patch: Partial<ModelConfig>) => setEditing((e) => (e ? { ...e, ...patch } : e));
-  const handleAddAux = () =>
-    setEditing((e) => (e ? { ...e, auxiliary: [...(e.auxiliary ?? []), { id: uid(), role: 'planner', label: '规划', modelRef: textModels[0]?.id ?? '', enabled: true }] } : e));
-  const handleUpdateAux = (idx: number, patch: Partial<AuxiliaryModel>) =>
-    setEditing((e) => (e ? { ...e, auxiliary: (e.auxiliary ?? []).map((a, i) => (i === idx ? { ...a, ...patch } : a)) } : e));
-  const handleRemoveAux = (id: string) =>
-    setEditing((e) => (e ? { ...e, auxiliary: (e.auxiliary ?? []).filter((a) => a.id !== id) } : e));
+  const handleTemplateChange = (key: string) => {
+    const t = MODEL_TEMPLATES.find((x) => x.key === key);
+    if (!t) return;
+    const extra: Record<string, string | number> = {};
+    t.extraFields?.forEach((f) => { if (f.default !== undefined) extra[f.key] = f.default; });
+    if (editingRole) {
+      setEditingRole(null);
+      setEditingVision({
+        id: uid(),
+        name: t.vendor,
+        category: t.category,
+        deployment: t.deployment,
+        vendor: t.vendor,
+        adapter: t.adapter,
+        baseUrl: t.defaultBaseUrl ?? '',
+        apiKey: '',
+        modelId: t.defaultModelId,
+        isDefault: false,
+        extra: Object.keys(extra).length ? extra : undefined,
+        createdAt: new Date().toISOString(),
+      });
+    } else if (editingVision) {
+      setEditingVision({
+        ...editingVision,
+        vendor: t.vendor,
+        adapter: t.adapter,
+        category: t.category,
+        deployment: t.deployment,
+        baseUrl: t.defaultBaseUrl ?? editingVision.baseUrl,
+        modelId: t.defaultModelId,
+        extra: Object.keys(extra).length ? extra : undefined,
+      });
+    }
+  };
+
+  const handlePatchVision = (patch: Partial<ModelConfig>) => setEditingVision((e) => (e ? { ...e, ...patch } : e));
+
+  const currentEditing: RoleModelConfig | ModelConfig | null = editingRole
+    ? textRoleModels[editingRole] ?? {
+        id: uid(),
+        role: editingRole,
+        name: '',
+        provider: '',
+        adapter: 'openai',
+        baseUrl: '',
+        apiKey: '',
+        modelId: '',
+        deployment: 'cloud',
+        createdAt: new Date().toISOString(),
+      }
+    : editingVision;
 
   return (
     <Card className="glass-card">
       <CardHeader>
-        <CardTitle>模型自定义</CardTitle>
+        <CardTitle>模型配置</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">文本生成模型（最少 1 个主模型，最多 4 个）</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {MODEL_ROLES.map((role) => {
+              const m = textRoleModels[role];
+              const isMain = role === 'main';
+              return (
+                <div key={role} className="rounded-xl border border-border/40 bg-background/40 p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-muted-foreground">{ROLE_LABELS[role]}</span>
+                    {isMain && <Badge variant="secondary" className="text-[10px]">必须</Badge>}
+                  </div>
+                  {m ? (
+                    <div className="space-y-1.5">
+                      <p className="text-sm font-medium truncate">{m.name}</p>
+                      <p className="text-xs text-muted-foreground truncate">{m.provider} · {m.modelId}</p>
+                      <div className="flex items-center gap-1">
+                        <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => testConnection(m)}>
+                          {testStatus[m.id] === 'success' ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : testStatus[m.id] === 'error' ? <AlertCircle className="w-3.5 h-3.5 text-destructive" /> : <AlertCircle className="w-3.5 h-3.5" />}
+                        </Button>
+                        <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => startEditRole(role)}>
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                        {!isMain && (
+                          <Button variant="ghost" size="sm" className="h-7 px-2 text-muted-foreground hover:text-destructive" onClick={() => removeRole(role)}>
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <Button variant="outline" size="sm" className="w-full mt-1" onClick={() => startNewRole(role)}>
+                      <Plus className="w-3.5 h-3.5 mr-1" /> 添加
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
         <div className="flex items-center gap-1 p-1 bg-muted/40 rounded-xl">
           {CATEGORIES.map((c) => (
             <button
@@ -146,7 +250,7 @@ export function ModelsSettings({ initialCategory = 'llm' }: { initialCategory?: 
         </div>
 
         <div className="flex justify-end">
-          <Button onClick={startNew} size="sm">
+          <Button onClick={startNewVision} size="sm">
             <Plus className="w-4 h-4 mr-1.5" /> 添加模型
           </Button>
         </div>
@@ -155,13 +259,13 @@ export function ModelsSettings({ initialCategory = 'llm' }: { initialCategory?: 
           <EmbedModelManager onDownloaded={setEmbedTierId} />
         )}
 
-        {list.length === 0 ? (
+        {visionList.length === 0 ? (
           <div className="text-center py-10 rounded-xl border border-dashed border-border/60 text-muted-foreground">
             <p className="text-sm">暂无模型，点击右上角添加</p>
           </div>
         ) : (
           <div className="grid gap-3 stagger">
-            {list.map((m) => (
+            {visionList.map((m) => (
               <div key={m.id} className="flex items-center justify-between p-3.5 rounded-xl border border-border/40 bg-background/40 hover:bg-background/70 transition-colors">
                 <div className="flex items-center gap-3 min-w-0">
                   <span className="grid place-items-center w-9 h-9 rounded-lg bg-primary/10 text-primary shrink-0">
@@ -192,10 +296,10 @@ export function ModelsSettings({ initialCategory = 'llm' }: { initialCategory?: 
                       <Star className="w-4 h-4" />
                     </Button>
                   )}
-                  <Button variant="ghost" size="sm" onClick={() => startEdit(m)}>
+                  <Button variant="ghost" size="sm" onClick={() => startEditVision(m)}>
                     <Pencil className="w-4 h-4" />
                   </Button>
-                  <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={() => remove(m)}>
+                  <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={() => removeVision(m)}>
                     <Trash2 className="w-4 h-4" />
                   </Button>
                 </div>
@@ -203,20 +307,25 @@ export function ModelsSettings({ initialCategory = 'llm' }: { initialCategory?: 
             ))}
           </div>
         )}
-      </CardContent>
 
-      <ModelEditDialog
-        editing={editing}
-        open={open}
-        textModels={textModels}
-        onOpenChange={setOpen}
-        onPatch={handlePatch}
-        onTemplateChange={handleTemplateChange}
-        onAddAux={handleAddAux}
-        onUpdateAux={handleUpdateAux}
-        onRemoveAux={handleRemoveAux}
-        onSave={save}
-      />
+        <ModelEditDialog
+          editing={currentEditing as ModelConfig | null}
+          open={open}
+          onOpenChange={(v) => {
+            setOpen(v);
+            if (!v) { setEditingRole(null); setEditingVision(null); }
+          }}
+          onPatch={handlePatchVision}
+          onTemplateChange={handleTemplateChange}
+          onSave={editingRole ? () => {
+            if (!currentEditing) return;
+            const model = currentEditing as RoleModelConfig;
+            if (!model.name.trim()) { toast.error('请填写模型名称'); return; }
+            if (!model.modelId.trim()) { toast.error('请填写模型 ID'); return; }
+            saveRole(model);
+          } : saveVision}
+        />
+      </CardContent>
     </Card>
   );
 }

@@ -6,7 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   submitImage, submitVideo, fetchProjectPortfolio, type MediaTask, type GenerationContext, type ImageRequest, type VideoRequest,
 } from '@/lib/api/generation';
-import { useModelStore } from '@/features/settings';
 import { useBriefStore, briefToContextLine, briefSectionsToContext } from '@/features/projects';
 import { useCharacterStore } from '@/features/characters';
 import { usePortfolioStore } from '@/features/projects';
@@ -33,14 +32,6 @@ export function ProjectStudio({ projectId, steps, mode, selectedCharIds, project
   const taskCount = portfolio.filter((t) => t.status === 'pending' || t.status === 'processing').length;
   const characters = useCharacterStore(useShallow((s) => s.characters.filter((c: Character) => (c.projectId ?? null) === projectId)));
   const brief = useBriefStore((s) => s.briefs[projectId]);
-
-  const imageModels = useModelStore(useShallow((s) => s.models.filter((m) => m.category === 'vision' && (m.modalities ?? ['image']).includes('image'))));
-  const videoModels = useModelStore(useShallow((s) => s.models.filter((m) => m.category === 'vision' && (m.modalities ?? []).includes('video'))));
-  // C1/B5: 工作台内嵌生成入口复用视觉模型列表，默认取该类别 isDefault；未选则不传（后端按默认兜底）
-  const defaultImageModelId = imageModels.find((m) => m.isDefault)?.id ?? imageModels[0]?.id ?? '';
-  const defaultVideoModelId = videoModels.find((m) => m.isDefault)?.id ?? videoModels[0]?.id ?? '';
-  const [imageModelId, setImageModelId] = useState(defaultImageModelId);
-  const [videoModelId, setVideoModelId] = useState(defaultVideoModelId);
 
   const charRefsForChapter = useCallback((stepId: string): { ids: string[]; images: string[] } => {
     const step = steps.find((s) => s.id === stepId);
@@ -218,10 +209,6 @@ export function ProjectStudio({ projectId, steps, mode, selectedCharIds, project
             <CharacterMaterialPanel
               characters={characters}
               projectId={projectId}
-              imageModelsCount={imageModels.length}
-              imageModels={imageModels}
-              imageModelId={imageModelId}
-              onImageModelChange={setImageModelId}
               buildContext={buildContext}
               onImage={handleImage}
             />
@@ -230,10 +217,6 @@ export function ProjectStudio({ projectId, steps, mode, selectedCharIds, project
               characters={characters}
               projectId={projectId}
               steps={steps}
-              videoModelsCount={videoModels.length}
-              videoModels={videoModels}
-              videoModelId={videoModelId}
-              onVideoModelChange={setVideoModelId}
               trailerChars={trailerChars}
               buildContext={buildContext}
               charRefsForChapter={charRefsForChapter}
