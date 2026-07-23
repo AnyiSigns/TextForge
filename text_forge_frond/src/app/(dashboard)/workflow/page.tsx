@@ -64,12 +64,12 @@ export default function WorkflowPage() {
     }
   };
 
-  if (loading) return <PageHeader icon={WorkflowIcon} title="创作流程" description="把写书拆成可复用的步骤组合" />;
+  if (loading) return <PageHeader icon={WorkflowIcon} title="创作流程" description="把写作拆成多个步骤，自由组合成你的创作流程" />;
 
   return (
     <div className="page-shell">
       <div className="flex items-center justify-between">
-        <PageHeader icon={WorkflowIcon} title="创作流程" description="把写书拆成可复用的步骤组合（后端未就绪时为本地 mock）" />
+        <PageHeader icon={WorkflowIcon} title="创作流程" description="把写作拆成多个步骤，自由组合成你的创作流程（云端服务未连接时使用本地演示数据）" />
         <Button onClick={() => router.push('/workflow/new')}>
           <Plus className="w-4 h-4 mr-2" /> 新建工作流
         </Button>
@@ -117,14 +117,14 @@ export default function WorkflowPage() {
           <DialogHeader>
             <DialogTitle>试跑：{runTarget?.name}</DialogTitle>
             <DialogDescription>
-              按工作流节点顺序本地模拟执行（不写入项目），用于调试步骤串联与 RAG/工具注入效果。
+              按顺序模拟执行流程（不会写入项目），用于测试步骤顺序和知识库效果。
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <Input
               value={runInput}
               onChange={(e) => setRunInput(e.target.value)}
-              placeholder="输入起始文本（可选，留空则用项目上下文）"
+              placeholder="输入起始文本（可选，留空则用项目背景信息）"
             />
             <div className="flex gap-2">
               <Button size="sm" onClick={doRun} disabled={runState === 'running'}>

@@ -10,7 +10,7 @@ export default function NotFound() {
       <Card className="max-w-md w-full text-center">
         <CardHeader>
           <AlertCircle className="w-10 h-10 text-muted-foreground mx-auto mb-2" />
-          <CardTitle>404 - 页面未找到</CardTitle>
+          <CardTitle>页面未找到</CardTitle>
           <CardDescription>
             抱歉，您访问的页面不存在或已被移除。
           </CardDescription>

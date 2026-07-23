@@ -77,11 +77,11 @@ export function GenerationForm({
         <UseCaseTabs kind={kind} forcedUseCase={forcedUseCase} f={f} />
 
         <div className="space-y-2">
-          <Label>提示词</Label>
+          <Label>描述词</Label>
           <Textarea
             value={f.prompt}
             onChange={(e) => f.setPrompt(e.target.value)}
-            placeholder={kind === 'image' ? '例如：一个穿着黑色风衣的剑客，站在雨中，赛博朋克风格' : '描述你想要的视频内容、镜头与风格'}
+            placeholder={kind === 'image' ? '例如：一个穿着黑色风衣的剑客，站在雨中，赛博朋克风格' : '描述你想生成的视频画面、镜头和风格'}
             rows={4}
           />
         </div>
@@ -90,13 +90,13 @@ export function GenerationForm({
           onClick={() => f.setNegExpanded(v => !v)}
           className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
         >
-          {f.negExpanded ? '收起高级' : '高级选项（反向提示词）'}
+          {f.negExpanded ? '收起更多选项' : '更多选项（不想要的内容）'}
           <span className={cn('transition-transform', f.negExpanded && 'rotate-90')}>›</span>
         </button>
         {f.negExpanded && (
           <div className="space-y-2">
-            <Label>反向提示词（可选）</Label>
-            <Input value={f.negative} onChange={(e) => f.setNegative(e.target.value)} placeholder={kind === 'image' ? '不希望出现的元素' : '不希望出现的内容'} />
+            <Label>排除词（可选）</Label>
+            <Input value={f.negative} onChange={(e) => f.setNegative(e.target.value)} placeholder="不希望出现的内容" />
           </div>
         )}
         <div className="grid grid-cols-2 gap-3">
@@ -125,7 +125,7 @@ export function GenerationForm({
 
         {kind === 'video' && (
           <div className="space-y-2">
-            <Label>风格模板（一键套用，无需配参数）</Label>
+            <Label>风格预设（一键套用，不用调参数）</Label>
             <div className="flex flex-wrap gap-2">
               {([
                 { value: 'guoman', label: '国漫番剧', aspect: '16:9', duration: 2 },
@@ -148,7 +148,7 @@ export function GenerationForm({
                 </button>
               ))}
             </div>
-            <p className="text-xs text-muted-foreground/80">选定模板会自动设置画面比例与时长，你也可在下方手动微调。</p>
+            <p className="text-xs text-muted-foreground/80">选好预设后，画面比例和时长会自动设置，你也可以在下方手动调整。</p>
           </div>
         )}
         <div className="grid grid-cols-2 gap-3">
@@ -205,7 +205,7 @@ export function GenerationForm({
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground/80">选定后，系统会取该章关联的角色立绘作为视频角色参考，保证形象一致。</p>
+                <p className="text-xs text-muted-foreground/80">选定后，会自动使用该章节关联的角色立绘作为参考，保证形象一致。</p>
               </div>
             )}
 
@@ -232,28 +232,28 @@ export function GenerationForm({
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground/80">指定后，生成完成的图片会自动加入该角色的详情图库；并自动带入该角色已锁定的参考图（最多 5 张）保证多图一致。</p>
+            <p className="text-xs text-muted-foreground/80">指定后，生成的图片会自动加入该角色的图库；并自动带入已锁定的参考图（最多 5 张），保证多图风格一致。</p>
           </div>
         )}
         {(kind === 'image' && (f.useCase === 'portrait' || f.useCase === 'chapter_art')) || (kind === 'video' && (f.useCase === 'chapter_anim' || f.useCase === 'trailer' || f.useCase === 'character_card')) ? (
           <p className="text-xs text-muted-foreground/80">
             {f.useCase === 'portrait'
-              ? '角色立绘将自动带入所选角色的参考图（最多 5 张），无需在此粘贴素材增强图。'
-              : f.useCase === 'chapter_art'
-                ? '章节插图将自动带入该章出场角色的参考图（最多 5 张），无需在此粘贴素材增强图。'
-                : f.useCase === 'chapter_anim'
-                  ? '章节动画将自动带入该章出场角色的参考图（最多 5 张），无需在此粘贴素材增强图。'
-                  : f.useCase === 'trailer'
-                    ? '全书预告片将自动带入所选出场角色的参考图（最多 5 张）与项目大纲，无需粘贴素材增强图。'
-                    : '角色卡动画将自动带入所选角色的参考图（最多 5 张），无需在此粘贴素材增强图。'}
+              ? '角色立绘将自动带入所选角色的参考图（最多 5 张），无需在此添加参考图。'
+                : f.useCase === 'chapter_art'
+                  ? '章节插图将自动带入该章出场角色的参考图（最多 5 张），无需在此添加参考图。'
+                  : f.useCase === 'chapter_anim'
+                    ? '章节动画将自动带入该章出场角色的参考图（最多 5 张），无需在此添加参考图。'
+                    : f.useCase === 'trailer'
+                      ? '全书预告片将自动带入所选出场角色的参考图（最多 5 张）与大纲，无需添加参考图。'
+                      : '角色卡动画将自动带入所选角色的参考图（最多 5 张），无需在此添加参考图。'}
           </p>
         ) : (
           <div className="space-y-2">
-            <Label>素材增强（可选，最多 {f.MAX_REFS} 张）</Label>
+            <Label>参考图增强（可选，最多 {f.MAX_REFS} 张）</Label>
             <Textarea
               value={f.refText}
               onChange={(e) => f.setRefText(e.target.value)}
-              placeholder="粘贴参考图链接，每行一个或用逗号分隔；将作为参考图提升细节一致性"
+              placeholder="粘贴参考图链接，每行一个或用逗号分隔；用作参考让生成结果更细节一致"
               rows={2}
               className="text-sm"
             />
@@ -273,7 +273,7 @@ export function GenerationForm({
 
         {kind === 'video' && f.useCase === 'trailer' && projectCharacters && projectCharacters.length > 0 && (
           <div className="space-y-2">
-            <Label>出场角色（多选，自动带入其参考图）</Label>
+            <Label>出场角色（可多选，自动带入参考图）</Label>
             <div className="flex flex-wrap gap-2">
               {projectCharacters.map((c) => {
                 const on = f.selectedCharIds.includes(c.id);
@@ -293,7 +293,7 @@ export function GenerationForm({
                 );
               })}
             </div>
-            <p className="text-xs text-muted-foreground/80">勾选出场的重要角色，生成预告片时会带入其参考图（最多 5 张）与项目大纲保证形象连贯。</p>
+            <p className="text-xs text-muted-foreground/80">勾选出场的重要角色，生成时会带入其参考图（最多 5 张）与大纲，保证形象连贯。</p>
           </div>
         )}
 

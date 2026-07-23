@@ -31,7 +31,7 @@ export function ProjectDialogs({ wb }: { wb: ReturnType<typeof useWorkbench> }) 
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><Sparkles className="w-4 h-4 text-primary" /> 一句话开局</DialogTitle>
-            <DialogDescription>输入一句话（如「一艘拾荒船打捞星海记忆的科幻故事」），自动生成世界观、角色与大纲，再进流水线写正文。</DialogDescription>
+            <DialogDescription>输入一句话（如「一艘拾荒船打捞星海记忆的科幻故事」），自动生成世界观、角色与大纲，再进入写作流程生成正文。</DialogDescription>
           </DialogHeader>
           <Input
             value={seedPrompt}

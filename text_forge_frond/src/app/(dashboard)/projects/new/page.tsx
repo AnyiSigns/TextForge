@@ -64,7 +64,7 @@ export default function NewProjectPage() {
       toast.success('项目创建成功，前往工作台开始创作');
       router.push(`/projects/${project.id}`);
     } catch (e) {
-      toast.error('创建失败', { description: e instanceof Error ? e.message : '未知错误' });
+      toast.error('创建出错了', { description: e instanceof Error ? e.message : '未知错误' });
     } finally {
       setIsLoading(false);
     }

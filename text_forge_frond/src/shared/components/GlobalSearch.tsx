@@ -141,7 +141,7 @@ export function GlobalSearch() {
         <div className="max-h-80 overflow-y-auto p-2">
           {query.trim() && results.length === 0 && (
             <div className="p-8 text-center text-muted-foreground">
-              <p>没有找到相关结果</p>
+              <p>没有找到相关内容</p>
             </div>
           )}
 

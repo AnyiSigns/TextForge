@@ -16,7 +16,7 @@ export default function NewWorkflow() {
       description: '',
       nodes: [
         { id: 'n1', kind: 'input', label: '项目上下文' },
-        { id: 'n2', kind: 'agent', label: 'Agent', modelId: '', systemPrompt: '' },
+        { id: 'n2', kind: 'agent', label: 'AI助手', modelId: '', systemPrompt: '' },
         { id: 'n3', kind: 'output', label: '输出', dependsOn: ['n2'] },
       ],
       edges: [

@@ -56,7 +56,7 @@ export function CharacterChatHeader(props: CharacterChatHeaderProps) {
           </>
         )}
         <Button variant="ghost" size="sm" onClick={onClearConversation} className={showClearConfirm ? "text-destructive hover:text-destructive" : "text-muted-foreground hover:text-destructive"}>
-          <Trash2 className="w-4 h-4 mr-2" /> <span className="hidden sm:inline">{showClearConfirm ? '确认清空？' : '清空'}</span>
+          <Trash2 className="w-4 h-4 mr-2" /> <span className="hidden sm:inline">{showClearConfirm ? '确认清空对话？' : '清空'}</span>
         </Button>
         <Button
           variant="ghost" size="sm"
@@ -70,7 +70,7 @@ export function CharacterChatHeader(props: CharacterChatHeaderProps) {
           onClick={onExport}
           className="text-muted-foreground hover:text-foreground"
         >
-          <Download className="w-4 h-4 mr-2" /> <span className="hidden sm:inline">导出记录</span>
+          <Download className="w-4 h-4 mr-2" /> <span className="hidden sm:inline">导出对话</span>
         </Button>
       </div>
 
@@ -80,7 +80,7 @@ export function CharacterChatHeader(props: CharacterChatHeaderProps) {
           <Input
             value={search}
             onChange={e => onSearch(e.target.value)}
-            placeholder="搜索对话内容…"
+            placeholder="搜索对话..."
             className="pl-9 pr-8"
           />
           {search && (

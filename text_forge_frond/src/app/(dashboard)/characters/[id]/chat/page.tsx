@@ -216,7 +216,7 @@ export default function CharacterChatPage() {
 
       <div className="flex items-center gap-2 mb-3">
         <label className="flex items-center gap-2 text-xs text-muted-foreground shrink-0">
-          气泡透明度
+          对话气泡透明度
           <input
             type="range"
             min={0.3}

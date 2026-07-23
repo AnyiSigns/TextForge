@@ -67,7 +67,7 @@ export function WorkflowEditor({ initial, onSaved }: { initial: Workflow; onSave
     const edges = nodes.slice(1).map((n, i) => ({ from: nodes[i].id, to: n.id }));
     update({ nodes: [...wf.nodes, ...nodes], edges: [...wf.edges, ...edges] });
     setSelected(nodes[0]?.id ?? null);
-    toast.success('已加入默认 Agent 团队（可继续调整）');
+    toast.success('已添加默认写作助手团队，你还可以继续调整');
   };
 
   const removeNode = (id: string) => {
@@ -123,7 +123,7 @@ export function WorkflowEditor({ initial, onSaved }: { initial: Workflow; onSave
       const map: Record<string, string> = {};
       steps.forEach((s) => { map[s.nodeId] = s.output; });
       setResults(map);
-      toast.success('工作流运行完成（mock）');
+      toast.success('流程运行完成（演示模式）');
     } catch (e) {
       toast.error('运行失败', { description: e instanceof Error ? e.message : '未知错误' });
     } finally {
@@ -132,7 +132,7 @@ export function WorkflowEditor({ initial, onSaved }: { initial: Workflow; onSave
   };
 
   const handleRunToProject = async () => {
-    if (!targetProject) { toast.error('请先选择目标项目'); return; }
+    if (!targetProject) { toast.error('请先选择一个项目'); return; }
     setWritingProject(true);
     try {
       const runs = await runWorkflow(wf.id, '');
@@ -142,7 +142,7 @@ export function WorkflowEditor({ initial, onSaved }: { initial: Workflow; onSave
       const prev = draft ?? [];
       await useProjectStore.getState().saveDraft(targetProject, [...prev, ...steps]);
       const proj = projects.find((p) => p.id === targetProject);
-      toast.success(`已写入《${proj?.title ?? '项目'}》${steps.length} 个环节（可在项目工作台查看）`);
+      toast.success(`已写入作品《${proj?.title ?? '项目'}》的 ${steps.length} 个环节（可在项目工作台查看）`);
     } catch (e) {
       toast.error('写入失败', { description: e instanceof Error ? e.message : '未知错误' });
     } finally {

@@ -19,7 +19,7 @@ import { initDownloadedTiers, isTierDownloaded } from '@/lib/rag/embed';
 import { EMBED_TIERS } from '@/lib/rag/embed';
 import { reindexAll } from '@/lib/rag/vectorStore';
 
-const FORBIDDEN_NOTE = '请勿上传包含血腥、暴力、色情或任何其他违反法律法规的内容。违规内容将被系统拦截并追责。';
+const FORBIDDEN_NOTE = '请勿上传违规内容。违规内容将被拦截。';
 
 export default function KnowledgePage() {
   const { user } = useAuthStore();
@@ -62,10 +62,10 @@ export default function KnowledgePage() {
     try {
       await reindexAll();
       await refresh();
-      toast.success('已重新建库，现在可以正常检索了');
+      toast.success('文档已重新整理，现在可以正常检索了');
     } catch (error: unknown) {
       const err = error instanceof Error ? error : new Error(String(error));
-      toast.error('重新建库失败', { description: err.message });
+      toast.error('整理文档失败', { description: err.message });
     } finally {
       setReindexing(false);
     }
@@ -85,7 +85,7 @@ export default function KnowledgePage() {
     setIsLoading(true);
     try {
       await ragClient.uploadPersonal(file, myId, user?.username);
-      toast.success('上传成功，已索引（本地）');
+      toast.success('上传成功，已整理（本地）');
       await refresh();
     } catch (error: unknown) {
       const err = error instanceof Error ? error : new Error(String(error));
@@ -104,15 +104,15 @@ export default function KnowledgePage() {
       return;
     }
     // 后端就绪后真正上传；mock 期仅提示（公共库内容由服务端托管，前端不存）
-    toast.info('已提交发布（后端就绪后写入公共库）');
+    toast.info('已提交发布，云端服务就绪后将同步到公共库');
     e.target.value = '';
   };
 
   const handleDelete = useCallback(async (doc: KbDocMeta) => {
-    if (!confirm('确定要删除该文档吗？删除后相关索引也会移除。')) return;
+    if (!confirm('确定删除该文档吗？删除后相关检索库也会清除。')) return;
     try {
       if (doc.scope === 'public') {
-        toast.info('公共文档删除需后端支持（已记录意图）');
+        toast.info('公共库文档删除需要云端服务支持（已记录操作）');
       } else {
         await ragClient.removePersonal(doc.id);
         toast.success('已删除');
@@ -139,8 +139,8 @@ export default function KnowledgePage() {
 
   const getStatusBadge = (status: KbDocMeta['status']) => {
     switch (status) {
-      case 'indexing': return <Badge variant="secondary" className="bg-amber-500/10 text-amber-600 border-amber-500/20">待重建</Badge>;
-      case 'indexed': return <Badge variant="default">已索引</Badge>;
+      case 'indexing': return <Badge variant="secondary" className="bg-amber-500/10 text-amber-600 border-amber-500/20">待整理</Badge>;
+      case 'indexed': return <Badge variant="default">已整理</Badge>;
       case 'failed': return <Badge variant="destructive">失败</Badge>;
     }
   };
@@ -208,11 +208,11 @@ export default function KnowledgePage() {
                 <div className="flex flex-wrap items-center gap-3 p-3 rounded-xl border border-amber-500/30 bg-amber-500/10">
                   <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
                   <p className="text-sm text-amber-700 dark:text-amber-300 flex-1 min-w-0">
-                    你切换了检索精度，有 <span className="font-semibold">{pendingReindex}</span> 篇文档需要重新建库才能被检索到（切换前已上传的文档不会丢失）。
+                    你切换了检索精度，有 <span className="font-semibold">{pendingReindex}</span> 篇文档需要重新整理才能被检索到（切换前已上传的文档不会丢失）。
                   </p>
                   <Button size="sm" variant="outline" onClick={handleReindex} disabled={reindexing} className="shrink-0">
                     <RefreshCw className={`w-4 h-4 mr-1.5 ${reindexing ? 'animate-spin' : ''}`} />
-                    {reindexing ? '重建中…' : '重新建库'}
+                    {reindexing ? '整理中…' : '整理文档'}
                   </Button>
                 </div>
               )}

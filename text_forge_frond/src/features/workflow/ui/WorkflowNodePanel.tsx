@@ -8,7 +8,7 @@ import type { WorkflowNodeKind } from '@/features/workflow';
 
 const KIND_META: Record<WorkflowNodeKind, { label: string }> = {
   input: { label: '输入' },
-  agent: { label: 'Agent' },
+  agent: { label: 'AI助手' },
   tool: { label: '工具' },
   output: { label: '输出' },
 };
@@ -34,12 +34,12 @@ export function WorkflowNodePanel(props: WorkflowNodePanelProps) {
           </Button>
         ))}
         <Button size="sm" className="w-full justify-start mt-2" variant="secondary" onClick={onApplyDefaultTeam}>
-          <Bot className="w-3.5 h-3.5 mr-1.5" /> 一键用默认 Agent 团队
+          <Bot className="w-3.5 h-3.5 mr-1.5" /> 一键用默认写作助手团队
         </Button>
 
         {pickingRole && (
           <div className="mt-2 space-y-1.5 rounded-xl border border-border/60 p-2">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">选择 Agent 工种</p>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">选择写作助手</p>
             {AGENT_ROLES.map((r) => (
               <button key={r.id} onClick={() => onApplyRole(r.id)}
                 className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs hover:bg-accent/40"

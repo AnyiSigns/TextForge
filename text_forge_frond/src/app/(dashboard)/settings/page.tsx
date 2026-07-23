@@ -238,7 +238,7 @@ export default function SettingsPage() {
 
   return (
     <div className="page-shell">
-      <PageHeader icon={SlidersHorizontal} title="设置" description="管理个人资料、外观、AI 偏好与高级选项" />
+      <PageHeader icon={SlidersHorizontal} title="设置" description="管理你的个人资料、界面外观、写作偏好与模型设置" />
 
       <ProcessNav
         tabs={[

@@ -39,10 +39,10 @@ export function EmbedModelManager({ onDownloaded }: EmbedModelManagerProps) {
       const { downloadEmbedModel } = await import('@/lib/rag/embed');
       await downloadEmbedModel(id, (p) => setEmbedProgress(p));
       onDownloaded(id);
-      toast.success(`本地向量模型「${name}」已就绪，离线可用`);
+      toast.success(`本地检索模型「${name}」已就绪，断网也能用`);
     } catch (error: unknown) {
       const err = error instanceof Error ? error : new Error(String(error));
-      toast.error('模型下载失败', { description: err.message });
+      toast.error('下载失败', { description: err.message });
     } finally {
       setEmbedDownloading(false);
       setEmbedDownloadId(null);
@@ -52,11 +52,11 @@ export function EmbedModelManager({ onDownloaded }: EmbedModelManagerProps) {
 
   const handleDeleteEmbed = async (id: string) => {
     const tier = EMBED_TIERS.find((t) => t.id === id);
-    if (!confirm(`确定删除本地向量模型「${tier?.label ?? id}」？删除后如需使用需重新下载。`)) return;
+    if (!confirm(`确定删除本地检索模型「${tier?.label ?? id}」？删除后如需使用，需要重新下载。`)) return;
     setEmbedDeleting(id);
     try {
       await deleteEmbedModel(id);
-      toast.success('已删除本地模型');
+      toast.success('已删除');
     } catch {
       toast.error('删除失败');
     } finally {
@@ -68,10 +68,10 @@ export function EmbedModelManager({ onDownloaded }: EmbedModelManagerProps) {
     <div className="rounded-xl border border-border/40 bg-background/40 p-4 space-y-3">
       <div className="flex items-center gap-2">
         <Cpu className="w-4 h-4 text-primary" />
-        <p className="text-sm font-medium">本地向量模型（个人文档库检索）</p>
+        <p className="text-sm font-medium">本地检索模型（个人文档用）</p>
       </div>
       <p className="text-xs text-muted-foreground">
-        本地向量模型在本机浏览器下载并缓存，之后离线可用，不依赖任何外部服务。可在「AI 偏好」中切换检索精度；已下载的精度会保留在本机，可随时删除。首次下载约 30~320MB。
+        检索模型会下载并保存在你的浏览器中，断网也能正常检索个人文档。
       </p>
       <div className="space-y-2">
         {EMBED_TIERS.map((t) => {

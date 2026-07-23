@@ -73,7 +73,7 @@ export default function ProjectWorkbench() {
         <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-xs text-amber-700 dark:text-amber-300">
           <Info className="w-4 h-4 shrink-0 mt-0.5" />
           <p className="flex-1">
-            当前为<strong>预览模式</strong>：下方「生成」产出的是本地示例内容（占位），并非 AI 真正写作。配置后端地址 / 模型密钥后，这里才会由 AI 按你的设定生成正文。你也可以直接点「写第一章」自己动手写。
+            当前为<strong>预览模式</strong>：下方「生成」产出的是本地示例内容（占位），并非 AI 真正写作。配置云端服务地址 / 模型密钥后，这里才会由 AI 按你的设定生成正文。你也可以直接点「写第一章」自己动手写。
           </p>
           <button onClick={() => setShowPreviewNote(false)} className="shrink-0 text-amber-600/70 hover:text-amber-700 dark:hover:text-amber-200 underline-offset-2 hover:underline">知道了</button>
         </div>
@@ -120,7 +120,7 @@ export default function ProjectWorkbench() {
       <ProjectGuide
         onJump={(tab) => setActiveTab(tab)}
         steps={[
-          { key: 'brief', label: '创作设定', icon: FileCog, hint: '先写世界观/基调，注入生成', done: !!brief?.worldview || !!brief?.tone, tab: 'brief' },
+          { key: 'brief', label: '创作设定', icon: FileCog, hint: '先写世界观/基调，让AI写作时参考', done: !!brief?.worldview || !!brief?.tone, tab: 'brief' },
           { key: 'char', label: '角色', icon: Users, hint: '创建出场角色，生成更贴人物', done: projectChars.length > 0, tab: 'characters' },
           { key: 'outline', label: '大纲', icon: BookOpen, hint: '用大纲规划卷/章/节点，再生成更结构化的正文', done: outlineReady, tab: 'outline' },
           { key: 'gen', label: '生成正文', icon: Wand2, hint: `用「${activeWorkflow?.name ?? '创作流水线'}」产出章节`, done: steps.some((s) => s.content), tab: 'workbench' },

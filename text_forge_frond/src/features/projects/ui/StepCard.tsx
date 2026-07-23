@@ -67,16 +67,16 @@ export function StepCard({
           {step.status === 'streaming' && <span className="text-xs text-blue-500 animate-pulse flex items-center gap-1"><Loader2 className="w-3.5 h-3.5" /> 生成中…</span>}
           {step.status === 'waiting' && <span className="text-xs text-yellow-500 flex items-center gap-1"><PauseCircle className="w-3.5 h-3.5" /> 等待确认</span>}
           {step.status === 'completed' && <span className="text-xs text-green-500 flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> 已完成</span>}
-          {step.status === 'failed' && <span className="text-xs text-destructive flex items-center gap-1"><RotateCcw className="w-3.5 h-3.5" /> 失败</span>}
+          {step.status === 'failed' && <span className="text-xs text-destructive flex items-center gap-1"><RotateCcw className="w-3.5 h-3.5" /> 出错了</span>}
           {step.content?.includes('（生成结果占位）') && (
-            <span className="text-xs text-amber-600/90 bg-amber-500/10 px-1.5 py-0.5 rounded-full flex items-center gap-1" title="当前为预览模式，这是本地示例内容；配置后端/密钥后才会由 AI 真正生成">
+            <span className="text-xs text-amber-600/90 bg-amber-500/10 px-1.5 py-0.5 rounded-full flex items-center gap-1" title="当前为预览模式，这是本地示例内容；配置云端服务/密钥后才会由 AI 真正生成">
               <Sparkles className="w-3 h-3" /> 示例内容
             </span>
           )}
           {step.nodeId ? (
             <span className="text-[10px] text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded-full">AI生成</span>
           ) : (
-            <span className="text-[10px] text-muted-foreground bg-border/40 px-1.5 py-0.5 rounded-full">手工</span>
+            <span className="text-[10px] text-muted-foreground bg-border/40 px-1.5 py-0.5 rounded-full">自己写</span>
           )}
         </div>
         <div className="flex items-center gap-2">

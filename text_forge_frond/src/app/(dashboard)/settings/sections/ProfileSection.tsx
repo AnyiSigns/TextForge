@@ -61,12 +61,12 @@ export function ProfileSection(props: ProfileSectionProps) {
     <Card className="glass-card">
       <CardHeader>
         <CardTitle>个人资料</CardTitle>
-        <CardDescription>修改你的用户名和头像，用户 ID 不可更改</CardDescription>
+        <CardDescription>修改你的用户名和头像，账号 ID 不可更改</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <form onSubmit={onUpdateProfile} className="space-y-4">
           <div className="space-y-1">
-            <Label className="text-muted-foreground">用户 ID</Label>
+            <Label className="text-muted-foreground">账号 ID</Label>
             <Input value={user?.id || '未登录'} disabled className="bg-muted/50 cursor-not-allowed" />
           </div>
 
@@ -76,7 +76,7 @@ export function ProfileSection(props: ProfileSectionProps) {
               id="username"
               value={username}
               onChange={(e) => onUsername(e.target.value)}
-              placeholder="输入新用户名"
+              placeholder="输入新昵称"
             />
           </div>
 
@@ -92,7 +92,7 @@ export function ProfileSection(props: ProfileSectionProps) {
             {isEmailChanged && (
               <div className="mt-2 p-3 bg-muted/30 rounded-md space-y-2">
                 <p className="text-sm text-muted-foreground">
-                  更改邮箱前，请先验证当前邮箱 {user?.email}
+                  更换邮箱前，需要先验证当前邮箱 {user?.email}
                 </p>
                 <div className="flex items-center gap-2">
                   <Button
@@ -105,7 +105,7 @@ export function ProfileSection(props: ProfileSectionProps) {
                     {isSendingCode ? '发送中...' : '发送验证码'}
                   </Button>
                   <Input
-                    placeholder="输入验证码"
+                    placeholder="输入收到的验证码"
                     value={emailCode}
                     onChange={(e) => onEmailCode(e.target.value)}
                     className="max-w-[120px]"
@@ -176,7 +176,7 @@ export function ProfileSection(props: ProfileSectionProps) {
                   type={showOldPwd ? 'text' : 'password'}
                   value={oldPassword}
                   onChange={(e) => onOldPassword(e.target.value)}
-                  placeholder="输入当前密码"
+                  placeholder="当前密码（用于验证身份）"
                 />
                 <Button
                   type="button"

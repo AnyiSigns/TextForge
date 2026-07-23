@@ -139,8 +139,8 @@ export function WorkbenchTab({
         <div className="my-4 flex items-start gap-2 rounded-lg bg-primary/10 border border-primary/30 p-2.5 text-xs text-primary/90">
           <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
           <span>
-            已生成世界/角色/大纲，默认可编辑。建议<strong>先改一处</strong>
-            （如世界观或主角名），让它更像你的作品，再去「生成正文」。
+            你的世界观、角色和大纲已生成，可以直接编辑。建议<strong>先修改一两处</strong>
+            （如世界观或主角名），让它更像你的作品，再生成正文。
           </span>
         </div>
       )}
@@ -155,7 +155,7 @@ export function WorkbenchTab({
                 一句话开局
               </div>
               <p className="text-xs text-muted-foreground">
-                输入一句话（如「一艘拾荒船打捞星海记忆的科幻故事」），自动生成世界观、角色与大纲，再进流水线写正文。
+                输入一句话（如「一艘拾荒船打捞星海记忆的科幻故事」），自动生成世界观、角色与大纲，再进入写作流程生成正文。
               </p>
               <Button size="sm" onClick={() => setSeedOpen(true)}>
                 <Sparkles className="w-4 h-4 mr-1.5" /> 一句话开局
@@ -166,7 +166,7 @@ export function WorkbenchTab({
           <EmptyState
             icon={Wand2}
             title="或手动开始"
-            description="按引导四步走：①写创作设定 ②建角色 ③选流水线生成 ④确认/续写。随时可去「手稿」自己写。"
+            description="            按引导四步走：①写创作设定 ②建角色 ③选写作流程生成 ④确认/续写。随时可去「手稿」自己写。"
             action={
               <div className="flex gap-2 justify-center flex-wrap">
                 <Button size="sm" onClick={handleWriteFirstChapter}>

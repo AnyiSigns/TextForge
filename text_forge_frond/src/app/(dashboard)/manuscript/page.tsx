@@ -43,7 +43,7 @@ export default function ManuscriptListPage() {
       <PageHeader
         icon={PenLine}
         title="手稿"
-        description="作家亲自写作的章节编辑器：支持章节树、@角色 / #设定联想、AI 辅助扩写润色"
+        description="专注写作的章节编辑器：支持章节管理、关联角色与设定、AI 辅助扩写润色"
         actions={
           <div className="flex rounded-md border border-border/40 overflow-hidden">
             <Button

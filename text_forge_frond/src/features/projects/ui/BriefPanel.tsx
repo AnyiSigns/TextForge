@@ -97,7 +97,7 @@ export function BriefPanel({ projectId, projectTitle }: { projectId: string; pro
           <ChevronDown className={cn('w-4 h-4 text-muted-foreground transition-transform', isExpanded && 'rotate-180')} />
         </CardTitle>
         <CardDescription>
-          统一注入到「{projectTitle || '本项目'}」的角色对话与图文/视频生成，控制与小说内容相关的程度
+          这些设定会自动带到「{projectTitle || '本项目'}」的角色对话和图文/视频生成中，控制与故事内容相关的程度
         </CardDescription>
       </CardHeader>
       {isExpanded && (
@@ -118,7 +118,7 @@ export function BriefPanel({ projectId, projectTitle }: { projectId: string; pro
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label>风格指南（视觉/文本统一参考）</Label>
+              <Label>风格参考（图片/文字统一风格）</Label>
               <Input value={form.styleGuide ?? ''} onChange={(e) => set('styleGuide', e.target.value)} placeholder="如 水墨写意的东方美学" />
             </div>
             <div className="space-y-1.5">
@@ -128,7 +128,7 @@ export function BriefPanel({ projectId, projectTitle }: { projectId: string; pro
           </div>
           <div className="space-y-1.5">
             <Label>创作禁忌</Label>
-            <Textarea value={form.forbidden ?? ''} onChange={(e) => set('forbidden', e.target.value)} placeholder="生成与对话都必须避开的内容" rows={2} />
+            <Textarea value={form.forbidden ?? ''} onChange={(e) => set('forbidden', e.target.value)} placeholder="AI生成内容和对话时需要避开的内容" rows={2} />
           </div>
 
           <div className="space-y-3 pt-2">
@@ -154,7 +154,7 @@ export function BriefPanel({ projectId, projectTitle }: { projectId: string; pro
               </Button>
             </div>
             {(form.sections ?? []).length === 0 ? (
-              <p className="text-xs text-muted-foreground">暂无自定义维度。可添加「势力设定」「战力体系」「阵营关系」等任意维度，按需注入生成。</p>
+              <p className="text-xs text-muted-foreground">暂无自定义维度。可添加「势力设定」「战力体系」「阵营关系」等任意维度，需要时带入AI生成。</p>
             ) : (
               <div className="space-y-3">
                 {(form.sections ?? []).map((sec) => (
@@ -171,7 +171,7 @@ export function BriefPanel({ projectId, projectTitle }: { projectId: string; pro
                           size="sm"
                           variant="ghost"
                           className={cn('h-8 px-2', sec.pinned ? 'text-primary' : 'text-muted-foreground')}
-                          title={sec.pinned ? '已常驻注入生成（点击取消）' : '设为常驻注入生成'}
+                          title={sec.pinned ? '已设为每次生成都带入（点击取消）' : '设为每次生成都带入'}
                           onClick={() => updateSection(sec.id, { pinned: !sec.pinned })}
                         >
                           {sec.pinned ? <Pin className="w-4 h-4" /> : <PinOff className="w-4 h-4" />}
@@ -194,7 +194,7 @@ export function BriefPanel({ projectId, projectTitle }: { projectId: string; pro
                         className="text-sm"
                       />
                       {sec.pinned && (
-                        <p className="text-xs text-primary/80">✓ 常驻注入：每次生成都会带上该维度</p>
+                        <p className="text-xs text-primary/80">✓ 每次生成都带入：AI写作会参考该维度</p>
                       )}
                     </CardContent>
                   </Card>
@@ -205,7 +205,7 @@ export function BriefPanel({ projectId, projectTitle }: { projectId: string; pro
 
           {preview && (
             <div className="rounded-xl border border-border/40 bg-background/40 p-3 text-xs text-muted-foreground">
-              <p className="mb-1 font-medium text-foreground/70">将注入的上下文预览：</p>
+              <p className="mb-1 font-medium text-foreground/70">              将带入的背景信息预览：</p>
               <p className="leading-relaxed">{preview}</p>
             </div>
           )}

@@ -10,7 +10,7 @@ const SHORTCUTS = [
   { key: 'Ctrl / Cmd + K', desc: '打开全局搜索（项目 / 角色）' },
   { key: 'Ctrl / Cmd + N', desc: '新建项目，跳转到创建页' },
   { key: 'Ctrl / Cmd + S', desc: '在工作台保存当前草稿（手稿为自动保存）' },
-  { key: 'Ctrl / Cmd + Space', desc: '手稿写作区触发 AI 联想（@ 提及角色 / # 提及设定）' },
+  { key: 'Ctrl / Cmd + Space', desc: '写作区召唤 AI 助手（@ 角色 / # 设定）' },
   { key: 'Ctrl / Cmd + Shift + E', desc: '导出整个工作区备份' },
   { key: 'Ctrl / Cmd + Shift + Delete', desc: '清空所有本地草稿（需二次确认）' },
   { key: 'Esc', desc: '关闭当前弹窗 / 搜索框' },

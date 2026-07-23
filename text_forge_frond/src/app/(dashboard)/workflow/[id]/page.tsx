@@ -26,7 +26,7 @@ export default function WorkflowDetail() {
 
   return (
     <div className="page-shell">
-      <PageHeader icon={WorkflowIcon} title={wf.name} description="多 Agent 工作流编辑器" />
+      <PageHeader icon={WorkflowIcon} title={wf.name} description="AI 写作流程编辑器" />
       <ErrorBoundary context={{ module: 'workflow-editor', workflowId: id }}>
         <WorkflowEditor initial={wf} onSaved={() => { /* 列表由 mock 内存维护，无需同步 */ }} />
       </ErrorBoundary>

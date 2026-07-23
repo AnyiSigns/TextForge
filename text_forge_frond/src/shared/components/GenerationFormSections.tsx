@@ -66,12 +66,12 @@ export function GranularitySection({ f }: { f: FormHandle }) {
   const onlyChapter = f.chapterArtOnlyChapter;
   return (
     <div className="space-y-2">
-      <Label>生成粒度</Label>
+      <Label>生成范围</Label>
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2">
           <Select value={f.granularity} onValueChange={(v) => f.setGranularity(v as 'chapter' | 'full')}>
             <SelectTrigger className="w-40">
-              <SelectValue placeholder="选择粒度">{(v: string) => (v === 'chapter' ? '按章节（推荐）' : v === 'full' ? '整本书' : '选择粒度')}</SelectValue>
+              <SelectValue placeholder="选择范围">{(v: string) => (v === 'chapter' ? '按章节（推荐）' : v === 'full' ? '整本书' : '选择范围')}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="chapter">按章节（推荐）</SelectItem>
@@ -123,9 +123,7 @@ export function GranularitySection({ f }: { f: FormHandle }) {
         )}
         {f.granularity === 'chapter' && (f.selectedStep || f.selectedStepIds.length > 0) && f.effectiveSteps && (
           <p className="text-xs text-muted-foreground truncate">
-            将基于 {f.batchMode === 'batch'
-              ? `${f.selectedStepIds.length} 个章节`
-              : `「${chapterLabel(f.effectiveSteps.find((s) => s.id === f.selectedStepId)?.agent, f.effectiveSteps.findIndex((s) => s.id === f.selectedStepId), f.effectiveSteps.find((s) => s.id === f.selectedStepId)?.content).full}」`} 内容生成
+            将基于选中的内容生成
           </p>
         )}
       </div>

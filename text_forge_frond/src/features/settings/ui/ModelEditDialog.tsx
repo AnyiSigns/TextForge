@@ -78,12 +78,12 @@ export function ModelEditDialog(props: ModelEditDialogProps) {
 
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">
-            <Label>厂商 / 模板</Label>
+            <Label>服务商 / 模板</Label>
             <Select value={templateKey} onValueChange={(v) => {
               const t = MODEL_TEMPLATES.find((x) => x.key === v);
               if (t) onPatch({ adapter: t.adapter, provider: t.vendor, name: t.vendor, modelId: t.defaultModelId, baseUrl: t.defaultBaseUrl ?? '', deployment: t.deployment });
             }}>
-              <SelectTrigger className="w-full"><SelectValue placeholder="选择厂商模板" /></SelectTrigger>
+              <SelectTrigger className="w-full"><SelectValue placeholder="选择服务商模板" /></SelectTrigger>
               <SelectContent>
                 {filteredTemplates.map((t) => (
                   <SelectItem key={t.key} value={t.key}>{t.vendor}</SelectItem>
@@ -95,16 +95,16 @@ export function ModelEditDialog(props: ModelEditDialogProps) {
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>名称</Label>
-              <Input value={draft.name} onChange={(e) => onPatch({ name: e.target.value })} placeholder="模型显示名" autoComplete="off" />
+              <Input value={draft.name} onChange={(e) => onPatch({ name: e.target.value })} placeholder="自定义名称（可选）" autoComplete="off" />
             </div>
             <div className="space-y-1.5">
               <Label>模型名</Label>
-              <Input value={draft.modelId} onChange={(e) => onPatch({ modelId: e.target.value })} placeholder="如 deepseek-chat" autoComplete="off" />
+              <Input value={draft.modelId} onChange={(e) => onPatch({ modelId: e.target.value })} placeholder="如 deepseek-chat（直接粘贴模型名称）" autoComplete="off" />
             </div>
           </div>
 
           <div className="space-y-1.5">
-            <Label>部署方式</Label>
+            <Label>运行方式</Label>
             <div className="flex items-center gap-1 p-1 bg-muted/40 rounded-xl">
               <button onClick={() => onPatch({ deployment: 'cloud' })}
                 className={cn('flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm transition-all', draft.deployment === 'cloud' ? 'bg-primary/10 text-primary ring-1 ring-primary/15' : 'text-muted-foreground hover:bg-accent/60')}>
@@ -118,12 +118,12 @@ export function ModelEditDialog(props: ModelEditDialogProps) {
           </div>
 
           <div className="space-y-1.5">
-            <Label>Base URL</Label>
+            <Label>服务地址</Label>
                <Input value={draft.baseUrl ?? ''} onChange={(e) => onPatch({ baseUrl: e.target.value })} placeholder="https://" autoComplete="off" />
           </div>
 
           <div className="space-y-1.5">
-             <Label>API Key {draft.deployment === 'local' && <span className="text-muted-foreground">(本地可留空)</span>}</Label>
+             <Label>密钥 {draft.deployment === 'local' && <span className="text-muted-foreground">(本地运行可留空)</span>}</Label>
                <Input type="password" value={draft.apiKey ?? ''} onChange={(e) => onPatch({ apiKey: e.target.value })} placeholder="sk-..." autoComplete="off" />
           </div>
 

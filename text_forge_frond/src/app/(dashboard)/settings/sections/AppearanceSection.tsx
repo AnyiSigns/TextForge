@@ -151,7 +151,7 @@ export function AppearanceSection({ isBgLoading, onBgUpload, bgFileInputRef }: A
           <div className="grid grid-cols-2 gap-6 p-4 bg-muted/30 rounded-lg">
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
-                <span>实色层透明度</span>
+                <span>背景遮罩透明度</span>
                 <span className="text-muted-foreground">{bgSolidOpacity}%</span>
               </div>
               <input
@@ -170,7 +170,7 @@ export function AppearanceSection({ isBgLoading, onBgUpload, bgFileInputRef }: A
           <div className="flex items-center justify-between rounded-lg border border-border/40 p-3">
             <div className="space-y-0.5">
               <Label className="text-sm">水墨纹理</Label>
-              <p className="text-xs text-muted-foreground">在背景上叠加水墨噪点与晕染质感</p>
+              <p className="text-xs text-muted-foreground">在背景上叠加水墨质感</p>
             </div>
             <Switch checked={inkEnabled} onCheckedChange={setInkEnabled} />
           </div>
@@ -200,7 +200,7 @@ export function AppearanceSection({ isBgLoading, onBgUpload, bgFileInputRef }: A
           <div className="flex items-center justify-between rounded-lg border border-border/40 p-3">
             <div className="space-y-0.5">
               <Label className="text-sm">液态玻璃</Label>
-              <p className="text-xs text-muted-foreground">卡片与侧边栏启用毛玻璃质感</p>
+              <p className="text-xs text-muted-foreground">卡片与侧边栏的透明质感</p>
             </div>
             <Switch checked={glassEnabled} onCheckedChange={setGlassEnabled} />
           </div>
@@ -264,7 +264,7 @@ export function AppearanceSection({ isBgLoading, onBgUpload, bgFileInputRef }: A
 
         <div className="space-y-2">
           <div className="flex justify-between text-sm">
-            <Label>页面展示大小</Label>
+            <Label>页面缩放</Label>
             <span className="text-muted-foreground text-sm">{contentScale}%</span>
           </div>
           <input
@@ -273,7 +273,7 @@ export function AppearanceSection({ isBgLoading, onBgUpload, bgFileInputRef }: A
             onChange={(e) => setContentScale(parseInt(e.target.value))}
             className="w-full accent-primary"
           />
-          <p className="text-xs text-muted-foreground">调小更紧凑，调大更舒展（影响整体字号与间距）</p>
+          <p className="text-xs text-muted-foreground">调小页面更紧凑，调大页面更宽松</p>
         </div>
       </CardContent>
     </Card>

@@ -77,7 +77,7 @@ export default function LoginForm() {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl">欢迎回来</CardTitle>
-          <CardDescription>登录你的账号继续创作</CardDescription>
+          <CardDescription>登录你的账号，继续写作</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">

@@ -43,9 +43,9 @@ export function PortfolioGrid(props: PortfolioGridProps) {
                 </div>
               )
             ) : item.status === 'completed' ? (
-              <span className="text-xs text-destructive">来源不可用</span>
+              <span className="text-xs text-destructive">来源暂时无法查看</span>
             ) : item.status === 'failed' ? (
-              <span className="text-xs text-destructive">失败</span>
+              <span className="text-xs text-destructive">出错了</span>
             ) : (
               <div className="text-center text-muted-foreground">
                 {item.kind === 'video' ? <Loader2 className="w-6 h-6 mx-auto mb-1 animate-spin opacity-60" /> : <Loader2 className="w-6 h-6 mx-auto mb-1 animate-spin opacity-60" />}

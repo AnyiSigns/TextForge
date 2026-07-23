@@ -33,7 +33,7 @@ export default function ProjectsPage() {
   const [isSeeding, setIsSeeding] = useState(false);
 
   useEffect(() => {
-    load().catch(e => toast.error('加载失败', { description: e instanceof Error ? e.message : '未知错误' }))
+    load().catch(e =>       toast.error('加载遇到了问题', { description: e instanceof Error ? e.message : '未知错误' }))
       .finally(() => setIsLoading(false));
   }, [load]);
 
@@ -43,7 +43,7 @@ export default function ProjectsPage() {
       await removeProject(id);
       toast.success('已删除');
     } catch (e) {
-      toast.error('删除失败', { description: e instanceof Error ? e.message : '未知错误' });
+      toast.error('删除出错了', { description: e instanceof Error ? e.message : '未知错误' });
     }
   };
 
@@ -56,7 +56,7 @@ export default function ProjectsPage() {
       setSelectedIds(new Set());
       toast.success(`已删除 ${count} 个项目`);
     } catch (e) {
-      toast.error('删除失败', { description: e instanceof Error ? e.message : '未知错误' });
+      toast.error('删除出错了', { description: e instanceof Error ? e.message : '未知错误' });
     }
   };
 
@@ -75,7 +75,7 @@ export default function ProjectsPage() {
       toast.success('已创建项目并生成设定，去项目里继续完善');
       setSeedPrompt('');
     } catch (e) {
-      toast.error('开局失败', { description: e instanceof Error ? e.message : '未知错误' });
+      toast.error('开局出错了', { description: e instanceof Error ? e.message : '未知错误' });
     } finally {
       setIsSeeding(false);
     }

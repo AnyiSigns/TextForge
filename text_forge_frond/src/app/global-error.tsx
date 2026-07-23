@@ -35,9 +35,9 @@ export default function GlobalError({
           <Card className="max-w-md w-full">
             <CardHeader className="text-center">
               <AlertTriangle className="w-10 h-10 text-destructive mx-auto mb-2" />
-              <CardTitle>页面资源加载失败</CardTitle>
+              <CardTitle>页面加载遇到问题</CardTitle>
               <CardDescription>
-                部分资源加载失败，通常是开发环境偶发问题。刷新页面即可恢复。
+                部分页面资源加载失败。刷新页面即可恢复，你的内容不会丢失。
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">

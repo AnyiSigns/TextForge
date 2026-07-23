@@ -90,7 +90,7 @@ export function ProjectCharactersTab({ projectId }: { projectId: string }) {
       <div className="flex items-center gap-2">
         <Button size="sm" variant="outline" onClick={handleSeedChars} disabled={isSeedingChars}>
           <Sparkles className="w-4 h-4 mr-1.5" />
-          {isSeedingChars ? '生成中…' : '按设定补角色'}
+          {isSeedingChars ? '生成中…' : 'AI 补充角色'}
         </Button>
         <div className="flex rounded-md border border-border/40 overflow-hidden shrink-0">
           <Button
@@ -112,7 +112,7 @@ export function ProjectCharactersTab({ projectId }: { projectId: string }) {
             <LayoutGrid className="w-4 h-4" />
           </Button>
         </div>
-        <span className="text-xs text-muted-foreground">基于当前世界观/已有角色，增量补充新角色（不覆盖已有）</span>
+        <span className="text-xs text-muted-foreground">基于当前世界观和已有角色，智能补充新角色（不会修改已有角色）</span>
       </div>
 
       {filtered.length === 0 ? (

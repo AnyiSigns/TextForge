@@ -91,7 +91,7 @@ export function ManuscriptEditor({ projectId }: { projectId: string }) {
           <div className="flex items-start gap-2 rounded-xl border border-primary/20 bg-primary/[0.06] px-3 py-2 text-xs text-muted-foreground">
             <Sparkles className="w-4 h-4 text-primary shrink-0 mt-0.5" />
             <p className="flex-1 leading-relaxed">
-              写作时输入 <kbd className="rounded bg-background/60 px-1 font-sans">@</kbd> 提及角色、<kbd className="rounded bg-background/60 px-1 font-sans">#</kbd> 提及设定；停笔后还会自动提示相关角色与设定，让正文与人物、世界观保持一致。
+              写作时输入 <kbd className="rounded bg-background/60 px-1 font-sans">@</kbd> 选择角色、<kbd className="rounded bg-background/60 px-1 font-sans">#</kbd> 选择设定；停下来时，会自动提示相关角色和设定，让正文与人物、世界观保持一致。
             </p>
             <button
               type="button"
@@ -116,13 +116,13 @@ export function ManuscriptEditor({ projectId }: { projectId: string }) {
           </span>
           <div className="ml-auto flex items-center gap-2">
             <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()}>
-              <Upload className="w-4 h-4 mr-1.5" /> 导入书籍(txt)
+              <Upload className="w-4 h-4 mr-1.5" /> 导入书籍（TXT）
             </Button>
             <Button size="sm" variant="outline" onClick={() => setExportOpen(true)}>
               <Download className="w-4 h-4 mr-1.5" /> 导出书籍
             </Button>
             <Button size="sm" variant="outline" onClick={openSend}>
-              <ArrowRight className="w-4 h-4 mr-1.5" /> 发送到工作台
+              <ArrowRight className="w-4 h-4 mr-1.5" /> 发送到项目工作台
             </Button>
             <Button size="sm" onClick={() => { void save().then(() => toast.success('已保存')); }}><Save className="w-4 h-4 mr-1.5" /> 保存</Button>
           </div>
@@ -136,7 +136,7 @@ export function ManuscriptEditor({ projectId }: { projectId: string }) {
             onChange={handleInput}
             onSelect={handleSelect}
             onKeyUp={(e) => { if (e.key === 'Escape') { setSuggest(null); setAiMenu(null); } }}
-            placeholder="在这里写作…输入 @ 提及角色，# 提及设定；选中文字可用 AI 扩写/改写/缩写"
+            placeholder="在这里写作…输入 @ 选择角色，# 选择设定；选中文字可用 AI 扩写/改写/缩写"
             className="w-full h-full overflow-y-auto overflow-x-hidden rounded-2xl border-0 bg-transparent p-4 text-base leading-relaxed outline-none resize-none font-[--font-serif,serif]"
             style={{ fontFamily: 'var(--font-serif, serif)' }}
           />
@@ -200,9 +200,9 @@ export function ManuscriptEditor({ projectId }: { projectId: string }) {
         <Dialog open={sendOpen} onOpenChange={setSendOpen}>
           <DialogContent className="max-w-sm">
             <DialogHeader>
-              <DialogTitle>发送到工作台</DialogTitle>
+              <DialogTitle>发送到项目工作台</DialogTitle>
               <DialogDescription>
-                将以「追加步骤」方式把当前章节同步到「项目管理」的全局步骤（不会覆盖已有步骤）。同步后，工作台 Agent 流在续写时会把它当作前文上下文。
+                会把当前章节追加到工作台的生成步骤中（不会覆盖已有步骤）。同步后，AI 续写时会把它当作前文。
               </DialogDescription>
             </DialogHeader>
             <div className="rounded-lg border border-border/40 bg-muted/30 p-3 text-xs space-y-1">
@@ -270,7 +270,7 @@ export function ManuscriptEditor({ projectId }: { projectId: string }) {
             <DialogHeader>
               <DialogTitle>导入书籍：{bookName}</DialogTitle>
               <DialogDescription>
-                已识别 {bookChapters?.length ?? 0} 个章节。选择落点：仅手稿（本地续写），或同步到工作台（Agent 续写以此为前文）。
+                已识别 {bookChapters?.length ?? 0} 个章节。选择导入位置：仅导入手稿（本地续写），或同步到工作台（AI 会把这章作为前文续写）。
               </DialogDescription>
             </DialogHeader>
             <div className="max-h-48 overflow-y-auto rounded-lg border border-border/40 p-2 space-y-1 mt-2">
@@ -294,7 +294,7 @@ export function ManuscriptEditor({ projectId }: { projectId: string }) {
         <Dialog open={clearOpen} onOpenChange={setClearOpen}>
           <DialogContent className="max-w-sm">
             <DialogHeader>
-              <DialogTitle>清空手稿</DialogTitle>
+<DialogTitle>清空全部章节</DialogTitle>
               <DialogDescription>
                 将删除《{projectId}》下的全部 {chapters.length} 个章节（不可恢复）。此操作仅清除本地手稿，不影响工作台步骤。
               </DialogDescription>

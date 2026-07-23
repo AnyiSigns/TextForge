@@ -61,7 +61,7 @@ export default function RegisterPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl">创建账号</CardTitle>
-          <CardDescription>开启你的 AI 创作之旅</CardDescription>
+          <CardDescription>开始你的创作之旅</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">

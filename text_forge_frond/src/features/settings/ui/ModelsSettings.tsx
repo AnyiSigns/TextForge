@@ -124,7 +124,7 @@ export function ModelsSettings() {
         <CardTitle>模型配置</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <p className="text-xs text-muted-foreground">以下配置将同步到后端，生成时后端自动决策使用哪个模型。</p>
+        <p className="text-xs text-muted-foreground">设置将自动保存，生成时系统自动选用。</p>
 
         <div className="space-y-2">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">文本生成（最少 1 个主模型）</p>
@@ -179,13 +179,13 @@ export function ModelsSettings() {
             </div>
           ) : (
             <Button variant="outline" size="sm" onClick={() => openDialog('vision', null)}>
-              <Plus className="w-3.5 h-3.5 mr-1" /> 添加视觉模型
+              <Plus className="w-3.5 h-3.5 mr-1" /> 添加图片/视频模型
             </Button>
           )}
         </div>
 
         <div className="space-y-2">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">公共文档库向量模型</p>
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">公共文档库检索模型</p>
           {embeddingPublicConfig && embeddingPublicConfig.modelId ? (
             <div className="rounded-xl border border-border/40 bg-background/40 p-3 space-y-2">
               <p className="text-sm font-medium truncate">{embeddingPublicConfig.name}</p>
@@ -201,13 +201,13 @@ export function ModelsSettings() {
             </div>
           ) : (
             <Button variant="outline" size="sm" onClick={() => openDialog('embedding', null)}>
-              <Plus className="w-3.5 h-3.5 mr-1" /> 添加公共向量模型
+              <Plus className="w-3.5 h-3.5 mr-1" /> 添加云端检索模型
             </Button>
           )}
         </div>
 
         <div className="space-y-2">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">个人文档库向量模型（本地下载）</p>
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">个人文档检索模型（本机下载）</p>
           <EmbedModelManager onDownloaded={setEmbedTierId} />
         </div>
 
@@ -226,7 +226,7 @@ export function ModelsSettings() {
 }
 
 function label(role: ModelRole): string {
-  return { main: '主模型', compression: '压缩模型', router: '路由模型', tool: '工具调用模型' }[role];
+  return { main: '主模型', compression: '轻量模型', router: '路由模型（自动选模型）', tool: '工具模型' }[role];
 }
 
 function buildEmpty(role: ModelRole): RoleModelConfig {

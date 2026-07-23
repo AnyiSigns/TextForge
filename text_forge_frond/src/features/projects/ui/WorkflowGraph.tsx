@@ -108,7 +108,7 @@ export function WorkflowGraph({ steps, currentAgent, isOpen, onToggle, workflow,
               })}
             </div>
             {!workflow && (
-              <p className="text-[11px] text-muted-foreground mt-1">未绑定自定义流水线，使用内置 7-Agent 默认流程。</p>
+              <p className="text-[11px] text-muted-foreground mt-1">未绑定自定义流程，当前使用默认写作流程。</p>
             )}
           </motion.div>
         )}

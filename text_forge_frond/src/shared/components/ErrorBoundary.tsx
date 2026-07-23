@@ -50,8 +50,8 @@ export class ErrorBoundary extends Component<Props, State> {
         <Card className="max-w-md w-full">
           <CardHeader className="text-center">
             <AlertTriangle className="w-10 h-10 text-destructive mx-auto mb-2" />
-            <CardTitle>组件渲染出错</CardTitle>
-            <CardDescription>该模块暂时无法显示，可尝试恢复。</CardDescription>
+            <CardTitle>页面模块暂时无法显示</CardTitle>
+            <CardDescription>这个页面模块出错了，你可以尝试恢复。</CardDescription>
           </CardHeader>
           <CardContent className="flex justify-center">
             <Button onClick={this.reset}>恢复</Button>

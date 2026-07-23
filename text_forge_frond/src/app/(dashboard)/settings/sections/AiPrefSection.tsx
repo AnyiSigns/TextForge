@@ -60,7 +60,7 @@ export function AiPrefSection({ onSwitchEmbedTier }: AiPrefSectionProps) {
           </p>
         </div>
         <div className="space-y-1">
-          <Label>检索精度（向量维度）</Label>
+          <Label>检索精度（越高越准，但下载更大）</Label>
           <Select
             value={embedTierId}
             onValueChange={(v) => { if (v) onSwitchEmbedTier(v); }}
@@ -82,7 +82,7 @@ export function AiPrefSection({ onSwitchEmbedTier }: AiPrefSectionProps) {
               ))}
             </SelectContent>
           </Select>
-          <p className="text-[10px] text-muted-foreground">更高维度检索更准，但首次下载模型更大、更占内存。已下载的精度会保留在本机，可在「模型 → 向量模型」中删除。</p>
+          <p className="text-[10px] text-muted-foreground">精度越高，检索越准确，但首次下载会更大，占用更多内存。已下载的精度会保留在本机。</p>
         </div>
       </CardContent>
     </Card>

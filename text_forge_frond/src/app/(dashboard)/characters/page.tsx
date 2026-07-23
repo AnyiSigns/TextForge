@@ -69,7 +69,7 @@ export default function CharactersPage() {
       <PageHeader
         icon={Drama}
         title="角色模拟"
-        description="与小说中的角色进行 AI 对话，完善人物设定"
+        description="与小说角色对话，帮助完善人物设定"
         actions={
           <div className="flex items-center gap-2">
             <div className="flex rounded-md border border-border/40 overflow-hidden">

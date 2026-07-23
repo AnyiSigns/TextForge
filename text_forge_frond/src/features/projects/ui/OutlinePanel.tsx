@@ -241,7 +241,7 @@ export function OutlinePanel({ projectId }: { projectId: string }) {
                               <Textarea
                                 value={node.content ?? ''}
                                 onChange={(e) => patchNode(chap.id, node.id, { content: e.target.value })}
-                                placeholder="情节要点 / 摘要…"
+                                placeholder="情节摘要（可选）"
                                 rows={2}
                                 className="text-xs resize-none"
                               />

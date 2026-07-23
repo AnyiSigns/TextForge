@@ -43,7 +43,7 @@ export function ProjectExport({ projectId, compact = false }: { projectId?: stri
         else await exportProjectMarkdown(projectId);
         toast.success(`已导出当前项目（${fmt.toUpperCase()}）`);
       } catch (e) {
-        toast.error('导出失败', { description: e instanceof Error ? e.message : '未知错误' });
+        toast.error('导出出错了', { description: e instanceof Error ? e.message : '未知错误' });
       } finally {
         setBusy(null);
       }
@@ -59,9 +59,9 @@ export function ProjectExport({ projectId, compact = false }: { projectId?: stri
     setBusyTxt(mode);
     try {
       await exportProjectText(projectId, mode);
-      toast.success(mode === 'format' ? '已导出纯正文（已段落排版）' : '已导出纯正文（仅轻度规整）');
+      toast.success(mode === 'format' ? '已导出（已分段排版）' : '已导出（原文保留，轻度整理）');
     } catch (e) {
-      toast.error('导出失败', { description: e instanceof Error ? e.message : '未知错误' });
+      toast.error('导出出错了', { description: e instanceof Error ? e.message : '未知错误' });
     } finally {
       setBusyTxt(null);
     }
@@ -90,7 +90,7 @@ export function ProjectExport({ projectId, compact = false }: { projectId?: stri
       downloadBackup(backup);
       toast.success('已导出完整工作区备份');
     } catch (e) {
-      toast.error('导出失败', { description: e instanceof Error ? e.message : '未知错误' });
+      toast.error('导出出错了', { description: e instanceof Error ? e.message : '未知错误' });
     } finally {
       setBusy(null);
     }
@@ -114,7 +114,7 @@ export function ProjectExport({ projectId, compact = false }: { projectId?: stri
       );
       toast.success('备份已导入（本地数据已更新，登录后与云端同步）');
     } catch (e) {
-      toast.error('导入失败', { description: e instanceof Error ? e.message : '未知错误' });
+      toast.error('导入出错了', { description: e instanceof Error ? e.message : '未知错误' });
     } finally {
       setBusy(null);
     }
