@@ -41,4 +41,7 @@ text_forge_backend/.next/
 simulation-context-sample.txt
 generation-result.png
 api-contract.md
+api-contract.md.bak
 static/
+final-swap.mjs
+quick-swap.mjs

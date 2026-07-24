@@ -36,3 +36,12 @@ async def save_workflow(
 ):
     instance = await workflow_service.put_workflow(id, user_id, request.model_dump())
     return WorkflowDetailResponse(workflow=instance)
+
+
+@router.delete("/{id}")
+async def delete_workflow(
+    id: Annotated[str, Path(description="流水线ID")],
+    user_id: Annotated[int, Depends(get_current)],
+    workflow_service: Annotated[WorkflowService, Depends(workflow_db)],
+):
+    pass
