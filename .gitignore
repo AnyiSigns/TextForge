@@ -28,6 +28,9 @@ logs/
 *.db
 text_forge_backend/.next/
 
+# ===================== 测试 =====================
+text_forge_backend/test/
+
 # ===================== 工具/IDE =====================
 .idea/
 .vscode/

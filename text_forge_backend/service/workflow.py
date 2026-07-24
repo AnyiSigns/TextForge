@@ -49,8 +49,18 @@ class WorkflowService:
             logger.error("流水线异常", exc_info=True)
             raise HTTPException(status_code=500, detail=f"{e}")
 
-    async def delete_workflow(self, workflow_id: str, user_id: int):
-        pass
+    async def delete_workflow(self, workflow_id: str, _user_id: int):
+        try:
+            status = await self.workflow_repo.delete_user_in_workflow(workflow_id)
+            if status:
+                return status
+            else:
+                raise HTTPException(status_code=404, detail="资源删除失败")
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error("删除异常", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"{e}")
 
 
 async def workflow_db(db: Annotated[AsyncSession, Depends(db_manager.get_db)]):

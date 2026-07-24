@@ -47,3 +47,7 @@ class WorkflowRepository(BaseRepository[Workflow]):
         if instance.id != workflow_id:
             return None
         return instance
+
+    async def delete_user_in_workflow(self, workflow_id: str):
+        status = await self.delete(workflow_id)
+        return status

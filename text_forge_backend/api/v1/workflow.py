@@ -44,4 +44,5 @@ async def delete_workflow(
     user_id: Annotated[int, Depends(get_current)],
     workflow_service: Annotated[WorkflowService, Depends(workflow_db)],
 ):
-    pass
+    status = await workflow_service.delete_workflow(id, user_id)
+    return {"ok": status}
