@@ -156,7 +156,7 @@ class ModelConfig(Base):
 
 class Workflow(Base):
     __tablename__ = "workflows"
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[str] = mapped_column(String(255), primary_key=True)
     user_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True
     )

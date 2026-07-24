@@ -122,10 +122,7 @@ export async function saveWorkflow(wf: Workflow): Promise<Workflow> {
 
   return tryBackend(
     async () => {
-      if (next.some((x) => x.id === wf.id)) {
-        return (await apiClient.put<WorkflowResponse>(`/api/workflows/${wf.id}`, wf)).data.workflow;
-      }
-      return (await apiClient.post<WorkflowResponse>('/api/workflows', wf)).data.workflow;
+      return (await apiClient.put<WorkflowResponse>(`/api/workflows/${wf.id}`, wf)).data.workflow;
     },
     { ...wf, updatedAt: new Date().toISOString() },
     (v) => !!v,

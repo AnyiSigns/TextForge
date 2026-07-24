@@ -33,7 +33,7 @@ class WorkflowEdge(BaseModel):
 
 
 class WorkflowSummary(BaseModel):
-    id: int
+    id: str
     name: str
     description: Optional[str] = None
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)

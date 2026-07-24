@@ -107,8 +107,6 @@ class ModelConfRepository(BaseRepository[ModelConfig]):
         stmt = select(ModelConfig).where(ModelConfig.user_id == user_id)
         result = await self.session.execute(stmt)
         instance = result.scalar_one_or_none()
-        if not instance:
-            instance = await self.create_model_config(user_id, model_conf)
         if instance:
             for key, value in model_conf.items():
                 if key in ("id", "user_id"):
@@ -117,6 +115,8 @@ class ModelConfRepository(BaseRepository[ModelConfig]):
             await self.session.commit()
             await self.session.refresh(instance)
             return instance
+        if not instance:
+            instance = await self.create_model_config(user_id, model_conf)
         return instance
 
     async def query_user_model(self, user_id: int):

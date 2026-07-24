@@ -65,7 +65,7 @@ export function WorkflowCanvas(props: WorkflowCanvasProps) {
 
         <AnimatePresence initial={false}>
           {wf.nodes.map((node, i) => {
-            const m = KIND_META[node.kind];
+            const m = KIND_META[node.kind] ?? KIND_META.agent;
             const Icon = m.icon;
             const roleColor = node.kind === 'agent'
               ? (AGENT_ROLES.find((r) => r.name === node.label)?.color ?? m.color)
