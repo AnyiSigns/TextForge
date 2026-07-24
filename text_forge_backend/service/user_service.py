@@ -6,8 +6,13 @@ from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from config.settings import settings
 from infrastructure.database import db_manager
+from schema.request.user import ModelRequest
 from utils.logger import get_logger
-from repository.user_repo import UserTokenRepository, UserRepository
+from repository.user_repo import (
+    ModelConfRepository,
+    UserTokenRepository,
+    UserRepository,
+)
 from core.security import encode_pwd, verify_pwd
 from core.security import create_token
 from config.redis_config import redis_client as redis
@@ -21,6 +26,7 @@ class UserAuthService:
         self.session = session
         self.user_repo = UserRepository(session)
         self.token_repo = UserTokenRepository(session)
+        self.model_repo = ModelConfRepository(session)
 
     async def user_register(self, user_name: str, pwd: str, email: str):
         """用户注册"""
@@ -103,6 +109,24 @@ class UserAuthService:
         user.hash_password = new_hash_pwd
         await self.session.commit()
         return
+
+    async def save_user_model(self, model_conf: dict, user_id: int):
+        try:
+            instance = await self.model_repo.update_model_config(user_id, model_conf)
+            return instance
+        except Exception:
+            logger.error("模型配置更新错误", exc_info=True)
+            return None
+
+    async def query_user_model(self, user_id: int):
+        try:
+            instance = await self.model_repo.query_user_model(user_id)
+            if instance:
+                return instance
+            return None
+        except Exception:
+            logger.error("模型配置异常", exc_info=True)
+            return None
 
 
 async def user_db_serve(db: AsyncSession = Depends(db_manager.get_db)):

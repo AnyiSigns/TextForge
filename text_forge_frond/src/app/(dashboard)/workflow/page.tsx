@@ -88,9 +88,9 @@ export default function WorkflowPage() {
                       {wf.name}
                       {wf.builtin && <Badge variant="secondary" className="text-[10px]">内置</Badge>}
                     </p>
-                    <p className="text-xs text-muted-foreground truncate">{wf.description || `共 ${wf.nodes.length} 个步骤`}</p>
+                     <p className="text-xs text-muted-foreground truncate">{wf.description || `共 ${(wf.nodes ?? []).length} 个步骤`}</p>
                   </div>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary shrink-0">{wf.nodes.length} 步骤</span>
+                   <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary shrink-0">{(wf.nodes ?? []).length} 步骤</span>
                 </div>
                 <p className="text-xs text-muted-foreground flex items-center gap-1.5">
                   <Users className="w-3 h-3" /> 已应用到 {countWorkflowUsages(wf.id)} 个项目

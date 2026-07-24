@@ -1,37 +1,13 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-import { enqueueSync } from '@/lib/storage/syncQueue';
-import { MODEL_TEMPLATES } from '../api/templates';
-import { uid } from '@/lib/utils/id';
 import { createIdbStorage } from '@/lib/storage/zustandIdb';
 import type { ModelConfig, ModelRole, RoleModelConfig } from '@/types';
 import { syncManager } from '@/lib/storage/syncManager';
-import apiClient from '@/lib/api/client';
-
-function buildRoleModel(templateKey: string, role: ModelRole, overrides: Partial<RoleModelConfig> = {}): RoleModelConfig {
-  const t = MODEL_TEMPLATES.find((x) => x.key === templateKey)!;
-  const extra: Record<string, string | number> = {};
-  t.extraFields?.forEach((f) => { if (f.default !== undefined) extra[f.key] = f.default; });
-  return {
-    id: uid(),
-    role,
-    name: t.vendor,
-    provider: t.vendor,
-    adapter: t.adapter,
-    baseUrl: t.defaultBaseUrl ?? '',
-    apiKey: '',
-    modelId: t.defaultModelId,
-    deployment: t.deployment,
-    extra: Object.keys(extra).length ? extra : undefined,
-    createdAt: new Date().toISOString(),
-    ...overrides,
-  };
-}
 
 function defaultTextRoleModels(): Record<ModelRole, RoleModelConfig | null> {
   return {
-    main: buildRoleModel('deepseek', 'main'),
+    main: null,
     compression: null,
     router: null,
     tool: null,
@@ -98,13 +74,6 @@ export const useModelStore = create<ModelStore>()(
         set((s) => ({
           textRoleModels: { ...s.textRoleModels, [role]: model },
         }));
-        const run = async () => {
-          const key = role === 'main' ? 'main_config' : role === 'compression' ? 'compression_config' : role === 'router' ? 'router_config' : 'tool_config';
-          await syncTextConfig({ [key]: model });
-        };
-        run().catch(() => {
-          enqueueSync('models', run);
-        });
       },
       getTextRoleModel: (role) => get().textRoleModels[role],
       getMainModel: () => get().textRoleModels.main,
@@ -113,9 +82,9 @@ export const useModelStore = create<ModelStore>()(
       name: 'novel-models',
       storage: createIdbStorage(),
       partialize: (s) => ({
-        models: s.models.map((m) => ({ ...m, apiKey: undefined })),
+        models: s.models.map((m) => ({ ...m, apiKey: m.apiKey ?? '' })),
         textRoleModels: Object.fromEntries(
-          Object.entries(s.textRoleModels).map(([k, v]) => [k, v ? { ...v, apiKey: undefined } : null])
+          Object.entries(s.textRoleModels).map(([k, v]) => [k, v ? { ...v, apiKey: v.apiKey ?? '' } : null])
         ) as Record<ModelRole, RoleModelConfig | null>,
       }),
       onRehydrateStorage: () => (state) => {
@@ -124,14 +93,6 @@ export const useModelStore = create<ModelStore>()(
     }
   )
 );
-
-async function syncTextConfig(payload: Record<string, RoleModelConfig | null>) {
-  try {
-    await apiClient.put('/api/user/models/text-config', payload);
-  } catch {
-    enqueueSync('models', () => syncTextConfig(payload));
-  }
-}
 
 // 注册统一同步管理器（延迟执行，避免循环依赖）
 setTimeout(() => {

@@ -11,7 +11,6 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { cn } from '@/lib/utils';
 import { MODEL_TEMPLATES } from '../api/templates';
 import type { RoleModelConfig } from '@/types';
 
@@ -20,11 +19,12 @@ interface ModelEditDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (model: RoleModelConfig) => void;
+  onDelete?: () => void;
   mode: 'text' | 'vision' | 'embedding';
 }
 
 export function ModelEditDialog(props: ModelEditDialogProps) {
-  const { editing, open, onOpenChange, onSave, mode } = props;
+  const { editing, open, onOpenChange, onSave, onDelete, mode } = props;
 
   if (!editing) return null;
 
@@ -43,31 +43,18 @@ export function ModelEditDialog(props: ModelEditDialogProps) {
       if (patch.adapter) {
         const t = MODEL_TEMPLATES.find((x) => x.adapter === patch.adapter && x.category === category);
         if (t) {
-          next.provider = t.vendor;
           if (!patch.name) next.name = t.vendor;
           if (!patch.modelId) next.modelId = t.defaultModelId;
           if (!patch.baseUrl) next.baseUrl = t.defaultBaseUrl ?? '';
-        }
-      } else if (patch.deployment) {
-        const matched = MODEL_TEMPLATES.find((x) => x.adapter === prev.adapter && x.category === category && x.deployment === patch.deployment);
-        if (!matched) {
-          const fallback = MODEL_TEMPLATES.find((x) => x.category === category && x.deployment === patch.deployment);
-          if (fallback) {
-            next.adapter = fallback.adapter;
-            next.provider = fallback.vendor;
-            if (!patch.name) next.name = fallback.vendor;
-            if (!patch.modelId) next.modelId = fallback.defaultModelId;
-            if (!patch.baseUrl) next.baseUrl = fallback.defaultBaseUrl ?? '';
-          }
         }
       }
       return next;
     });
   };
 
-  const templateKey = MODEL_TEMPLATES.find((t) => t.adapter === draft.adapter && t.category === category && t.deployment === draft.deployment)?.key;
+  const templateKey = MODEL_TEMPLATES.find((t) => t.adapter === draft.adapter && t.category === category)?.key;
 
-  const filteredTemplates = MODEL_TEMPLATES.filter((t) => t.category === category && t.deployment === draft.deployment);
+  const filteredTemplates = MODEL_TEMPLATES.filter((t) => t.category === category);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -81,7 +68,7 @@ export function ModelEditDialog(props: ModelEditDialogProps) {
             <Label>服务商 / 模板</Label>
             <Select value={templateKey} onValueChange={(v) => {
               const t = MODEL_TEMPLATES.find((x) => x.key === v);
-              if (t) onPatch({ adapter: t.adapter, provider: t.vendor, name: t.vendor, modelId: t.defaultModelId, baseUrl: t.defaultBaseUrl ?? '', deployment: t.deployment });
+              if (t) onPatch({ adapter: t.adapter, name: t.vendor, modelId: t.defaultModelId, baseUrl: t.defaultBaseUrl ?? '' });
             }}>
               <SelectTrigger className="w-full"><SelectValue placeholder="选择服务商模板" /></SelectTrigger>
               <SelectContent>
@@ -104,26 +91,12 @@ export function ModelEditDialog(props: ModelEditDialogProps) {
           </div>
 
           <div className="space-y-1.5">
-            <Label>运行方式</Label>
-            <div className="flex items-center gap-1 p-1 bg-muted/40 rounded-xl">
-              <button onClick={() => onPatch({ deployment: 'cloud' })}
-                className={cn('flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm transition-all', draft.deployment === 'cloud' ? 'bg-primary/10 text-primary ring-1 ring-primary/15' : 'text-muted-foreground hover:bg-accent/60')}>
-                云端
-              </button>
-              <button onClick={() => onPatch({ deployment: 'local' })}
-                className={cn('flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm transition-all', draft.deployment === 'local' ? 'bg-primary/10 text-primary ring-1 ring-primary/15' : 'text-muted-foreground hover:bg-accent/60')}>
-                本地
-              </button>
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label>服务地址</Label>
+             <Label>服务地址</Label>
                <Input value={draft.baseUrl ?? ''} onChange={(e) => onPatch({ baseUrl: e.target.value })} placeholder="https://" autoComplete="off" />
           </div>
 
           <div className="space-y-1.5">
-             <Label>密钥 {draft.deployment === 'local' && <span className="text-muted-foreground">(本地运行可留空)</span>}</Label>
+             <Label>密钥</Label>
                <Input type="password" value={draft.apiKey ?? ''} onChange={(e) => onPatch({ apiKey: e.target.value })} placeholder="sk-..." autoComplete="off" />
           </div>
 
@@ -140,9 +113,18 @@ export function ModelEditDialog(props: ModelEditDialogProps) {
           ))}
         </div>
 
-        <DialogFooter>
-          <DialogClose render={<Button variant="outline" />}>取消</DialogClose>
-          <Button onClick={() => onSave({ ...draft })}>保存</Button>
+        <DialogFooter className="flex items-center justify-between">
+          <div>
+            {onDelete && (
+              <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={onDelete}>
+                删除
+              </Button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <DialogClose render={<Button variant="outline" />}>取消</DialogClose>
+            <Button onClick={() => onSave({ ...draft })} disabled={!draft.modelId}>保存</Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

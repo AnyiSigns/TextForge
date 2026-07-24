@@ -7,8 +7,9 @@ from schema.request.user import (
     ChangePasswordReq,
     ChangePasswordByEmailReq,
     ProfileRequest,
+    ModelRequest,
 )
-from schema.response.user import ProfileResponse
+from schema.response.user import ModelResponse, ProfileResponse
 from service.verification_service import verifacation
 import os
 import uuid
@@ -100,9 +101,7 @@ async def upload_avatar(
 
     filename = f"{user_id}_{uuid.uuid4().hex[:8]}{ext}"
     save_dir = os.path.join(
-        os.path.dirname(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-        ),
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
         "static",
         "avatars",
     )
@@ -116,3 +115,29 @@ async def upload_avatar(
     avatar_url = f"/static/avatars/{filename}"
     await user_serve.user_repo.update(user_id, avatar=avatar_url)
     return {"avatar_url": avatar_url}
+
+
+@router.post("/models/config")
+async def save_model_conf(
+    request: ModelRequest,
+    user_id: Annotated[int, Depends(get_current)],
+    user_serve: Annotated[UserAuthService, Depends(user_db_serve)],
+):
+    instance = await user_serve.save_user_model(request.model_dump(), user_id)
+    if not instance:
+        raise HTTPException(status_code=400, detail="模型配置无效")
+    return {"ok": 200}
+
+
+@router.get("/models/config", response_model=ModelResponse)
+async def query_model_conf(
+    user_id: Annotated[int, Depends(get_current)],
+    user_serve: Annotated[UserAuthService, Depends(user_db_serve)],
+):
+    instance = await user_serve.query_user_model(user_id)
+    if not instance:
+        return {}
+    try:
+        return ModelResponse.model_validate(instance)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"{e}")

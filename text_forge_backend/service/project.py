@@ -70,18 +70,18 @@ class ProjectService:
     async def project_detail(self, user_id: int, project_id: int):
         """获取项目完整详情"""
         try:
-            project_data = await self.project_info(user_id, project_id)
+            project_data, _ = await self.project_info(user_id, project_id)
             step_data = await self.step_repo.step_detail(project_id)
-            character_data = await self.project_characters(user_id, project_id)
+            character_data, _ = await self.project_characters(user_id, project_id)
             result = {
                 "project": project_data,
                 "steps": step_data,
-                "characters": character_data,
+                "characters": character_data or [],
             }
             return result
         except Exception:
             logger.error("获取项目详情失败", exc_info=True)
-            return
+            return {}
 
     async def update_project(self, project_id: int, **kwargs):
         """更新项目详情"""

@@ -127,19 +127,29 @@ let refreshPromise: Promise<void> | null = null;
 
 async function refreshAccessToken(): Promise<void> {
   if (refreshPromise) return refreshPromise;
-  const refreshToken = useAuthStore.getState().refreshToken;
+  let refreshToken = useAuthStore.getState().refreshToken;
+  if (!refreshToken) {
+    const match = document.cookie.match(new RegExp('(^| )tf_rt=([^;]+)'));
+    if (match) {
+      refreshToken = decodeURIComponent(match[2]);
+    }
+  }
+  if (!refreshToken) {
+    refreshPromise = null;
+    return Promise.reject(new Error('No refresh token'));
+  }
   refreshPromise = axios.post(`${API_URL}/api/auth/refresh`, { refresh_token: refreshToken }, { withCredentials: true })
     .then((res) => {
       const newToken = res.data.access_token;
       useAuthStore.getState().setAccessToken(newToken);
     })
-    .catch(() => {
-      return Promise.reject();
+    .catch((error) => {
+      return Promise.reject(error);
     })
     .finally(() => {
       refreshPromise = null;
     });
-  return refreshPromise;
+  return refreshPromise as Promise<void>;
 }
 
 export default apiClient;

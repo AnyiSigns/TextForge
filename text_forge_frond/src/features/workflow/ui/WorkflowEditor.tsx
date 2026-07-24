@@ -13,8 +13,9 @@ import { WorkflowCanvas } from './WorkflowCanvas';
 import { WorkflowInspector } from './WorkflowInspector';
 
 export function WorkflowEditor({ initial, onSaved }: { initial: Workflow; onSaved?: (wf: Workflow) => void }) {
-  const [wf, setWf] = useState<Workflow>(initial);
-  const [selected, setSelected] = useState<string | null>(initial.nodes[0]?.id ?? null);
+  const initWf = { ...initial, nodes: initial.nodes ?? [], edges: initial.edges ?? [] };
+  const [wf, setWf] = useState<Workflow>(initWf);
+  const [selected, setSelected] = useState<string | null>(initWf.nodes[0]?.id ?? null);
   const [running, setRunning] = useState(false);
   const [results, setResults] = useState<Record<string, string>>({});
 

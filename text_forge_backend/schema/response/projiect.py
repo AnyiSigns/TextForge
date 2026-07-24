@@ -45,6 +45,7 @@ class CharacterResponse(BaseModel):
 
 class ListCharactersResponse(BaseModel):
     characters: List[CharacterResponse]
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class ProjectDetailResponse(BaseModel):

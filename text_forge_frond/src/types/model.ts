@@ -12,14 +12,11 @@ export type ModelRole = 'main' | 'compression' | 'router' | 'tool';
 
 export interface RoleModelConfig {
   id: string;
-  role: ModelRole;
   name: string;
-  provider: string;
   adapter: AdapterType;
   baseUrl: string;
   apiKey: string;
   modelId: string;
-  deployment: ModelDeployment;
   extra?: Record<string, string | number>;
   createdAt: string;
 }

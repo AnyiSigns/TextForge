@@ -92,7 +92,9 @@ export const useAuthStore = create<AuthStore>()(
       // 造成的「加载 ↔ 跳转」死循环。失败则保持未登录，由 layout 跳登录页。
       restoreFromCookie: async () => {
         try {
-          const refreshToken = useAuthStore.getState().refreshToken;
+          const match = document.cookie.match(new RegExp('(^| )tf_rt=([^;]+)'));
+          if (!match) return false;
+          const refreshToken = decodeURIComponent(match[2]);
           const res = await fetch(`${API_URL}/api/auth/refresh`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -104,7 +106,7 @@ export const useAuthStore = create<AuthStore>()(
           const data = (await res.json()) as { access_token?: string; user?: User };
           const token = data.access_token;
           if (!token) return false;
-          set({ accessToken: token, isLoggedIn: true });
+          set({ accessToken: token, isLoggedIn: true, refreshToken });
           if (data.user) set({ user: data.user });
           return true;
         } catch {

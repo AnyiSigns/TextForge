@@ -136,3 +136,34 @@ class Brief(Base):
     field_origins: Mapped[dict] = mapped_column(JSONB, default=dict)
 
     projects: Mapped[Optional["Project"]] = relationship(back_populates="briefs")
+
+
+class ModelConfig(Base):
+    __tablename__ = "model_configs"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    main_config: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=True)
+    compression: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=True)
+    router_config: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=True)
+    tool_config: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=True)
+    vision_config: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=True)
+    embedding_config: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=True)
+
+    users: Mapped["User"] = relationship(back_populates="model_configs")
+
+
+class Workflow(Base):
+    __tablename__ = "workflows"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(128), index=True)
+    description: Mapped[str] = mapped_column(Text, nullable=True)
+    builtin: Mapped[bool] = mapped_column(Boolean, default=False)
+    nodes: Mapped[dict] = mapped_column(JSONB, nullable=True)
+    edges: Mapped[dict] = mapped_column(JSONB, nullable=True)
+
+    users: Mapped["User"] = relationship(back_populates="workflows")
