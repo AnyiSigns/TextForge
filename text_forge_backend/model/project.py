@@ -1,7 +1,6 @@
 from datetime import datetime
 from textwrap import indent
 from typing import List, Optional
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, Boolean, Enum, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from model.base import Base
@@ -136,22 +135,6 @@ class Brief(Base):
     field_origins: Mapped[dict] = mapped_column(JSONB, default=dict)
 
     projects: Mapped[Optional["Project"]] = relationship(back_populates="briefs")
-
-
-class ModelConfig(Base):
-    __tablename__ = "model_configs"
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True
-    )
-    main_config: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=True)
-    compression: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=True)
-    router_config: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=True)
-    tool_config: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=True)
-    vision_config: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=True)
-    embedding_config: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=True)
-
-    users: Mapped["User"] = relationship(back_populates="model_configs")
 
 
 class Workflow(Base):
