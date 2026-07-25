@@ -4,6 +4,7 @@
 import { useState, useRef, useEffect } from 'react';
 import type { Workflow, WorkflowNode, WorkflowNodeKind } from '@/features/workflow';
 import { runWorkflow, saveWorkflow, workflowToSteps } from '@/features/workflow';
+import { bindWorkflow } from '@/features/projects';
 import { loadOutline, type OutlineVolume } from '@/lib/storage/backup';
 import { DEFAULT_TEAM_TEMPLATE, agentRoleById } from '@/shared/lib/agentRoles';
 import { useProjectStore } from '@/features/projects';
@@ -155,6 +156,9 @@ export function WorkflowEditor({ initial, onSaved }: { initial: Workflow; onSave
     try {
       const saved = await saveWorkflow(wf);
       onSaved?.(saved);
+      if (targetProject) {
+        await bindWorkflow(targetProject, saved.id);
+      }
       toast.success('工作流已保存');
     } catch (e) {
       toast.error('保存失败', { description: e instanceof Error ? e.message : '未知错误' });

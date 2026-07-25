@@ -37,7 +37,7 @@ class ModelConfRepository(BaseRepository[ModelConfig]):
             instance = await self.create_model_config(user_id, model_conf)
         return instance
 
-    async def query_user_model(self, user_id: int):
+    async def query_user_model(self, user_id: int) -> ModelConfig | None:
         stmt = select(ModelConfig).where(ModelConfig.user_id == user_id)
         instance = await self.session.execute(stmt)
         return instance.scalar_one_or_none()

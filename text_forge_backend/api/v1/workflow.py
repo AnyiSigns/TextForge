@@ -1,9 +1,13 @@
 from typing import Annotated
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, Path
+from fastapi.responses import StreamingResponse
 from core.auth import get_current
+from sqlalchemy.ext.asyncio import AsyncSession
+from infrastructure.database import db_manager
 from service.workflow import WorkflowService, workflow_db
 from schema.response.workflow import ListWorkflowsResponse, WorkflowDetailResponse
 from schema.request.workflow import Workflow, WorkflowRunRequest
+from service.workflow_executor import WorkflowExecutor
 
 router = APIRouter(prefix="/workflows", tags=["Workflow"])
 
@@ -51,7 +55,17 @@ async def delete_workflow(
 @router.post("/{id}/run")
 async def run_workflow(
     id: Annotated[str, Path(description="流水线ID")],
-    user_id: Annotated[int, Depends(get_current)],
     request: WorkflowRunRequest,
+    user_id: Annotated[int, Depends(get_current)],
+    session: AsyncSession = Depends(db_manager.get_db),
 ):
-    pass
+    executor = WorkflowExecutor(session)
+    return StreamingResponse(
+        executor.run(
+            workflow_id=id,
+            user_id=user_id,
+            project_id=request.project_id,
+            thread_id=request.thread_id,
+        ),
+        media_type="text/event-stream",
+    )

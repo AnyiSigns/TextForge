@@ -15,7 +15,7 @@ class WorkflowRepository(BaseRepository[Workflow]):
         result = await self.session.execute(stmt)
         return result.scalars().all()
 
-    async def get_workflow_id(self, workflow_id: int, user_id: int):
+    async def get_workflow_id(self, workflow_id: str, user_id: int):
         stmt = select(Workflow).where(
             Workflow.id == workflow_id, Workflow.user_id == user_id
         )

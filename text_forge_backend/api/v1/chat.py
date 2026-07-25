@@ -7,6 +7,7 @@ from infrastructure.database import db_manager
 from schema.request.common import ChatRequest
 from schema.response.chat import HistoryResponse, MessagesResponse
 from service.chat_service import ChatService
+from model.user import User
 
 router = APIRouter(prefix="/chat", tags=["对话"])
 

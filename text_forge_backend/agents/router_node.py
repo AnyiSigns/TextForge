@@ -14,9 +14,9 @@ async def router_node(state: RouterState):
     请根据上述任务特征选择最合适的执行器
     """
     messages = [SystemMessage(EXECUTOR_PROMPT), HumanMessage(input_msg)]
-    response = await llm.ainvoke(messages)
+    response = await llm.router.ainvoke(messages)
     try:
-        json_match = re.search(r"\{[^}]*\}", response)  # type: ignore
+        json_match = re.search(r"\{[^}]*\}", response.content)  # type: ignore
         if json_match:
             decision = json.loads(json_match.group())
         else:

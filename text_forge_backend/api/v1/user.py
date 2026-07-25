@@ -11,8 +11,10 @@ from schema.response.user import ProfileResponse
 from service.verification_service import verifacation
 import os
 import uuid
+from api.v1 import model
 
 router = APIRouter(prefix="/user", tags=["用户"])
+router.include_router(model.router)
 
 
 @router.put("/profile", response_model=ProfileResponse)

@@ -12,5 +12,5 @@ async def main_node(state: MainState):
         SystemMessage(state["system_prompt"]),
         HumanMessage(f"上下文数据\n{input_message}"),
     ]
-    response = await llm.ainvoke(messages)
-    return {"output": response}
+    response = await llm.main.ainvoke(messages)
+    return {"output": response.content}

@@ -10,16 +10,17 @@ class ModelFactory:
         ("compression", "compression"),
         ("router", "router_config"),
         ("tool", "tool_config"),
+        ("audit", "audit_config"),
     }
 
-    def __init__(self, user_config: ModelConfig):
+    def __init__(self, user_config: dict):
         self.user_config = user_config
         self._cache: Dict[str, BaseChatModel] = {}  # 缓存
 
         for attr_name, config_field in self.DETAILED:
-            config = getattr(user_config, config_field, None)
+            config = user_config.get(config_field)
             if not config:
-                config = user_config.main_config
+                config = user_config.get("main_config", {})
             model = self._get_create_model(config)
             setattr(self, attr_name, model)
 

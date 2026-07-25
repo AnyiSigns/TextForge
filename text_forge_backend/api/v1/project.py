@@ -1,5 +1,5 @@
 from typing import Annotated, List
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
 from core.auth import get_current
 from service.project import ProjectService, project_db
 from schema.response.projiect import (
@@ -146,11 +146,12 @@ async def project_confirm(
 @router.put("/{id}/brief")
 async def project_breif(
     id: Annotated[int, Path],
-    request: BriefRequest,
+    brief: Annotated[BriefRequest, Body(embed=True)],
     user_id: Annotated[int, Depends(get_current)],
     project_service: Annotated[ProjectService, Depends(project_db)],
 ):
-    status = await project_service.save_brief(id, user_id, brief=request)
+    data = brief.model_dump()
+    status = await project_service.save_brief(id, user_id, brief=data)
     if not status:
         raise HTTPException(status_code=404, detail="设定保存失败")
     return {"ok", True}

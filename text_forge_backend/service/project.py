@@ -125,7 +125,7 @@ class ProjectService:
 
     async def save_brief(self, project_id: int, _user_id: int, brief):
         try:
-            instance = await self.brief_repo.save_brief(brief.model_dump())
+            instance = await self.brief_repo.save_brief(project_id, brief)
             if instance.project_id != project_id:
                 return False
             return True

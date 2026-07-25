@@ -1,3 +1,4 @@
+from openai import project
 from sqlalchemy import select
 from repository.base_repo import BaseRepository
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -71,6 +72,18 @@ class BriefRepository(BaseRepository[Brief]):
         self.session = session
         super().__init__(Brief, session)
 
-    async def save_brief(self, brief: dict):
-        instance = await self.add(**brief)
+    async def add_brief(self, project_id: int, brief: dict):
+        instance = await self.add(project_id=project_id, **brief)
         return instance
+
+    async def save_brief(self, project_id: int, brief: dict):
+        instance = await self.get(project_id)
+        if not instance:
+            instance = await self.add_brief(project_id, brief)
+            return instance
+        instance = await self.update(project_id, **brief)
+        return instance
+
+    async def get_brief(self, project_id: int):
+        """获取项目设定"""
+        return await self.get(project_id)
