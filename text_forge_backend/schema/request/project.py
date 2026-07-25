@@ -10,7 +10,7 @@ class ProjectRequest(BaseModel):
 
 
 class UpdateProjectRequest(BaseModel):
-    workflow_id: Optional[str] = None
+    workflow_id: Optional[str] = Field(default=None, alias="workflowId")
     title: Optional[str] = None
     description: Optional[str] = None
     genre: Optional[str] = None

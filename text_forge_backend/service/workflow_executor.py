@@ -134,7 +134,17 @@ class WorkflowExecutor:
                     yield f"event:node_end\ndata:{json.dumps({'node':node_name})}\n\n"
                 elif kind == "on_stream_end":
                     output = event.get("data", {}).get("final_output", {})
-                    yield f"event:done\ndata:{json.dumps({'output':output})}\n\n"
+                    steps_payload = []
+                    executed = output.get("executed_steps", [])
+                    outputs_map = output.get("step_outputs", {})
+                    for sid in executed:
+                        steps_payload.append({
+                            "nodeId": sid,
+                            "label": sid,
+                            "output": outputs_map.get(sid, ""),
+                            "status": "done",
+                        })
+                    yield f"event:done\ndata:{json.dumps({'steps': steps_payload, 'output': output})}\n\n"
         except Exception as e:
             logger.error(f"工作流执行异常", exc_info=True)
             yield f"event:error\ndata:{json.dumps({'error':str(e)})}\n\n"

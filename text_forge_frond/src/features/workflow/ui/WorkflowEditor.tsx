@@ -125,7 +125,7 @@ export function WorkflowEditor({ initial, onSaved }: { initial: Workflow; onSave
       const map: Record<string, string> = {};
       steps.forEach((s) => { map[s.nodeId] = s.output; });
       setResults(map);
-      toast.success('流程运行完成（演示模式）');
+      toast.success('流程运行完成');
     } catch (e) {
       toast.error('运行失败', { description: e instanceof Error ? e.message : '未知错误' });
     } finally {

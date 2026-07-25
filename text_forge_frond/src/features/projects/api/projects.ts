@@ -79,8 +79,7 @@ export async function saveStepEdit(projectId: string, stepId: string, content: s
 
 /** 把项目绑定到某条创作流水线（工作流 id；省略则回退内置流水线） */
 export async function bindWorkflow(projectId: string, workflowId: string = BUILTIN_WORKFLOW_ID): Promise<void> {
-  // 后端未就绪时静默成功（本地 store 已维护 workflowId）
-  await apiClient.put(`/api/projects/${projectId}`, { workflowId }).catch(() => {});
+  await apiClient.put(`/api/projects/${projectId}`, { workflow_id: workflowId }).catch(() => {});
 }
 
 export interface GenerateOptions {
