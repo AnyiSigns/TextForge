@@ -6,7 +6,6 @@ from utils import get_logger
 from infrastructure.database import db_manager
 from infrastructure.graph_store import graph_pool_manager
 from api.router import router
-from config.settings import settings
 
 # 日志初始化
 logger = get_logger(__name__)

@@ -7,7 +7,6 @@ from schema.response.projiect import (
     ProjectResponse,
     ProjectVersionResponse,
     ProjectDetailResponse,
-    StepResponse,
     StepUpdateResponse,
 )
 from model.project import StatusEnum

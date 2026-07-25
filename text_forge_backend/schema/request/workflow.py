@@ -43,3 +43,8 @@ class Workflow(WorkflowSummary):
 
 class WorkflowDetailRequest(BaseModel):
     workflow: Workflow
+
+
+class WorkflowRunRequest(BaseModel):
+    project_id: int
+    thread_id: str

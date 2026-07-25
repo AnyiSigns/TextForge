@@ -5,6 +5,7 @@ from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, Boolean, Enu
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from model.base import Base
 import enum
+from sqlalchemy.dialects.postgresql import JSONB
 
 
 class StatusEnum(str, enum.Enum):

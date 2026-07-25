@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path
 from core.auth import get_current
 from service.workflow import WorkflowService, workflow_db
 from schema.response.workflow import ListWorkflowsResponse, WorkflowDetailResponse
-from schema.request.workflow import WorkflowDetailRequest, Workflow
+from schema.request.workflow import Workflow, WorkflowRunRequest
 
 router = APIRouter(prefix="/workflows", tags=["Workflow"])
 
@@ -46,3 +46,12 @@ async def delete_workflow(
 ):
     status = await workflow_service.delete_workflow(id, user_id)
     return {"ok": status}
+
+
+@router.post("/{id}/run")
+async def run_workflow(
+    id: Annotated[str, Path(description="流水线ID")],
+    user_id: Annotated[int, Depends(get_current)],
+    request: WorkflowRunRequest,
+):
+    pass

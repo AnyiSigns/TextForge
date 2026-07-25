@@ -15,9 +15,7 @@ from schema.response.auth import (
     UserResponse,
 )
 from service.user_service import user_db_serve, UserAuthService
-from model.user import User
 from utils import get_logger
-from core.auth import get_current
 from core.security import verify_token
 from service.verification_service import verifacation
 from service.email_service import email_service

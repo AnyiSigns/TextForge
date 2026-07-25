@@ -4,7 +4,6 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.auth import get_current
 from infrastructure.database import db_manager
-from model import User
 from schema.request.common import ChatRequest
 from schema.response.chat import HistoryResponse, MessagesResponse
 from service.chat_service import ChatService

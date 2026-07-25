@@ -1,6 +1,6 @@
 from typing import Any, Dict
 from config.model_wrapper import ModelWrapper
-from model.project import ModelConfig
+from model.model import ModelConfig
 from langchain_core.language_models import BaseChatModel
 
 
@@ -23,7 +23,7 @@ class ModelFactory:
             model = self._get_create_model(config)
             setattr(self, attr_name, model)
 
-    def _get_create_model(self, config: Dict[str, Any]):
+    def _get_create_model(self, config: Dict[str, Any]) -> BaseChatModel:
         cache_key = (
             f"{config.get("adapter")}:{config.get("model_id")}:{config.get("base_url")}"
         )

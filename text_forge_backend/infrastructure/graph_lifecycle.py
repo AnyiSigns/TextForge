@@ -1,17 +1,25 @@
-from agents.graphs.chat_graph import chat_graph
+from agents.graphs.chat_graph import (
+    chat_graph,
+    main_graph,
+    router_graph,
+    audit_graph,
+    tool_graph,
+    parent_graph,
+)
 from agents.graphs.registry import graph_register
 
-
-
-graph_register.register_builder("chat",chat_graph)
+graph_register.register_builder("chat", chat_graph)
+graph_register.register_builder("main", main_graph)
+graph_register.register_builder("router", router_graph)
+graph_register.register_builder("audit", audit_graph)
+graph_register.register_builder("tool", tool_graph)
+graph_register.register_builder("parent", parent_graph)
 
 
 async def compiled_all(checkpointer):
     """编译所有图"""
-    for name,builder in graph_register._builders.items():
-        raw_graph=builder
-        compiled_graph=raw_graph.compile(checkpointer=checkpointer)
-        graph_register.register_compiled(name,compiled_graph)
+    for name, builder in graph_register._builders.items():
+        raw_graph = builder
+        compiled_graph = raw_graph.compile(checkpointer=checkpointer)
+        graph_register.register_compiled(name, compiled_graph)
         print(f"已编译图{name}")
-
-
