@@ -11,6 +11,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/shared/components';
 import { toast } from 'sonner';
+import { useProjectStore } from '@/features/projects';
 
 export default function WorkflowPage() {
   const router = useRouter();
@@ -18,6 +19,7 @@ export default function WorkflowPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    useProjectStore.getState().load().catch(() => {});
     listWorkflows().then((wfs) => { setList(wfs); setLoading(false); }).catch(() => setLoading(false));
   }, []);
 

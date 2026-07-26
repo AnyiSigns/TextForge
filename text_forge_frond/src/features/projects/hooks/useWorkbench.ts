@@ -84,12 +84,26 @@ export function useWorkbench(projectId: string) {
   }, [projectId]);
 
   useEffect(() => {
-    const loadProject = async () => {
+    let cancelled = false;
+    (async () => {
       try {
-        const loadedSteps = await fetchProjectDetail(projectId);
+        const [loadedSteps, meta, wfs] = await Promise.all([
+          fetchProjectDetail(projectId).catch(() => [] as Step[]),
+          fetchProjectMeta(projectId).catch(() => null),
+          listWorkflows().catch(() => []),
+        ]);
+        if (cancelled) return;
+
+        const targetWorkflowId = meta?.workflowId || BUILTIN_WORKFLOW_ID;
+        const activeWf = wfs.find((w) => w.id === targetWorkflowId) ?? wfs.find((w) => w.id === BUILTIN_WORKFLOW_ID) ?? null;
+
         setSteps(loadedSteps);
-        // A6: 草稿恢复越界判定修正——本地空草稿绝覆盖服务端真实草稿；
-        // 仅当本地草稿非空、且逐内容比较确有差异时才恢复本地草稿。
+        setWorkflows(wfs);
+        setProjectTitle(meta?.title);
+        setActiveWorkflowId(activeWf?.id ?? targetWorkflowId);
+        setActiveWorkflow(activeWf);
+
+        // 草稿恢复
         const draft = await useProjectStore.getState().getDraft(projectId);
         const draftChanged = !!draft && draft.length > 0 && (
           draft.length !== loadedSteps.length ||
@@ -100,18 +114,12 @@ export function useWorkbench(projectId: string) {
           toast.info('已恢复草稿');
         }
       } catch (e) {
-        toast.error('加载失败', { description: e instanceof Error ? e.message : '未知错误' });
+        if (!cancelled) toast.error('加载失败', { description: e instanceof Error ? e.message : '未知错误' });
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
-    };
-    loadProject();
-    fetchProjectMeta(projectId).then((p) => setProjectTitle(p.title)).catch(() => {});
-    listWorkflows().then((list) => {
-      setWorkflows(list);
-      const wf = list.find((w) => w.id === activeWorkflowId) ?? list.find((w) => w.id === BUILTIN_WORKFLOW_ID) ?? null;
-      if (wf) { setActiveWorkflow(wf); setActiveWorkflowId(wf.id); }
-    }).catch(() => {});
+    })();
+    return () => { cancelled = true; };
   }, [projectId]);
 
   useEffect(() => {
