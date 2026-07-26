@@ -139,10 +139,9 @@ class WorkflowExecutor:
                         candidate = raw_chunk.get("content") or raw_chunk.get("text") or raw_chunk.get("delta") or ""
                         chunk = candidate if isinstance(candidate, str) else str(candidate)
                     elif raw_chunk is not None:
-                        chunk = getattr(raw_chunk, "content", None) or str(raw_chunk)
+                        chunk = getattr(raw_chunk, "content", None) or ""
                     chunk = chunk.strip()
                     if chunk:
-                        logger.info(f"[SSE] model_stream -> {name}, chunk={chunk[:60]}")
                         yield f"event:node_stream\ndata:{json.dumps({'node': name, 'output': chunk})}\n\n"
                 elif kind == "on_chain_end" and name not in (None, "LangGraph", "pregel"):
                     output = data.get("output") or {}

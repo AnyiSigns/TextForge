@@ -69,6 +69,7 @@ export async function runWorkflow(
       if ((eventType === 'node_stream' || eventType === 'on_chat_model_stream') && event.node && typeof event.output === 'string') {
         const nodeId = String(event.node);
         const text = event.output;
+        if (!text || nodeId === 'ChatOpenAI' || nodeId === 'LLM' || nodeId === 'llm') return;
         const existing = steps.find((s) => s.nodeId === nodeId);
         if (existing) {
           existing.output = (existing.output || '') + text;
