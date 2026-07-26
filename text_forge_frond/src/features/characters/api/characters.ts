@@ -7,7 +7,20 @@ interface CharactersResponse {
 }
 
 interface CharacterResponse {
-  character: Character;
+  id: string;
+  name: string;
+  description: string;
+  avatar?: string;
+  aliases?: Record<string, unknown>;
+  role?: string;
+  status?: string;
+  currentProfile?: string;
+  customRole?: string;
+  relationships?: Record<string, unknown>;
+  images?: Record<string, unknown>;
+  referenceImages?: Record<string, unknown>;
+  referenceImage?: string;
+  imageSeed?: number;
 }
 
 interface AvatarResponse {
@@ -34,7 +47,7 @@ export interface CreateCharacterRequest {
 
 export async function createCharacter(body: CreateCharacterRequest): Promise<Character> {
   const { data } = await apiClient.post<CharacterResponse>('/api/characters', body);
-  return data.character;
+  return data;
 }
 
 export interface UpdateCharacterRequest {
@@ -53,7 +66,7 @@ export interface UpdateCharacterRequest {
 
 export async function updateCharacter(id: string, body: UpdateCharacterRequest): Promise<Character> {
   const { data } = await apiClient.put<CharacterResponse>(`/api/characters/${id}`, body);
-  return data.character || data;
+  return data;
 }
 
 export async function uploadAvatar(id: string, file: File): Promise<string> {
@@ -71,7 +84,7 @@ export async function deleteCharacter(id: string): Promise<void> {
 
 export async function fetchCharacterDetail(id: string): Promise<Character> {
   const { data } = await apiClient.get<CharacterResponse>(`/api/characters/${id}`);
-  return data.character;
+  return data;
 }
 
 export async function fetchCharacterMessages(id: string, thread_id?: string): Promise<Message[]> {
