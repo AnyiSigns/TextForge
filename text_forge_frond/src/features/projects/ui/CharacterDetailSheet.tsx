@@ -24,6 +24,7 @@ interface CharacterDetailSheetProps {
   onDetailCustomRole: (v: string) => void;
   onSaveDetailRole: () => void;
   onSaveCurrentProfile: () => void;
+  onSaveDescription: () => void;
   onSaveAliases: (aliases: string[]) => void;
   onOpenRelations: (c: Character) => void;
   onSetDetailChar: (c: Character | null) => void;
@@ -35,7 +36,7 @@ export function CharacterDetailSheet(props: CharacterDetailSheetProps) {
   const {
     detailChar, detailRole, detailCustomRole, charNameById, rolePresets, roleLabel, statusBadge,
     onOpenStatus, onDetailRole, onDetailCustomRole, onSaveDetailRole,
-    onSaveCurrentProfile, onSaveAliases, onOpenRelations, onSetDetailChar, toggleReferenceImage, exportImages,
+    onSaveCurrentProfile, onSaveDescription, onSaveAliases, onOpenRelations, onSetDetailChar, toggleReferenceImage, exportImages,
   } = props;
   const [aliasesDraft, setAliasesDraft] = useState(
     (detailChar?.aliases ?? []).join('、'),
@@ -97,9 +98,14 @@ export function CharacterDetailSheet(props: CharacterDetailSheetProps) {
 
               <div className="space-y-2">
                 <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.12em]">角色设定 / 介绍</p>
-                <div className="glass-sheet-card p-5">
-                  <p className="text-sm leading-relaxed whitespace-pre-wrap">{detailChar.description || '暂无设定'}</p>
-                </div>
+                <Textarea
+                  value={detailChar.description}
+                  onChange={(e) => onSetDetailChar({ ...detailChar, description: e.target.value })}
+                  placeholder="输入角色设定与背景介绍…"
+                  rows={4}
+                  className="text-sm rounded-2xl bg-background/40 border-border/30 focus-visible:border-primary/40"
+                />
+                <Button size="sm" variant="outline" className="rounded-xl" onClick={onSaveDescription}>保存设定</Button>
               </div>
 
               <div className="space-y-2">

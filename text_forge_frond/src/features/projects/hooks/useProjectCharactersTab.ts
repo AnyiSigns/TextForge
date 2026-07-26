@@ -197,6 +197,17 @@ export function useProjectCharactersTab(projectId: string) {
     }
   };
 
+  // 详情 Sheet：保存角色设定
+  const saveDescription = async () => {
+    if (!detailChar) return;
+    try {
+      await updateCharacter(detailChar.id, { description: detailChar.description ?? '' });
+      toast.success('角色设定已保存');
+    } catch (e) {
+      toast.error('保存失败', { description: e instanceof Error ? e.message : '未知错误' });
+    }
+  };
+
   // 详情 Sheet：切换某张图为参考图（多选，最多 5 张）
   const toggleReferenceImage = (img: string) => {
     if (!detailChar) return;
@@ -286,6 +297,7 @@ export function useProjectCharactersTab(projectId: string) {
     setDetailCustomRole,
     saveDetailRole,
     saveCurrentProfile,
+    saveDescription,
     saveAliases,
     toggleReferenceImage,
     exportImages,

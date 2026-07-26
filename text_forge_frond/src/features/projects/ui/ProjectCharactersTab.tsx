@@ -201,6 +201,7 @@ export function ProjectCharactersTab({ projectId }: { projectId: string }) {
         onDetailCustomRole={setDetailCustomRole}
         onSaveDetailRole={saveDetailRole}
         onSaveCurrentProfile={saveCurrentProfile}
+        onSaveDescription={saveDescription}
         onSaveAliases={saveAliases}
         onOpenRelations={openRelations}
         onSetDetailChar={setDetailChar}
