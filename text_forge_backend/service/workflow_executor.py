@@ -126,20 +126,25 @@ class WorkflowExecutor:
             async for event in parent_graph.astream_events(
                 inital_state, config=config, version="v2"  # type: ignore
             ):  # type: ignore
-                logger.info(f"[SSE event raw] {event}")
                 kind = event.get("event")
-                if kind == "on_node_start":
-                    node_name = event.get("data", {}).get("node")
-                    logger.info(f"[SSE] node_start -> {node_name}")
-                    yield f"event:node_start\ndata:{json.dumps({'node':node_name})}\n\n"
-                elif kind == "on_node_end":
-                    node_data = event.get("data", {})
-                    node_name = node_data.get("node")
-                    node_output = node_data.get("output", "")
+                name = event.get("name")
+                data = event.get("data", {})
+                if kind == "on_chain_start" and name not in (None, "LangGraph", "pregel"):
+                    logger.info(f"[SSE] chain_start -> {name}")
+                    yield f"event:node_start\ndata:{json.dumps({'node': name})}\n\n"
+                elif kind == "on_chat_model_stream" and name:
+                    chunk = ((data.get("chunk") or {}).get("content") or "").strip()
+                    if chunk:
+                        logger.info(f"[SSE] model_stream -> {name}, chunk={chunk[:60]}")
+                        yield f"event:node_stream\ndata:{json.dumps({'node': name, 'output': chunk})}\n\n"
+                elif kind == "on_chain_end" and name not in (None, "LangGraph", "pregel"):
+                    output = data.get("output") or {}
+                    step_outputs = (((output or {}).get("step_outputs")) if isinstance(output, dict) else {}) or {}
+                    node_output = step_outputs.get(name) or ""
                     if not isinstance(node_output, str):
-                        node_output = json.dumps(node_output, ensure_ascii=False) if node_output is not None else ""
-                    logger.info(f"[SSE] node_end -> {node_name}, output={str(node_output)[:80]}")
-                    yield f"event:node_end\ndata:{json.dumps({'node': node_name, 'output': node_output})}\n\n"
+                        node_output = json.dumps(node_output, ensure_ascii=False)
+                    logger.info(f"[SSE] chain_end -> {name}, output={str(node_output)[:80]}")
+                    yield f"event:node_end\ndata:{json.dumps({'node': name, 'output': node_output})}\n\n"
                 elif kind == "on_stream_end":
                     output = event.get("data", {}).get("final_output", {})
                     steps_payload = []
