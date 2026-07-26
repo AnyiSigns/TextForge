@@ -3,40 +3,6 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Workflow as WorkflowIcon, Trash2, Pencil, LayoutGrid, List } from 'lucide-react';
-import { listWorkflows, deleteWorkflow, type Workflow } from '@/features/workflow';
-import { PageHeader } from '@/shared/components';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { EmptyState } from '@/shared/components';
-import { toast } from 'sonner';
-
-type ViewMode = 'grid' | 'list';
-
-export default function WorkflowPage() {
-  const router = useRouter();
-  const [list, setList] = useState<Workflow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<ViewMode>('list');
-
-  useEffect(() => {
-    listWorkflows().then((wfs) => { setList(wfs); setLoading(false); }).catch(() => setLoading(false));
-  }, []);
-
-  const handleDelete = async (id: string) => {
-    if (!confirm('确定删除该工作流？')) return;
-    try {
-      await deleteWorkflow(id);
-      setList((l) => l.filter((w) => w.id !== id));
-      toast.success('已删除');
-    } catch (e) {
-      toast.error('删除失败', { description: e instanceof Error ? e.message : '未知错误' });
-    }
-  };
-
-  if (loading) return <PageHeader icon={WorkflowIcon} title="创作流程" description="把写作拆成多个步骤，自由组合成你的创作流程" />;
-
 import { Plus, Workflow as WorkflowIcon, Trash2, Pencil, LayoutGrid, List, Search } from 'lucide-react';
 import { listWorkflows, deleteWorkflow, type Workflow } from '@/features/workflow';
 import { PageHeader } from '@/shared/components';
