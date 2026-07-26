@@ -133,7 +133,14 @@ class WorkflowExecutor:
                     logger.info(f"[SSE] chain_start -> {name}")
                     yield f"event:node_start\ndata:{json.dumps({'node': name})}\n\n"
                 elif kind == "on_chat_model_stream" and name:
-                    chunk = ((data.get("chunk") or {}).get("content") or "").strip()
+                    raw_chunk = data.get("chunk")
+                    chunk = ""
+                    if isinstance(raw_chunk, dict):
+                        candidate = raw_chunk.get("content") or raw_chunk.get("text") or raw_chunk.get("delta") or ""
+                        chunk = candidate if isinstance(candidate, str) else str(candidate)
+                    elif raw_chunk is not None:
+                        chunk = getattr(raw_chunk, "content", None) or str(raw_chunk)
+                    chunk = chunk.strip()
                     if chunk:
                         logger.info(f"[SSE] model_stream -> {name}, chunk={chunk[:60]}")
                         yield f"event:node_stream\ndata:{json.dumps({'node': name, 'output': chunk})}\n\n"
