@@ -57,7 +57,7 @@ export default function CharactersPage() {
 
   const filtered = characters
     .filter(c => (c.name ?? '').includes(searchTerm) || (c.description ?? '').includes(searchTerm))
-    .filter(c => projectFilter === NO_PROJECT ? true : (c.projectId ?? null) === projectFilter)
+    .filter(c => projectFilter === NO_PROJECT ? true : String(c.projectId ?? '') === String(projectFilter))
     .sort((a, b) => sortKey === 'name'
       ? (a.name ?? '').localeCompare(b.name ?? '', 'zh')
       : (b.createdAt || '').localeCompare(a.createdAt || ''));
@@ -151,7 +151,7 @@ export default function CharactersPage() {
             <CharacterRow
               key={char.id}
               character={char}
-              projectTitle={char.projectId ? projects.find((p) => p.id === char.projectId)?.title : undefined}
+              projectTitle={char.projectId !== undefined && char.projectId !== null ? projects.find((p) => String(p.id) === String(char.projectId))?.title : undefined}
               onDelete={handleDelete}
             />
           ))}

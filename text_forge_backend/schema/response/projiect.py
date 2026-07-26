@@ -40,6 +40,7 @@ class CharacterResponse(BaseModel):
     id: int
     name: str
     description: str
+    project_id: Optional[int] = Field(alias="projectId")
     avatar: Optional[str] = None
     aliases: Optional[Dict[str, Any]] = None
     role: Optional[str] = None
@@ -51,7 +52,7 @@ class CharacterResponse(BaseModel):
     reference_images: Optional[Dict[str, Any]] = None
     reference_image: Optional[str] = None
     image_seed: Optional[int] = None
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class ListCharactersResponse(BaseModel):

@@ -10,6 +10,7 @@ interface CharacterResponse {
   id: string;
   name: string;
   description: string;
+  projectId?: number | string | null;
   avatar?: string;
   aliases?: Record<string, unknown>;
   role?: string;
