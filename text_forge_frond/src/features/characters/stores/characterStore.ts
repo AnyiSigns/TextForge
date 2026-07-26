@@ -138,7 +138,7 @@ export const useCharacterStore = create<CharacterStore>()(
       syncFromBackend: async () => {
         try {
           const chars = await fetchCharacters();
-          if (Array.isArray(chars) && chars.length) set({ characters: chars.map(normalizeChar) });
+          set({ characters: chars.map(normalizeChar) });
         } catch {
           /* 后端未就绪，保留本地 */
         }
