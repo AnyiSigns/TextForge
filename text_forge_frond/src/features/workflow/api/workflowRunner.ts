@@ -17,13 +17,16 @@ export async function runWorkflow(
   opts?: RunWorkflowOptions,
   projectContext?: GenerationContext,
 ): Promise<WorkflowRunStep[]> {
+  const threadId = opts?.projectId
+    ? `${opts.projectId}-${Date.now()}`
+    : `thread-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const res = await fetch(`${apiClient.defaults.baseURL}/api/workflows/${workflowId}/run`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${(await import('@/lib/stores/authStore')).useAuthStore.getState().accessToken}`,
     },
-    body: JSON.stringify({ input, project_id: opts?.projectId, thread_id: opts?.projectId }),
+    body: JSON.stringify({ input, project_id: opts?.projectId, thread_id: threadId }),
   });
   if (!res.ok) throw new Error(`工作流运行失败: ${res.status}`);
   const reader = res.body?.getReader();
