@@ -41,62 +41,57 @@ export default function WorkflowPage() {
     <div className="page-shell">
       <div className="flex items-center justify-between">
         <PageHeader icon={WorkflowIcon} title="创作流程" description="把写作拆成多个步骤，自由组合成你的创作流程（云端服务未连接时使用本地演示数据）" />
-        <Button onClick={() => router.push('/workflow/new')}>
-          <Plus className="w-4 h-4 mr-2" /> 新建工作流
-        </Button>
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-md border border-border/40 overflow-hidden">
+            <Button
+              variant={viewMode === 'list' ? 'default' : 'ghost'}
+              size="sm"
+              className="h-8 w-8 p-0"
+              onClick={() => setViewMode('list')}
+            >
+              <List className="w-4 h-4" />
+            </Button>
+            <Button
+              variant={viewMode === 'grid' ? 'default' : 'ghost'}
+              size="sm"
+              className="h-8 w-8 p-0"
+              onClick={() => setViewMode('grid')}
+            >
+              <LayoutGrid className="w-4 h-4" />
+            </Button>
+          </div>
+          <Button onClick={() => router.push('/workflow/new')}>
+            <Plus className="w-4 h-4 mr-2" /> 新建工作流
+          </Button>
+        </div>
       </div>
 
       {list.length === 0 ? (
         <Card className="glass-card"><CardContent><EmptyState icon={WorkflowIcon} title="还没有创作流程" description="创建你的第一个步骤组合" /></CardContent></Card>
       ) : (
         <>
-          <div className="flex items-center gap-2 mb-4">
-            <div className="flex rounded-md border border-border/40 overflow-hidden">
-              <Button
-                variant={viewMode === 'list' ? 'default' : 'ghost'}
-                size="sm"
-                className="h-8 w-8 p-0"
-                onClick={() => setViewMode('list')}
-              >
-                <List className="w-4 h-4" />
-              </Button>
-              <Button
-                variant={viewMode === 'grid' ? 'default' : 'ghost'}
-                size="sm"
-                className="h-8 w-8 p-0"
-                onClick={() => setViewMode('grid')}
-              >
-                <LayoutGrid className="w-4 h-4" />
-              </Button>
-            </div>
-          </div>
-
           {viewMode === 'list' ? (
-            <div className="max-h-[600px] overflow-y-auto scrollbar-thin">
-              <div className="space-y-2 stagger">
-                {list.map((wf) => (
-                  <Card key={wf.id} className="glass-card hover:shadow-elegant-hover transition-shadow">
-                    <CardContent className="p-4 flex items-center gap-4">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium truncate flex items-center gap-1.5">
-                          {wf.name}
-                          {wf.builtin && <Badge variant="secondary" className="text-[10px]">内置</Badge>}
-                        </p>
-                        <p className="text-xs text-muted-foreground truncate">{wf.description || `共 ${(wf.nodes ?? []).length} 个步骤`}</p>
-                      </div>
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary shrink-0">{(wf.nodes ?? []).length} 步骤</span>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <Button size="sm" variant="outline" onClick={() => router.push(`/workflow/${wf.id}`)}>
-                          <Pencil className="w-4 h-4 mr-1.5" /> 编辑
-                        </Button>
-                        <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-destructive" onClick={() => handleDelete(wf.id)}>
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+            <div className="space-y-2 stagger">
+              {list.map((wf) => (
+                <div key={wf.id} className="flex items-center gap-2 p-2 border border-border/40 rounded-lg bg-background/30 hover:bg-accent/20 transition-colors">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium truncate flex items-center gap-1.5">
+                      {wf.name}
+                      {wf.builtin && <Badge variant="secondary" className="text-[10px]">内置</Badge>}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">{wf.description || `共 ${(wf.nodes ?? []).length} 个步骤`}</p>
+                  </div>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary shrink-0">{(wf.nodes ?? []).length} 步骤</span>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => router.push(`/workflow/${wf.id}`)}>
+                      <Pencil className="w-4 h-4 mr-1.5" /> 编辑
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7 px-2 text-muted-foreground hover:text-destructive" onClick={() => handleDelete(wf.id)}>
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
             </div>
           ) : (
             <div className="grid sm:grid-cols-2 gap-4 stagger">
