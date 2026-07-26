@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
@@ -11,7 +11,7 @@ class CharacterRequest(BaseModel):
     status: Optional[str] = None
     current_profile: str = Field(default="", alias="currentProfile")
     custom_role: str = Field(default="", alias="customRole")
-    relationships: Optional[Dict[str, Any]] = None
+    relationships: Optional[List[Dict[str, Any]]] = None
     images: Optional[Dict[str, Any]] = None
     reference_images: Optional[Dict[str, Any]] = None
     reference_image: str = ""
@@ -28,7 +28,7 @@ class CharacterUpdateRequest(BaseModel):
     status: Optional[str] = None
     current_profile: Optional[str] = Field(default=None, alias="currentProfile")
     custom_role: Optional[str] = Field(default=None, alias="customRole")
-    relationships: Optional[Dict[str, Any]] = None
+    relationships: Optional[List[Dict[str, Any]]] = None
     images: Optional[Dict[str, Any]] = None
     reference_images: Optional[Dict[str, Any]] = None
     reference_image: Optional[str] = None

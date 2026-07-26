@@ -97,8 +97,8 @@ class Character(Base):
     avatar: Mapped[str] = mapped_column(String(255))
     aliases: Mapped[dict] = mapped_column(JSONB, default=dict)
     role: Mapped[str] = mapped_column(String(255))
-    status: Mapped[StatusEnum] = mapped_column(
-        Enum(StatusEnum, native_enum=False), default=StatusEnum.DRAFT, nullable=False
+    status: Mapped[str] = mapped_column(
+        String(64), default="draft", nullable=False
     )
     current_profile: Mapped[str] = mapped_column(Text)
     custom_role: Mapped[str] = mapped_column(String(255))
