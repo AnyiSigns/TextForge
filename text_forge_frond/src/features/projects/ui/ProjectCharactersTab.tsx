@@ -68,7 +68,6 @@ export function ProjectCharactersTab({ projectId }: { projectId: string }) {
     onStudio: setStudioTarget,
     onStatus: openStatus,
     onDetail: setDetailChar,
-    onEdit: startEdit,
     onDelete: handleDelete,
     onAvatarChange: handleAvatarChange,
     onUploadClick: (id) => avatarInputRefs.current[id]?.click(),

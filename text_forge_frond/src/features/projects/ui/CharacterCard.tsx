@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
-  MessageCircle, Trash2, Eye, Sparkles, CircleDot, Link2, Pencil, Upload,
+  MessageCircle, Trash2, Eye, Sparkles, CircleDot, Link2, Upload,
 } from 'lucide-react';
 import { Character, CharacterRole } from '@/types';
 
@@ -17,7 +17,6 @@ export interface CharacterCardActions {
   onStudio: (c: Character) => void;
   onStatus: (c: Character) => void;
   onDetail: (c: Character) => void;
-  onEdit: (c: Character) => void;
   onDelete: (id: string) => void;
   onAvatarChange: (id: string, e: React.ChangeEvent<HTMLInputElement>) => void;
   onUploadClick: (id: string) => void;
@@ -93,9 +92,6 @@ export function CharacterCard(props: CharacterCardProps) {
       </Button>
       <Button variant="outline" size="sm" className="rounded-xl" onClick={() => actions.onDetail(char)} title="查看角色详情">
         <Eye className="w-4 h-4" />
-      </Button>
-      <Button variant="outline" size="sm" className="rounded-xl" onClick={() => actions.onEdit(char)}>
-        <Pencil className="w-4 h-4" />
       </Button>
       <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive rounded-xl" onClick={() => actions.onDelete(char.id)}>
         <Trash2 className="w-4 h-4" />
