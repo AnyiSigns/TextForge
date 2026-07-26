@@ -126,11 +126,11 @@ class WorkflowExecutor:
             async for event in parent_graph.astream_events(
                 inital_state, config=config, version="v2"  # type: ignore
             ):  # type: ignore
-                logger.debug(f"[SSE event raw] {event}")
+                logger.info(f"[SSE event raw] {event}")
                 kind = event.get("event")
                 if kind == "on_node_start":
                     node_name = event.get("data", {}).get("node")
-                    logger.debug(f"[SSE] node_start -> {node_name}")
+                    logger.info(f"[SSE] node_start -> {node_name}")
                     yield f"event:node_start\ndata:{json.dumps({'node':node_name})}\n\n"
                 elif kind == "on_node_end":
                     node_data = event.get("data", {})
@@ -138,7 +138,7 @@ class WorkflowExecutor:
                     node_output = node_data.get("output", "")
                     if not isinstance(node_output, str):
                         node_output = json.dumps(node_output, ensure_ascii=False) if node_output is not None else ""
-                    logger.debug(f"[SSE] node_end -> {node_name}, output={str(node_output)[:80]}")
+                    logger.info(f"[SSE] node_end -> {node_name}, output={str(node_output)[:80]}")
                     yield f"event:node_end\ndata:{json.dumps({'node': node_name, 'output': node_output})}\n\n"
                 elif kind == "on_stream_end":
                     output = event.get("data", {}).get("final_output", {})
