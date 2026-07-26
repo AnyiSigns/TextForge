@@ -55,7 +55,7 @@ export function ProjectCharactersTab({ projectId }: { projectId: string }) {
     relTarget, setRelTarget, relDraft, openRelations, addRelation, updateRelation, removeRelation, applyRelations,
     charNameById, statusTarget, setStatusTarget, statusDraft, setStatusDraft, openStatus, applyStatus,
     detailChar, setDetailChar, detailRole, setDetailRole, detailCustomRole, setDetailCustomRole,
-    saveDetailRole, saveCurrentProfile, saveAliases, toggleReferenceImage, exportImages,
+    saveDetailRole, saveCurrentProfile, saveDescription, saveAliases, toggleReferenceImage, exportImages,
     avatarInputRefs, handleAvatarChange, isSeedingChars, handleSeedChars, handleDelete, studioTarget, setStudioTarget,
   } = useProjectCharactersTab(projectId);
 
