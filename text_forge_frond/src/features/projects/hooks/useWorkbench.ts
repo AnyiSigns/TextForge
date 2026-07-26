@@ -12,7 +12,7 @@ import { useProjectStore } from '@/features/projects';
 import { useBriefStore } from '@/features/projects';
 import { useCharacterStore } from '@/features/characters';
 import { useManuscriptStore } from '@/features/manuscript';
-import { listWorkflowsWithBuiltin, type Workflow } from '@/features/workflow';
+import { listWorkflows, type Workflow } from '@/features/workflow';
 import { API_URL } from '@/lib/config/env';
 import { loadOutline, type OutlineVolume } from '@/lib/storage/backup';
 import { makeBuildContext, makeSummarizePlot, makeDepositCharacterProfiles } from './workbenchContext';
@@ -107,7 +107,7 @@ export function useWorkbench(projectId: string) {
     };
     loadProject();
     fetchProjectMeta(projectId).then((p) => setProjectTitle(p.title)).catch(() => {});
-    listWorkflowsWithBuiltin().then((list) => {
+    listWorkflows().then((list) => {
       setWorkflows(list);
       const wf = list.find((w) => w.id === activeWorkflowId) ?? list.find((w) => w.id === BUILTIN_WORKFLOW_ID) ?? null;
       if (wf) { setActiveWorkflow(wf); setActiveWorkflowId(wf.id); }

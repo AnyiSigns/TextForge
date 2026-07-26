@@ -12,7 +12,6 @@ export { KIND_META } from './ui/workflowMeta';
 // ---- API ----
 export {
   listWorkflows,
-  listWorkflowsWithBuiltin,
   getWorkflow,
   saveWorkflow,
   deleteWorkflow,

@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Workflow as WorkflowIcon, Trash2, Pencil, Users, Play } from 'lucide-react';
-import { listWorkflowsWithBuiltin, deleteWorkflow, countWorkflowUsages, runWorkflow, type Workflow, type WorkflowRunStep } from '@/features/workflow';
+import { listWorkflows, deleteWorkflow, countWorkflowUsages, runWorkflow, type Workflow, type WorkflowRunStep } from '@/features/workflow';
 import { PageHeader } from '@/shared/components';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -26,7 +26,7 @@ export default function WorkflowPage() {
   const [runState, setRunState] = useState<'idle' | 'running' | 'done'>('idle');
 
   useEffect(() => {
-    listWorkflowsWithBuiltin().then((wfs) => { setList(wfs); setLoading(false); }).catch(() => setLoading(false));
+    listWorkflows().then((wfs) => { setList(wfs); setLoading(false); }).catch(() => setLoading(false));
   }, []);
 
   const handleDelete = async (id: string) => {

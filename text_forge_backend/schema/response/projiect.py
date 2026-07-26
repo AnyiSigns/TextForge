@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -40,6 +40,17 @@ class CharacterResponse(BaseModel):
     id: int
     name: str
     description: str
+    avatar: Optional[str] = None
+    aliases: Optional[Dict[str, Any]] = None
+    role: Optional[str] = None
+    status: Optional[str] = None
+    current_profile: Optional[str] = None
+    custom_role: Optional[str] = None
+    relationships: Optional[Dict[str, Any]] = None
+    images: Optional[Dict[str, Any]] = None
+    reference_images: Optional[Dict[str, Any]] = None
+    reference_image: Optional[str] = None
+    image_seed: Optional[int] = None
     model_config = ConfigDict(from_attributes=True)
 
 
