@@ -90,22 +90,23 @@ class Character(Base):
         Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
     project_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("projects.id", ondelete="CASCADE"), index=True, nullable=True
+        Integer,
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        index=True,
+        nullable=True,
     )
     name: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     avatar: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    aliases: Mapped[dict] = mapped_column(JSONB, default=dict)
-    role: Mapped[str] = mapped_column(String(255))
-    status: Mapped[str] = mapped_column(
-        String(64), default="draft", nullable=False
-    )
-    current_profile: Mapped[str] = mapped_column(Text)
-    custom_role: Mapped[str] = mapped_column(String(255))
-    relationships: Mapped[dict] = mapped_column(JSONB, default=dict)
-    images: Mapped[dict] = mapped_column(JSONB, default=dict)
-    reference_images: Mapped[dict] = mapped_column(JSONB, default=dict)
-    reference_image: Mapped[str] = mapped_column(String(255))
+    aliases: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=True)
+    role: Mapped[str] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(64), nullable=True)
+    current_profile: Mapped[str] = mapped_column(Text, nullable=True)
+    custom_role: Mapped[str] = mapped_column(String(255), nullable=True)
+    relationships: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=True)
+    images: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=True)
+    reference_images: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=True)
+    reference_image: Mapped[str] = mapped_column(String(255), nullable=True)
     image_seed: Mapped[int] = mapped_column(Integer)
 
     users: Mapped["User"] = relationship(back_populates="characters")

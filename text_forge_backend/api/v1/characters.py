@@ -68,9 +68,7 @@ async def delete_character(
     user_id: Annotated[int, Depends(get_current)],
     character_service: Annotated[CharacterService, Depends(character_db)],
 ):
-    deleted = await character_service.delete_character(
-        user_id=user_id, character_id=id
-    )
+    deleted = await character_service.delete_character(user_id=user_id, character_id=id)
     if not deleted:
         raise HTTPException(status_code=404, detail="角色不存在")
     return {}
@@ -102,7 +100,9 @@ async def delete_character_avatar(
     if old_avatar and old_avatar.startswith("/static/"):
         try:
             save_dir = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
+                os.path.dirname(
+                    os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+                ),
                 "static",
             )
             file_path = os.path.join(save_dir, os.path.basename(old_avatar))
