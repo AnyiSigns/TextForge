@@ -42,7 +42,7 @@ class CharacterResponse(BaseModel):
     description: str
     project_id: Optional[int] = Field(alias="projectId")
     avatar: Optional[str] = None
-    aliases: Optional[Dict[str, Any]] = None
+    aliases: Optional[List[str]] = None
     role: Optional[str] = None
     status: Optional[str] = None
     current_profile: Optional[str] = None
