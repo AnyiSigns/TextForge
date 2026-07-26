@@ -53,6 +53,18 @@ export async function runWorkflow(
         steps.push(step);
         opts?.onStep?.(step.nodeId, step.label, step.output, undefined);
       }
+      if (event.node && typeof event.output === 'string') {
+        const nodeId = String(event.node);
+        const text = event.output;
+        const existing = steps.find((s) => s.nodeId === nodeId);
+        if (existing) {
+          existing.output = text;
+          existing.status = 'done';
+        } else {
+          steps.push({ nodeId, label: nodeId, output: text, status: 'done' });
+        }
+        opts?.onStep?.(nodeId, nodeId, text, undefined);
+      }
       if (event.output && typeof event.output === 'object') {
         const out = event.output as Record<string, string>;
         for (const [nodeId, text] of Object.entries(out)) {

@@ -131,8 +131,12 @@ class WorkflowExecutor:
                     node_name = event.get("data", {}).get("node")
                     yield f"event:node_start\ndata:{json.dumps({'node':node_name})}\n\n"
                 elif kind == "on_node_end":
-                    node_name = event.get("data", {}).get("node")
-                    yield f"event:node_end\ndata:{json.dumps({'node':node_name})}\n\n"
+                    node_data = event.get("data", {})
+                    node_name = node_data.get("node")
+                    node_output = node_data.get("output", "")
+                    if not isinstance(node_output, str):
+                        node_output = json.dumps(node_output, ensure_ascii=False) if node_output is not None else ""
+                    yield f"event:node_end\ndata:{json.dumps({'node': node_name, 'output': node_output})}\n\n"
                 elif kind == "on_stream_end":
                     output = event.get("data", {}).get("final_output", {})
                     steps_payload = []
