@@ -45,8 +45,8 @@ class CharacterResponse(BaseModel):
     aliases: Optional[List[str]] = None
     role: Optional[str] = None
     status: Optional[str] = None
-    current_profile: Optional[str] = None
-    custom_role: Optional[str] = None
+    current_profile: Optional[str] = Field(default=None, alias="currentProfile")
+    custom_role: Optional[str] = Field(default=None, alias="customRole")
     relationships: Optional[List[Dict[str, Any]]] = None
     images: Optional[Dict[str, Any]] = None
     reference_images: Optional[Dict[str, Any]] = None
