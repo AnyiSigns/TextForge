@@ -144,7 +144,7 @@ export function useProjectCharactersTab(projectId: string) {
   };
 
   const charNameById = (id: string) =>
-    projectChars.find((c) => c.id === id)?.name ?? characters.find((c) => c.id === id)?.name ?? '（未知角色）';
+    projectChars.find((c) => String(c.id) === String(id))?.name ?? characters.find((c) => String(c.id) === String(id))?.name ?? '（未知角色）';
 
   const applyStatus = async () => {
     if (!statusTarget) return;
