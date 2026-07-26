@@ -89,8 +89,8 @@ class Character(Base):
     user_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
-    project_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    project_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("projects.id", ondelete="CASCADE"), index=True, nullable=True
     )
     name: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     description: Mapped[str] = mapped_column(Text, nullable=False)
