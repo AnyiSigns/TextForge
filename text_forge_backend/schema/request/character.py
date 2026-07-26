@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 
 
 class CharacterRequest(BaseModel):
-    project_id: int = Field(alias="projectId")
+    project_id: Optional[int] = Field(default=None, alias="projectId")
     name: str
     description: str
     role: str = ""
