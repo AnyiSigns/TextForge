@@ -94,7 +94,7 @@ class Character(Base):
     )
     name: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     description: Mapped[str] = mapped_column(Text, nullable=False)
-    avatar: Mapped[str] = mapped_column(String(255))
+    avatar: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     aliases: Mapped[dict] = mapped_column(JSONB, default=dict)
     role: Mapped[str] = mapped_column(String(255))
     status: Mapped[str] = mapped_column(
