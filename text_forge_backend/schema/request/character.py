@@ -7,7 +7,7 @@ class CharacterRequest(BaseModel):
     name: str
     description: str
     role: str = ""
-    aliases: Optional[Dict[str, Any]] = None
+    aliases: Optional[List[str]] = None
     status: Optional[str] = None
     current_profile: str = Field(default="", alias="currentProfile")
     custom_role: str = Field(default="", alias="customRole")
@@ -24,7 +24,7 @@ class CharacterUpdateRequest(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     role: Optional[str] = None
-    aliases: Optional[Dict[str, Any]] = None
+    aliases: Optional[List[str]] = None
     status: Optional[str] = None
     current_profile: Optional[str] = Field(default=None, alias="currentProfile")
     custom_role: Optional[str] = Field(default=None, alias="customRole")
