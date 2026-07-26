@@ -120,6 +120,7 @@ export async function generateWithWorkflow(
   //  - onStep（业务层）：本项目工作台用于增量渲染；
   //  - runOpts.onStep（底层 DAG 运行时）：节点级日志/埋点，与业务解耦。
   const streamStep: NonNullable<RunWorkflowOptions['onStep']> = (nodeId, label, output, systemPrompt) => {
+    console.log('[streamStep]', { nodeId, label, output: output?.slice?.(0, 120), systemPrompt });
     const step = runStepToStreamStep({ nodeId, label, output, status: 'done', systemPrompt });
     if (step) onStep?.(step);
     runOpts?.onStep?.(nodeId, label, output, systemPrompt);

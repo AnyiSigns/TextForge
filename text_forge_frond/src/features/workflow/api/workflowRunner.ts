@@ -42,7 +42,11 @@ export async function runWorkflow(
     buffer = parts.pop() || '';
     for (const part of parts) {
       const event = parseSSE(part);
-      if (!event) continue;
+      if (!event) {
+        if (part.trim()) console.log('[SSE raw]', part.slice(0, 200));
+        continue;
+      }
+      console.log('[SSE parsed]', event);
       if (event.node && event.node !== '__input__') {
         const step: WorkflowRunStep = {
           nodeId: String(event.node),
