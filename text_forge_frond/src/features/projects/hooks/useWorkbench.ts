@@ -95,7 +95,7 @@ export function useWorkbench(projectId: string) {
         if (cancelled) return;
 
         const targetWorkflowId = meta?.workflowId || BUILTIN_WORKFLOW_ID;
-        const activeWf = wfs.find((w) => w.id === targetWorkflowId) ?? wfs.find((w) => w.id === BUILTIN_WORKFLOW_ID) ?? null;
+        const activeWf = wfs.find((w) => w.id === targetWorkflowId) ?? wfs.find((w) => w.id === BUILTIN_WORKFLOW_ID) ?? wfs[0] ?? null;
 
         setSteps(loadedSteps);
         setWorkflows(wfs);
