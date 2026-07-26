@@ -44,6 +44,7 @@ export async function runWorkflow(
   const decoder = new TextDecoder();
   const steps: WorkflowRunStep[] = [];
   let buffer = '';
+  let currentNode: { id: string; label: string } | null = null;
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -60,6 +61,7 @@ export async function runWorkflow(
       const eventType = event.type || event.event || '';
       if ((eventType === 'node_start' || eventType === 'on_chain_start') && event.node && event.node !== '__input__') {
         const nodeId = String(event.node);
+        currentNode = { id: nodeId, label: nodeId };
         const existing = steps.find((s) => s.nodeId === nodeId);
         if (!existing) {
           steps.push({ nodeId, label: nodeId, output: '', status: 'running' });
@@ -67,17 +69,19 @@ export async function runWorkflow(
         }
       }
       if ((eventType === 'node_stream' || eventType === 'on_chat_model_stream') && event.node && typeof event.output === 'string') {
-        const nodeId = String(event.node);
         const text = event.output;
-        if (!text || nodeId === 'ChatOpenAI' || nodeId === 'LLM' || nodeId === 'llm') return;
+        if (!text) return;
+        const target = currentNode?.id ? currentNode.id : String(event.node);
+        const nodeId = target === 'ChatOpenAI' ? (currentNode?.id || target) : target;
+        const label = currentNode?.label || nodeId;
         const existing = steps.find((s) => s.nodeId === nodeId);
         if (existing) {
           existing.output = (existing.output || '') + text;
           existing.status = 'running';
         } else {
-          steps.push({ nodeId, label: nodeId, output: text, status: 'running' });
+          steps.push({ nodeId, label, output: text, status: 'running' });
         }
-        opts?.onStep?.(nodeId, nodeId, existing ? existing.output : text, undefined);
+        opts?.onStep?.(nodeId, label, existing ? existing.output : text, undefined);
       }
       if ((eventType === 'node_end' || eventType === 'on_chain_end') && event.node) {
         const nodeId = String(event.node);
