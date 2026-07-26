@@ -17,6 +17,7 @@ import { ErrorBoundary } from '@/shared/components/ErrorBoundary';
 import { Button } from '@/components/ui/button';
 import { ProcessNav, type ProcessTab } from '@/features/projects';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { BUILTIN_WORKFLOW_ID } from '@/types';
 
 import { FileText, ListTree, Lightbulb, FileCog, Users, ImageIcon, Clapperboard, BookOpen, Info, Wand2, Check, CheckCircle2, PenLine, Sparkles } from 'lucide-react';
 import { useWorkbench } from '@/features/projects';
@@ -85,7 +86,14 @@ export default function ProjectWorkbench() {
           <Wand2 className="w-3.5 h-3.5" /> 创作流水线
         </span>
         <Select value={activeWorkflowId} onValueChange={handleBindWorkflow}>
-          <SelectTrigger className="w-[220px]"><SelectValue>{(v: string) => workflows.find((w) => w.id === v)?.name ?? v}</SelectValue></SelectTrigger>
+          <SelectTrigger className="w-[220px]">
+            <SelectValue>{(v: string) => {
+              const wf = workflows.find((w) => w.id === v);
+              if (wf) return wf.name;
+              if (v === BUILTIN_WORKFLOW_ID) return '内置创作流水线';
+              return v;
+            }}</SelectValue>
+          </SelectTrigger>
           <SelectContent>
             {workflows.map((w) => (
               <SelectItem key={w.id} value={w.id}>

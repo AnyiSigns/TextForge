@@ -13,6 +13,7 @@ from repository.workflow_repo import WorkflowRepository
 from utils.logger import get_logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from collections import deque
+from model.model import ModelConfig
 
 logger = get_logger(__name__)
 
@@ -138,12 +139,14 @@ class WorkflowExecutor:
                     executed = output.get("executed_steps", [])
                     outputs_map = output.get("step_outputs", {})
                     for sid in executed:
-                        steps_payload.append({
-                            "nodeId": sid,
-                            "label": sid,
-                            "output": outputs_map.get(sid, ""),
-                            "status": "done",
-                        })
+                        steps_payload.append(
+                            {
+                                "nodeId": sid,
+                                "label": sid,
+                                "output": outputs_map.get(sid, ""),
+                                "status": "done",
+                            }
+                        )
                     yield f"event:done\ndata:{json.dumps({'steps': steps_payload, 'output': output})}\n\n"
         except Exception as e:
             logger.error(f"工作流执行异常", exc_info=True)
