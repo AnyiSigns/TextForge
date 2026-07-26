@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useState, useEffect } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
-import { CircleDot, Eye, Pencil, Link2, Images, Lock, Unlock, Tag } from 'lucide-react';
+import { CircleDot, Eye, Link2, Images, Lock, Unlock, Tag } from 'lucide-react';
 import Image from 'next/image';
 import { Character, CharacterRole } from '@/types';
 
@@ -20,7 +20,6 @@ interface CharacterDetailSheetProps {
   roleLabel: (char: Character | { role?: string; customRole?: string }) => string | null;
   statusBadge: (status?: string) => React.ReactNode;
   onOpenStatus: (c: Character) => void;
-  onOpenDetailRoleEdit: (c: Character) => void;
   onDetailRole: (v: string) => void;
   onDetailCustomRole: (v: string) => void;
   onSaveDetailRole: () => void;
@@ -35,7 +34,7 @@ interface CharacterDetailSheetProps {
 export function CharacterDetailSheet(props: CharacterDetailSheetProps) {
   const {
     detailChar, detailRole, detailCustomRole, charNameById, rolePresets, roleLabel, statusBadge,
-    onOpenStatus, onOpenDetailRoleEdit, onDetailRole, onDetailCustomRole, onSaveDetailRole,
+    onOpenStatus, onDetailRole, onDetailCustomRole, onSaveDetailRole,
     onSaveCurrentProfile, onSaveAliases, onOpenRelations, onSetDetailChar, toggleReferenceImage, exportImages,
   } = props;
   const [aliasesDraft, setAliasesDraft] = useState(
@@ -71,35 +70,30 @@ export function CharacterDetailSheet(props: CharacterDetailSheetProps) {
                 <Button size="sm" variant="outline" className="rounded-xl" onClick={() => onOpenStatus(detailChar)}>
                   <CircleDot className="w-3.5 h-3.5 mr-1" /> 设置状态
                 </Button>
-                <Button size="sm" variant="outline" className="rounded-xl" onClick={() => onOpenDetailRoleEdit(detailChar)}>
-                  <Pencil className="w-3.5 h-3.5 mr-1" /> 编辑定位
-                </Button>
               </div>
 
-              {(detailRole !== '' || detailChar.role) && (
-                <div className="space-y-1.5 rounded-xl border border-border/40 p-3">
-                  <label className="text-xs text-muted-foreground">故事定位</label>
-                  <select
-                    value={detailRole}
-                    onChange={(e) => onDetailRole(e.target.value)}
-                    className="w-full h-9 rounded-xl border border-border bg-background px-3 text-sm"
-                  >
-                    <option value="">未设定</option>
-                    {rolePresets.map((r) => (
-                      <option key={r.value} value={r.value}>{r.label}</option>
-                    ))}
-                  </select>
-                  {detailRole === 'custom' && (
-                    <Input
-                      value={detailCustomRole}
-                      onChange={(e) => onDetailCustomRole(e.target.value)}
-                      placeholder="自定义定位，如：亦正亦邪的军师"
-                      className="mt-1.5 h-9 rounded-xl text-sm"
-                    />
-                  )}
-                  <Button size="sm" className="rounded-xl w-full" onClick={onSaveDetailRole}>保存定位</Button>
-                </div>
-              )}
+              <div className="space-y-1.5 rounded-xl border border-border/40 p-3">
+                <label className="text-xs text-muted-foreground">故事定位</label>
+                <select
+                  value={detailRole}
+                  onChange={(e) => onDetailRole(e.target.value)}
+                  className="w-full h-9 rounded-xl border border-border bg-background px-3 text-sm"
+                >
+                  <option value="">未设定</option>
+                  {rolePresets.map((r) => (
+                    <option key={r.value} value={r.value}>{r.label}</option>
+                  ))}
+                </select>
+                {detailRole === 'custom' && (
+                  <Input
+                    value={detailCustomRole}
+                    onChange={(e) => onDetailCustomRole(e.target.value)}
+                    placeholder="自定义定位，如：亦正亦邪的军师"
+                    className="mt-1.5 h-9 rounded-xl text-sm"
+                  />
+                )}
+                <Button size="sm" className="rounded-xl w-full" onClick={onSaveDetailRole}>保存定位</Button>
+              </div>
 
               <div className="space-y-2">
                 <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.12em]">角色设定 / 介绍</p>

@@ -232,12 +232,6 @@ export function useProjectCharactersTab(projectId: string) {
     }
   };
 
-  // 详情 Sheet：打开定位编辑
-  const openDetailRoleEdit = (char: Character) => {
-    setDetailRole(char.role ?? '');
-    setDetailCustomRole(char.customRole ?? '');
-  };
-
   const filtered = projectChars.filter((c) =>
     (c.name ?? '').includes(searchTerm) || (c.description ?? '').includes(searchTerm)
   );
@@ -290,7 +284,6 @@ export function useProjectCharactersTab(projectId: string) {
     setDetailRole,
     detailCustomRole,
     setDetailCustomRole,
-    openDetailRoleEdit,
     saveDetailRole,
     saveCurrentProfile,
     saveAliases,
