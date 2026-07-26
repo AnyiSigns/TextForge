@@ -12,11 +12,13 @@ import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/shared/components';
 import { toast } from 'sonner';
 import { useProjectStore } from '@/features/projects';
+import { BUILTIN_WORKFLOW_ID } from '@/types';
 
 export default function WorkflowPage() {
   const router = useRouter();
   const [list, setList] = useState<Workflow[]>([]);
   const [loading, setLoading] = useState(true);
+  const projects = useProjectStore((s) => s.projects);
 
   useEffect(() => {
     useProjectStore.getState().load().catch(() => {});
@@ -62,9 +64,6 @@ export default function WorkflowPage() {
                   </div>
                    <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary shrink-0">{(wf.nodes ?? []).length} 步骤</span>
                 </div>
-                <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-                  <Users className="w-3 h-3" /> 已应用到 {countWorkflowUsages(wf.id)} 个项目
-                </p>
                 <div className="flex items-center gap-2">
                   <Button size="sm" variant="outline" className="flex-1" onClick={() => router.push(`/workflow/${wf.id}`)}>
                     <Pencil className="w-4 h-4 mr-1.5" /> 编辑
