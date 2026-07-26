@@ -78,6 +78,11 @@ let versionMeta: { lastSyncAt: string; version?: number } = {
   version: 0,
 };
 
+const normalizeChar = (char: Character): Character => ({
+  ...char,
+  projectId: char.projectId !== undefined && char.projectId !== null ? String(char.projectId) : null,
+});
+
 export const useCharacterStore = create<CharacterStore>()(
   persist(
     (set, get) => ({
@@ -133,7 +138,7 @@ export const useCharacterStore = create<CharacterStore>()(
       syncFromBackend: async () => {
         try {
           const chars = await fetchCharacters();
-          if (Array.isArray(chars) && chars.length) set({ characters: chars });
+          if (Array.isArray(chars) && chars.length) set({ characters: chars.map(normalizeChar) });
         } catch {
           /* 后端未就绪，保留本地 */
         }
@@ -154,7 +159,7 @@ export const useCharacterStore = create<CharacterStore>()(
           const created = await apiCreateCharacter(input);
           set((s) => ({
             characters: s.characters.map((c) =>
-              c.id === optimistic.id ? { ...created, id: created.id || optimistic.id } : c,
+              c.id === optimistic.id ? { ...normalizeChar(created), id: created.id || optimistic.id } : c,
             ),
           }));
           return created ?? optimistic;
@@ -179,7 +184,7 @@ export const useCharacterStore = create<CharacterStore>()(
         const prev = get().characters;
         // B2: 旧字段 referenceImage（单张）向 referenceImages（数组）归一，消除双源口径；
         // 合并去重、最多 5 张，下游统一只读 referenceImages。
-        const normalize = (
+        const normalizeInner = (
           c: Character & {
             referenceImage?: string | null;
             referenceImages?: string[] | null;
@@ -199,7 +204,7 @@ export const useCharacterStore = create<CharacterStore>()(
         };
         set((s) => ({
           characters: s.characters.map((c) =>
-            c.id === id ? normalize({ ...c, ...patch, origin: 'user' }) : c,
+            c.id === id ? normalizeInner({ ...c, ...patch, origin: 'user' }) : c,
           ),
         }));
         try {
@@ -207,7 +212,7 @@ export const useCharacterStore = create<CharacterStore>()(
           if (updated)
             set((s) => ({
               characters: s.characters.map((c) =>
-                c.id === id ? normalize({ ...c, ...updated }) : c,
+                c.id === id ? normalizeInner(normalizeChar({ ...c, ...updated })) : c,
               ),
             }));
           return updated;
@@ -245,7 +250,7 @@ export const useCharacterStore = create<CharacterStore>()(
           });
           if (updated)
             set((s) => ({
-              characters: s.characters.map((c) => (c.id === id ? { ...c, ...updated } : c)),
+              characters: s.characters.map((c) => (c.id === id ? { ...normalizeChar(c), ...updated } : c)),
             }));
           return updated ?? (get().characters.find((c) => c.id === id) as Character);
         } catch (e) {
