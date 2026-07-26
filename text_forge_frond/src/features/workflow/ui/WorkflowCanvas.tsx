@@ -6,11 +6,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Save, Play, SendToBack, Trash2, ArrowDown, Loader2, GripVertical } from 'lucide-react';
+import { Save, Trash2, ArrowDown, GripVertical } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
 import type { Workflow } from '@/features/workflow';
 import { KIND_META } from './workflowMeta';
 import { AGENT_ROLES } from '@/shared/lib/agentRoles';
@@ -18,28 +15,18 @@ import { AGENT_ROLES } from '@/shared/lib/agentRoles';
 interface WorkflowCanvasProps {
   wf: Workflow;
   selected: string | null;
-  running: boolean;
-  writingProject: boolean;
-  results: Record<string, string>;
-  projects: { id: string; title: string }[];
-  targetProject: string;
   onName: (v: string) => void;
   onSelect: (id: string) => void;
   onRemoveNode: (id: string) => void;
   onReorder: (fromId: string, toId: string) => void;
   onSave: () => void;
-  onRun: () => void;
-  onTargetProject: (v: string) => void;
-  onRunToProject: () => void;
 }
 
 export function WorkflowCanvas(props: WorkflowCanvasProps) {
   const {
-    wf, selected, running, writingProject, results, projects, targetProject,
-    onName, onSelect, onRemoveNode, onReorder, onSave, onRun, onTargetProject, onRunToProject,
+    wf, selected, onName, onSelect, onRemoveNode, onReorder, onSave,
   } = props;
   const [dragId, setDragId] = useState<string | null>(null);
-  const [expandedResult, setExpandedResult] = useState<string | null>(null);
 
   return (
     <Card className="glass-card">
@@ -48,14 +35,6 @@ export function WorkflowCanvas(props: WorkflowCanvasProps) {
           <Input value={wf.name} onChange={(e) => onName(e.target.value)} className="font-medium max-w-xs" />
           <div className="flex gap-2 flex-wrap items-center">
             <Button size="sm" variant="outline" onClick={onSave}><Save className="w-4 h-4 mr-1.5" /> 保存</Button>
-            <Button size="sm" onClick={onRun} disabled={running}><Play className="w-4 h-4 mr-1.5" /> {running ? '运行中' : '运行'}</Button>
-            <div className="flex items-center gap-1.5 ml-1">
-              <SelectProject value={targetProject} onChange={onTargetProject} projects={projects} />
-              <Button size="sm" variant="secondary" onClick={onRunToProject} disabled={writingProject || !targetProject}>
-                {writingProject ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <SendToBack className="w-4 h-4 mr-1.5" />}
-                写入项目
-              </Button>
-            </div>
           </div>
         </div>
 
@@ -99,32 +78,12 @@ export function WorkflowCanvas(props: WorkflowCanvasProps) {
                   <p className="text-xs text-muted-foreground">
                     {m.label}
                     {node.toolIds?.length ? ` · ${node.toolIds.join('/')}` : ''}
-                    {results[node.id] ? ' · 已运行' : ''}
                   </p>
                 </div>
-                {results[node.id] && (
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); setExpandedResult(expandedResult === node.id ? null : node.id); }}
-                    className="text-[10px] px-2 py-0.5 rounded-full bg-green-500/15 text-green-600 hover:bg-green-500/25"
-                    title="查看输出"
-                  >已运行</button>
-                )}
                 <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={(e) => { e.stopPropagation(); onRemoveNode(node.id); }}>
                   <Trash2 className="w-4 h-4" />
                 </Button>
                 {i < wf.nodes.length - 1 && <ArrowDown className="w-4 h-4 text-muted-foreground/40 absolute" />}
-                {expandedResult === node.id && results[node.id] && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    className="absolute left-3 right-3 top-full mt-1 z-10 rounded-lg border border-border/60 bg-popover/95 backdrop-blur shadow-elegant p-3 text-xs whitespace-pre-wrap break-words max-h-48 overflow-y-auto"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <p className="font-medium text-muted-foreground mb-1">{node.label} · 运行输出</p>
-                    {results[node.id]}
-                  </motion.div>
-                )}
               </motion.div>
             );
           })}
@@ -132,49 +91,7 @@ export function WorkflowCanvas(props: WorkflowCanvasProps) {
         {wf.nodes.length === 0 && (
           <p className="text-sm text-muted-foreground text-center py-8">从左侧添加步骤开始编排</p>
         )}
-
-        {Object.keys(results).length > 0 && (
-          <div className="mt-4 space-y-2">
-            <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">运行结果（{Object.keys(results).length} 步）</p>
-            <div className="rounded-xl border border-border/50 overflow-hidden divide-y divide-border/40">
-              {wf.nodes.map((node) => results[node.id] && (
-                <div key={node.id} className="text-sm">
-                  <button
-                    type="button"
-                    onClick={() => setExpandedResult(expandedResult === node.id ? null : node.id)}
-                    className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-accent/30"
-                  >
-                    <span className="font-medium truncate">{node.label}</span>
-                    <span className="text-[10px] text-muted-foreground shrink-0">{expandedResult === node.id ? '收起' : '展开'}</span>
-                  </button>
-                  {expandedResult === node.id && (
-                    <pre className="px-3 pb-3 text-xs text-muted-foreground whitespace-pre-wrap break-words max-h-56 overflow-y-auto">{results[node.id]}</pre>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </CardContent>
     </Card>
-  );
-}
-
-function SelectProject({
-  value,
-  onChange,
-  projects,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  projects: { id: string; title: string }[];
-}) {
-  return (
-    <Select value={value} onValueChange={(v) => onChange(v ?? '')}>
-      <SelectTrigger className="w-[160px] h-7 text-xs"><SelectValue placeholder="选目标项目">{(v: string) => projects.find((p) => p.id === v)?.title ?? v}</SelectValue></SelectTrigger>
-      <SelectContent>
-        {projects.map((p) => <SelectItem key={p.id} value={p.id}>{p.title}</SelectItem>)}
-      </SelectContent>
-    </Select>
   );
 }
