@@ -89,8 +89,10 @@ export default function WorkflowPage() {
         </div>
       </div>
 
-      {filtered.length === 0 ? (
+      {list.length === 0 ? (
         <Card className="glass-card mt-4"><CardContent><EmptyState icon={WorkflowIcon} title="还没有创作流程" description="创建你的第一个步骤组合" /></CardContent></Card>
+      ) : filtered.length === 0 ? (
+        <Card className="glass-card mt-4"><CardContent><EmptyState icon={WorkflowIcon} title="没有匹配的流程" description="试试别的关键词" /></CardContent></Card>
       ) : (
         <>
           {viewMode === 'list' ? (
