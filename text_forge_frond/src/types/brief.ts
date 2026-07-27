@@ -30,5 +30,6 @@ export interface ProjectBrief {
   // 平铺字段来源标记：key=字段名（genre/worldview/tone/...），value=来源。
   // 用户手动改某字段 → 标 'user'，种子回填时该字段跳过。
   fieldOrigins?: Partial<Record<'genre' | 'worldview' | 'tone' | 'forbidden' | 'styleGuide' | 'defaultVisionModel' | 'defaultStyle' | 'wordCountGoal' | 'dailyWordCountGoal', Origin>>;
+  autoSummary?: boolean; // 是否自动生成章节摘要
   updatedAt?: string;
 }

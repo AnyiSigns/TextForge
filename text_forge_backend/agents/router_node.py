@@ -16,6 +16,7 @@ async def router_node(state: RouterState):
     messages = [SystemMessage(EXECUTOR_PROMPT), HumanMessage(input_msg)]
     response = await llm.router.ainvoke(messages)
     try:
+        print(f"----执行器:{response.content}")
         json_match = re.search(r"\{[^}]*\}", response.content)  # type: ignore
         if json_match:
             decision = json.loads(json_match.group())

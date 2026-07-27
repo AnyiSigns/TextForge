@@ -50,3 +50,20 @@ class ProjectDetailResponse(BaseModel):
     characters: List[CharacterResponse]
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+class BriefResponse(BaseModel):
+    project_id: int = Field(alias="projectId")
+    genre: str
+    worldview: str
+    tone: str
+    forbidden: str
+    style_guide: str = Field(alias="styleGuide")
+    word_count_goal: Optional[int] = Field(default=None, alias="wordCountGoal")
+    daily_word_count_goal: Optional[int] = Field(default=None, alias="dailyWordCountGoal")
+    sections: List[Dict[str, Any]]
+    field_origins: Optional[Dict[str, Any]] = Field(default=None, alias="fieldOrigins")
+    auto_summary: Optional[bool] = Field(default=None, alias="autoSummary")
+
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
+

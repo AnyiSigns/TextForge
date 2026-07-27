@@ -13,6 +13,7 @@ import { useBriefStore, briefToContextLine } from '@/features/projects';
 import type { ProjectBrief, BriefSection } from '@/types';
 import { cn } from '@/lib/utils';
 import { uid } from '@/lib/utils/id';
+import { Switch } from '@/components/ui/switch';
 
 export function BriefPanel({ projectId, projectTitle }: { projectId: string; projectTitle?: string }) {
   const brief = useBriefStore((s) => s.briefs[projectId]);
@@ -30,6 +31,7 @@ export function BriefPanel({ projectId, projectTitle }: { projectId: string; pro
     wordCountGoal: undefined,
     dailyWordCountGoal: undefined,
     sections: [],
+    autoSummary: false,
   });
   const [isSaving, setIsSaving] = useState(false);
 
@@ -73,7 +75,7 @@ export function BriefPanel({ projectId, projectTitle }: { projectId: string; pro
       const cleaned: ProjectBrief = {
         ...form,
         projectId,
-        // 过滤掉标题为空的无效维度
+        autoSummary: form.autoSummary ?? false,
         sections: (form.sections ?? []).filter((s) => s.title.trim()),
         updatedAt: new Date().toISOString(),
       };
@@ -129,6 +131,14 @@ export function BriefPanel({ projectId, projectTitle }: { projectId: string; pro
           <div className="space-y-1.5">
             <Label>创作禁忌</Label>
             <Textarea value={form.forbidden ?? ''} onChange={(e) => set('forbidden', e.target.value)} placeholder="AI生成内容和对话时需要避开的内容" rows={2} />
+          </div>
+
+          <div className="flex items-center justify-between rounded-lg border border-border/40 bg-background/40 p-3">
+            <div>
+              <Label className="text-sm">自动生成章节摘要</Label>
+              <p className="text-xs text-muted-foreground mt-1">每次生成完成后，自动为本章生成简要摘要，用于灵感展示和后续生成上下文。</p>
+            </div>
+            <Switch checked={!!form.autoSummary} onCheckedChange={(v) => setForm((p) => ({ ...p, autoSummary: v }))} />
           </div>
 
           <div className="space-y-3 pt-2">

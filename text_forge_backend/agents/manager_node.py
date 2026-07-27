@@ -86,6 +86,7 @@ async def manager_node(state: ParentState):
     try:
         decision = json.loads(router_result["decision"])
         target_executor = decision.get("executor", "main")
+
     except:
         target_executor = "main"
     print(f"[Manager]:使用执行器{target_executor}")
@@ -118,9 +119,15 @@ async def call_tool(state: ParentState) -> dict:
 
     result = await tool_graph.ainvoke(
         {
-            "query": state["input_messages"],
+            "input_summary": state.get("input_summary", ""),
+            "input_worldview": state.get("input_worldview", ""),
+            "input_brief_summary": state.get("input_brief_summary", ""),
+            "input_characters": state.get("input_characters", ""),
+            "input_recent_chapters": state.get("input_recent_chapters", ""),
+            "input_outline": state.get("input_outline", ""),
+            "query": state["input_summary"],
             "model_config": state["model_config"],
-        }  # type: ignore
+        }
     )
     return {
         "step_outputs": {"step_tool": result["tool_result"]},
@@ -146,7 +153,13 @@ async def call_main(state: ParentState) -> dict:
             tool_graph = graph_register.get_compiled("tool")
             tool_result = await tool_graph.ainvoke(
                 {
-                    "query": state["input_messages"],
+                    "input_summary": state.get("input_summary", ""),
+                    "input_worldview": state.get("input_worldview", ""),
+                    "input_brief_summary": state.get("input_brief_summary", ""),
+                    "input_characters": state.get("input_characters", ""),
+                    "input_recent_chapters": state.get("input_recent_chapters", ""),
+                    "input_outline": state.get("input_outline", ""),
+                    "query": state["input_summary"],
                     "model_config": state["model_config"],
                 }
             )
@@ -160,6 +173,12 @@ async def call_main(state: ParentState) -> dict:
 
     result = await main_graph.ainvoke(
         {
+            "input_summary": state.get("input_summary", ""),
+            "input_worldview": state.get("input_worldview", ""),
+            "input_brief_summary": state.get("input_brief_summary", ""),
+            "input_characters": state.get("input_characters", ""),
+            "input_recent_chapters": state.get("input_recent_chapters", ""),
+            "input_outline": state.get("input_outline", ""),
             "system_prompt": system_prompt,
             "input_context": context,
             "output": "",
@@ -189,6 +208,12 @@ async def call_compression(state: ParentState) -> dict:
 
     result = await audit_graph.ainvoke(
         {
+            "input_summary": state.get("input_summary", ""),
+            "input_worldview": state.get("input_worldview", ""),
+            "input_brief_summary": state.get("input_brief_summary", ""),
+            "input_characters": state.get("input_characters", ""),
+            "input_recent_chapters": state.get("input_recent_chapters", ""),
+            "input_outline": state.get("input_outline", ""),
             "system_prompt": compression_prompt,
             "input_context": {"text": compress_text},
             "output": "",
@@ -226,6 +251,12 @@ async def call_audit(state: ParentState) -> dict:
 
     result = await audit_graph.ainvoke(
         {
+            "input_summary": state.get("input_summary", ""),
+            "input_worldview": state.get("input_worldview", ""),
+            "input_brief_summary": state.get("input_brief_summary", ""),
+            "input_characters": state.get("input_characters", ""),
+            "input_recent_chapters": state.get("input_recent_chapters", ""),
+            "input_outline": state.get("input_outline", ""),
             "system_prompt": system_prompt,
             "input_context": context,
             "output": "",

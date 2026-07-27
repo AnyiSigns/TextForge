@@ -9,10 +9,13 @@ from repository.project_repo import (
     ProjectRepository,
 )
 from repository.workflow_repo import WorkflowRepository
+from repository.outline_repo import OutlineRepository
 from utils.logger import get_logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from collections import deque
 from model.model import ModelConfig
+from core.model_factory import ModelFactory
+from langchain_core.messages import SystemMessage, HumanMessage
 
 logger = get_logger(__name__)
 
@@ -62,7 +65,7 @@ class WorkflowExecutor:
                 if in_degree[neighbor] == 0:
                     queue.append(neighbor)
         if len(sorted_nodes) != len(nodes):
-            raise ValueError("å·¥ä½œæµå­˜åœ¨å¾ªç¯ä¾èµ–")
+            raise ValueError("¹¤×÷Á÷´æÔÚÑ­»·ÒÀÀµ")
         return sorted_nodes
 
     async def run(
@@ -71,37 +74,62 @@ class WorkflowExecutor:
         workflow_repo = WorkflowRepository(self.session)
         workflow = await workflow_repo.get_workflow_id(workflow_id, user_id)
         if not workflow:
-            raise ValueError("æµæ°´çº¿ä¸å­˜åœ¨")
+            raise ValueError("Á÷Ë®Ïß²»´æÔÚ")
         project_repo = ProjectRepository(self.session)
         project = await project_repo.get(project_id)
         if not project or project.user_id != user_id:
-            raise ValueError("é¡¹ç›®ä¸å­˜åœ¨")
-        parts = [f"#é¡¹ç›®æ ‡é¢˜\n{project.title}"]
+            raise ValueError("ÏîÄ¿²»´æÔÚ")
+        parts = [f"#ÏîÄ¿±êÌâ\n{project.title}"]
         if project.description:
-            parts.append(f"#é¡¹ç›®æè¿°\n{project.description}")
+            parts.append(f"#ÏîÄ¿ÃèÊö\n{project.description}")
         if project.genre:
-            parts.append(f"ç±»å‹\n{project.genre}")
+            parts.append(f"ÀàĞÍ\n{project.genre}")
 
         brief_repo = BriefRepository(self.session)
         brief = await brief_repo.get_brief(project_id)
+        worldview_text = ""
         if brief:
-            parts.append(f"# ä¸–ç•Œè§‚\n{brief.worldview or ''}")
-            parts.append(f"# æ–‡é£/åŸºè°ƒ\n{brief.tone or ''}")
-            parts.append(f"# åˆ›ä½œç¦å¿Œ\n{brief.forbidden or ''}")
-            parts.append(f"# é£æ ¼æŒ‡å—\n{brief.style_guide or ''}")
+            worldview_text = f"# ÊÀ½ç¹Û\n{brief.worldview or ''}\n# ÎÄ·ç/»ùµ÷\n{brief.tone or ''}\n# ´´×÷½û¼É\n{brief.forbidden or ''}\n# ·ç¸ñÖ¸ÄÏ\n{brief.style_guide or ''}"
+            parts.append(worldview_text)
 
         char_repo = CharacterRepository(self.session)
         characters = await char_repo.project_character_detail(user_id, project_id)
+        char_text = ""
         if characters:
             char_lines = [f"-{c.name}:{c.description}" for c in characters]
-            parts.append(f"#è§’è‰²è®¾å®š\n" + "\n".join(char_lines))
+            char_text = f"#½ÇÉ«Éè¶¨\n" + "\n".join(char_lines)
+            parts.append(char_text)
+
+        outline_repo = OutlineRepository(self.session)
+        outlines = await outline_repo.list_outlines(project_id)
+        outline_text = ""
+        recent_chapters_text = ""
+        brief_summary_text = ""
+        if outlines:
+            raw = outlines[0].data
+            volumes = raw if isinstance(raw, list) else raw.get("data", [])
+            outline_lines = []
+            for vol in volumes:
+                outline_lines.append(f"## {vol.get('title', '')}")
+                for ch in vol.get("chapters", []):
+                    outline_lines.append(f"- {ch.get('title', '')}")
+                    if ch.get("summary"):
+                        brief_summary_text += f"- {ch['title']}£º{ch['summary']}\n"
+                    if ch.get("content"):
+                        recent_chapters_text += f"\n# {ch['title']}\n{ch['content'][:3000]}"
+            outline_text = "\n".join(outline_lines)
 
         input_text = "\n\n".join(parts)
         nodes = self._topological_store(workflow.nodes or [])  # type: ignore
         model_config = await self._get_user_model_config(user_id)
 
         inital_state: ParentState = {
-            "input_messages": input_text,
+            "input_summary": input_text,
+            "input_worldview": worldview_text,
+            "input_brief_summary": brief_summary_text,
+            "input_characters": char_text,
+            "input_recent_chapters": recent_chapters_text,
+            "input_outline": outline_text,
             "workflow_nodes": nodes,
             "step_outputs": {},
             "executed_steps": [],
@@ -112,6 +140,7 @@ class WorkflowExecutor:
         config = {"configurable": {"thread_id": thread_id}}
         parent_graph = await self._get_parent_graph()
         try:
+            outputs_map: dict = {}
             async for event in parent_graph.astream_events(
                 inital_state, config=config, version="v2"  # type: ignore
             ):  # type: ignore
@@ -154,6 +183,8 @@ class WorkflowExecutor:
                         if isinstance(output, dict)
                         else {}
                     ) or {}
+                    if isinstance(step_outputs, dict):
+                        outputs_map.update(step_outputs)
                     node_output = step_outputs.get(name) or ""
                     if not isinstance(node_output, str):
                         node_output = json.dumps(node_output, ensure_ascii=False)
@@ -162,10 +193,10 @@ class WorkflowExecutor:
                     )
                     yield f"event:node_end\ndata:{json.dumps({'node': name, 'output': node_output})}\n\n"
                 elif kind == "on_stream_end":
-                    output = event.get("data", {}).get("final_output", {})
+                    output = event.get("data", {}).get("final_output", {}) or {}
                     steps_payload = []
                     executed = output.get("executed_steps", [])
-                    outputs_map = output.get("step_outputs", {})
+                    outputs_map = output.get("step_outputs", outputs_map)
                     for sid in executed:
                         steps_payload.append(
                             {
@@ -177,5 +208,38 @@ class WorkflowExecutor:
                         )
                     yield f"event:done\ndata:{json.dumps({'steps': steps_payload, 'output': output})}\n\n"
         except Exception as e:
-            logger.error(f"å·¥ä½œæµæ‰§è¡Œå¼‚å¸¸", exc_info=True)
+            logger.error("¹¤×÷Á÷Ö´ĞĞÒì³£", exc_info=True)
             yield f"event:error\ndata:{json.dumps({'error':str(e)})}\n\n"
+            return
+
+        if brief and getattr(brief, "auto_summary", False):
+            try:
+                await self._auto_summarize(self.session, project_id, outputs_map)
+            except Exception as se:
+                logger.error("×Ô¶¯Éú³ÉÕªÒªÊ§°Ü", exc_info=True)
+
+
+    async def _auto_summarize(self, session, project_id, outputs_map):
+        outlines = await OutlineRepository(session).list_outlines(project_id)
+        if not outlines:
+            return
+        raw = outlines[0].data
+        volumes = raw if isinstance(raw, list) else raw.get('data', [])
+        all_chapters = [ch for vol in volumes for ch in vol.get('chapters', [])]
+        target = next((ch for ch in all_chapters if not ch.get('summary') and ch.get('content')), None)
+        if not target:
+            return
+        first_output = next((str(v) for v in outputs_map.values() if v), "")
+        if not first_output:
+            return
+        try:
+            model_config = await self._get_user_model_config(outlines[0].project_id)
+            llm = ModelFactory(model_config)
+            prompt = "ÇëÓÃ2-3¾ä»°¸ÅÀ¨ÒÔÏÂÕÂ½ÚÄÚÈİ£¬±£Áô¹Ø¼üÇé½ÚºÍºËĞÄĞÅÏ¢£¬ÓïÑÔ¼ò½à¡£\n\nÕÂ½Ú±êÌâ£º" + str(target.get('title', '')) + "\nÕıÎÄ£º" + first_output[:4000]
+            messages = [SystemMessage("ÄãÊÇÕÂ½ÚÕªÒªÖúÊÖ"), HumanMessage(prompt)]
+            res = await llm.main.ainvoke(messages)
+            target["summary"] = res.content.strip()
+            await OutlineRepository(session).update_outline(outlines[0].id, data=volumes)
+        except Exception:
+            pass
+

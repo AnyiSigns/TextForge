@@ -41,7 +41,12 @@ class AuditState(TypedDict):
 
 
 class ParentState(TypedDict):
-    input_messages: str
+    input_summary: str
+    input_worldview: str
+    input_brief_summary: str
+    input_characters: str
+    input_recent_chapters: str
+    input_outline: str
     workflow_nodes: List[Dict[str, Any]]
     step_outputs: Annotated[dict, _merge_dicts]
     executed_steps: Annotated[List[str], operator.add]

@@ -5,20 +5,29 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ChevronDown, Plus, Trash2, Lightbulb, FileInput } from 'lucide-react';
+import { ChevronDown, Plus, Trash2, Lightbulb, FileInput, BookOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { loadInspiration, saveInspiration, type InspirationItem } from '@/lib/storage/backup';
 import { dispatchInsertStep } from '@/lib/events/projectEvents';
 import { toast } from 'sonner';
+import { listOutlines } from '@/features/projects';
+import type { OutlineVolume } from '@/lib/storage/backup';
 
 export function InspirationBoard({ projectId }: { projectId: string }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [items, setItems] = useState<InspirationItem[]>([]);
   const [newContent, setNewContent] = useState('');
+  const [volumes, setVolumes] = useState<OutlineVolume[]>([]);
 
   useEffect(() => {
     let active = true;
     loadInspiration(projectId).then((s) => { if (active) setItems(s); }).catch(() => {});
+    listOutlines(Number(projectId)).then((res) => {
+      if (!active) return;
+      if (res.length > 0 && Array.isArray(res[0].data)) {
+        setVolumes(res[0].data);
+      }
+    }).catch(() => {});
     return () => { active = false; };
   }, [projectId]);
 
@@ -82,6 +91,22 @@ export function InspirationBoard({ projectId }: { projectId: string }) {
           {items.length > 0 && (
             <p className="text-xs text-center text-muted-foreground">已自动保存</p>
           )}
+
+          <div className="space-y-2 border-t border-border/40 pt-3">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+              <BookOpen className="w-3.5 h-3.5" /> 章节摘要
+            </p>
+            {(() => {
+              const chapters = (Array.isArray(volumes) ? volumes : []).flatMap((v) => Array.isArray(v.chapters) ? v.chapters : []);
+              if (!chapters.length) return <p className="text-xs text-muted-foreground">暂无章节摘要</p>;
+              return chapters.map((ch) => (
+                <div key={ch.id} className="rounded-xl border border-border/40 bg-background/40 p-3 text-xs">
+                  <p className="font-medium text-foreground/80 mb-1">{ch.title || '未命名章节'}</p>
+                  <p className="text-muted-foreground leading-relaxed">{ch.summary || '尚未生成摘要'}</p>
+                </div>
+              ));
+            })()}
+          </div>
         </CardContent>
         )}
     </Card>

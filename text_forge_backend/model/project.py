@@ -114,6 +114,7 @@ class Brief(Base):
     )
     sections: Mapped[dict] = mapped_column(JSONB, default=dict)
     field_origins: Mapped[dict] = mapped_column(JSONB, default=dict)
+    auto_summary: Mapped[bool] = mapped_column(Boolean, default=False, comment="是否自动生成章节摘要")
 
     projects: Mapped[Optional["Project"]] = relationship(back_populates="briefs")
 

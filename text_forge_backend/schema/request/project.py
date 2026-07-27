@@ -35,3 +35,4 @@ class BriefRequest(BaseModel):
         default=None, alias="dailyWordCountGoal"
     )
     sections: List[SectionsRequest]
+    auto_summary: Optional[bool] = Field(default=None, alias="autoSummary")

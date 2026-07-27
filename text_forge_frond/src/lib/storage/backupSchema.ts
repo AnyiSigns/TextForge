@@ -31,6 +31,7 @@ export interface OutlineChapter {
   id: string;
   title: string;
   content?: string;          // 正文内容
+  summary?: string;          // 章节摘要
   status?: OutlineNodeStatus;
   nodes: OutlineNode[];
   origin?: Origin;
@@ -40,6 +41,7 @@ const outlineChapterSchema = z.object({
   id: z.string(),
   title: z.string(),
   content: z.string().optional(),
+  summary: z.string().optional(),
   status: z.enum(['writing', 'done']).optional(),
   nodes: z.array(outlineNodeSchema),
   origin: z.enum(['seed', 'user', 'init']).optional(),
@@ -108,6 +110,7 @@ export interface OutlineChapter {
   id: string;
   title: string;
   content?: string;          // 正文内容
+  summary?: string;          // 章节摘要
   nodes: OutlineNode[];
   origin?: Origin;
 }

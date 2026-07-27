@@ -114,7 +114,7 @@ async def project_breif(
     user_id: Annotated[int, Depends(get_current)],
     project_service: Annotated[ProjectService, Depends(project_db)],
 ):
-    data = brief.model_dump()
+    data = brief.model_dump(by_alias=False, exclude_none=True)
     status = await project_service.save_brief(id, user_id, brief=data)
     if not status:
         raise HTTPException(status_code=404, detail="设定保存失败")
