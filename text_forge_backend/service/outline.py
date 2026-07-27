@@ -94,10 +94,8 @@ class OutlineService:
                 + "\n正文:"
                 + str(target.get("content", ""))
             )
-            chunks = []
-            async for chunk in llm.main.astream([SystemMessage("你是章节摘要助手"), HumanMessage(prompt)]):
-                chunks.append(chunk.content)
-            target["summary"] = "".join(chunks).strip()
+            res = await llm.main.ainvoke([SystemMessage("你是章节摘要助手"), HumanMessage(prompt)])
+            target["summary"] = res.content.strip()
             await self.outline_repo.update_outline(outline_id, data=volumes)
         except Exception:
             logger.error("自动生成摘要失败", exc_info=True)

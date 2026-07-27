@@ -14,13 +14,10 @@ async def router_node(state: RouterState):
     请根据上述任务特征选择最合适的执行器
     """
     messages = [SystemMessage(EXECUTOR_PROMPT), HumanMessage(input_msg)]
-    chunks = []
-    async for chunk in llm.router.astream(messages):
-        chunks.append(chunk.content)
-    response_content = "".join(chunks)
+    response = await llm.router.ainvoke(messages)
     try:
-        print(f"----执行器:{response_content}")
-        json_match = re.search(r"\{[^}]*\}", response_content)
+        print(f"----执行器:{response.content}")
+        json_match = re.search(r"\{[^}]*\}", response.content)  # type: ignore
         if json_match:
             decision = json.loads(json_match.group())
         else:

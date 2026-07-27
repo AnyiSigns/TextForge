@@ -1,7 +1,7 @@
 import json
 from typing import Literal
 from agents.state import ParentState
-from langgraph.graph import END, START
+from langgraph.graph import END, START, StateGraph
 
 
 def _to_serializable(value):
@@ -99,8 +99,8 @@ async def manager_node(state: ParentState):
         "task_prompt": next_node["system_prompt"],
         "model_config": state["model_config"],
     }
-    from agents.router_node import router_node
-    router_result = await router_node(router_input)
+    router_graph = graph_register.get_compiled("router")
+    router_result = await router_graph.ainvoke(router_input)
     try:
         decision = json.loads(router_result["decision"])
         target_executor = decision.get("executor", "main")
@@ -122,6 +122,8 @@ async def manager_node(state: ParentState):
 
 
 async def call_tool(state: ParentState) -> dict:
+    from infrastructure.graph_lifecycle import graph_register
+    from agents.state import ToolState
     from agents.tool_node import tool_node
 
     metadata = state.get("metadata", {})
@@ -131,9 +133,15 @@ async def call_tool(state: ParentState) -> dict:
     )
     fields = workflow_node.get("contextFields") or ["input_summary"]
 
+    builder = StateGraph(ToolState)
+    builder.add_node(node_id, tool_node)
+    builder.add_edge(START, node_id)
+    builder.add_edge(node_id, END)
+    tool_graph = builder.compile()
+
     payload = _build_context_payload(state, fields)
     payload["query"] = state["input_summary"]
-    result = await tool_node(payload)
+    result = await tool_graph.ainvoke(payload)
     return {
         "step_outputs": {"step_tool": result["tool_result"]},
         "executed_steps": ["step_tool"],
@@ -141,8 +149,9 @@ async def call_tool(state: ParentState) -> dict:
 
 
 async def call_main(state: ParentState) -> dict:
+    from infrastructure.graph_lifecycle import graph_register
+    from agents.state import MainState
     from agents.main_node import main_node
-    from agents.tool_node import tool_node
 
     metadata = state.get("metadata", {})
     node_id = metadata.get("current_node_id")
@@ -163,21 +172,30 @@ async def call_main(state: ParentState) -> dict:
     if tool_ids:
         print(f"挂载工具{tool_ids}")
         if "step_tool" not in state.get("executed_steps", []):
+            tool_graph = graph_register.get_compiled("tool")
             tool_payload = _build_context_payload(state, ["input_summary"])
             tool_payload["query"] = state["input_summary"]
-            tool_result = await tool_node(tool_payload)
+            tool_result = await tool_graph.ainvoke(tool_payload)
             context["tool_result"] = tool_result["tool_result"]
+
+    builder = StateGraph(MainState)
+    builder.add_node(node_id or "main", main_node)
+    builder.add_edge(START, node_id or "main")
+    builder.add_edge(node_id or "main", END)
+    main_graph = builder.compile()
 
     payload = _build_context_payload(state, fields)
     payload["system_prompt"] = system_prompt
     payload["input_context"] = context
     payload["output"] = ""
-    result = await main_node(payload)
+    result = await main_graph.ainvoke(payload)
     print(f"main子图返回: output={result.get('output')!r}")
     return {"step_outputs": {node_id: result["output"]}, "executed_steps": [node_id]}
 
 
 async def call_compression(state: ParentState) -> dict:
+    from infrastructure.graph_lifecycle import graph_register
+    from agents.state import AuditState
     from agents.audit_node import audit_node
 
     meta = state.get("metadata", {})
@@ -186,11 +204,17 @@ async def call_compression(state: ParentState) -> dict:
     node_id = f"{source_id}_compressed"
     compression_prompt = "请压缩以下长文本,保留关键情节和核心信息,上下文需要逻辑连贯。"
 
+    builder = StateGraph(AuditState)
+    builder.add_node(node_id, audit_node)
+    builder.add_edge(START, node_id)
+    builder.add_edge(node_id, END)
+    audit_graph = builder.compile()
+
     payload = _build_context_payload(state, ["input_worldview"])
     payload["system_prompt"] = compression_prompt
     payload["input_context"] = {"text": compress_text}
     payload["output"] = ""
-    result = await audit_node(payload)
+    result = await audit_graph.ainvoke(payload)
     print(f"[压缩] 完成，{len(compress_text)} -> {len(result.get('output', ''))} 字符")
     return {
         "step_outputs": {node_id: result["output"]},
@@ -199,6 +223,8 @@ async def call_compression(state: ParentState) -> dict:
 
 
 async def call_audit(state: ParentState) -> dict:
+    from infrastructure.graph_lifecycle import graph_register
+    from agents.state import AuditState
     from agents.audit_node import audit_node
 
     metadata = state.get("metadata", {})
@@ -222,11 +248,17 @@ async def call_audit(state: ParentState) -> dict:
 
     print(f"Audit：执行节点：{node_id}")
 
+    builder = StateGraph(AuditState)
+    builder.add_node(node_id or "audit", audit_node)
+    builder.add_edge(START, node_id or "audit")
+    builder.add_edge(node_id or "audit", END)
+    audit_graph = builder.compile()
+
     payload = _build_context_payload(state, fields)
     payload["system_prompt"] = system_prompt
     payload["input_context"] = context
     payload["output"] = ""
-    result = await audit_node(payload)
+    result = await audit_graph.ainvoke(payload)
     return {"step_outputs": {node_id: result["output"]}, "executed_steps": [node_id]}
 
 
