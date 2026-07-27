@@ -17,7 +17,7 @@ class MainConfRequest(BaseModelBasicRequest):
     pass
 
 
-class CompressionRequest(BaseModelBasicRequest):
+class AuditConfigRequest(BaseModelBasicRequest):
     pass
 
 
@@ -39,7 +39,7 @@ class EembeddingRequest(BaseModelBasicRequest):
 
 class ModelRequest(BaseModel):
     main_config: Optional[MainConfRequest] = None
-    compression: Optional[CompressionRequest] = None
+    audit_config: Optional[AuditConfigRequest] = None
     router_config: Optional[RouterRequest] = None
     tool_config: Optional[ToolRequest] = None
     vision_config: Optional[VsionRequest] = None

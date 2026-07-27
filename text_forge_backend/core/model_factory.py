@@ -7,7 +7,6 @@ from langchain_core.language_models import BaseChatModel
 class ModelFactory:
     DETAILED = {
         ("main", "main_config"),
-        ("compression", "compression"),
         ("router", "router_config"),
         ("tool", "tool_config"),
         ("audit", "audit_config"),

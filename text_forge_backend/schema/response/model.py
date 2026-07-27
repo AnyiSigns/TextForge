@@ -17,7 +17,7 @@ class MainConfResponse(BaseModelBasicResponse):
     pass
 
 
-class CompressionResponse(BaseModelBasicResponse):
+class AuditConfigResponse(BaseModelBasicResponse):
     pass
 
 
@@ -40,7 +40,7 @@ class EmbeddingResponse(BaseModelBasicResponse):
 class ModelResponse(BaseModel):
     id: Optional[int] = None
     main_config: Optional[MainConfResponse] = None
-    compression: Optional[CompressionResponse] = None
+    audit_config: Optional[AuditConfigResponse] = None
     router_config: Optional[RouterResponse] = None
     tool_config: Optional[ToolResponse] = None
     vision_config: Optional[VisionResponse] = None

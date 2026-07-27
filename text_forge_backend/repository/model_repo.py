@@ -13,7 +13,7 @@ class ModelConfRepository(BaseRepository[ModelConfig]):
         instance = await self.add(
             user_id=user_id,
             main_config=model_conf["main_config"],
-            compression=model_conf["compression"],
+            audit_config=model_conf["audit_config"],
             router_config=model_conf["router_config"],
             tool_config=model_conf["tool_config"],
             vision_config=model_conf["vision_config"],

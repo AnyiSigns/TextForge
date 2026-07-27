@@ -8,7 +8,7 @@ import type {
   ModelModality,
 } from './common';
 
-export type ModelRole = 'main' | 'compression' | 'router' | 'tool';
+export type ModelRole = 'main' | 'audit' | 'router' | 'tool';
 
 export interface RoleModelConfig {
   id: string;

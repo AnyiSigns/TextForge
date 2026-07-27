@@ -37,7 +37,7 @@ class WorkflowExecutor:
         return {
             "user_id": instance.user_id,
             "main_config": instance.main_config or {},
-            "compression": instance.compression or {},
+            "audit_config": instance.audit_config or {},
             "router_config": instance.router_config or {},
             "tool_config": instance.tool_config or {},
             "vision_config": instance.vision_config or {},

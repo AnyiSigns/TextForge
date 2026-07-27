@@ -17,7 +17,7 @@ import apiClient from '@/lib/api/client';
 import { toast } from 'sonner';
 import { enqueueSync } from '@/lib/storage/syncQueue';
 
-const TEXT_ROLES: ModelRole[] = ['main', 'compression', 'router', 'tool'];
+const TEXT_ROLES: ModelRole[] = ['main', 'audit', 'router', 'tool'];
 
 const EMPTY_ROLE: RoleModelConfig = {
   id: '',
@@ -52,7 +52,7 @@ export function ModelsSettings() {
       const { data } = await apiClient.get('/api/user/models/config');
       const body = data as {
         main_config?: RoleModelConfig;
-        compression?: RoleModelConfig | null;
+        audit_config?: RoleModelConfig | null;
         router_config?: RoleModelConfig | null;
         tool_config?: RoleModelConfig | null;
         vision_config?: RoleModelConfig | null;
@@ -62,7 +62,7 @@ export function ModelsSettings() {
 
       const roles: RoleStatus = {
         main: body.main_config ?? null,
-        compression: body.compression ?? null,
+        audit: body.audit_config ?? null,
         router: body.router_config ?? null,
         tool: body.tool_config ?? null,
       };
@@ -88,12 +88,12 @@ export function ModelsSettings() {
     if (current && current.modelId) return current;
     const map: Record<ModelRole, { adapter: AdapterType; baseUrl: string; modelId: string }> = {
       main: { adapter: 'deepseek', baseUrl: 'https://api.deepseek.com', modelId: 'deepseek-chat' },
-      compression: { adapter: 'ollama', baseUrl: 'http://localhost:11434/v1', modelId: 'llama3' },
+      audit: { adapter: 'ollama', baseUrl: 'http://localhost:11434/v1', modelId: 'llama3' },
       router: { adapter: 'deepseek', baseUrl: 'https://api.deepseek.com', modelId: 'deepseek-chat' },
       tool: { adapter: 'deepseek', baseUrl: 'https://api.deepseek.com', modelId: 'deepseek-chat' },
     };
+    const names: Record<ModelRole, string> = { main: 'DeepSeek', audit: 'Ollama (本地)', router: 'DeepSeek', tool: 'DeepSeek' };
     const cfg = map[role];
-    const names: Record<ModelRole, string> = { main: 'DeepSeek', compression: 'Ollama (本地)', router: 'DeepSeek', tool: 'DeepSeek' };
     return {
       id: `${role}-config`,
       name: names[role],
@@ -125,7 +125,7 @@ export function ModelsSettings() {
     const store = useModelStore.getState();
     return {
       main_config: store.textRoleModels.main,
-      compression: store.textRoleModels.compression,
+      audit_config: store.textRoleModels.audit,
       router_config: store.textRoleModels.router,
       tool_config: store.textRoleModels.tool,
       vision_config: visionConfig,
@@ -167,7 +167,7 @@ export function ModelsSettings() {
         }
         setTextRoleModel(editRole, null);
         const payload = buildPayload();
-        payload[editRole === 'compression' ? 'compression' : editRole === 'router' ? 'router_config' : 'tool_config'] = null;
+        payload[editRole === 'audit' ? 'audit_config' : editRole === 'router' ? 'router_config' : 'tool_config'] = null;
         await apiClient.post('/api/user/models/config', payload);
       } else if (editVision) {
         setVisionConfig(null);
@@ -178,7 +178,7 @@ export function ModelsSettings() {
       }
       toast.success('已删除');
     } catch {
-      const key = editRole === 'compression' ? 'compression' : editRole === 'router' ? 'router_config' : editRole === 'tool' ? 'tool_config' : null;
+      const key = editRole === 'audit' ? 'audit_config' : editRole === 'router' ? 'router_config' : editRole === 'tool' ? 'tool_config' : null;
       if (key) {
         enqueueSync('models', async () => {
           await apiClient.post('/api/user/models/config', { ...buildPayload(), [key]: null });
@@ -258,7 +258,7 @@ export function ModelsSettings() {
                           <Pencil className="w-3.5 h-3.5" />
                         </Button>
                         {(() => {
-                          const key = role === 'compression' ? 'compression' : role === 'router' ? 'router_config' : role === 'tool' ? 'tool_config' : 'main_config';
+                          const key = role === 'audit' ? 'audit_config' : role === 'router' ? 'router_config' : role === 'tool' ? 'tool_config' : 'main_config';
                           return (
                             <Button variant="ghost" size="sm" className="h-7 px-2 text-muted-foreground hover:text-destructive" onClick={() => {
                               setTextRoleModel(role, null);
@@ -379,5 +379,5 @@ export function ModelsSettings() {
 }
 
 function label(role: ModelRole): string {
-  return { main: '主模型', compression: '轻量模型', router: '路由模型（自动选模型）', tool: '工具模型' }[role];
+  return { main: '主模型', audit: '轻量模型', router: '路由模型（自动选模型）', tool: '工具模型' }[role];
 }

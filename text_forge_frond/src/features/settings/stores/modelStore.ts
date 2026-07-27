@@ -8,7 +8,7 @@ import { syncManager } from '@/lib/storage/syncManager';
 function defaultTextRoleModels(): Record<ModelRole, RoleModelConfig | null> {
   return {
     main: null,
-    compression: null,
+    audit: null,
     router: null,
     tool: null,
   };

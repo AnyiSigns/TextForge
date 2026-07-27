@@ -11,7 +11,7 @@ class ModelConfig(Base):
         ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True
     )
     main_config: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=True)
-    compression: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=True)
+    audit_config: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=True)
     router_config: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=True)
     tool_config: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=True)
     vision_config: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=True)
