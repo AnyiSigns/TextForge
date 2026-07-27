@@ -74,7 +74,7 @@ class WorkflowExecutor:
         workflow_repo = WorkflowRepository(self.session)
         workflow = await workflow_repo.get_workflow_id(workflow_id, user_id)
         if not workflow:
-            raise ValueError("工作流不存在")
+            raise ValueError("流水线不存在")
         project_repo = ProjectRepository(self.session)
         project = await project_repo.get(project_id)
         if not project or project.user_id != user_id:
@@ -83,13 +83,13 @@ class WorkflowExecutor:
         if project.description:
             parts.append(f"#项目描述\n{project.description}")
         if project.genre:
-            parts.append(f"项目类型\n{project.genre}")
+            parts.append(f"类型\n{project.genre}")
 
         brief_repo = BriefRepository(self.session)
         brief = await brief_repo.get_brief(project_id)
         worldview_text = ""
         if brief:
-            worldview_text = f"#世界观\n{brief.worldview or ''}\n# 文风基调\n{brief.tone or ''}\n# 创作禁忌\n{brief.forbidden or ''}\n# 风格指南\n{brief.style_guide or ''}"
+            worldview_text = f"# 世界观\n{brief.worldview or ''}\n# 文风/基调\n{brief.tone or ''}\n# 创作禁忌\n{brief.forbidden or ''}\n# 风格指南\n{brief.style_guide or ''}"
             parts.append(worldview_text)
 
         char_repo = CharacterRepository(self.session)
@@ -114,7 +114,7 @@ class WorkflowExecutor:
                 for ch in vol.get("chapters", []):
                     outline_lines.append(f"- {ch.get('title', '')}")
                     if ch.get("summary"):
-                        brief_summary_text += f"- {ch['title']}��{ch['summary']}\n"
+                        brief_summary_text += f"- {ch['title']}：{ch['summary']}\n"
                     if ch.get("content"):
                         recent_chapters_text += (
                             f"\n# {ch['title']}\n{ch['content'][:3000]}"
