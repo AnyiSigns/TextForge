@@ -130,7 +130,7 @@ export function useWorkbench(projectId: string) {
       if (detail.projectId !== projectId) return;
       const step: Step = {
         id: `step-${Date.now()}`,
-        agent: detail.title || '大纲/灵感',
+        agent: detail.title || '大纲/章节摘要',
         content: detail.content,
         status: 'completed',
       };

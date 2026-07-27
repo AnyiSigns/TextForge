@@ -51,7 +51,7 @@ export function CharacterChatHeader(props: CharacterChatHeaderProps) {
               <BookText className="w-4 h-4 mr-2" /> <span className="hidden sm:inline">转为章节</span>
             </Button>
             <Button variant="ghost" size="sm" onClick={onSaveAsInspiration} className="text-muted-foreground hover:text-foreground">
-              <Lightbulb className="w-4 h-4 mr-2" /> <span className="hidden sm:inline">存为灵感</span>
+              <Lightbulb className="w-4 h-4 mr-2" /> <span className="hidden sm:inline">存为章节摘要</span>
             </Button>
           </>
         )}

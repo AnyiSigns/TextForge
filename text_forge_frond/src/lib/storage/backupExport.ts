@@ -109,7 +109,7 @@ export function projectBundleToMarkdown(bundle: SingleProjectBundle): string {
   }
 
   if (inspiration.length) {
-    lines.push(`## 灵感剪藏`);
+    lines.push(`## 章节摘要`);
     lines.push('');
     for (const it of inspiration) {
       lines.push(`- [${it.type}] ${it.content}${it.note ? ` —— ${it.note}` : ''}`);
@@ -199,7 +199,7 @@ function toPlainBody(stepsContent: string[], mode: TxtMode): string {
     .join('\n\n');
 }
 
-// TXT 仅导出正文内容（不含设定/角色/大纲/灵感），并剥离图片链接，保证纯文字。
+// TXT 仅导出正文内容（不含设定/角色/大纲/章节摘要），并剥离图片链接，保证纯文字。
 export async function exportProjectText(projectId: string, mode: TxtMode = 'tidy'): Promise<void> {
   const bundle = await buildProjectBundle(projectId);
   const body = toPlainBody(bundle.steps.map((s) => s.content || ''), mode);

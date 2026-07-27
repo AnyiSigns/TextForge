@@ -54,7 +54,7 @@ export function InspirationBoard({ projectId }: { projectId: string }) {
         <CardTitle className="flex items-center justify-between">
           <span className="flex items-center gap-2">
             <Lightbulb className="w-4 h-4 text-primary" />
-            灵感剪藏
+            章节摘要
           </span>
           <ChevronDown className={cn('w-4 h-4 text-muted-foreground transition-transform', isExpanded && 'rotate-180')} />
         </CardTitle>
@@ -62,7 +62,7 @@ export function InspirationBoard({ projectId }: { projectId: string }) {
       {isExpanded && (
         <CardContent className="space-y-4">
           <div className="flex gap-2">
-            <Input value={newContent} onChange={e => setNewContent(e.target.value)} placeholder="记录灵感..." onKeyDown={e => e.key === 'Enter' && addItem()} />
+            <Input value={newContent} onChange={e => setNewContent(e.target.value)} placeholder="记录章节摘要..." onKeyDown={e => e.key === 'Enter' && addItem()} />
             <Button size="sm" onClick={addItem}><Plus className="w-4 h-4" /></Button>
           </div>
 
@@ -73,9 +73,9 @@ export function InspirationBoard({ projectId }: { projectId: string }) {
                 <Button
                   variant="ghost"
                   size="sm"
-                  title="作为章节插入工作台"
+                  title="插入工作台"
                   onClick={() => {
-                    dispatchInsertStep({ projectId, title: '灵感', content: item.content });
+                    dispatchInsertStep({ projectId, title: '章节摘要', content: item.content });
                     toast.success('已发送到工作台');
                   }}
                 >

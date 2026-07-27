@@ -152,7 +152,7 @@ export default function CharacterChatPage() {
   };
 
   const saveAsInspiration = async () => {
-    if (!projectId) { toast.error('该角色未关联项目，无法保存灵感'); return; }
+    if (!projectId) { toast.error('该角色未关联项目，无法保存章节摘要'); return; }
     const content = messages
       .map((m) => (m.role === 'user' ? '你' : name) + '：' + m.content)
       .join('\n\n');
@@ -167,9 +167,9 @@ export default function CharacterChatPage() {
         createdAt: new Date().toISOString(),
       };
       await saveInspiration(projectId, [item, ...items]);
-      toast.success('已保存为项目灵感');
+      toast.success('已保存为项目章节摘要');
     } catch {
-      toast.error('保存灵感失败');
+      toast.error('保存章节摘要失败');
     }
   };
 

@@ -1,5 +1,5 @@
 // src/lib/events/projectEvents.ts
-// 轻量跨组件事件：大纲/灵感/角色图 → 项目工作台，避免引入额外 store。
+// 轻量跨组件事件：大纲/章节摘要/角色图 → 项目工作台，避免引入额外 store。
 export const INSERT_STEP_EVENT = 'textforge:insert-step';
 export const INSERT_OUTLINE_NOTE_EVENT = 'textforge:insert-outline-note';
 

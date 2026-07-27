@@ -1,5 +1,5 @@
 // src/lib/storage/backupOutline.ts
-// 项目级附属文档（大纲、灵感剪藏）的本地读写，统一存 IndexedDB。
+// 项目级附属文档（大纲、章节摘要）的本地读写，统一存 IndexedDB。
 import { getItem, setItem } from './indexedDB';
 import type { OutlineVolume, OutlineSection, InspirationItem } from './backupSchema';
 
