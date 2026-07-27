@@ -53,7 +53,8 @@ class BriefRepository(BaseRepository[Brief]):
         super().__init__(Brief, session)
 
     async def add_brief(self, project_id: int, brief: dict):
-        instance = await self.add(project_id=project_id, **brief)
+        data = {k: v for k, v in brief.items() if k != "project_id"}
+        instance = await self.add(project_id=project_id, **data)
         return instance
 
     async def save_brief(self, project_id: int, brief: dict):

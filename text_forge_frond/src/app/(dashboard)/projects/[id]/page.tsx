@@ -89,12 +89,13 @@ export default function ProjectWorkbench() {
         </span>
         <Select value={activeWorkflowId} onValueChange={handleBindWorkflow}>
           <SelectTrigger className="w-[220px]">
-            <SelectValue>{(v: string) => {
-              const wf = workflows.find((w) => w.id === v);
-              if (wf) return wf.name;
-              if (v === BUILTIN_WORKFLOW_ID) return '内置创作流水线';
-              return v;
-            }}</SelectValue>
+          <SelectValue>{(v: string) => {
+            if (!v) return '请选择流水线';
+            const wf = workflows.find((w) => w.id === v);
+            if (wf) return wf.name;
+            if (v === BUILTIN_WORKFLOW_ID) return '内置创作流水线';
+            return v;
+          }}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             {workflows.map((w) => (

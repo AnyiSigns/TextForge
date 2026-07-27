@@ -8,16 +8,21 @@ from langchain_core.messages import SystemMessage, HumanMessage
 async def main_node(state: MainState):
     llm = ModelFactory(state["model_config"])
     parts = [
-        f"世界观设定：\n{state['input_worldview']}",
-        f"角色设定：\n{state['input_characters']}",
-        f"前情摘要：\n{state['input_brief_summary']}",
-        f"最近章节正文：\n{state['input_recent_chapters']}",
-        f"大纲结构：\n{state['input_outline']}",
+        f"世界观设定：\n{state.get('input_worldview', '')}",
+        f"角色设定：\n{state.get('input_characters', '')}",
+        f"前情摘要：\n{state.get('input_brief_summary', '')}",
+        f"最近章节正文：\n{state.get('input_recent_chapters', '')}",
+        f"大纲结构：\n{state.get('input_outline', '')}",
     ]
+    print("++++++++++++++++++++++++++++")
+    print(f"输入{parts[0]}")
     input_message = "\n\n".join(parts)
+    print(f"intput{input_message}")
     messages = [
         SystemMessage(state["system_prompt"]),
-        HumanMessage(f"项目上下文\n{input_message}\n\n当前任务输入：\n{json.dumps(state['input_context'], ensure_ascii=False, indent=2)}"),
+        HumanMessage(
+            f"项目上下文\n{input_message}\n\n当前任务输入：\n{json.dumps(state['input_context'], ensure_ascii=False, indent=2)}"
+        ),
     ]
     response = await llm.main.ainvoke(messages)
     return {"output": response.content}

@@ -115,7 +115,7 @@ export default function DashboardLayout({
                 <Footer />
               </motion.div>
             </main>
-            <Toaster position="top-right" richColors closeButton />
+            <Toaster position="top-right" richColors closeButton className="z-[99999]" />
           </div>
         </BackgroundProvider>
       </AppearanceProvider>

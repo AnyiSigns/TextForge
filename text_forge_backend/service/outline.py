@@ -49,6 +49,57 @@ class OutlineService:
             logger.error("删除大纲失败", exc_info=True)
             return False
 
+    async def auto_summarize_if_needed(self, outline_id: int, project_id: int, user_id: int, data: dict):
+        try:
+            from repository.project_repo import BriefRepository
+            from repository.model_repo import ModelConfRepository
+            from model.model import ModelConfig
+            from core.model_factory import ModelFactory
+            from langchain_core.messages import SystemMessage, HumanMessage
+
+            brief = await BriefRepository(self.session).get_brief(project_id)
+            if not brief or not getattr(brief, "auto_summary", False):
+                return
+
+            volumes = data if isinstance(data, list) else data.get("data", [])
+            target = None
+            for vol in volumes:
+                for ch in vol.get("chapters", []):
+                    if ch.get("content") and not ch.get("summary"):
+                        target = ch
+                        break
+                if target:
+                    break
+
+            if not target:
+                return
+
+            model_conf = await ModelConfRepository(self.session).query_user_model(user_id)
+            if not model_conf:
+                return
+
+            cfg = {
+                "user_id": model_conf.user_id,
+                "main_config": model_conf.main_config or {},
+                "audit_config": model_conf.audit_config or {},
+                "router_config": model_conf.router_config or {},
+                "tool_config": model_conf.tool_config or {},
+                "vision_config": model_conf.vision_config or {},
+                "embedding_config": model_conf.embedding_config or {},
+            }
+            llm = ModelFactory(cfg)
+            prompt = (
+                "请用2-3句话概括以下章节内容，保留关键情节和核心信息，语言简洁。\n\n章节标题："
+                + str(target.get("title", ""))
+                + "\n正文:"
+                + str(target.get("content", ""))
+            )
+            res = await llm.main.ainvoke([SystemMessage("你是章节摘要助手"), HumanMessage(prompt)])
+            target["summary"] = res.content.strip()
+            await self.outline_repo.update_outline(outline_id, data=volumes)
+        except Exception:
+            logger.error("自动生成摘要失败", exc_info=True)
+
 
 async def outline_db(db: AsyncSession = Depends(db_manager.get_db)):
     return OutlineService(db)

@@ -51,7 +51,7 @@ export interface WorkflowResponse { workflow: Workflow; }
 // 运行选项：实时回调、项目上下文、暂停/取消信号等。
 export interface RunWorkflowOptions {
   /** 每个 agent 节点产出后实时回调（用于项目页流式注入 steps） */
-  onStep?: (nodeId: string, label: string, output: string, systemPrompt?: string) => void;
+  onStep?: (nodeId: string, label: string, output: string, systemPrompt?: string, status?: 'running' | 'done') => void;
   /** 项目 id（仅用于日志/后续扩展） */
   projectId?: string;
   /** 节点生成器（可注入真实模型调用；默认本地占位）。

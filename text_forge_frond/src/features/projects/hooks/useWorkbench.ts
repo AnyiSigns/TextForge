@@ -98,7 +98,7 @@ export function useWorkbench(projectId: string) {
 
         setWorkflows(wfs);
         setProjectTitle(meta?.title);
-        setActiveWorkflowId(activeWf?.id ?? targetWorkflowId);
+        setActiveWorkflowId(activeWf?.id ?? (wfs.length > 0 ? targetWorkflowId : ''));
         setActiveWorkflow(activeWf);
 
         // 草稿恢复

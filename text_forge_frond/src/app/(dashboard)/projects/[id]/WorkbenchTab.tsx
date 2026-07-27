@@ -115,6 +115,10 @@ export function WorkbenchTab({
       return clone;
     });
     try {
+      let loadingToastId: string | number | undefined;
+      if (brief?.autoSummary) {
+        loadingToastId = toast.loading('正在保存正文并生成摘要...');
+      }
       const existing = await listOutlines(pid);
       if (existing.length === 0) {
         if (action === 'create_volume' && payload.volumeTitle) {
@@ -133,20 +137,30 @@ export function WorkbenchTab({
         if (action === 'create_volume' && payload.volumeTitle) {
           const newVol: OutlineVolume = { id: `vol-${Date.now()}`, title: payload.volumeTitle, chapters: [], origin: 'init' };
           clone.push(newVol);
-        } else if ((action === 'create_chapter' || action === 'overwrite_chapter') && payload.volumeId && payload.chapterTitle) {
+        } else if ((action === 'create_chapter' || action === 'overwrite_chapter') && payload.volumeId) {
           const vol = clone.find(v => v.id === payload.volumeId);
           if (vol) {
             if (action === 'create_chapter') {
-              vol.chapters.push({ id: `ch-${Date.now()}`, title: payload.chapterTitle, content: mainText, nodes: [], origin: 'init' });
+              if (!payload.chapterTitle) { toast.error('请输入章节名'); return; }
+              const title = `第${vol.chapters.length + 1}章·${payload.chapterTitle}`;
+              vol.chapters.push({ id: `ch-${Date.now()}`, title, content: mainText, nodes: [], origin: 'init' });
             } else if (action === 'overwrite_chapter' && payload.chapterId) {
               const chap = vol.chapters.find(c => c.id === payload.chapterId);
-              if (chap) { chap.content = mainText; }
+              if (chap) {
+                chap.content = mainText;
+                if (payload.chapterTitle) {
+                  chap.title = `第${vol.chapters.findIndex(c => c.id === payload.chapterId) + 1}章·${payload.chapterTitle}`;
+                }
+              }
             }
           }
         }
         await updateOutline(pid, existing[0].id, clone);
       }
       window.dispatchEvent(new CustomEvent('outline-seeded', { detail: { projectId } }));
+      if (loadingToastId) {
+        toast.dismiss(loadingToastId);
+      }
       if (action !== 'create_volume') {
         toast.success('正文写入成功');
         setMainTextOpen(false);
@@ -237,7 +251,7 @@ export function WorkbenchTab({
       )}
 
       {/* 首次进入空态引导：一句话开局 + 手动引导 */}
-      {steps.length === 0 && !brief?.worldview && projectChars.length === 0 && (
+      {steps.length === 0 && (
         <div className="my-4 space-y-4">
           <Card className="glass-card border-primary/40">
             <CardContent className="pt-4 space-y-3">

@@ -80,7 +80,7 @@ export async function runWorkflow(
         } else {
           steps.push({ nodeId, label, output: text, status: 'running' });
         }
-        opts?.onStep?.(nodeId, label, existing ? existing.output : text, undefined);
+        opts?.onStep?.(nodeId, label, existing ? existing.output : text, undefined, 'running');
       }
       if ((eventType === 'node_end' || eventType === 'on_chain_end') && event.node) {
         const nodeId = String(event.node);
@@ -95,13 +95,13 @@ export async function runWorkflow(
           existing.status = 'done';
           currentNode = null;
           if (existing.output) {
-            opts?.onStep?.(nodeId, existing.label || nodeId, existing.output, undefined);
+            opts?.onStep?.(nodeId, existing.label || nodeId, existing.output, undefined, 'done');
           }
         } else {
           steps.push({ nodeId, label: nodeId, output: text, status: 'done' });
           currentNode = null;
           if (text) {
-            opts?.onStep?.(nodeId, nodeId, text, undefined);
+            opts?.onStep?.(nodeId, nodeId, text, undefined, 'done');
           }
         }
       }

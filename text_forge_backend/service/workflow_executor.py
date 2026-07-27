@@ -214,12 +214,6 @@ class WorkflowExecutor:
             yield f"event:error\ndata:{json.dumps({'error':str(e)})}\n\n"
             return
 
-        if brief and getattr(brief, "auto_summary", False):
-            try:
-                await self._auto_summarize(self.session, project_id, outputs_map)
-            except Exception as se:
-                logger.error("自动生成摘要失败", exc_info=True)
-
     async def _auto_summarize(self, session, project_id, outputs_map):
         outlines = await OutlineRepository(session).list_outlines(project_id)
         if not outlines:

@@ -81,6 +81,10 @@ async def update_outline(
         if k != "project_id"
     }
     item = await outline_service.update_outline(outline_id, **data)
+    if item:
+        raw_data = data.get("data")
+        if raw_data:
+            await outline_service.auto_summarize_if_needed(outline_id, project_id, user_id, raw_data)
     return item
 
 

@@ -2,10 +2,9 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import type { Workflow, WorkflowNode, WorkflowNodeKind } from '@/features/workflow';
+import type { Workflow, WorkflowNode } from '@/features/workflow';
 import { saveWorkflow } from '@/features/workflow';
-import { bindWorkflow } from '@/features/projects';
-import { DEFAULT_TEAM_TEMPLATE, agentRoleById } from '@/shared/lib/agentRoles';
+import { agentRoleById } from '@/shared/lib/agentRoles';
 import { useProjectStore } from '@/features/projects';
 import { toast } from 'sonner';
 import { WorkflowNodePanel } from './WorkflowNodePanel';
@@ -16,7 +15,6 @@ export function WorkflowEditor({ initial, onSaved }: { initial: Workflow; onSave
   const initWf = { ...initial, nodes: initial.nodes ?? [], edges: initial.edges ?? [] };
   const [wf, setWf] = useState<Workflow>(initWf);
   const [selected, setSelected] = useState<string | null>(initWf.nodes[0]?.id ?? null);
-  const [pickingRole, setPickingRole] = useState(false);
   const projects = useProjectStore((s) => s.projects);
 
   const [personalDocs, setPersonalDocs] = useState<{ id: string; name: string; uploaderName?: string }[]>([]);
@@ -25,13 +23,6 @@ export function WorkflowEditor({ initial, onSaved }: { initial: Workflow; onSave
   const nid = () => `n${Date.now()}-${seqRef.current++}`;
 
   const update = (patch: Partial<Workflow>) => setWf((w) => ({ ...w, ...patch, updatedAt: new Date().toISOString() }));
-
-  const addNode = (kind: WorkflowNodeKind) => {
-    if (kind === 'agent') { setPickingRole(true); return; }
-    const node: WorkflowNode = { id: nid(), kind, label: kind === 'input' ? '输入' : kind === 'output' ? '输出' : '工具', systemPrompt: undefined };
-    update({ nodes: [...wf.nodes, node] });
-    setSelected(node.id);
-  };
 
   const applyRole = (roleId: string) => {
     const role = agentRoleById(roleId);
@@ -46,24 +37,6 @@ export function WorkflowEditor({ initial, onSaved }: { initial: Workflow; onSave
     };
     update({ nodes: [...wf.nodes, node] });
     setSelected(node.id);
-    setPickingRole(false);
-  };
-
-  const applyDefaultTeam = () => {
-    const nodes: WorkflowNode[] = DEFAULT_TEAM_TEMPLATE.map((t) => {
-      const role = agentRoleById(t.roleId)!;
-      return {
-        id: nid(),
-        kind: 'agent' as WorkflowNodeKind,
-        label: role.short,
-        systemPrompt: role.defaultPrompt,
-        toolIds: role.recommendedTools,
-      };
-    });
-    const edges = nodes.slice(1).map((n, i) => ({ from: nodes[i].id, to: n.id }));
-    update({ nodes: [...wf.nodes, ...nodes], edges: [...wf.edges, ...edges] });
-    setSelected(nodes[0]?.id ?? null);
-    toast.success('已添加默认写作助手团队，你还可以继续调整');
   };
 
   const removeNode = (id: string) => {
@@ -141,9 +114,6 @@ export function WorkflowEditor({ initial, onSaved }: { initial: Workflow; onSave
   return (
     <div className="grid lg:grid-cols-[200px_1fr_320px] gap-4">
       <WorkflowNodePanel
-        pickingRole={pickingRole}
-        onAddNode={addNode}
-        onApplyDefaultTeam={applyDefaultTeam}
         onApplyRole={applyRole}
       />
       <WorkflowCanvas

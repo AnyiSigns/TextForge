@@ -1,7 +1,17 @@
 from datetime import datetime
 from textwrap import indent
 from typing import List, Optional
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, Boolean, Enum, UniqueConstraint, func
+from sqlalchemy import (
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    Boolean,
+    Enum,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from model.base import Base
 import enum
@@ -114,7 +124,9 @@ class Brief(Base):
     )
     sections: Mapped[dict] = mapped_column(JSONB, default=dict)
     field_origins: Mapped[dict] = mapped_column(JSONB, default=dict)
-    auto_summary: Mapped[bool] = mapped_column(Boolean, default=False, comment="是否自动生成章节摘要")
+    auto_summary: Mapped[bool] = mapped_column(
+        Boolean, default=False, comment="是否自动生成章节摘要"
+    )
 
     projects: Mapped[Optional["Project"]] = relationship(back_populates="briefs")
 
@@ -136,7 +148,7 @@ class Workflow(Base):
 
 class Outline(Base):
     __tablename__ = "outlines"
-    __table_args__ = (UniqueConstraint("project_id", name="uq_outline_project"), )
+    __table_args__ = (UniqueConstraint("project_id", name="uq_outline_project"),)
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     project_id: Mapped[int] = mapped_column(
         Integer,

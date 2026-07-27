@@ -75,21 +75,9 @@ export function makeBuildContext(deps: BuildContextDeps) {
   };
 }
 
-export function makeSummarizePlot(projectId: string) {
+export function makeSummarizePlot(_projectId: string) {
   return async (text: string): Promise<string> => {
     if (!text.trim()) return '';
-    const API_URL = (await import('@/lib/config/env')).API_URL;
-    try {
-      const res = await fetch(`${API_URL}/api/projects/${projectId}/summarize`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data?.summary) return data.summary;
-      }
-    } catch { /* 回退本地压缩 */ }
     const paras = text.split(/\n{2,}|\n/).map((s) => s.trim()).filter(Boolean);
     if (paras.length <= 6) return text.slice(0, 2000);
     const head = paras.slice(0, 3).join('\n');

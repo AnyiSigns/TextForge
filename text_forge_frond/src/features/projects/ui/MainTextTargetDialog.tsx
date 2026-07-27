@@ -27,6 +27,7 @@ export function MainTextTargetDialog({ open, onOpenChange, volumes, mainText, on
   const [newChapName, setNewChapName] = useState('');
   const [newVolDialogOpen, setNewVolDialogOpen] = useState(false);
   const [volError, setVolError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const selectedVol = useMemo(() => volumes.find(v => v.id === selectedVolId) || null, [volumes, selectedVolId]);
   const selectedChap = useMemo(() => volumes.flatMap(v => v.chapters).find(c => c.id === selectedChapId) || null, [volumes, selectedChapId]);
@@ -38,6 +39,7 @@ export function MainTextTargetDialog({ open, onOpenChange, volumes, mainText, on
     setNewVolName('');
     setNewChapName('');
     setVolError('');
+    setSaving(false);
   }, []);
 
   const handleOpenChange = useCallback((v: boolean) => {
@@ -77,13 +79,21 @@ export function MainTextTargetDialog({ open, onOpenChange, volumes, mainText, on
 
   const handleSave = useCallback(() => {
     if (selectedChap) {
-      onConfirm('overwrite_chapter', { volumeId: selectedVolId!, chapterId: selectedChap.id });
+      const name = newChapName.trim();
+      const payload: { volumeId: string; chapterId: string; chapterTitle?: string } = {
+        volumeId: selectedVolId!,
+        chapterId: selectedChap.id,
+      };
+      if (name) payload.chapterTitle = name;
+      setSaving(true);
+      onConfirm('overwrite_chapter', payload);
       return;
     }
     if (selectedVol) {
       const name = newChapName.trim();
       if (!name) { toast.error('请输入章节名'); return; }
       const title = `第${selectedVol.chapters.length + 1}章·${name}`;
+      setSaving(true);
       onConfirm('create_chapter', { volumeId: selectedVol.id, chapterTitle: title });
       setNewChapName('');
       return;
@@ -139,7 +149,7 @@ export function MainTextTargetDialog({ open, onOpenChange, volumes, mainText, on
                           return (
                             <button
                               key={chap.id}
-                              onClick={() => setSelectedChapId(chap.id)}
+                              onClick={() => { setSelectedVolId(vol.id); setSelectedChapId(chap.id); }}
                               className={cn(
                                 'w-full flex items-center gap-2 px-2 py-1 rounded-md text-xs transition-colors ml-5',
                                 isChapSelected ? 'bg-primary/10 text-primary' : 'hover:bg-accent/40'
@@ -175,8 +185,8 @@ export function MainTextTargetDialog({ open, onOpenChange, volumes, mainText, on
                       onKeyDown={(e) => e.key === 'Enter' && handleSave()}
                       disabled={!selectedVolId}
                     />
-                    <Button size="sm" variant="default" onClick={handleSave} disabled={!selectedVolId}>
-                      <Save className="w-3.5 h-3.5 mr-1" /> 保存
+                    <Button size="sm" variant="default" onClick={handleSave} disabled={!selectedVolId || saving}>
+                      {saving ? '保存中...' : <><Save className="w-3.5 h-3.5 mr-1" /> 保存</>}
                     </Button>
                   </div>
                 </div>

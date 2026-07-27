@@ -1,7 +1,7 @@
 // src/components/projects/StepCard.tsx
 'use client';
 
-import { useState, useRef } from 'react';
+import { memo } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2, PauseCircle, CheckCircle2, RotateCcw, Sparkles, Image as ImageIcon, Clapperboard, FileText } from 'lucide-react';
@@ -16,11 +16,10 @@ interface Props {
   projectId?: string;
 }
 
-export function StepCard({
+export const StepCard = memo(function StepCard({
   step, index, onSetAsMainText, projectId,
 }: Props) {
   const agentLabel = step.agentName || AGENTS.find(a => a.id === step.agent)?.label || '步骤';
-  const textRef = useRef<HTMLDivElement>(null);
 
   return (
     <Card className="p-4 border-border/40 bg-card/30 backdrop-blur-sm">
@@ -48,7 +47,6 @@ export function StepCard({
       </div>
 
       <div
-        ref={textRef}
         className="prose prose-sm dark:prose-invert max-w-none"
       >
         {step.content || (step.status === 'streaming' && '...')}
@@ -86,4 +84,4 @@ export function StepCard({
       )}
     </Card>
   );
-}
+});

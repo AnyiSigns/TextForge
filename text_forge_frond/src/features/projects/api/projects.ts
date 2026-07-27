@@ -104,10 +104,10 @@ export async function generateWithWorkflow(
   // 双路通知，职责分离：
   //  - onStep（业务层）：本项目工作台用于增量渲染；
   //  - runOpts.onStep（底层 DAG 运行时）：节点级日志/埋点，与业务解耦。
-  const streamStep: NonNullable<RunWorkflowOptions['onStep']> = (nodeId, label, output, systemPrompt) => {
-    console.log('[streamStep]', { nodeId, label, output: output?.slice?.(0, 120), systemPrompt });
+  const streamStep: NonNullable<RunWorkflowOptions['onStep']> = (nodeId, label, output, systemPrompt, status) => {
+    console.log('[streamStep]', { nodeId, label, output: output?.slice?.(0, 120), systemPrompt, status });
     const resolved = resolveLabel(nodeId, label);
-    const step = runStepToStreamStep({ nodeId, label: resolved, output, status: 'done', systemPrompt });
+    const step = runStepToStreamStep({ nodeId, label: resolved, output, status: status === 'done' ? 'completed' : 'streaming', systemPrompt });
     if (step) onStep?.(step);
     runOpts?.onStep?.(nodeId, resolved, output, systemPrompt);
   };

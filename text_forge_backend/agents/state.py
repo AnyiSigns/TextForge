@@ -31,6 +31,11 @@ class MainState(TypedDict):
     input_context: Dict[str, Any]
     output: str
     model_config: dict
+    input_worldview: str
+    input_characters: str
+    input_brief_summary: str
+    input_recent_chapters: str
+    input_outline: str
 
 
 class AuditState(TypedDict):
@@ -38,6 +43,11 @@ class AuditState(TypedDict):
     input_context: Dict[str, Any]
     output: str
     model_config: dict
+    input_worldview: str
+    input_characters: str
+    input_brief_summary: str
+    input_recent_chapters: str
+    input_outline: str
 
 
 class ParentState(TypedDict):

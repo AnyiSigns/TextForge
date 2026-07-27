@@ -20,8 +20,10 @@ class WorkflowNode(BaseModel):
     auxiliary_model_ids: Optional[List[str]] = Field(
         default=None, alias="auxiliaryModelIds"
     )
+    context_fields: Optional[List[str]] = Field(default=None, alias="contextFields")
     rag_filter: Optional[RagFilter] = Field(default=None, alias="ragFilter")
     rag_top_k: Optional[int] = Field(default=None, alias="ragTopK")
+    updated_at: Optional[str] = Field(default=None, alias="updatedAt")
 
 
 class WorkflowEdge(BaseModel):

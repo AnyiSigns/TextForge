@@ -1,7 +1,7 @@
 import json
 from typing import Literal
-from langgraph.graph import END, StateGraph, START
 from agents.state import ParentState
+from langgraph.graph import END, START, StateGraph
 
 
 def _to_serializable(value):
@@ -128,7 +128,9 @@ async def call_tool(state: ParentState) -> dict:
 
     metadata = state.get("metadata", {})
     node_id = metadata.get("current_node_id", "step_tool")
-    workflow_node = next((n for n in state.get("workflow_nodes", []) if n["id"] == node_id), {})
+    workflow_node = next(
+        (n for n in state.get("workflow_nodes", []) if n["id"] == node_id), {}
+    )
     fields = workflow_node.get("contextFields") or ["input_summary"]
 
     builder = StateGraph(ToolState)
@@ -156,8 +158,15 @@ async def call_main(state: ParentState) -> dict:
     system_prompt = metadata.get("current_system_prompt", "")
     context = metadata.get("current_context", {})
     tool_ids = metadata.get("current_tool_ids", [])
-    workflow_node = next((n for n in state.get("workflow_nodes", []) if n["id"] == node_id), {})
-    fields = workflow_node.get("contextFields") or ["input_worldview", "input_characters", "input_recent_chapters", "input_outline"]
+    workflow_node = next(
+        (n for n in state.get("workflow_nodes", []) if n["id"] == node_id), {}
+    )
+    fields = workflow_node.get("contextFields") or [
+        "input_worldview",
+        "input_characters",
+        "input_recent_chapters",
+        "input_outline",
+    ]
 
     print(f"调用main子图,执行节点{node_id}")
     if tool_ids:
@@ -222,8 +231,16 @@ async def call_audit(state: ParentState) -> dict:
     node_id = metadata.get("current_node_id")
     system_prompt = metadata.get("current_system_prompt")
     context = state.get("step_outputs", {})
-    workflow_node = next((n for n in state.get("workflow_nodes", []) if n["id"] == node_id), {})
-    fields = workflow_node.get("contextFields") or ["input_worldview", "input_characters"]
+    workflow_node = next(
+        (n for n in state.get("workflow_nodes", []) if n["id"] == node_id), {}
+    )
+    fields = workflow_node.get("contextFields") or [
+        "input_worldview",
+        "input_characters",
+        "input_brief_summary",
+        "input_recent_chapters",
+        "input_outline",
+    ]
 
     compressed = state["step_outputs"].get("step_compressed")
     if compressed:
