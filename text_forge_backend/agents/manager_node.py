@@ -127,7 +127,7 @@ async def call_tool(state: ParentState) -> dict:
             "input_outline": state.get("input_outline", ""),
             "query": state["input_summary"],
             "model_config": state["model_config"],
-        }
+        }  # type: ignore
     )
     return {
         "step_outputs": {"step_tool": result["tool_result"]},
@@ -183,7 +183,7 @@ async def call_main(state: ParentState) -> dict:
             "input_context": context,
             "output": "",
             "model_config": state["model_config"],
-        }
+        }  # type: ignore
     )
     print(f"main子图返回: output={result.get('output')!r}")
     return {"step_outputs": {node_id: result["output"]}, "executed_steps": [node_id]}

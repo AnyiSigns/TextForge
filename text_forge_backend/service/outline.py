@@ -21,7 +21,9 @@ class OutlineService:
 
     async def get_outline(self, project_id: int, outline_id: int):
         try:
-            return await self.outline_repo.project_outline_detail(project_id, outline_id)
+            return await self.outline_repo.project_outline_detail(
+                project_id, outline_id
+            )
         except Exception:
             logger.error("获取大纲失败", exc_info=True)
             return None

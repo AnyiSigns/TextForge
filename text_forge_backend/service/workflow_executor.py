@@ -65,7 +65,7 @@ class WorkflowExecutor:
                 if in_degree[neighbor] == 0:
                     queue.append(neighbor)
         if len(sorted_nodes) != len(nodes):
-            raise ValueError("¹¤×÷Á÷´æÔÚÑ­»·ÒÀÀµ")
+            raise ValueError("å·¥ä½œæµå­˜åœ¨å¾ªç¯ä¾èµ–")
         return sorted_nodes
 
     async def run(
@@ -74,22 +74,22 @@ class WorkflowExecutor:
         workflow_repo = WorkflowRepository(self.session)
         workflow = await workflow_repo.get_workflow_id(workflow_id, user_id)
         if not workflow:
-            raise ValueError("Á÷Ë®Ïß²»´æÔÚ")
+            raise ValueError("å·¥ä½œæµä¸å­˜åœ¨")
         project_repo = ProjectRepository(self.session)
         project = await project_repo.get(project_id)
         if not project or project.user_id != user_id:
-            raise ValueError("ÏîÄ¿²»´æÔÚ")
-        parts = [f"#ÏîÄ¿±êÌâ\n{project.title}"]
+            raise ValueError("é¡¹ç›®ä¸å­˜åœ¨")
+        parts = [f"#é¡¹ç›®æ ‡é¢˜\n{project.title}"]
         if project.description:
-            parts.append(f"#ÏîÄ¿ÃèÊö\n{project.description}")
+            parts.append(f"#é¡¹ç›®æè¿°\n{project.description}")
         if project.genre:
-            parts.append(f"ÀàĞÍ\n{project.genre}")
+            parts.append(f"é¡¹ç›®ç±»å‹\n{project.genre}")
 
         brief_repo = BriefRepository(self.session)
         brief = await brief_repo.get_brief(project_id)
         worldview_text = ""
         if brief:
-            worldview_text = f"# ÊÀ½ç¹Û\n{brief.worldview or ''}\n# ÎÄ·ç/»ùµ÷\n{brief.tone or ''}\n# ´´×÷½û¼É\n{brief.forbidden or ''}\n# ·ç¸ñÖ¸ÄÏ\n{brief.style_guide or ''}"
+            worldview_text = f"#ä¸–ç•Œè§‚\n{brief.worldview or ''}\n# æ–‡é£åŸºè°ƒ\n{brief.tone or ''}\n# åˆ›ä½œç¦å¿Œ\n{brief.forbidden or ''}\n# é£æ ¼æŒ‡å—\n{brief.style_guide or ''}"
             parts.append(worldview_text)
 
         char_repo = CharacterRepository(self.session)
@@ -97,7 +97,7 @@ class WorkflowExecutor:
         char_text = ""
         if characters:
             char_lines = [f"-{c.name}:{c.description}" for c in characters]
-            char_text = f"#½ÇÉ«Éè¶¨\n" + "\n".join(char_lines)
+            char_text = f"#è§’è‰²è®¾å®š\n" + "\n".join(char_lines)
             parts.append(char_text)
 
         outline_repo = OutlineRepository(self.session)
@@ -114,9 +114,11 @@ class WorkflowExecutor:
                 for ch in vol.get("chapters", []):
                     outline_lines.append(f"- {ch.get('title', '')}")
                     if ch.get("summary"):
-                        brief_summary_text += f"- {ch['title']}£º{ch['summary']}\n"
+                        brief_summary_text += f"- {ch['title']}ï¿½ï¿½{ch['summary']}\n"
                     if ch.get("content"):
-                        recent_chapters_text += f"\n# {ch['title']}\n{ch['content'][:3000]}"
+                        recent_chapters_text += (
+                            f"\n# {ch['title']}\n{ch['content'][:3000]}"
+                        )
             outline_text = "\n".join(outline_lines)
 
         input_text = "\n\n".join(parts)
@@ -208,7 +210,7 @@ class WorkflowExecutor:
                         )
                     yield f"event:done\ndata:{json.dumps({'steps': steps_payload, 'output': output})}\n\n"
         except Exception as e:
-            logger.error("¹¤×÷Á÷Ö´ĞĞÒì³£", exc_info=True)
+            logger.error("å·¥ä½œæµå¼‚å¸¸", exc_info=True)
             yield f"event:error\ndata:{json.dumps({'error':str(e)})}\n\n"
             return
 
@@ -216,17 +218,19 @@ class WorkflowExecutor:
             try:
                 await self._auto_summarize(self.session, project_id, outputs_map)
             except Exception as se:
-                logger.error("×Ô¶¯Éú³ÉÕªÒªÊ§°Ü", exc_info=True)
-
+                logger.error("è‡ªåŠ¨ç”Ÿæˆæ‘˜è¦å¤±è´¥", exc_info=True)
 
     async def _auto_summarize(self, session, project_id, outputs_map):
         outlines = await OutlineRepository(session).list_outlines(project_id)
         if not outlines:
             return
         raw = outlines[0].data
-        volumes = raw if isinstance(raw, list) else raw.get('data', [])
-        all_chapters = [ch for vol in volumes for ch in vol.get('chapters', [])]
-        target = next((ch for ch in all_chapters if not ch.get('summary') and ch.get('content')), None)
+        volumes = raw if isinstance(raw, list) else raw.get("data", [])
+        all_chapters = [ch for vol in volumes for ch in vol.get("chapters", [])]
+        target = next(
+            (ch for ch in all_chapters if not ch.get("summary") and ch.get("content")),
+            None,
+        )
         if not target:
             return
         first_output = next((str(v) for v in outputs_map.values() if v), "")
@@ -235,11 +239,17 @@ class WorkflowExecutor:
         try:
             model_config = await self._get_user_model_config(outlines[0].project_id)
             llm = ModelFactory(model_config)
-            prompt = "ÇëÓÃ2-3¾ä»°¸ÅÀ¨ÒÔÏÂÕÂ½ÚÄÚÈİ£¬±£Áô¹Ø¼üÇé½ÚºÍºËĞÄĞÅÏ¢£¬ÓïÑÔ¼ò½à¡£\n\nÕÂ½Ú±êÌâ£º" + str(target.get('title', '')) + "\nÕıÎÄ£º" + first_output[:4000]
-            messages = [SystemMessage("ÄãÊÇÕÂ½ÚÕªÒªÖúÊÖ"), HumanMessage(prompt)]
+            prompt = (
+                "è¯·ç”¨2-3å¥è¯æ¦‚æ‹¬ä»¥ä¸‹ç« èŠ‚å†…å®¹ï¼Œä¿ç•™å…³é”®æƒ…èŠ‚å’Œæ ¸å¿ƒä¿¡æ¯ï¼Œè¯­è¨€ç®€æ´ã€‚\n\nç« èŠ‚æ ‡é¢˜ï¼š"
+                + str(target.get("title", ""))
+                + "\næ­£æ–‡:"
+                + first_output
+            )
+            messages = [SystemMessage("ä½ æ˜¯ç« èŠ‚æ‘˜è¦åŠ©æ‰‹"), HumanMessage(prompt)]
             res = await llm.main.ainvoke(messages)
             target["summary"] = res.content.strip()
-            await OutlineRepository(session).update_outline(outlines[0].id, data=volumes)
+            await OutlineRepository(session).update_outline(
+                outlines[0].id, data=volumes
+            )
         except Exception:
             pass
-
