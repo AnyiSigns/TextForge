@@ -36,7 +36,6 @@ const menuItems = [
   { icon: Video, label: '视频工坊', href: '/tasks' },
   { icon: Database, label: '知识库', href: '/knowledge' },
   { icon: Workflow, label: '创作流程', href: '/workflow' },
-  { icon: Key, label: '开放平台', href: '/api-keys' },
   { icon: Settings, label: '设置', href: '/settings' },
 ];
 

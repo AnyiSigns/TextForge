@@ -6,8 +6,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { toast } from 'sonner';
 import { Step } from '@/types';
 import { BUILTIN_WORKFLOW_ID } from '@/types';
-import { fetchProjectDetail, fetchProjectMeta, confirmStep, saveStepEdit, bindWorkflow } from '@/features/projects';
-import { onInsertStep } from '@/lib/events/projectEvents';
+import { fetchProjectMeta, bindWorkflow } from '@/features/projects';
 import { useProjectStore } from '@/features/projects';
 import { useBriefStore } from '@/features/projects';
 import { useCharacterStore } from '@/features/characters';
@@ -18,6 +17,7 @@ import { loadOutline, type OutlineVolume } from '@/lib/storage/backup';
 import { makeBuildContext, makeSummarizePlot, makeDepositCharacterProfiles } from './workbenchContext';
 import { makeGeneration } from './workbenchGenerate';
 import { makeSeedActions } from './workbenchSeed';
+import { onInsertStep } from '@/lib/events/projectEvents';
 import { transformText } from '@/lib/aiTextTransform';
 
 export function useWorkbench(projectId: string) {
@@ -87,8 +87,7 @@ export function useWorkbench(projectId: string) {
     let cancelled = false;
     (async () => {
       try {
-        const [loadedSteps, meta, wfs] = await Promise.all([
-          fetchProjectDetail(projectId).catch(() => [] as Step[]),
+        const [meta, wfs] = await Promise.all([
           fetchProjectMeta(projectId).catch(() => null),
           listWorkflows().catch(() => []),
         ]);
@@ -97,7 +96,6 @@ export function useWorkbench(projectId: string) {
         const targetWorkflowId = meta?.workflowId || BUILTIN_WORKFLOW_ID;
         const activeWf = wfs.find((w) => w.id === targetWorkflowId) ?? wfs.find((w) => w.id === BUILTIN_WORKFLOW_ID) ?? wfs[0] ?? null;
 
-        setSteps(loadedSteps);
         setWorkflows(wfs);
         setProjectTitle(meta?.title);
         setActiveWorkflowId(activeWf?.id ?? targetWorkflowId);
@@ -105,13 +103,9 @@ export function useWorkbench(projectId: string) {
 
         // 草稿恢复
         const draft = await useProjectStore.getState().getDraft(projectId);
-        const draftChanged = !!draft && draft.length > 0 && (
-          draft.length !== loadedSteps.length ||
-          draft.slice(0, loadedSteps.length).some((d, i) => d.content !== (loadedSteps[i]?.content ?? ''))
-        );
-        if (draftChanged) {
+        if (draft && draft.length > 0) {
           setSteps(draft);
-          toast.info('已恢复草稿');
+          toast.success('已恢复上次草稿');
         }
       } catch (e) {
         if (!cancelled) toast.error('加载失败', { description: e instanceof Error ? e.message : '未知错误' });
@@ -134,19 +128,6 @@ export function useWorkbench(projectId: string) {
   useEffect(() => {
     return onInsertStep((detail) => {
       if (detail.projectId !== projectId) return;
-      if (detail.target?.kind === 'chapter') {
-        const stepId = detail.target.stepId;
-        setSteps((prev) => {
-          const ch = prev.find((s) => s.id === stepId);
-          toast.success(`已把角色图插入到「${ch?.content?.match(/^#\s*(.+)$/m)?.[1] || '该章'}」正文`);
-          return prev.map((s) => {
-            if (s.id !== stepId) return s;
-            const tail = s.content && !s.content.endsWith('\n') ? '\n' : '';
-            return { ...s, content: `${s.content || ''}${tail}${detail.content}`, status: 'completed' };
-          });
-        });
-        return;
-      }
       const step: Step = {
         id: `step-${Date.now()}`,
         agent: detail.title || '大纲/灵感',
@@ -168,34 +149,24 @@ export function useWorkbench(projectId: string) {
     }
   }, [steps, isStreaming, projectId]);
 
-  const handleConfirm = async (stepId: string) => {
-    try {
-      await confirmStep(projectId, stepId);
-      setSteps(prev => prev.map(s => s.id === stepId ? { ...s, status: 'completed' } : s));
-      const step = steps.find(s => s.id === stepId);
-      if (step) {
-        const titleMatch = step.content.match(/^#\s*(.+)$/m);
-        const title = titleMatch?.[1]?.trim() || `${activeWorkflow?.name ?? '章节'}片段`;
-        await useManuscriptStore.getState().importFromStep(projectId, title, step.content, step.id, 'ai');
-      }
-      toast.success('已确认并同步到手稿');
-    } catch (e) {
-      toast.error('确认失败', { description: e instanceof Error ? e.message : '未知错误' });
+  const handleConfirm = (stepId: string) => {
+    setSteps(prev => prev.map(s => s.id === stepId ? { ...s, status: 'completed' } : s));
+    const step = steps.find(s => s.id === stepId);
+    if (step) {
+      const titleMatch = step.content.match(/^#\s*(.+)$/m);
+      const title = titleMatch?.[1]?.trim() || `${activeWorkflow?.name ?? '章节'}片段`;
+      useManuscriptStore.getState().importFromStep(projectId, title, step.content, step.id, 'ai');
     }
+    toast.success('已确认');
   };
 
-  const handleSaveEdit = async (stepId: string) => {
+  const handleSaveEdit = (stepId: string) => {
     const content = editingMap[stepId];
     if (content === undefined) return;
-    try {
-      await saveStepEdit(projectId, stepId, content);
-      setSteps(prev => prev.map(s => s.id === stepId ? { ...s, content, status: 'completed' } : s));
-      setEditingMap(prev => { const n = { ...prev }; delete n[stepId]; return n; });
-      setSavedAt(Date.now());
-      toast.success('已保存');
-    } catch (e) {
-      toast.error('保存失败', { description: e instanceof Error ? e.message : '未知错误' });
-    }
+    setSteps(prev => prev.map(s => s.id === stepId ? { ...s, content, status: 'completed' } : s));
+    setEditingMap(prev => { const n = { ...prev }; delete n[stepId]; return n; });
+    setSavedAt(Date.now());
+    toast.success('已保存');
   };
 
   const handleEditStart = (stepId: string, content: string) =>
@@ -217,9 +188,6 @@ export function useWorkbench(projectId: string) {
           next[idx] = { ...next[idx], content };
           changed = true;
         }
-        try {
-          await saveStepEdit(projectId, id, content);
-        } catch { /* 自动保存失败静默，手动保存仍可用 */ }
       }
       if (changed) {
         setSteps(next);
@@ -353,6 +321,8 @@ export function useWorkbench(projectId: string) {
     activeWorkflow,
     handleBindWorkflow,
     outlineReady,
+    outlineVolumes,
+    setOutlineVolumes,
     scrollRef,
     seedPrompt,
     setSeedPrompt,

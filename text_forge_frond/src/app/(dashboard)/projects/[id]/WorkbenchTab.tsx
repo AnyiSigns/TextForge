@@ -1,5 +1,7 @@
 // src/app/(dashboard)/projects/[id]/WorkbenchTab.tsx
 // 项目工作台「工作台」标签页内容：上下文选择器、流水线图、步骤列表与生成控制区。
+import { MainTextTargetDialog } from '@/features/projects';
+import { useState } from 'react';
 import { WorkflowGraph } from '@/features/projects';
 import { StepCard } from '@/features/projects';
 import { Card, CardContent } from '@/components/ui/card';
@@ -20,14 +22,25 @@ import {
 } from 'lucide-react';
 import { EmptyState } from '@/shared/components';
 import { useWorkbench } from '@/features/projects';
+import { listOutlines, createOutline, updateOutline } from '@/features/projects';
+import { loadOutline } from '@/lib/storage/backup';
+import type { OutlineVolume } from '@/lib/storage/backup';
+import type { Step } from '@/types';
+import { toast } from 'sonner';
 
 export function WorkbenchTab({
   wb,
   projectId,
+  onNavigateToManuscript,
+  onNavigateToBrief,
 }: {
   wb: ReturnType<typeof useWorkbench>;
   projectId: string;
+  onNavigateToManuscript?: () => void;
+  onNavigateToBrief?: () => void;
 }) {
+  const [mainTextOpen, setMainTextOpen] = useState(false);
+  const [mainText, setMainText] = useState('');
   const {
     brief,
     projectChars,
@@ -40,23 +53,16 @@ export function WorkbenchTab({
     setIsPaused,
     pausedRef,
     steps,
-    editingMap,
-    handleEditStart,
-    handleEditCancel,
-    handleSaveEdit,
-    handleConfirm,
-    handleSkip,
-    handleSendToManuscript,
-    handleAiAction,
     currentAgent,
     handleGenerate,
-    handleWriteFirstChapter,
     selectedCharIds,
     selectedSectionIds,
     toggleChar,
     toggleSection,
     activeWorkflow,
     scrollRef,
+    outlineVolumes,
+    setOutlineVolumes,
   } = wb;
 
   const togglePause = () => {
@@ -65,6 +71,91 @@ export function WorkbenchTab({
       pausedRef.current = next;
       return next;
     });
+  };
+
+  const handleSetAsMainText = async (step: Step) => {
+    setMainText(step.content || '');
+    const pid = Number(projectId);
+    try {
+      const items = await listOutlines(pid);
+      if (items.length > 0) {
+        const raw = items[0].data;
+        const volumes: OutlineVolume[] = Array.isArray(raw) ? raw : ((raw as unknown as { data?: OutlineVolume[] })?.data ?? []);
+        setOutlineVolumes(Array.isArray(volumes) ? volumes : []);
+      } else {
+        const local = await loadOutline(projectId);
+        setOutlineVolumes(local);
+      }
+    } catch {
+      // keep existing outlineVolumes
+    }
+    setMainTextOpen(true);
+  };
+
+  const handleMainTextConfirm = async (action: 'create_volume' | 'create_chapter' | 'overwrite_chapter', payload: { volumeId?: string; chapterId?: string; volumeTitle?: string; chapterTitle?: string }) => {
+    const pid = Number(projectId);
+    setOutlineVolumes((prev) => {
+      const clone = JSON.parse(JSON.stringify(prev)) as OutlineVolume[];
+      if (action === 'create_volume' && payload.volumeTitle) {
+        const newVol: OutlineVolume = { id: `vol-${Date.now()}`, title: payload.volumeTitle, chapters: [], origin: 'init' };
+        clone.push(newVol);
+        return clone;
+      }
+      if ((action === 'create_chapter' || action === 'overwrite_chapter') && payload.volumeId && payload.chapterTitle) {
+        const vol = clone.find(v => v.id === payload.volumeId);
+        if (vol) {
+          if (action === 'create_chapter') {
+            vol.chapters.push({ id: `ch-${Date.now()}`, title: payload.chapterTitle, content: mainText, nodes: [], origin: 'init' });
+          } else if (action === 'overwrite_chapter' && payload.chapterId) {
+            const chap = vol.chapters.find(c => c.id === payload.chapterId);
+            if (chap) { chap.content = mainText; }
+          }
+        }
+      }
+      return clone;
+    });
+    try {
+      const existing = await listOutlines(pid);
+      if (existing.length === 0) {
+        if (action === 'create_volume' && payload.volumeTitle) {
+          await createOutline(pid, [{
+            id: `vol-${Date.now()}`,
+            title: payload.volumeTitle,
+            chapters: [],
+            origin: 'init',
+          } as OutlineVolume]);
+        }
+      } else {
+      const current = existing[0].data || [];
+      const rawArr: OutlineVolume[] | undefined = Array.isArray(current) ? current : (current as unknown as { data?: OutlineVolume[] })?.data;
+      const source = Array.isArray(rawArr) ? rawArr : [];
+      const clone = JSON.parse(JSON.stringify(source)) as OutlineVolume[];
+        if (action === 'create_volume' && payload.volumeTitle) {
+          const newVol: OutlineVolume = { id: `vol-${Date.now()}`, title: payload.volumeTitle, chapters: [], origin: 'init' };
+          clone.push(newVol);
+        } else if ((action === 'create_chapter' || action === 'overwrite_chapter') && payload.volumeId && payload.chapterTitle) {
+          const vol = clone.find(v => v.id === payload.volumeId);
+          if (vol) {
+            if (action === 'create_chapter') {
+              vol.chapters.push({ id: `ch-${Date.now()}`, title: payload.chapterTitle, content: mainText, nodes: [], origin: 'init' });
+            } else if (action === 'overwrite_chapter' && payload.chapterId) {
+              const chap = vol.chapters.find(c => c.id === payload.chapterId);
+              if (chap) { chap.content = mainText; }
+            }
+          }
+        }
+        await updateOutline(pid, existing[0].id, clone);
+      }
+      window.dispatchEvent(new CustomEvent('outline-seeded', { detail: { projectId } }));
+      if (action !== 'create_volume') {
+        toast.success('正文写入成功');
+        setMainTextOpen(false);
+      } else {
+        toast.success('卷创建成功');
+      }
+    } catch {
+      toast.error('写入失败');
+    }
   };
 
   return (
@@ -169,14 +260,14 @@ export function WorkbenchTab({
             description="            按引导四步走：①写创作设定 ②建角色 ③选写作流程生成 ④确认/续写。随时可去「手稿」自己写。"
             action={
               <div className="flex gap-2 justify-center flex-wrap">
-                <Button size="sm" onClick={handleWriteFirstChapter}>
+                <Button size="sm" onClick={onNavigateToManuscript}>
                   <PenLine className="w-4 h-4 mr-1.5" /> 直接写第一章
                 </Button>
-                <Button size="sm" variant="outline" onClick={() => setSeedOpen(false)}>
+                <Button size="sm" variant="outline" onClick={onNavigateToBrief}>
                   <FileCog className="w-4 h-4 mr-1.5" /> 写创作设定
                 </Button>
-                <Button size="sm" variant="outline" onClick={() => handleGenerate}>
-                  <Wand2 className="w-4 h-4 mr-1.5" /> AI 生成
+                <Button size="sm" variant="default" onClick={handleGenerate}>
+                  <Send className="w-4 h-4 mr-1.5" /> 开始生成
                 </Button>
               </div>
             }
@@ -194,23 +285,20 @@ export function WorkbenchTab({
               key={step.id}
               step={step}
               index={index}
-              isLast={index === steps.length - 1}
-              isEditing={editingMap[step.id] !== undefined}
-              editContent={editingMap[step.id] ?? ''}
-              onEditChange={(v) => handleEditStart(step.id, v)}
-              onEditStart={(content) => handleEditStart(step.id, content)}
-              onEditCancel={() => handleEditCancel(step.id)}
-              onSaveEdit={handleSaveEdit}
-              onConfirm={handleConfirm}
-              onSendToManuscript={handleSendToManuscript}
-              onSkip={handleSkip}
-              onRetry={handleConfirm}
-              onAiAction={handleAiAction}
+              onSetAsMainText={handleSetAsMainText}
               projectId={projectId}
             />
           ))}
         </div>
       </div>
+
+      <MainTextTargetDialog
+        open={mainTextOpen}
+        onOpenChange={setMainTextOpen}
+        volumes={outlineVolumes}
+        mainText={mainText}
+        onConfirm={handleMainTextConfirm}
+      />
 
       <div className="border-t border-border/40 pt-4 mt-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -229,11 +317,7 @@ export function WorkbenchTab({
                 <Button size="sm" onClick={handleGenerate}>
                   <Send className="w-4 h-4 mr-2" /> 续写下一章
                 </Button>
-              ) : (
-                <Button size="sm" onClick={handleGenerate}>
-                  <Send className="w-4 h-4 mr-2" /> 开始生成
-                </Button>
-              )}
+              ) : null}
               {steps.some((s) => s.status === 'completed') && (
                 <span className="text-xs text-muted-foreground">
                   正文已生成，可「确认继续」或去「手稿」自己改

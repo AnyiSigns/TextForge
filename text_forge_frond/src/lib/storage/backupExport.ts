@@ -83,7 +83,7 @@ export function projectBundleToMarkdown(bundle: SingleProjectBundle): string {
         lines.push(`#### 第 ${vol.chapters.indexOf(ch) + 1} 章：${ch.title}`);
         for (const node of ch.nodes) {
           const mark = node.status === 'done' ? '✅' : node.status === 'writing' ? '✍️' : '⬜';
-          lines.push(`- ${mark} ${node.title}${node.targetWords ? `（目标 ${node.targetWords} 字）` : ''}`);
+          lines.push(`- ${mark} ${node.title}`);
           if (node.content) lines.push(`  ${node.content}`);
         }
       }

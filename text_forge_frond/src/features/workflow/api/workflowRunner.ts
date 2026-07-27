@@ -1,6 +1,6 @@
 // src/lib/api/workflowRunner.ts
 // 工作流运行：后端 SSE 驱动，前端按事件流消费节点产出。
-import type { WorkflowNode, WorkflowRunStep, RunWorkflowOptions } from './workflowTypes';
+import type { WorkflowRunStep, RunWorkflowOptions } from './workflowTypes';
 import apiClient from '@/shared/lib/apiClient';
 
 type GenerationContext = import('@/types').GenerationContext;
@@ -30,6 +30,9 @@ export async function runWorkflow(
   const threadId = opts?.projectId
     ? `${opts.projectId}-${Date.now()}`
     : `thread-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const visibleNodeIds = new Set(
+    Array.isArray(opts?.visibleNodeIds) ? opts.visibleNodeIds : opts?.visibleNodeIds ? Array.from(opts.visibleNodeIds) : [],
+  );
   const res = await fetch(`${apiClient.defaults.baseURL}/api/workflows/${workflowId}/run`, {
     method: 'POST',
     headers: {
@@ -62,17 +65,13 @@ export async function runWorkflow(
       if ((eventType === 'node_start' || eventType === 'on_chain_start') && event.node && event.node !== '__input__') {
         const nodeId = String(event.node);
         currentNode = { id: nodeId, label: nodeId };
-        const existing = steps.find((s) => s.nodeId === nodeId);
-        if (!existing) {
-          steps.push({ nodeId, label: nodeId, output: '', status: 'running' });
-          opts?.onStep?.(nodeId, nodeId, '', undefined);
-        }
       }
       if ((eventType === 'node_stream' || eventType === 'on_chat_model_stream') && event.node && typeof event.output === 'string') {
         const text = event.output;
-        if (!text) return;
+        if (!text) continue;
         const target = currentNode?.id ? currentNode.id : String(event.node);
         const nodeId = target === 'ChatOpenAI' ? (currentNode?.id || target) : target;
+        if (visibleNodeIds.size > 0 && !visibleNodeIds.has(nodeId)) continue;
         const label = currentNode?.label || nodeId;
         const existing = steps.find((s) => s.nodeId === nodeId);
         if (existing) {
@@ -85,18 +84,30 @@ export async function runWorkflow(
       }
       if ((eventType === 'node_end' || eventType === 'on_chain_end') && event.node) {
         const nodeId = String(event.node);
+        if (visibleNodeIds.size > 0 && !visibleNodeIds.has(nodeId)) {
+          currentNode = null;
+          continue;
+        }
         const text = typeof event.output === 'string' ? event.output : '';
         const existing = steps.find((s) => s.nodeId === nodeId);
         if (existing) {
-          existing.output = text;
+          if (text) existing.output = text;
           existing.status = 'done';
+          currentNode = null;
+          if (existing.output) {
+            opts?.onStep?.(nodeId, existing.label || nodeId, existing.output, undefined);
+          }
         } else {
           steps.push({ nodeId, label: nodeId, output: text, status: 'done' });
+          currentNode = null;
+          if (text) {
+            opts?.onStep?.(nodeId, nodeId, text, undefined);
+          }
         }
-        opts?.onStep?.(nodeId, nodeId, text, undefined);
       }
       if (event.steps && Array.isArray(event.steps)) {
         for (const s of event.steps as WorkflowRunStep[]) {
+          if (visibleNodeIds.size > 0 && !visibleNodeIds.has(s.nodeId)) continue;
           const existing = steps.find((x) => x.nodeId === s.nodeId);
           if (existing) { existing.output = s.output; existing.status = 'done'; }
           else steps.push(s);

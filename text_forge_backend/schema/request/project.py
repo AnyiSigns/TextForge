@@ -16,14 +16,6 @@ class UpdateProjectRequest(BaseModel):
     genre: Optional[str] = None
 
 
-class StepIdRequest(BaseModel):
-    content: str
-
-
-class StepConfirm(BaseModel):
-    step_id: int
-
-
 class SectionsRequest(BaseModel):
     id: int
     title: str

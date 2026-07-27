@@ -18,8 +18,7 @@
 ### 后端需实现的端点集合（以 `openapi/seed-api.yaml` 为准）
 
 - `GET/POST /api/projects`、`GET/PUT/DELETE /api/projects/{id}`
-- `PUT /api/projects/{id}/steps/{stepId}`、`POST /api/projects/{id}/confirm`、`POST /api/projects/{id}/generate`
-- `GET/POST /api/characters`、`GET/PUT/DELETE /api/characters/{id}`、`POST /api/characters/{id}/avatar`
+- `GET /api/projects/{id}/steps`、`GET/POST /api/characters`、`GET/PUT/DELETE /api/characters/{id}`、`POST /api/characters/{id}/avatar`
 - `GET /api/characters/{id}/messages`、`POST /api/characters/{id}/chat`
 - `GET /api/workflow`
 

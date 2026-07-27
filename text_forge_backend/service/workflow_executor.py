@@ -7,7 +7,6 @@ from repository.project_repo import (
     BriefRepository,
     CharacterRepository,
     ProjectRepository,
-    StepRepository,
 )
 from repository.workflow_repo import WorkflowRepository
 from utils.logger import get_logger
@@ -97,16 +96,6 @@ class WorkflowExecutor:
             char_lines = [f"-{c.name}:{c.description}" for c in characters]
             parts.append(f"#角色设定\n" + "\n".join(char_lines))
 
-        step_repo = StepRepository(self.session)
-        steps = await step_repo.step_detail(project_id)
-        if steps:
-            step_lines = []
-            for s in steps:
-                if s.content:
-                    step_lines.append(f"##{s.agent_name or s.agent}\n{s.content}")
-            if step_lines:
-                parts.append("#已有正文\n" + "\n".join(step_lines))
-
         input_text = "\n\n".join(parts)
         nodes = self._topological_store(workflow.nodes or [])  # type: ignore
         model_config = await self._get_user_model_config(user_id)
@@ -129,27 +118,48 @@ class WorkflowExecutor:
                 kind = event.get("event")
                 name = event.get("name")
                 data = event.get("data", {})
-                if kind == "on_chain_start" and name not in (None, "LangGraph", "pregel"):
+                if kind == "on_chain_start" and name not in (
+                    None,
+                    "LangGraph",
+                    "pregel",
+                ):
                     logger.info(f"[SSE] chain_start -> {name}")
                     yield f"event:node_start\ndata:{json.dumps({'node': name})}\n\n"
                 elif kind == "on_chat_model_stream" and name:
                     raw_chunk = data.get("chunk")
                     chunk = ""
                     if isinstance(raw_chunk, dict):
-                        candidate = raw_chunk.get("content") or raw_chunk.get("text") or raw_chunk.get("delta") or ""
-                        chunk = candidate if isinstance(candidate, str) else str(candidate)
+                        candidate = (
+                            raw_chunk.get("content")
+                            or raw_chunk.get("text")
+                            or raw_chunk.get("delta")
+                            or ""
+                        )
+                        chunk = (
+                            candidate if isinstance(candidate, str) else str(candidate)
+                        )
                     elif raw_chunk is not None:
                         chunk = getattr(raw_chunk, "content", None) or ""
                     chunk = chunk.strip()
                     if chunk:
                         yield f"event:node_stream\ndata:{json.dumps({'node': name, 'output': chunk})}\n\n"
-                elif kind == "on_chain_end" and name not in (None, "LangGraph", "pregel"):
+                elif kind == "on_chain_end" and name not in (
+                    None,
+                    "LangGraph",
+                    "pregel",
+                ):
                     output = data.get("output") or {}
-                    step_outputs = (((output or {}).get("step_outputs")) if isinstance(output, dict) else {}) or {}
+                    step_outputs = (
+                        ((output or {}).get("step_outputs"))
+                        if isinstance(output, dict)
+                        else {}
+                    ) or {}
                     node_output = step_outputs.get(name) or ""
                     if not isinstance(node_output, str):
                         node_output = json.dumps(node_output, ensure_ascii=False)
-                    logger.info(f"[SSE] chain_end -> {name}, output={str(node_output)[:80]}")
+                    logger.info(
+                        f"[SSE] chain_end -> {name}, output={str(node_output)[:80]}"
+                    )
                     yield f"event:node_end\ndata:{json.dumps({'node': name, 'output': node_output})}\n\n"
                 elif kind == "on_stream_end":
                     output = event.get("data", {}).get("final_output", {})

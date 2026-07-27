@@ -5,7 +5,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from repository.project_repo import (
     CharacterRepository,
     ProjectRepository,
-    StepRepository,
     BriefRepository,
 )
 from model.project import Project
@@ -18,7 +17,6 @@ class ProjectService:
     def __init__(self, session: AsyncSession):
         self.session = session
         self.project_repo = ProjectRepository(session)
-        self.step_repo = StepRepository(session)
         self.character_repo = CharacterRepository(session)
         self.brief_repo = BriefRepository(session)
 
@@ -71,11 +69,9 @@ class ProjectService:
         """获取项目完整详情"""
         try:
             project_data, _ = await self.project_info(user_id, project_id)
-            step_data = await self.step_repo.step_detail(project_id)
             character_data, _ = await self.project_characters(user_id, project_id)
             result = {
                 "project": project_data,
-                "steps": step_data,
                 "characters": character_data or [],
             }
             return result
@@ -100,28 +96,6 @@ class ProjectService:
         except Exception:
             logger.error("项目删除失败", exc_info=True)
             return False
-
-    async def update_content(
-        self, user_id: int, project_id: int, step_id: int, content: str
-    ):
-        """更新某一步正文"""
-        try:
-            result, msg = await self.project_info(user_id, project_id)
-            if msg:
-                return None, "获取项目失败"
-            instance = await self.step_repo.update_content(step_id, content)
-            if instance.project_id != result.id:
-                return None, "修改失败"
-            return instance, None
-        except Exception:
-            logger.error("正文修改失败", exc_info=True)
-            return None, "正文修改失败"
-
-    async def step_status(self, _user_id: int, project_id: int, step_id: int, status):
-        instance = await self.step_repo.update_status(step_id, status)
-        if instance.project_id != project_id:
-            return False
-        return True
 
     async def save_brief(self, project_id: int, _user_id: int, brief):
         try:

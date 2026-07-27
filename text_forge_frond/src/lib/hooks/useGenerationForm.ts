@@ -122,9 +122,14 @@ export function useGenerationForm(opts: GenerationFormOptions) {
   useEffect(() => {
     let cancelled = false;
     if (!steps && projectId && projectId !== NO_PROJECT) {
-      import('@/features/projects').then(({ fetchProjectDetail }) =>
-        fetchProjectDetail(projectId)
-          .then((s) => { if (!cancelled) setInternalSteps(s.map((x) => ({ id: x.id, agent: x.agent, content: x.content }))); })
+      import('@/features/projects').then(({ listOutlines }) =>
+        listOutlines(Number(projectId))
+          .then((items) => {
+            if (!cancelled) {
+              const chapters = (items[0]?.data || []).flatMap((v: any) => v.chapters || []);
+              setInternalSteps(chapters.map((c: any) => ({ id: c.id, agent: 'chapter', content: c.content || c.title })));
+            }
+          })
           .catch(() => {})
       );
     } else if (!steps) {

@@ -299,6 +299,18 @@
   box-shadow: 0 4px 10px rgba(15, 23, 42, 0.06), 0 16px 40px rgba(15, 23, 42, 0.08);
 }
 
+/* ============ Dialog glass (keeps centered positioning) ============ */
+.glass-dialog {
+  background: rgba(var(--glass-tint), 0.55) !important;
+  -webkit-backdrop-filter: blur(var(--card-glass-blur)) saturate(185%);
+  backdrop-filter: blur(var(--card-glass-blur)) saturate(185%);
+  border: 1px solid rgba(var(--glass-tint), 0.18);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05),
+    0 8px 28px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    inset 0 -1px 0 rgba(var(--glass-tint), 0.1);
+}
+
 /* ============ Cards ============ */
 .card-elegant {
   background: var(--card);

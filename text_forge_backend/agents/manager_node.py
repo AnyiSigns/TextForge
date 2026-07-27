@@ -1,6 +1,6 @@
 import json
 from typing import Literal
-from langgraph.graph import END
+from langgraph.graph import END, StateGraph, START
 from agents.state import ParentState
 
 
@@ -104,13 +104,23 @@ async def manager_node(state: ParentState):
 
 async def call_tool(state: ParentState) -> dict:
     from infrastructure.graph_lifecycle import graph_register
+    from agents.state import ToolState
+    from agents.tool_node import tool_node
 
-    tool_graph = graph_register.get_compiled("tool")
+    metadata = state.get("metadata", {})
+    node_id = metadata.get("current_node_id", "step_tool")
+
+    builder = StateGraph(ToolState)
+    builder.add_node(node_id, tool_node)
+    builder.add_edge(START, node_id)
+    builder.add_edge(node_id, END)
+    tool_graph = builder.compile()
+
     result = await tool_graph.ainvoke(
         {
             "query": state["input_messages"],
             "model_config": state["model_config"],
-        }
+        }  # type: ignore
     )
     return {
         "step_outputs": {"step_tool": result["tool_result"]},
@@ -120,6 +130,8 @@ async def call_tool(state: ParentState) -> dict:
 
 async def call_main(state: ParentState) -> dict:
     from infrastructure.graph_lifecycle import graph_register
+    from agents.state import MainState
+    from agents.main_node import main_node
 
     metadata = state.get("metadata", {})
     node_id = metadata.get("current_node_id")
@@ -139,7 +151,13 @@ async def call_main(state: ParentState) -> dict:
                 }
             )
             context["tool_result"] = tool_result["tool_result"]
-    main_graph = graph_register.get_compiled("main")
+
+    builder = StateGraph(MainState)
+    builder.add_node(node_id or "main", main_node)
+    builder.add_edge(START, node_id or "main")
+    builder.add_edge(node_id or "main", END)
+    main_graph = builder.compile()
+
     result = await main_graph.ainvoke(
         {
             "system_prompt": system_prompt,
@@ -154,12 +172,21 @@ async def call_main(state: ParentState) -> dict:
 
 async def call_compression(state: ParentState) -> dict:
     from infrastructure.graph_lifecycle import graph_register
+    from agents.state import AuditState
+    from agents.audit_node import audit_node
 
     meta = state.get("metadata", {})
     compress_text = meta.get("compress_text", "")
     source_id = meta.get("compress_source_id", "unknown")
+    node_id = f"{source_id}_compressed"
     compression_prompt = "请压缩以下长文本,保留关键情节和核心信息,上下文需要逻辑连贯。"
-    audit_graph = graph_register.get_compiled("audit")
+
+    builder = StateGraph(AuditState)
+    builder.add_node(node_id, audit_node)
+    builder.add_edge(START, node_id)
+    builder.add_edge(node_id, END)
+    audit_graph = builder.compile()
+
     result = await audit_graph.ainvoke(
         {
             "system_prompt": compression_prompt,
@@ -168,28 +195,35 @@ async def call_compression(state: ParentState) -> dict:
             "model_config": state["model_config"],
         }
     )
-    compressed = result["output"]
-    print(f"[压缩] 完成，{len(compress_text)} -> {len(compressed)} 字符")
+    print(f"[压缩] 完成，{len(compress_text)} -> {len(result.get('output', ''))} 字符")
     return {
-        "step_outputs": {f"{source_id}_compressed": compressed},
+        "step_outputs": {node_id: result["output"]},
         "executed_steps": ["__compress__"],
     }
 
 
 async def call_audit(state: ParentState) -> dict:
     from infrastructure.graph_lifecycle import graph_register
+    from agents.state import AuditState
+    from agents.audit_node import audit_node
 
     metadata = state.get("metadata", {})
     node_id = metadata.get("current_node_id")
     system_prompt = metadata.get("current_system_prompt")
-    context = metadata.get("current_context", {})
+    context = state.get("step_outputs", {})
 
     compressed = state["step_outputs"].get("step_compressed")
     if compressed:
         context["compressed_text"] = compressed
 
     print(f"Audit：执行节点：{node_id}")
-    audit_graph = graph_register.get_compiled("audit")
+
+    builder = StateGraph(AuditState)
+    builder.add_node(node_id or "audit", audit_node)
+    builder.add_edge(START, node_id or "audit")
+    builder.add_edge(node_id or "audit", END)
+    audit_graph = builder.compile()
+
     result = await audit_graph.ainvoke(
         {
             "system_prompt": system_prompt,

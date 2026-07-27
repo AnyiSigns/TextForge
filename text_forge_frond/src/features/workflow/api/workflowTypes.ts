@@ -69,6 +69,8 @@ export interface RunWorkflowOptions {
   ) => Promise<string> | string;
   /** 是否在 agent 节点间演示流式延迟（mock 观感） */
   simulateDelay?: boolean;
+  /** 只处理以下 nodeId 的 SSE 事件；缺省不过滤。用于剔除 LangGraph 内部基础设施节点。 */
+  visibleNodeIds?: Set<string> | string[];
   /** 暂停信号：返回 true 时，运行在节点之间挂起，直至返回 false（轮询） */
   shouldPause?: () => boolean;
   /** 取消信号：返回 true 时，运行在中止前停止（不产出后续步骤） */

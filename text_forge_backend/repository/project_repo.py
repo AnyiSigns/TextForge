@@ -2,7 +2,7 @@ from openai import project
 from sqlalchemy import select
 from repository.base_repo import BaseRepository
 from sqlalchemy.ext.asyncio import AsyncSession
-from model.project import Brief, Character, Project, Step
+from model.project import Brief, Character, Project
 
 
 class ProjectRepository(BaseRepository[Project]):
@@ -31,26 +31,6 @@ class ProjectRepository(BaseRepository[Project]):
     async def update_project(self, project_id: int, **kwargs) -> Project | None:
         result = await self.update(project_id, **kwargs)
         return result
-
-
-class StepRepository(BaseRepository[Step]):
-    def __init__(self, session: AsyncSession):
-        self.session = session
-        super().__init__(Step, session)
-
-    async def step_detail(self, project_id: int):
-        """获取该项目信息"""
-        stmt = select(Step).where(Step.project_id == project_id)
-        result = await self.session.execute(stmt)
-        return result.scalars().all()
-
-    async def update_content(self, step_id: int, content: str):
-        instance = await self.update(step_id, content=content)
-        return instance
-
-    async def update_status(self, step_id: int, status: str):
-        instance = await self.update(step_id, status=status)
-        return instance
 
 
 class CharacterRepository(BaseRepository[Character]):

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { ProjectStudio } from '@/features/projects';
 import { ProjectGuide } from '@/features/projects';
 import { BriefPanel } from '@/features/projects';
@@ -9,6 +9,7 @@ import { OutlinePanel } from '@/features/projects';
 import { InspirationBoard } from '@/features/projects';
 import { ProjectCharactersTab } from '@/features/projects';
 import { ProjectExport } from '@/features/projects';
+import { WritePanel } from '@/features/projects';
 import { WorkbenchTab } from './WorkbenchTab';
 import { ProjectDialogs } from './ProjectDialogs';
 import { PageHeader } from '@/shared/components';
@@ -19,11 +20,12 @@ import { ProcessNav, type ProcessTab } from '@/features/projects';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { BUILTIN_WORKFLOW_ID } from '@/types';
 
-import { FileText, ListTree, Lightbulb, FileCog, Users, ImageIcon, Clapperboard, BookOpen, Info, Wand2, Check, CheckCircle2, PenLine, Sparkles } from 'lucide-react';
+import { FileText, ListTree, Lightbulb, FileCog, Users, ImageIcon, Clapperboard, BookOpen, Info, Wand2, Check, CheckCircle2, PenLine, Sparkles, Wand } from 'lucide-react';
 import { useWorkbench } from '@/features/projects';
 
 export default function ProjectWorkbench() {
   const { id: projectId } = useParams<{ id: string }>();
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState('workbench');
   const wb = useWorkbench(projectId);
   const {
@@ -38,7 +40,6 @@ export default function ProjectWorkbench() {
     editingMap,
     savedAt,
     setSeedOpen,
-    handleWriteFirstChapter,
     projectChars,
     brief,
     outlineReady,
@@ -59,6 +60,7 @@ export default function ProjectWorkbench() {
     { value: 'characters', label: '角色', icon: Users },
     { value: 'material', label: '角色素材', icon: ImageIcon },
     { value: 'animation', label: '章节动画', icon: Clapperboard },
+    { value: 'write', label: '写入设定', icon: Wand },
   ];
 
   return (
@@ -118,7 +120,7 @@ export default function ProjectWorkbench() {
           <Button variant="outline" size="sm" onClick={() => setSeedOpen(true)}>
             <Sparkles className="w-4 h-4 mr-1.5" /> 一句话开局
           </Button>
-          <Button variant="outline" size="sm" onClick={handleWriteFirstChapter}>
+          <Button variant="outline" size="sm" onClick={() => router.push(`/manuscript/${projectId}`)}>
             <PenLine className="w-4 h-4 mr-1.5" /> 自己写一章
           </Button>
         </div>
@@ -137,12 +139,17 @@ export default function ProjectWorkbench() {
       />
 
       <ProcessNav tabs={PROCESS_TABS} value={activeTab} onValueChange={setActiveTab}>
-        <ErrorBoundary context={{ module: 'project-workbench', projectId, tab: activeTab }}>
-          {activeTab === 'workbench' && (
-            <WorkbenchTab wb={wb} projectId={projectId} />
-          )}
+          <ErrorBoundary context={{ module: 'project-workbench', projectId, tab: activeTab }}>
+            {activeTab === 'workbench' && (
+              <WorkbenchTab
+                wb={wb}
+                projectId={projectId}
+                onNavigateToManuscript={() => router.push(`/manuscript/${projectId}`)}
+                onNavigateToBrief={() => setActiveTab('brief')}
+              />
+            )}
 
-          <ProjectDialogs wb={wb} />
+            <ProjectDialogs wb={wb} />
 
           {activeTab === 'outline' && <OutlinePanel projectId={projectId} />}
           {activeTab === 'inspiration' && <InspirationBoard projectId={projectId} />}
@@ -150,6 +157,7 @@ export default function ProjectWorkbench() {
           {activeTab === 'characters' && <ProjectCharactersTab projectId={projectId} />}
           {activeTab === 'material' && <ProjectStudio projectId={projectId} projectTitle={projectTitle} steps={steps} mode="character" selectedCharIds={selectedCharIds} />}
           {activeTab === 'animation' && <ProjectStudio projectId={projectId} projectTitle={projectTitle} steps={steps} mode="chapter" selectedCharIds={selectedCharIds} />}
+          {activeTab === 'write' && <WritePanel projectId={projectId} steps={steps} brief={brief} projectChars={projectChars} />}
         </ErrorBoundary>
       </ProcessNav>
     </div>

@@ -95,7 +95,6 @@ const PROTECTED_ROOTS = [
   '/assets',
   '/tasks',
   '/knowledge',
-  '/api-keys',
   '/settings',
 ];
 

@@ -5,7 +5,7 @@ import { syncManager } from '@/lib/storage/syncManager';
 import { createIdbStorage } from '@/lib/storage/zustandIdb';
 
 export type SuggestionFrequency = 'high' | 'medium' | 'manual';
-export type BgArea = 'global' | 'dashboard' | 'projects' | 'characters' | 'knowledge' | 'tasks' | 'assets' | 'api-keys' | 'settings';
+export type BgArea = 'global' | 'dashboard' | 'projects' | 'characters' | 'knowledge' | 'tasks' | 'assets' | 'settings';
 
 interface SettingsStore {
   bgImage: string | null;

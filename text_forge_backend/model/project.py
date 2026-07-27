@@ -1,7 +1,7 @@
 from datetime import datetime
 from textwrap import indent
 from typing import List, Optional
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, Boolean, Enum, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, Boolean, Enum, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from model.base import Base
 import enum
@@ -46,13 +46,13 @@ class Project(Base):
     version: Mapped[int] = mapped_column(Integer, nullable=True)
 
     users: Mapped["User"] = relationship(back_populates="projects")
-    steps: Mapped[List["Step"]] = relationship(
-        back_populates="projects", cascade="all,delete-orphan"
-    )
     characters: Mapped[List["Character"]] = relationship(
         back_populates="projects", cascade="all,delete-orphan"
     )
     briefs: Mapped[Optional["Brief"]] = relationship(
+        back_populates="projects", cascade="all,delete-orphan"
+    )
+    outlines: Mapped[Optional["Outline"]] = relationship(
         back_populates="projects", cascade="all,delete-orphan"
     )
 
@@ -60,27 +60,6 @@ class Project(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
     )
-
-
-class Step(Base):
-    __tablename__ = "steps"
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    project_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey("projects.id", ondelete="CASCADE"),
-        index=True,
-        nullable=False,
-    )
-    agent: Mapped[str] = mapped_column(String(64), nullable=False)
-    agent_name: Mapped[str] = mapped_column(String(64))
-    content: Mapped[str] = mapped_column(Text, nullable=False)
-    status: Mapped[StatusEnum] = mapped_column(
-        Enum(StatusEnum, native_enum=False),
-        default=StatusEnum.DRAFT,
-        nullable=False,
-    )
-    node_id: Mapped[str] = mapped_column(String(128))
-    projects: Mapped["Project"] = relationship(back_populates="steps")
 
 
 class Character(Base):
@@ -152,3 +131,21 @@ class Workflow(Base):
     edges: Mapped[dict] = mapped_column(JSONB, nullable=True)
 
     users: Mapped["User"] = relationship(back_populates="workflows")
+
+
+class Outline(Base):
+    __tablename__ = "outlines"
+    __table_args__ = (UniqueConstraint("project_id", name="uq_outline_project"), )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    data: Mapped[dict] = mapped_column(JSONB, nullable=True, comment="大纲嵌套")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+    projects: Mapped[Optional["Project"]] = relationship(back_populates="outlines")

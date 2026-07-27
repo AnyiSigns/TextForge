@@ -5,7 +5,7 @@ export const INSERT_OUTLINE_NOTE_EVENT = 'textforge:insert-outline-note';
 
 // 角色图插入的二级定位目标（不指定则统一发到工作台最新）
 export type InsertTarget =
-  | { kind: 'chapter'; stepId: string }
+  | { kind: 'chapter'; chapterId: string }
   | { kind: 'outline'; volumeId: string; chapterId: string; nodeId: string };
 
 export interface InsertStepDetail {

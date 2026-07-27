@@ -11,6 +11,7 @@ export { CharacterRelationsSheet } from './ui/CharacterRelationsSheet';
 export { CharacterStatusSheet } from './ui/CharacterStatusSheet';
 export { InspirationBoard } from './ui/InspirationBoard';
 export { OutlinePanel } from './ui/OutlinePanel';
+export { WritePanel } from './ui/WritePanel';
 export { PortfolioGallery } from './ui/PortfolioGallery';
 export { PortfolioGrid } from './ui/PortfolioGrid';
 export { ProcessNav } from './ui/ProcessNav';
@@ -20,6 +21,7 @@ export { ProjectExport } from './ui/ProjectExport';
 export { ProjectGuide } from './ui/ProjectGuide';
 export { ProjectStudio } from './ui/ProjectStudio';
 export { StepCard } from './ui/StepCard';
+export { MainTextTargetDialog } from './ui/MainTextTargetDialog';
 export { WorkflowGraph } from './ui/WorkflowGraph';
 
 // ---- Hooks ----
@@ -39,21 +41,24 @@ export {
   fetchProjects,
   createProject,
   deleteProject,
-  fetchProjectDetail,
   fetchProjectMeta,
   fetchProjectCharacters,
-  confirmStep,
-  saveStepEdit,
   bindWorkflow,
   generateWithWorkflow,
   buildStepFromManuscript,
   buildBookSteps,
 } from './api/projects';
+export {
+  listOutlines,
+  getOutline,
+  createOutline,
+  updateOutline,
+  deleteOutline,
+} from './api/outline';
 export type {
   CreateProjectResponse,
   ProjectListResponse,
   ProjectResponse,
-  StepsResponse,
   CharactersResponse,
   ProjectDetail,
   GenerateOptions,

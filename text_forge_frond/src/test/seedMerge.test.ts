@@ -46,7 +46,7 @@ describe('种子增量合并', () => {
 describe('大纲/角色增量合并', () => {
   it('用户自建大纲节点保留，种子新增追加', () => {
     const local: OutlineVolume[] = [
-      { id: 'v-u', title: '用户卷', origin: 'init', chapters: [{ id: 'c-u', title: '用户章', origin: 'init', nodes: [{ id: 'n-u', title: '用户节点', status: 'todo', origin: 'init' }] }] },
+      { id: 'v-u', title: '用户卷', origin: 'init', chapters: [{ id: 'c-u', title: '用户章', origin: 'init', nodes: [{ id: 'n-u', title: '用户节点', status: 'writing', origin: 'init' }] }] },
     ];
     const seed: SeedOutline = { volumes: [{ id: 'v1', title: '第一卷', chapters: [{ id: 'c1', title: '第一章', nodes: [{ id: 'n1', title: '钩子', content: 'x' }] }] }] };
     const merged = mergeOutline(local, seed);

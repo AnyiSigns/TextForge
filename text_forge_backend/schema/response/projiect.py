@@ -21,21 +21,6 @@ class ProjectVersionResponse(BaseModel):
     version: Optional[int]
 
 
-class StepResponse(BaseModel):
-    id: int
-    agent: str
-    agentName: Optional[str] = None
-    content: str
-    status: str
-    node_id: Optional[str] = Field(default=None, alias="nodeId")
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
-
-
-class StepUpdateResponse(BaseModel):
-    step: StepResponse
-    model_config = ConfigDict(from_attributes=True)
-
-
 class CharacterResponse(BaseModel):
     id: int
     name: str
@@ -62,7 +47,6 @@ class ListCharactersResponse(BaseModel):
 
 class ProjectDetailResponse(BaseModel):
     project: ProjectResponse
-    steps: List[StepResponse]
     characters: List[CharacterResponse]
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)

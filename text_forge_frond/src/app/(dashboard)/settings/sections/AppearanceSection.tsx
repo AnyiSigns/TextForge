@@ -20,7 +20,6 @@ const BG_AREA_OPTIONS: { value: BgArea; label: string }[] = [
   { value: 'knowledge', label: '知识库' },
   { value: 'tasks', label: 'AI视频' },
   { value: 'assets', label: 'AI绘画' },
-  { value: 'api-keys', label: '开放平台' },
   { value: 'settings', label: '设置页' },
 ];
 

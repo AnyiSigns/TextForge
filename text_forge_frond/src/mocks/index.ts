@@ -67,9 +67,6 @@ export async function handleDevApi(req: NextRequest) {
   // ---- 项目 ----
   if (url === '/api/projects' && method === 'GET') return await handleProjectsGet();
   if (url === '/api/projects' && method === 'POST') return await handleProjectsPost(req);
-  if (url.startsWith('/api/projects/') && url.endsWith('/generate')) return json({ ignored: true });
-  if (url.startsWith('/api/projects/') && url.endsWith('/confirm')) return json({ ok: true });
-  if (url.startsWith('/api/projects/') && url.match(/\/steps\/[^/]+$/) && method === 'PUT') return json({ ok: true });
   if (url.startsWith('/api/projects/') && url.endsWith('/characters') && method === 'GET') return json({ characters: [] });
   if (url.startsWith('/api/projects/') && url.endsWith('/portfolio') && method === 'GET') return json({ items: [] });
   if (url.startsWith('/api/projects/') && url.endsWith('/brief') && method === 'PUT') return json({ ok: true });
@@ -110,9 +107,6 @@ export async function handleDevApi(req: NextRequest) {
   if (url === '/api/knowledge' && method === 'POST') return json({ document: { id: 'mock-doc', name: 'uploaded.txt', status: 'indexed', createdAt: new Date().toISOString() } });
   if (url === '/api/knowledge/public' && method === 'GET') return json({ documents: [], mocked: true });
   if (url.startsWith('/api/knowledge/') && method === 'DELETE') return json({});
-  if (url === '/api/api-keys' && method === 'GET') return json({ keys: [] });
-  if (url === '/api/api-keys' && method === 'POST') return json({ key: { id: 'mock-key', name: '测试密钥', key: 'sk-mock', createdAt: new Date().toISOString(), lastUsed: null } });
-  if (url.startsWith('/api/api-keys/') && method === 'DELETE') return json({});
   if (url.startsWith('/api/user/models') && (method === 'PUT' || method === 'POST')) return json({ ok: true });
   if (url === '/api/user/change-password' && method === 'POST') return json({});
   if (url === '/api/user/change-password-by-email' && method === 'POST') return json({});

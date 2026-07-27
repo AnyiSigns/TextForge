@@ -63,42 +63,12 @@ export async function deleteProject(id: string): Promise<void> {
   await apiDelete<unknown>(`/api/projects/${id}`, undefined as never, 'deleteProject');
 }
 
-export async function confirmProject(id: string): Promise<ProjectResponse> {
-  return apiPost<ProjectResponse>(
-    `/api/projects/${id}/confirm`,
-    projectResponseSchema as never,
-    'confirmProject',
-    {},
-  );
-}
-
-export async function generateProject(id: string): Promise<ProjectResponse> {
-  return apiPost<ProjectResponse>(
-    `/api/projects/${id}/generate`,
-    projectResponseSchema as never,
-    'generateProject',
-    {},
-  );
-}
 
 export async function listSteps(projectId: string): Promise<StepsResponse> {
   return apiGet<StepsResponse>(
     `/api/projects/${projectId}/steps`,
     stepsResponseSchema as never,
     'listSteps',
-  );
-}
-
-export async function updateStep(
-  projectId: string,
-  stepId: string,
-  body: Partial<Step>,
-): Promise<Step> {
-  return apiPut<Step>(
-    `/api/projects/${projectId}/steps/${stepId}`,
-    undefined as never,
-    'updateStep',
-    body,
   );
 }
 

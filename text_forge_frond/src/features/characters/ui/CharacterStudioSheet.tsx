@@ -8,7 +8,6 @@ import Image from 'next/image';
 import { Character } from '@/types';
 import { useCharacterStore } from '../stores/characterStore';
 import { dispatchInsertStep, type InsertTarget } from '@/lib/events/projectEvents';
-import { fetchProjectDetail, saveStepEdit } from '@/features/projects';
 import { loadOutline, saveOutline, type OutlineVolume } from '@/lib/storage/backup';
 import { downloadImagesZip } from '@/lib/storage/imageExport';
 import { useProjectStore } from '@/features/projects';
@@ -38,21 +37,13 @@ export function CharacterStudioSheet({
     setAskInsert(img);
     const pid = character.projectId;
     if (!pid) return;
-    fetchProjectDetail(pid)
-      .then((steps) =>
-        setChapters(
-          steps
-            .filter((s) => s.agent === 'writer' || /^#\s/.test(s.content || ''))
-            .map((s) => ({
-              id: s.id,
-              title: s.content?.match(/^#\s*(.+)$/m)?.[1]?.trim() || 'untitled',
-            })),
-        ),
-      )
-      .catch(() => setChapters([]));
     loadOutline(pid)
-      .then((vols) => setOutline(vols))
-      .catch(() => setOutline([]));
+      .then((vols) => {
+        setOutline(vols);
+        const chapters = vols.flatMap((v) => v.chapters.map((c) => ({ id: c.id, title: c.content?.match(/^#\s*(.+)$/m)?.[1]?.trim() || c.title || 'untitled' })));
+        setChapters(chapters);
+      })
+      .catch(() => { setChapters([]); setOutline([]); });
   };
 
   const exportAllPortraits = async () => {
@@ -76,14 +67,16 @@ export function CharacterStudioSheet({
     setAskInsert(null);
     try {
       if (target?.kind === 'chapter') {
-        const steps = await fetchProjectDetail(pid);
-        const next = steps.map((s) => {
-          if (s.id !== target.stepId) return s;
-          const tail = s.content && !s.content.endsWith('\n') ? '\n' : '';
-          return { ...s, content: `${s.content || ''}${tail}${content}`, status: 'completed' as const };
-        });
-        await saveStepEdit(pid, target.stepId, next.find((s) => s.id === target.stepId)!.content);
-        await useProjectStore.getState().saveDraft(pid, next);
+        const vols = await loadOutline(pid);
+        const next = vols.map((v) => ({
+          ...v,
+          chapters: v.chapters.map((c) => {
+            if (c.id !== target.chapterId) return c;
+            const tail = c.content && !c.content.endsWith('\n') ? '\n' : '';
+            return { ...c, content: `${c.content || ''}${tail}${content}` };
+          }),
+        }));
+        await saveOutline(pid, next);
         toast.success('已插入章节正文');
         return;
       }
@@ -110,10 +103,8 @@ export function CharacterStudioSheet({
         toast.success('已插入大纲节点');
         return;
       }
-      const steps = await fetchProjectDetail(pid);
       const step = { id: `step-${Date.now()}`, agent: `${character.name} image`, content, status: 'completed' as const };
-      const next = [...steps, step];
-      await useProjectStore.getState().saveDraft(pid, next);
+      await useProjectStore.getState().saveDraft(pid, [step]);
       dispatchInsertStep({ projectId: pid, title: `${character.name} image`, content });
       toast.success('已发送到工作台');
     } catch {
@@ -203,7 +194,7 @@ export function CharacterStudioSheet({
                         <div className="space-y-1">
                           {chapters.length === 0 && <p className="text-xs text-muted-foreground">暂无章节</p>}
                         {chapters.map((c) => (
-                          <Button key={c.id} variant="outline" size="sm" className="w-full justify-start" onClick={() => doInsert(askInsert, { kind: 'chapter', stepId: c.id })}>
+                          <Button key={c.id} variant="outline" size="sm" className="w-full justify-start" onClick={() => doInsert(askInsert, { kind: 'chapter', chapterId: c.id })}>
                             {c.title}
                           </Button>
                         ))}

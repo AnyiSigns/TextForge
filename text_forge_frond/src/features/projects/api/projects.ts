@@ -1,6 +1,6 @@
-import { Project, Step, CreateProjectRequest, BUILTIN_WORKFLOW_ID, type GenerationContext } from '@/types';
+import { Project, CreateProjectRequest, BUILTIN_WORKFLOW_ID, type GenerationContext, type Step } from '@/types';
 import apiClient from '@/shared/lib/apiClient';
-import { getWorkflow, runWorkflow, workflowToSteps, type RunWorkflowOptions, type WorkflowRunStep } from '@/features/workflow';
+import { getWorkflow, runWorkflow, workflowToSteps, type RunWorkflowOptions, type WorkflowRunStep, type Workflow } from '@/features/workflow';
 
 export interface CreateProjectResponse extends Project {
   version?: number;
@@ -12,10 +12,6 @@ export interface ProjectListResponse {
 
 export interface ProjectResponse {
   project: Project;
-}
-
-export interface StepsResponse {
-  steps: Step[];
 }
 
 export interface CharactersResponse {
@@ -39,17 +35,11 @@ export async function deleteProject(id: string, version?: number): Promise<void>
 
 export interface ProjectDetail {
   project: Project;
-  steps: Step[];
   characters?: { id: string; name: string; description: string }[];
 }
 
-export async function fetchProjectDetail(id: string): Promise<Step[]> {
-  const { data } = await apiClient.get(`/api/projects/${id}`);
-  return data.steps || [];
-}
-
 export async function fetchProjectMeta(id: string): Promise<ProjectDetail['project']> {
-  const { data } = await apiClient.get(`/api/projects/${id}`);
+  const { data } = await apiClient.get<ProjectResponse>(`/api/projects/${id}`);
   return (
     data.project || {
       id,
@@ -67,14 +57,6 @@ export async function fetchProjectMeta(id: string): Promise<ProjectDetail['proje
 export async function fetchProjectCharacters(id: string): Promise<NonNullable<ProjectDetail['characters']>> {
   const { data } = await apiClient.get(`/api/projects/${id}/characters`);
   return data.characters || [];
-}
-
-export async function confirmStep(projectId: string, stepId: string): Promise<void> {
-  await apiClient.post(`/api/projects/${projectId}/confirm`, { step_id: stepId });
-}
-
-export async function saveStepEdit(projectId: string, stepId: string, content: string): Promise<void> {
-  await apiClient.put(`/api/projects/${projectId}/steps/${stepId}`, { content });
 }
 
 /** 把项目绑定到某条创作流水线（工作流 id；省略则回退内置流水线） */
@@ -100,7 +82,6 @@ export interface GenerateOptions {
 }
 
 // 项目生成：统一入口。
-// - 后端就绪期：走 SSE POST /api/projects/:id/generate（带 workflowId），由调用方解析。
 // - 后端未就绪（mock 期）：本地跑所选工作流 DAG，实时把每个 agent 节点转成 Step 注入。
 // 返回生成的 steps（writer 节点为 waiting 待确认正文）。
 //
@@ -110,10 +91,14 @@ export interface GenerateOptions {
 //    后端生成器可直接用结构化字段发 LangGraph 子图，无需反解文本。
 export async function generateWithWorkflow(
   projectId: string,
-  { workflowId = BUILTIN_WORKFLOW_ID, context, onStep, runOpts, shouldPause, isAborted }: GenerateOptions,
+  { workflowId = BUILTIN_WORKFLOW_ID, context, onStep, runOpts, shouldPause, isAborted, workflow }: GenerateOptions & { workflow?: Workflow },
 ): Promise<Step[]> {
-  const wf = await getWorkflow(workflowId);
+  const wf = workflow ?? (await getWorkflow(workflowId));
   if (!wf) return [];
+
+  const nodeLabelMap = new Map(wf.nodes.map((n) => [n.id, n.label]));
+  const resolveLabel = (nodeId: string, fallbackLabel?: string) => nodeLabelMap.get(nodeId) || fallbackLabel || nodeId;
+  const visibleNodeIds = new Set(wf.nodes.map((n) => n.id));
 
   // 流式回调：DAG 每产出一个 agent 节点，转成带 nodeId 的 Step 即时上抛。
   // 双路通知，职责分离：
@@ -121,20 +106,25 @@ export async function generateWithWorkflow(
   //  - runOpts.onStep（底层 DAG 运行时）：节点级日志/埋点，与业务解耦。
   const streamStep: NonNullable<RunWorkflowOptions['onStep']> = (nodeId, label, output, systemPrompt) => {
     console.log('[streamStep]', { nodeId, label, output: output?.slice?.(0, 120), systemPrompt });
-    const step = runStepToStreamStep({ nodeId, label, output, status: 'done', systemPrompt });
+    const resolved = resolveLabel(nodeId, label);
+    const step = runStepToStreamStep({ nodeId, label: resolved, output, status: 'done', systemPrompt });
     if (step) onStep?.(step);
-    runOpts?.onStep?.(nodeId, label, output, systemPrompt);
+    runOpts?.onStep?.(nodeId, resolved, output, systemPrompt);
   };
 
   // 1) 跑 DAG（含设定基座注入 + 结构化 projectContext 透传）
   const runs = await runWorkflow(
     workflowId,
     context?.outline ?? '',
-    { projectId, ...runOpts, shouldPause, isAborted, onStep: streamStep },
+    { projectId, ...runOpts, shouldPause, isAborted, onStep: streamStep, visibleNodeIds },
     context,
   );
-  // 2) 定稿：workflowToSteps 统一处理 writer=waiting 等最终状态
-  return workflowToSteps(runs);
+  // 2) 定稿：先补 label 映射，再统一处理 writer=waiting 等最终状态
+  const runsWithLabel = runs.map((r) => ({
+    ...r,
+    label: nodeLabelMap.get(r.nodeId) || r.label,
+  }));
+  return workflowToSteps(runsWithLabel);
 }
 
 // 单次运行结果 → 流式 Step（纯函数，无副作用）。

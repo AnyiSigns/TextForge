@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { ListTodo, ChevronDown, Plus, Trash2, FileInput, BookOpen, CheckCircle2, PenLine, Circle } from 'lucide-react';
+import { ListTodo, ChevronDown, Plus, Trash2, BookOpen, CheckCircle2, PenLine, Circle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { loadOutline, saveOutline, type OutlineVolume, type OutlineChapter, type OutlineNode, type OutlineNodeStatus } from '@/lib/storage/backup';
 import { dispatchInsertStep } from '@/lib/events/projectEvents';
@@ -14,10 +14,10 @@ import { useCharacterStore } from '@/features/characters';
 import { useBriefStore } from '@/features/projects';
 import { toast } from 'sonner';
 import { uid } from '@/lib/utils/id';
+import { listOutlines, createOutline, updateOutline, deleteOutline } from '@/features/projects';
 const STATUS_META: Record<OutlineNodeStatus, { label: string; cls: string; icon: typeof Circle }> = {
-  todo: { label: '未写', cls: 'text-muted-foreground', icon: Circle },
-  writing: { label: '写作中', cls: 'text-amber-500', icon: PenLine },
-  done: { label: '已完成', cls: 'text-green-500', icon: CheckCircle2 },
+  writing: { label: '写', cls: 'text-amber-500', icon: PenLine },
+  done: { label: '完', cls: 'text-green-500', icon: CheckCircle2 },
 };
 
 export function OutlinePanel({ projectId }: { projectId: string }) {
@@ -41,18 +41,35 @@ export function OutlinePanel({ projectId }: { projectId: string }) {
   useEffect(() => {
     let active = true;
     setLoaded(false);
-    loadOutline(projectId).then((v) => {
-      if (!active) return;
-      // 仅当地空时才用加载结果，避免异步晚到覆盖用户已做的编辑；
-      // 且只在本次 hydration 真正填充时才跳过随后的自动保存（用户已编辑则不标 skip）。
-      setVolumes((prev) => {
-        if (prev.length) return prev;
-        skipNextSave.current = true;
-        return v;
-      });
+    (async () => {
+      try {
+        const items = await listOutlines(Number(projectId));
+        if (!active) return;
+        if (items.length > 0 && Array.isArray(items[0].data)) {
+          setVolumes(items[0].data);
+        } else {
+          const local = await loadOutline(projectId);
+          if (!active) return;
+          setVolumes((prev) => {
+            if (prev.length) return prev;
+            skipNextSave.current = true;
+            return local;
+          });
+        }
+      } catch {
+        if (!active) return;
+        loadOutline(projectId).then((v) => {
+          if (!active) return;
+          setVolumes((prev) => {
+            if (prev.length) return prev;
+            skipNextSave.current = true;
+            return v;
+          });
+        }).catch(() => {});
+      }
       didHydrate.current = true;
       setLoaded(true);
-    }).catch(() => { if (active) { didHydrate.current = true; setLoaded(true); } });
+    })();
     return () => { active = false; };
   }, [projectId]);
 
@@ -74,9 +91,32 @@ export function OutlinePanel({ projectId }: { projectId: string }) {
     saveOutline(projectId, volumes).catch(() => {});
   }, [loaded, volumes, projectId]);
 
+  useEffect(() => {
+    if (!loaded || !didHydrate.current) return;
+    if (skipNextSave.current) { skipNextSave.current = false; return; }
+    const pid = Number(projectId);
+    (async () => {
+      try {
+        const existing = await listOutlines(pid);
+        if (existing.length > 0) {
+          await updateOutline(pid, existing[0].id, volumes);
+        } else {
+          await createOutline(pid, volumes);
+        }
+      } catch {
+        // backend sync failure is non-blocking
+      }
+    })();
+  }, [loaded, volumes, projectId]);
+
   const stats = useMemo(() => {
-    const all = volumes.flatMap((v) => v.chapters.flatMap((c) => c.nodes));
-    return { total: all.length, done: all.filter((n) => n.status === 'done').length, writing: all.filter((n) => n.status === 'writing').length };
+    const arr = Array.isArray(volumes) ? volumes : [];
+    const chapters = arr.reduce<OutlineChapter[]>((acc, v) => acc.concat(Array.isArray(v.chapters) ? v.chapters : []), []);
+    const nodes = chapters.reduce<OutlineNode[]>((acc, c) => acc.concat(Array.isArray(c.nodes) ? c.nodes : []), []);
+    if (!Array.isArray(volumes)) {
+      console.error('[OutlinePanel] volumes is not array', volumes);
+    }
+    return { total: nodes.length, done: nodes.filter((n) => n.status === 'done').length, writing: nodes.filter((n) => n.status === 'writing').length };
   }, [volumes]);
 
   // ---- 卷 ----
@@ -105,7 +145,7 @@ export function OutlinePanel({ projectId }: { projectId: string }) {
     if (!title) return;
     setVolumes((vs) => vs.map((v) => ({
       ...v,
-      chapters: v.chapters.map((c) => (c.id === chId ? { ...c, nodes: [...c.nodes, { id: uid('nd'), title, status: 'todo', origin: 'init' }] } : c)),
+        chapters: v.chapters.map((c) => (c.id === chId ? { ...c, nodes: [...c.nodes, { id: uid('nd'), title, status: 'writing', origin: 'init' }] } : c)),
     })));
     setNewNode((m) => ({ ...m, [chId]: '' }));
   };
@@ -120,10 +160,6 @@ export function OutlinePanel({ projectId }: { projectId: string }) {
       chapters: v.chapters.map((c) => (c.id === chId ? { ...c, nodes: c.nodes.filter((n) => n.id !== nid) } : c)),
     })));
 
-  const sendToWorkbench = (node: OutlineNode) => {
-    dispatchInsertStep({ projectId, title: node.title, content: node.content || '' });
-    toast.success(`已把「${node.title}」发送到工作台`);
-  };
   const generateThisChapter = (volTitle: string, chap: OutlineChapter) => {
     const summary = chap.nodes.map((n) => `- ${n.title}：${n.content || ''}`).join('\n');
     dispatchInsertStep({ projectId, title: `大纲·${volTitle}/${chap.title}`, content: summary });
@@ -160,9 +196,9 @@ export function OutlinePanel({ projectId }: { projectId: string }) {
         </div>
 
         {volumes.length === 0 && (
-          <p className="text-sm text-muted-foreground text-center py-6">
-            还没有大纲。先建一卷，再在卷下加「章」，章下加「情节节点」（可设摘要/状态/目标字数/关联角色）。
-          </p>
+           <p className="text-sm text-muted-foreground text-center py-6">
+             还没有大纲。先建一卷，再在卷下加「章」，章下加「情节节点」（可设摘要/状态/关联角色）。
+           </p>
         )}
 
         {volumes.map((vol) => (
@@ -207,7 +243,7 @@ export function OutlinePanel({ projectId }: { projectId: string }) {
                     {(expanded[`c-${chap.id}`] ?? true) && (
                       <div className="px-2.5 pb-2.5 space-y-2">
                         {chap.nodes.map((node) => {
-                          const st = STATUS_META[node.status ?? 'todo'];
+                          const st = STATUS_META[node.status ?? 'writing'];
                           const StIcon = st.icon;
                           return (
                             <div key={node.id} className="rounded-lg border border-border/30 p-2.5 space-y-2">
@@ -218,16 +254,16 @@ export function OutlinePanel({ projectId }: { projectId: string }) {
                                   onChange={(e) => patchNode(chap.id, node.id, { title: e.target.value })}
                                   className="font-medium border-none p-0 h-auto text-sm flex-1"
                                 />
-                                {/* 状态切换 */}
-                                <div className="flex gap-0.5">
-                                  {(['todo', 'writing', 'done'] as OutlineNodeStatus[]).map((s) => (
+                                 {/* 状态切换 */}
+                                 <div className="flex gap-0.5">
+                                   {(['writing', 'done'] as OutlineNodeStatus[]).map((s) => (
                                     <button
                                       key={s}
                                       onClick={() => patchNode(chap.id, node.id, { status: s })}
                                       title={STATUS_META[s].label}
                                       className={cn(
                                         'w-5 h-5 rounded-full grid place-items-center text-[9px] border',
-                                        (node.status ?? 'todo') === s ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground',
+                                        (node.status ?? 'writing') === s ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground',
                                       )}
                                     >
                                       {STATUS_META[s].label[0]}
@@ -246,13 +282,6 @@ export function OutlinePanel({ projectId }: { projectId: string }) {
                                 className="text-xs resize-none"
                               />
                               <div className="flex items-center gap-2 flex-wrap">
-                                <Input
-                                  type="number"
-                                  value={node.targetWords ?? ''}
-                                  onChange={(e) => patchNode(chap.id, node.id, { targetWords: Number(e.target.value) || undefined })}
-                                  placeholder="目标字数"
-                                  className="w-24 h-7 text-xs"
-                                />
                                 {/* 关联角色 */}
                                 <div className="flex flex-wrap gap-1">
                                   {projChars.map((c) => {
@@ -291,9 +320,7 @@ export function OutlinePanel({ projectId }: { projectId: string }) {
                                     );
                                   })}
                                 </div>
-                                <Button variant="ghost" size="sm" className="text-xs text-primary ml-auto" onClick={() => sendToWorkbench(node)}>
-                                  <FileInput className="w-3 h-3 mr-1" /> 插到工作台
-                                </Button>
+                                                                    
                               </div>
                             </div>
                           );

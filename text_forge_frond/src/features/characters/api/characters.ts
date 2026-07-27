@@ -10,18 +10,20 @@ interface CharacterResponse {
   id: string;
   name: string;
   description: string;
-  projectId?: number | string | null;
+  projectId?: string | null;
   avatar?: string;
-  aliases?: Record<string, unknown>;
+  aliases?: string[] | null;
   role?: string;
   status?: string;
   currentProfile?: string;
   customRole?: string;
-  relationships?: Record<string, unknown>;
-  images?: Record<string, unknown>;
-  referenceImages?: Record<string, unknown>;
+  relationships?: { id: string; targetId: string; relation: string }[];
+  images?: string[];
+  referenceImages?: string[] | null;
   referenceImage?: string;
   imageSeed?: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface AvatarResponse {

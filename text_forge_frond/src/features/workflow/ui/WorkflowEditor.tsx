@@ -82,8 +82,17 @@ export function WorkflowEditor({ initial, onSaved }: { initial: Workflow; onSave
     const node = wf.nodes.find((n) => n.id === id);
     if (!node) return;
     const deps = node.dependsOn || [];
-    const next = deps.includes(dep) ? deps.filter((d) => d !== dep) : [...deps, dep];
-    patchNode(id, { dependsOn: next });
+    const hasDep = deps.includes(dep);
+    const nextDeps = hasDep ? deps.filter((d) => d !== dep) : [...deps, dep];
+    const nextEdges = hasDep
+      ? wf.edges.filter((e) => !(e.from === dep && e.to === id))
+      : [...wf.edges, { from: dep, to: id }];
+    setWf((w) => ({
+      ...w,
+      nodes: w.nodes.map((n) => (n.id === id ? { ...n, dependsOn: nextDeps } : n)),
+      edges: nextEdges,
+      updatedAt: new Date().toISOString(),
+    }));
   };
 
   const reorderNodes = (fromId: string, toId: string) => {
@@ -113,7 +122,15 @@ export function WorkflowEditor({ initial, onSaved }: { initial: Workflow; onSave
 
   const handleSave = async () => {
     try {
-      const saved = await saveWorkflow(wf);
+      const withDeps = {
+        ...wf,
+        nodes: wf.nodes.map((n) => ({
+          ...n,
+          dependsOn: wf.edges.filter((e) => e.to === n.id).map((e) => e.from),
+        })),
+      };
+      const saved = await saveWorkflow(withDeps);
+      setWf(saved);
       onSaved?.(saved);
       toast.success('工作流已保存');
     } catch (e) {

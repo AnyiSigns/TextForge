@@ -3,6 +3,12 @@ from typing import Any, Dict, List, Optional, TypedDict, Annotated
 from langgraph.graph import add_messages
 
 
+def _merge_dicts(a: dict, b: dict) -> dict:
+    result = a.copy()
+    result.update(b)
+    return result
+
+
 class GraphState(TypedDict):
     messages: Annotated[list, add_messages]
 
@@ -37,7 +43,7 @@ class AuditState(TypedDict):
 class ParentState(TypedDict):
     input_messages: str
     workflow_nodes: List[Dict[str, Any]]
-    step_outputs: Dict[str, Any]
+    step_outputs: Annotated[dict, _merge_dicts]
     executed_steps: Annotated[List[str], operator.add]
     metadata: Dict[str, Any]
     next_step_id: Optional[str]

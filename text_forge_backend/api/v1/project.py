@@ -7,14 +7,10 @@ from schema.response.projiect import (
     ProjectResponse,
     ProjectVersionResponse,
     ProjectDetailResponse,
-    StepUpdateResponse,
 )
-from model.project import StatusEnum
 from schema.request.project import (
     BriefRequest,
-    StepConfirm,
     ProjectRequest,
-    StepIdRequest,
     UpdateProjectRequest,
 )
 
@@ -62,7 +58,6 @@ async def project_info(
         raise HTTPException(status_code=404, detail="项目不存在")
     return ProjectDetailResponse(
         project=result["project"],
-        steps=result["steps"],
         characters=result["characters"],
     )
 
@@ -110,37 +105,6 @@ async def project_characters(
     if msg:
         raise HTTPException(status_code=404, detail=msg)
     return ListCharactersResponse(characters=result)
-
-
-@router.put("/{id}/steps/{stepId}", response_model=StepUpdateResponse)
-async def save_step(
-    id: Annotated[int, Path(description="项目ID")],
-    step_id: Annotated[int, Path(alias="stepId")],
-    user_id: Annotated[int, Depends(get_current)],
-    project_service: Annotated[ProjectService, Depends(project_db)],
-    request: StepIdRequest,
-):
-    result, msg = await project_service.update_content(
-        user_id, id, step_id, request.content
-    )
-    if msg:
-        raise HTTPException(status_code=404, detail="项目异常,更新正文失败")
-    return StepUpdateResponse(step=result)
-
-
-@router.post("/{id}/confirm")
-async def project_confirm(
-    id: Annotated[int, Path(description="项目ID")],
-    request: StepConfirm,
-    user_id: Annotated[int, Depends(get_current)],
-    project_service: Annotated[ProjectService, Depends(project_db)],
-):
-    result = await project_service.step_status(
-        user_id, id, request.step_id, StatusEnum.COMPLETED
-    )
-    if not result:
-        raise HTTPException(status_code=404, detail="项目不存在")
-    return {"ok", True}
 
 
 @router.put("/{id}/brief")

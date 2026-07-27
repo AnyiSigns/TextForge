@@ -65,17 +65,21 @@ export function makeGeneration(d: GenerationDeps) {
         shouldPause: () => pausedRef.current,
         isAborted: () => !!abortRef.current?.signal.aborted,
         onStep: (step) => {
+          const workflowLabel = activeWorkflow?.nodes.find((n) => n.id === step.nodeId)?.label;
+          const resolvedLabel = workflowLabel || step.nodeId || '步骤';
+          const enriched: Step = { ...step, agentName: resolvedLabel, agent: step.nodeId || resolvedLabel };
           enqueueStepUpdate((prev) => {
-            const idx = step.nodeId ? prev.findIndex((s) => s.nodeId === step.nodeId) : -1;
+            const idx = enriched.nodeId ? prev.findIndex((s) => s.nodeId === enriched.nodeId) : -1;
             if (idx >= 0) {
               const existing = prev[idx];
               const next = [...prev];
-              const keepStatus = existing.status === 'waiting' ? 'waiting' : step.status;
-              next[idx] = { ...existing, content: step.content, status: keepStatus, nodeId: step.nodeId };
+              const keepStatus = existing.status === 'waiting' ? 'waiting' : enriched.status;
+              const content = enriched.content && enriched.content.length > 0 ? enriched.content : existing.content;
+              next[idx] = { ...existing, content, status: keepStatus, nodeId: enriched.nodeId, agentName: resolvedLabel };
               return next;
             }
-            if (step.agent === 'writer' || step.nodeId === 'writer') pendingAgentRef.current = 'writer';
-            return [...prev, step];
+            if (enriched.agent === 'writer' || enriched.nodeId === 'writer') pendingAgentRef.current = 'writer';
+            return [...prev, enriched];
           });
         },
       });

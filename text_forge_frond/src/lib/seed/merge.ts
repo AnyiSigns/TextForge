@@ -101,7 +101,7 @@ export function mergeOutline(local: OutlineVolume[] | undefined, seed: SeedOutli
                 const nIdx = nodes.findIndex((n) => n.id === sn.id);
                 if (nIdx >= 0) {
                   if (!isUserOwned(nodes[nIdx].origin)) {
-                    nodes[nIdx] = { ...nodes[nIdx], title: sn.title, content: sn.content, targetWords: sn.targetWords, charIds: sn.charIds, sectionIds: sn.sectionIds, origin: 'seed' };
+                    nodes[nIdx] = { ...nodes[nIdx], title: sn.title, content: sn.content, charIds: sn.charIds, sectionIds: sn.sectionIds, origin: 'seed' };
                   }
                 } else {
                   nodes.push({ ...sn, origin: 'seed' });

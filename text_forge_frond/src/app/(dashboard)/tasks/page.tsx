@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/shared/components';
 import { GenerationForm } from '@/shared/components';
 import { submitVideo, fetchVideoTasks, describeGenError, type MediaTask, type VideoRequest } from '@/lib/api/generation';
-import { fetchProjectDetail } from '@/features/projects';
+import { listOutlines } from '@/features/projects';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { EmptyState } from '@/shared/components';
@@ -47,9 +47,10 @@ export default function TasksPage() {
     if (!activeProjectId) { setProjectSteps([]); return; }
     (async () => {
       try {
-        const steps = await fetchProjectDetail(activeProjectId);
+        const outlines = await listOutlines(Number(activeProjectId));
         if (cancelled) return;
-        setProjectSteps(steps.map((s) => ({ id: s.id, agent: s.agent, nodeId: s.nodeId, content: s.content })));
+        const chapters = (outlines[0]?.data || []).flatMap((v: any) => (v.chapters || []).map((c: any) => ({ id: c.id, agent: 'writer', nodeId: 'writer', content: c.content || c.title })));
+        setProjectSteps(chapters);
       } catch { /* mock 期可能为空，忽略 */ }
     })();
     return () => { cancelled = true; };

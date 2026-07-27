@@ -3,15 +3,14 @@
 import { z } from 'zod';
 import type { Origin } from '@/types';
 
-export type OutlineNodeStatus = 'todo' | 'writing' | 'done';
+export type OutlineNodeStatus = 'writing' | 'done';
 
-// 大纲三级树：卷 → 章 → 节点（情节节拍）
+// 情节节拍节点
 export interface OutlineNode {
   id: string;
   title: string;
   content?: string;          // 摘要/要点
   status?: OutlineNodeStatus;
-  targetWords?: number;       // 目标字数
   charIds?: string[];        // 关联角色
   sectionIds?: string[];     // 关联设定维度
   origin?: Origin;           // 来源（种子/用户），增量合并用
@@ -21,26 +20,45 @@ const outlineNodeSchema = z.object({
   id: z.string(),
   title: z.string(),
   content: z.string().optional(),
-  status: z.enum(['todo', 'writing', 'done']).optional(),
-  targetWords: z.number().optional(),
+  status: z.enum(['writing', 'done']).optional(),
   charIds: z.array(z.string()).optional(),
   sectionIds: z.array(z.string()).optional(),
   origin: z.enum(['seed', 'user', 'init']).optional(),
 });
 
-const outlineChapterSchema = outlineNodeSchema
-  .omit({ targetWords: true, charIds: true, sectionIds: true, origin: true })
-  .extend({
-    nodes: z.array(outlineNodeSchema),
-    origin: z.enum(['seed', 'user', 'init']).optional(),
-  });
+// 章：包含正文、写作状态、情节节点
+export interface OutlineChapter {
+  id: string;
+  title: string;
+  content?: string;          // 正文内容
+  status?: OutlineNodeStatus;
+  nodes: OutlineNode[];
+  origin?: Origin;
+}
 
-const outlineVolumeSchema = outlineChapterSchema
-  .omit({ nodes: true, origin: true })
-  .extend({
-    chapters: z.array(outlineChapterSchema),
-    origin: z.enum(['seed', 'user', 'init']).optional(),
-  });
+const outlineChapterSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  content: z.string().optional(),
+  status: z.enum(['writing', 'done']).optional(),
+  nodes: z.array(outlineNodeSchema),
+  origin: z.enum(['seed', 'user', 'init']).optional(),
+});
+
+// 卷：包含多个章节
+export interface OutlineVolume {
+  id: string;
+  title: string;
+  chapters: OutlineChapter[];
+  origin?: Origin;
+}
+
+const outlineVolumeSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  chapters: z.array(outlineChapterSchema),
+  origin: z.enum(['seed', 'user', 'init']).optional(),
+});
 
 const inspirationItemSchema = z.object({
   id: z.string(),
@@ -89,6 +107,7 @@ export function parseWorkspaceBackup(text: string): ParsedWorkspaceBackup {
 export interface OutlineChapter {
   id: string;
   title: string;
+  content?: string;          // 正文内容
   nodes: OutlineNode[];
   origin?: Origin;
 }
