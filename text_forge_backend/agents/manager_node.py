@@ -14,6 +14,24 @@ def _to_serializable(value):
     return str(value)
 
 
+CONTEXT_FIELD_MAP = {
+    "input_summary": "input_summary",
+    "input_worldview": "input_worldview",
+    "input_brief_summary": "input_brief_summary",
+    "input_characters": "input_characters",
+    "input_recent_chapters": "input_recent_chapters",
+    "input_outline": "input_outline",
+}
+
+
+def _build_context_payload(state: ParentState, fields: list[str]):
+    payload = {"model_config": state["model_config"]}
+    for f in fields:
+        if f in CONTEXT_FIELD_MAP:
+            payload[f] = state.get(f, "")
+    return payload
+
+
 async def manager_node(state: ParentState):
     from infrastructure.graph_lifecycle import graph_register
 
@@ -110,6 +128,8 @@ async def call_tool(state: ParentState) -> dict:
 
     metadata = state.get("metadata", {})
     node_id = metadata.get("current_node_id", "step_tool")
+    workflow_node = next((n for n in state.get("workflow_nodes", []) if n["id"] == node_id), {})
+    fields = workflow_node.get("contextFields") or ["input_summary"]
 
     builder = StateGraph(ToolState)
     builder.add_node(node_id, tool_node)
@@ -117,18 +137,9 @@ async def call_tool(state: ParentState) -> dict:
     builder.add_edge(node_id, END)
     tool_graph = builder.compile()
 
-    result = await tool_graph.ainvoke(
-        {
-            "input_summary": state.get("input_summary", ""),
-            "input_worldview": state.get("input_worldview", ""),
-            "input_brief_summary": state.get("input_brief_summary", ""),
-            "input_characters": state.get("input_characters", ""),
-            "input_recent_chapters": state.get("input_recent_chapters", ""),
-            "input_outline": state.get("input_outline", ""),
-            "query": state["input_summary"],
-            "model_config": state["model_config"],
-        }  # type: ignore
-    )
+    payload = _build_context_payload(state, fields)
+    payload["query"] = state["input_summary"]
+    result = await tool_graph.ainvoke(payload)
     return {
         "step_outputs": {"step_tool": result["tool_result"]},
         "executed_steps": ["step_tool"],
@@ -145,24 +156,17 @@ async def call_main(state: ParentState) -> dict:
     system_prompt = metadata.get("current_system_prompt", "")
     context = metadata.get("current_context", {})
     tool_ids = metadata.get("current_tool_ids", [])
+    workflow_node = next((n for n in state.get("workflow_nodes", []) if n["id"] == node_id), {})
+    fields = workflow_node.get("contextFields") or ["input_worldview", "input_characters", "input_recent_chapters", "input_outline"]
 
     print(f"调用main子图,执行节点{node_id}")
     if tool_ids:
         print(f"挂载工具{tool_ids}")
         if "step_tool" not in state.get("executed_steps", []):
             tool_graph = graph_register.get_compiled("tool")
-            tool_result = await tool_graph.ainvoke(
-                {
-                    "input_summary": state.get("input_summary", ""),
-                    "input_worldview": state.get("input_worldview", ""),
-                    "input_brief_summary": state.get("input_brief_summary", ""),
-                    "input_characters": state.get("input_characters", ""),
-                    "input_recent_chapters": state.get("input_recent_chapters", ""),
-                    "input_outline": state.get("input_outline", ""),
-                    "query": state["input_summary"],
-                    "model_config": state["model_config"],
-                }
-            )
+            tool_payload = _build_context_payload(state, ["input_summary"])
+            tool_payload["query"] = state["input_summary"]
+            tool_result = await tool_graph.ainvoke(tool_payload)
             context["tool_result"] = tool_result["tool_result"]
 
     builder = StateGraph(MainState)
@@ -171,20 +175,11 @@ async def call_main(state: ParentState) -> dict:
     builder.add_edge(node_id or "main", END)
     main_graph = builder.compile()
 
-    result = await main_graph.ainvoke(
-        {
-            "input_summary": state.get("input_summary", ""),
-            "input_worldview": state.get("input_worldview", ""),
-            "input_brief_summary": state.get("input_brief_summary", ""),
-            "input_characters": state.get("input_characters", ""),
-            "input_recent_chapters": state.get("input_recent_chapters", ""),
-            "input_outline": state.get("input_outline", ""),
-            "system_prompt": system_prompt,
-            "input_context": context,
-            "output": "",
-            "model_config": state["model_config"],
-        }  # type: ignore
-    )
+    payload = _build_context_payload(state, fields)
+    payload["system_prompt"] = system_prompt
+    payload["input_context"] = context
+    payload["output"] = ""
+    result = await main_graph.ainvoke(payload)
     print(f"main子图返回: output={result.get('output')!r}")
     return {"step_outputs": {node_id: result["output"]}, "executed_steps": [node_id]}
 
@@ -206,20 +201,11 @@ async def call_compression(state: ParentState) -> dict:
     builder.add_edge(node_id, END)
     audit_graph = builder.compile()
 
-    result = await audit_graph.ainvoke(
-        {
-            "input_summary": state.get("input_summary", ""),
-            "input_worldview": state.get("input_worldview", ""),
-            "input_brief_summary": state.get("input_brief_summary", ""),
-            "input_characters": state.get("input_characters", ""),
-            "input_recent_chapters": state.get("input_recent_chapters", ""),
-            "input_outline": state.get("input_outline", ""),
-            "system_prompt": compression_prompt,
-            "input_context": {"text": compress_text},
-            "output": "",
-            "model_config": state["model_config"],
-        }
-    )
+    payload = _build_context_payload(state, ["input_worldview"])
+    payload["system_prompt"] = compression_prompt
+    payload["input_context"] = {"text": compress_text}
+    payload["output"] = ""
+    result = await audit_graph.ainvoke(payload)
     print(f"[压缩] 完成，{len(compress_text)} -> {len(result.get('output', ''))} 字符")
     return {
         "step_outputs": {node_id: result["output"]},
@@ -236,6 +222,8 @@ async def call_audit(state: ParentState) -> dict:
     node_id = metadata.get("current_node_id")
     system_prompt = metadata.get("current_system_prompt")
     context = state.get("step_outputs", {})
+    workflow_node = next((n for n in state.get("workflow_nodes", []) if n["id"] == node_id), {})
+    fields = workflow_node.get("contextFields") or ["input_worldview", "input_characters"]
 
     compressed = state["step_outputs"].get("step_compressed")
     if compressed:
@@ -249,20 +237,11 @@ async def call_audit(state: ParentState) -> dict:
     builder.add_edge(node_id or "audit", END)
     audit_graph = builder.compile()
 
-    result = await audit_graph.ainvoke(
-        {
-            "input_summary": state.get("input_summary", ""),
-            "input_worldview": state.get("input_worldview", ""),
-            "input_brief_summary": state.get("input_brief_summary", ""),
-            "input_characters": state.get("input_characters", ""),
-            "input_recent_chapters": state.get("input_recent_chapters", ""),
-            "input_outline": state.get("input_outline", ""),
-            "system_prompt": system_prompt,
-            "input_context": context,
-            "output": "",
-            "model_config": state["model_config"],
-        }
-    )
+    payload = _build_context_payload(state, fields)
+    payload["system_prompt"] = system_prompt
+    payload["input_context"] = context
+    payload["output"] = ""
+    result = await audit_graph.ainvoke(payload)
     return {"step_outputs": {node_id: result["output"]}, "executed_steps": [node_id]}
 
 

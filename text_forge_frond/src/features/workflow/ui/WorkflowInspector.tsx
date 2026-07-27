@@ -4,12 +4,22 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Cpu } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { KIND_META } from './workflowMeta';
 import { RAG_SCOPE_LABEL } from '@/shared/lib/agentRoles';
 import { RagConfigPopover } from './RagConfigPopover';
 import type { Workflow, WorkflowNode } from '@/features/workflow';
+
+const CONTEXT_FIELD_GROUPS = [
+  { label: '项目信息', fields: [{ key: 'input_summary', label: '项目标题与概要' }] },
+  { label: '世界观', fields: [{ key: 'input_worldview', label: '世界观' }] },
+  { label: '前情摘要', fields: [{ key: 'input_brief_summary', label: '前情摘要' }] },
+  { label: '角色设定', fields: [{ key: 'input_characters', label: '角色设定' }] },
+  { label: '最近章节', fields: [{ key: 'input_recent_chapters', label: '最近章节' }] },
+  { label: '大纲结构', fields: [{ key: 'input_outline', label: '大纲结构' }] },
+];
 
 interface WorkflowInspectorProps {
   wf: Workflow;
@@ -24,6 +34,13 @@ const RAG_TOOLS = ['rag:personal', 'rag:public', 'rag:both', 'web'] as const;
 
 export function WorkflowInspector(props: WorkflowInspectorProps) {
   const { wf, selectedNode, personalDocs, nodeHasPersonalRag, onPatchNode, onToggleDep } = props;
+
+  const toggleContextField = (key: string) => {
+    if (!selectedNode) return;
+    const cur = selectedNode.contextFields || [];
+    const next = cur.includes(key) ? cur.filter((x) => x !== key) : [...cur, key];
+    onPatchNode(selectedNode.id, { contextFields: next });
+  };
 
   return (
     <Card className="glass-card">
@@ -54,6 +71,27 @@ export function WorkflowInspector(props: WorkflowInspectorProps) {
                     className="w-full rounded-xl border border-border bg-background/50 p-3 text-sm resize-none"
                     placeholder="例如：根据项目设定生成本章标题与大纲要点"
                   />
+                </div>
+                <div className="space-y-1">
+                  <Label>注入上下文（按需，省 token）</Label>
+                  <div className="space-y-2">
+                    {CONTEXT_FIELD_GROUPS.map((group) => (
+                      <div key={group.label} className="space-y-1">
+                        <p className="text-[10px] text-muted-foreground">{group.label}</p>
+                        <div className="flex flex-wrap gap-2">
+                          {group.fields.map((f) => {
+                            const checked = (selectedNode.contextFields || []).includes(f.key);
+                            return (
+                              <label key={f.key} className={cn('flex items-center gap-1.5 rounded-lg border px-2 py-1 text-xs cursor-pointer', checked ? 'bg-primary/10 border-primary' : 'border-border')}>
+                                <Checkbox checked={checked} onCheckedChange={() => toggleContextField(f.key)} />
+                                <span>{f.label}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <Label>挂载工具（按需，省 token 不要全开）</Label>

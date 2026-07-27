@@ -17,6 +17,7 @@ export interface WorkflowNode {
   // RAG 检索配置（仅 rag:personal / rag:both 节点生效）
   ragFilter?: RagFilter;     // 限定范围：文档/作者；sample 覆盖自动 query
   ragTopK?: number;          // 返回片段数（默认 4）
+  contextFields?: string[];  // 该节点需要的上下文字段，如 ['input_worldview', 'input_characters']
 }
 
 export interface WorkflowEdge {
