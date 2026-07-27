@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ChevronDown, Plus, Trash2, Lightbulb, FileInput, BookOpen } from 'lucide-react';
+import { ChevronDown, Plus, Trash2, FileInput, BookOpen, FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { loadInspiration, saveInspiration, type InspirationItem } from '@/lib/storage/backup';
 import { dispatchInsertStep } from '@/lib/events/projectEvents';
@@ -53,7 +53,7 @@ export function InspirationBoard({ projectId }: { projectId: string }) {
       <CardHeader className="cursor-pointer select-none" onClick={() => setIsExpanded(v => !v)}>
         <CardTitle className="flex items-center justify-between">
           <span className="flex items-center gap-2">
-            <Lightbulb className="w-4 h-4 text-primary" />
+            <FileText className="w-4 h-4 text-primary" />
             章节摘要
           </span>
           <ChevronDown className={cn('w-4 h-4 text-muted-foreground transition-transform', isExpanded && 'rotate-180')} />
@@ -98,7 +98,7 @@ export function InspirationBoard({ projectId }: { projectId: string }) {
             </p>
             {(() => {
               const chapters = (Array.isArray(volumes) ? volumes : []).flatMap((v) => Array.isArray(v.chapters) ? v.chapters : []);
-              if (!chapters.length) return <p className="text-xs text-muted-foreground">暂无章节摘要</p>;
+              if (!chapters.length) return null;
               return chapters.map((ch) => (
                 <div key={ch.id} className="rounded-xl border border-border/40 bg-background/40 p-3 text-xs">
                   <p className="font-medium text-foreground/80 mb-1">{ch.title || '未命名章节'}</p>
