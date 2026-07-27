@@ -24,5 +24,8 @@ async def main_node(state: MainState):
             f"项目上下文\n{input_message}\n\n当前任务输入：\n{json.dumps(state['input_context'], ensure_ascii=False, indent=2)}"
         ),
     ]
-    response = await llm.main.ainvoke(messages)
-    return {"output": response.content}
+    chunks = []
+    async for chunk in llm.main.astream(messages):
+        chunks.append(chunk.content)
+    response_content = "".join(chunks)
+    return {"output": response_content}

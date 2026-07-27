@@ -20,5 +20,8 @@ async def audit_node(state: AuditState):
         SystemMessage(state["system_prompt"]),
         HumanMessage(f"项目上下文\n{context_block}\n\n当前任务输入：\n{task_input}"),
     ]
-    response = await llm.audit.ainvoke(messages)
-    return {"output": response.content}
+    chunks = []
+    async for chunk in llm.audit.astream(messages):
+        chunks.append(chunk.content)
+    response_content = "".join(chunks)
+    return {"output": response_content}
