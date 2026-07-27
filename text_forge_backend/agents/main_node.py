@@ -7,17 +7,13 @@ from langchain_core.messages import SystemMessage, HumanMessage
 
 async def main_node(state: MainState):
     llm = ModelFactory(state["model_config"])
-    parts = []
-    if state.get("input_worldview"):
-        parts.append(f"世界观设定：\n{state['input_worldview']}")
-    if state.get("input_characters"):
-        parts.append(f"角色设定：\n{state['input_characters']}")
-    if state.get("input_brief_summary"):
-        parts.append(f"前情摘要：\n{state['input_brief_summary']}")
-    if state.get("input_recent_chapters"):
-        parts.append(f"最近章节正文：\n{state['input_recent_chapters']}")
-    if state.get("input_outline"):
-        parts.append(f"大纲结构：\n{state['input_outline']}")
+    parts = [
+        f"世界观设定：\n{state['input_worldview']}",
+        f"角色设定：\n{state['input_characters']}",
+        f"前情摘要：\n{state['input_brief_summary']}",
+        f"最近章节正文：\n{state['input_recent_chapters']}",
+        f"大纲结构：\n{state['input_outline']}",
+    ]
     input_message = "\n\n".join(parts)
     messages = [
         SystemMessage(state["system_prompt"]),
