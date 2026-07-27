@@ -55,12 +55,11 @@ export default function ProjectWorkbench() {
   const PROCESS_TABS: ProcessTab[] = [
     { value: 'workbench', label: '工作台', icon: FileText },
     { value: 'outline', label: '大纲', icon: ListTree },
-    { value: 'inspiration', label: '章节摘要', icon: Lightbulb },
+    { value: 'inspiration', label: '章节摘要', icon: FileText },
     { value: 'brief', label: '创作设定', icon: FileCog },
     { value: 'characters', label: '角色', icon: Users },
     { value: 'material', label: '角色素材', icon: ImageIcon },
     { value: 'animation', label: '章节动画', icon: Clapperboard },
-    { value: 'write', label: '写入设定', icon: Wand },
   ];
 
   return (
