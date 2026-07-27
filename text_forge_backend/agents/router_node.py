@@ -19,8 +19,8 @@ async def router_node(state: RouterState):
         chunks.append(chunk.content)
     response_content = "".join(chunks)
     try:
-        print(f"----执行器:{response.content}")
-        json_match = re.search(r"\{[^}]*\}", response.content)  # type: ignore
+        print(f"----执行器:{response_content}")
+        json_match = re.search(r"\{[^}]*\}", response_content)
         if json_match:
             decision = json.loads(json_match.group())
         else:
