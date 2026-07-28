@@ -12,7 +12,7 @@ import { useModelStore } from '@/features/settings';
 import { useSettingsStore } from '@/features/settings';
 import {
   exportWorkspace, downloadBackup, importWorkspace,
-  exportProjectJson, exportProjectMarkdown, exportProjectText,
+  exportBookJson, exportBookMarkdown, exportBookText,
   parseWorkspaceBackup,
 } from '@/lib/storage/backup';
 import { cn } from '@/lib/utils';
@@ -39,8 +39,8 @@ export function ProjectExport({ projectId, compact = false }: { projectId?: stri
     if (fmt !== 'txt') {
       setBusy(fmt);
       try {
-        if (fmt === 'json') await exportProjectJson(projectId);
-        else await exportProjectMarkdown(projectId);
+        if (fmt === 'json') await exportBookJson(Number(projectId));
+        else await exportBookMarkdown(Number(projectId));
         toast.success(`已导出当前项目（${fmt.toUpperCase()}）`);
       } catch (e) {
         toast.error('导出出错了', { description: e instanceof Error ? e.message : '未知错误' });
@@ -58,7 +58,7 @@ export function ProjectExport({ projectId, compact = false }: { projectId?: stri
     setAskTxt(false);
     setBusyTxt(mode);
     try {
-      await exportProjectText(projectId, mode);
+      await exportBookText(Number(projectId), mode);
       toast.success(mode === 'format' ? '已导出（已分段排版）' : '已导出（原文保留，轻度整理）');
     } catch (e) {
       toast.error('导出出错了', { description: e instanceof Error ? e.message : '未知错误' });
@@ -85,7 +85,7 @@ export function ProjectExport({ projectId, compact = false }: { projectId?: stri
 
       const backup = await exportWorkspace(
         { projects: books, characters, creativeSettings: settings, models, settings: settingsData },
-        books.map((p) => p.id),
+        books.map((p) => String(p.id)),
       );
       downloadBackup(backup);
       toast.success('已导出完整工作区备份');
