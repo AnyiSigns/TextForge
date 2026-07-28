@@ -47,14 +47,13 @@ class WorkflowExecutor:
             "embedding_config": instance.embedding_config or {},
         }
 
-    def _topological_store(self, nodes: list[dict]):
+    def _topological_store(self, nodes: list[dict], edges: list[dict]):
         in_degree = {n["id"]: 0 for n in nodes}
         graph = {n["id"]: [] for n in nodes}
-        for n in nodes:
-            for dep in n.get("depends_on") or []:
-                if dep in graph:
-                    graph[dep].append(n["id"])
-                    in_degree[n["id"]] += 1
+        for e in edges:
+            if e.get("from") in graph and e.get("to") in graph:
+                graph[e["from"]].append(e["to"])
+                in_degree[e["to"]] += 1
         queue = deque([nid for nid, deg in in_degree.items() if deg == 0])
         sorted_nodes = []
         while queue:
@@ -69,14 +68,14 @@ class WorkflowExecutor:
         return sorted_nodes
 
     async def run(
-        self, workflow_id: str, user_id: int, project_id: int, thread_id: str
+        self, workflow_id: str, user_id: int, book_id: int, thread_id: str
     ) -> AsyncGenerator[str, None]:
         workflow_repo = WorkflowRepository(self.session)
         workflow = await workflow_repo.get_workflow_id(workflow_id, user_id)
         if not workflow:
             raise ValueError("流水线不存在")
         book_repo = BookRepository(self.session)
-        book = await book_repo.get(project_id)
+        book = await book_repo.get(book_id)
         if not book or book.user_id != user_id:
             raise ValueError("书籍不存在")
         parts = [f"#书名\n{book.title}"]
@@ -86,14 +85,14 @@ class WorkflowExecutor:
             parts.append(f"类型\n{book.genre}")
 
         setting_repo = CreativeSettingRepository(self.session)
-        setting = await setting_repo.get_setting(project_id)
+        setting = await setting_repo.get_setting(book_id)
         worldview_text = ""
         if setting:
             worldview_text = f"# 世界观\n{setting.worldview or ''}\n# 文风/基调\n{setting.tone or ''}\n# 创作禁忌\n{setting.writing_taboos or ''}"
             parts.append(worldview_text)
 
         char_repo = CharacterRepository(self.session)
-        characters = await char_repo.book_character_detail(user_id, project_id)
+        characters = await char_repo.book_character_detail(user_id, book_id)
         char_text = ""
         if characters:
             char_lines = [f"-{c.name}:{c.description}" for c in characters]
@@ -101,7 +100,7 @@ class WorkflowExecutor:
             parts.append(char_text)
 
         outline_repo = OutlineRepository(self.session)
-        outlines = await outline_repo.list_outlines(project_id)
+        outlines = await outline_repo.list_outlines(book_id)
         outline_text = ""
         recent_chapters_text = ""
         brief_summary_text = ""
@@ -122,10 +121,10 @@ class WorkflowExecutor:
             outline_text = "\n".join(outline_lines)
 
         input_text = "\n\n".join(parts)
-        nodes = self._topological_store(workflow.nodes or [])  # type: ignore
+        nodes = self._topological_store(workflow.nodes or [], workflow.edges or [])  # type: ignore
         model_config = await self._get_user_model_config(user_id)
 
-        inital_state: ParentState = {
+        initial_state: ParentState = {
             "input_summary": input_text,
             "input_worldview": worldview_text,
             "input_brief_summary": brief_summary_text,
@@ -138,25 +137,36 @@ class WorkflowExecutor:
             "metadata": {},
             "next_step_id": None,
             "model_config": model_config,
+            "book_id": book_id,
+            "user_id": user_id,
+            "edges": workflow.edges or [],
         }
         config = {"configurable": {"thread_id": thread_id}}
         parent_graph = await self._get_parent_graph()
         try:
             outputs_map: dict = {}
             async for event in parent_graph.astream_events(
-                inital_state, config=config, version="v2"  # type: ignore
+                initial_state, config=config, version="v2"  # type: ignore
             ):  # type: ignore
                 kind = event.get("event")
                 name = event.get("name")
                 data = event.get("data", {})
-                if kind == "on_chain_start" and name not in (
-                    None,
-                    "LangGraph",
-                    "pregel",
+
+                if kind == "on_chain_start" and name in (
+                    "call_main",
+                    "call_tool",
+                    "call_audit",
+                    "call_compression",
                 ):
-                    logger.info(f"[SSE] chain_start -> {name}")
-                    yield f"event:node_start\ndata:{json.dumps({'node': name})}\n\n"
-                elif kind == "on_chat_model_stream" and name:
+                    input_data = data.get("input", {})
+                    exec_meta = input_data.get("_exec_meta", {})
+                    display_label = exec_meta.get("node_label", name)
+                    display_id = exec_meta.get("node_id", name)
+
+                    yield f"event:node_start\ndata:{json.dumps({'node': display_label, 'node_id': display_id})}\n\n"
+                    continue
+
+                if kind == "on_chat_model_stream" and name:
                     raw_chunk = data.get("chunk")
                     chunk = ""
                     if isinstance(raw_chunk, dict):
@@ -166,52 +176,54 @@ class WorkflowExecutor:
                             or raw_chunk.get("delta")
                             or ""
                         )
-                        chunk = (
-                            candidate if isinstance(candidate, str) else str(candidate)
-                        )
+                        chunk = candidate if isinstance(candidate, str) else str(candidate)
                     elif raw_chunk is not None:
                         chunk = getattr(raw_chunk, "content", None) or ""
                     chunk = chunk.strip()
                     if chunk:
                         yield f"event:node_stream\ndata:{json.dumps({'node': name, 'output': chunk})}\n\n"
-                elif kind == "on_chain_end" and name not in (
-                    None,
-                    "LangGraph",
-                    "pregel",
+                    continue
+
+                if kind == "on_chain_end" and name in (
+                    "call_main",
+                    "call_tool",
+                    "call_audit",
+                    "call_compression",
                 ):
-                    output = data.get("output") or {}
-                    step_outputs = (
-                        ((output or {}).get("step_outputs"))
-                        if isinstance(output, dict)
-                        else {}
-                    ) or {}
-                    if isinstance(step_outputs, dict):
-                        outputs_map.update(step_outputs)
-                    node_output = step_outputs.get(name) or ""
+                    input_data = data.get("input", {})
+                    exec_meta = input_data.get("_exec_meta", {})
+                    display_label = exec_meta.get("node_label", name)
+                    display_id = exec_meta.get("node_id", name)
+
+                    output_data = data.get("output", {})
+                    step_outputs = output_data.get("step_outputs", {}) or {}
+                    node_output = step_outputs.get(display_id, "") or output_data.get("output", "")
                     if not isinstance(node_output, str):
                         node_output = json.dumps(node_output, ensure_ascii=False)
+                    outputs_map.update(step_outputs)
                     logger.info(
-                        f"[SSE] chain_end -> {name}, output={str(node_output)[:80]}"
+                        f"[SSE] chain_end -> {display_label}, output={str(node_output)[:80]}"
                     )
-                    yield f"event:node_end\ndata:{json.dumps({'node': name, 'output': node_output})}\n\n"
-                elif kind == "on_stream_end":
-                    output = event.get("data", {}).get("final_output", {}) or {}
+                    yield f"event:node_end\ndata:{json.dumps({'node': display_label, 'node_id': display_id, 'output': node_output})}\n\n"
+                    continue
+
+                if kind == "on_stream_end":
+                    final_output = data.get("final_output", {}) or {}
+                    executed = final_output.get("executed_steps", [])
+                    step_outputs = final_output.get("step_outputs", outputs_map)
                     steps_payload = []
-                    executed = output.get("executed_steps", [])
-                    outputs_map = output.get("step_outputs", outputs_map)
                     for sid in executed:
-                        steps_payload.append(
-                            {
-                                "nodeId": sid,
-                                "label": sid,
-                                "output": outputs_map.get(sid, ""),
-                                "status": "done",
-                            }
-                        )
-                    yield f"event:done\ndata:{json.dumps({'steps': steps_payload, 'output': output})}\n\n"
+                        steps_payload.append({
+                            "nodeId": sid,
+                            "label": sid,
+                            "output": step_outputs.get(sid, ""),
+                            "status": "done",
+                        })
+                    yield f"event:done\ndata:{json.dumps({'steps': steps_payload, 'output': final_output})}\n\n"
+                    continue
         except Exception as e:
             logger.error("工作流异常", exc_info=True)
-            yield f"event:error\ndata:{json.dumps({'error':str(e)})}\n\n"
+            yield f"event:error\ndata:{json.dumps({'error': str(e)})}\n\n"
             return
 
     async def _auto_summarize(self, session, project_id, outputs_map):

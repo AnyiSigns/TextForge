@@ -63,3 +63,6 @@ class ParentState(TypedDict):
     metadata: Dict[str, Any]
     next_step_id: Optional[str]
     model_config: dict
+    book_id: int
+    user_id: int
+    edges: List[Dict[str, Any]]

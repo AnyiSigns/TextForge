@@ -20,6 +20,7 @@ class Document(Base):
         Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
     file_size: Mapped[int] = mapped_column(Integer, nullable=True)
+    scope: Mapped[str] = mapped_column(String(32), nullable=False, server_default="personal", index=True)
     metadata: Mapped[dict] = mapped_column(JSONB, default=dict, comment="元数据")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 

@@ -1,10 +1,11 @@
+import json
 from agents.state import AuditState
 from core.model_factory import ModelFactory
-import json
 from langchain_core.messages import SystemMessage, HumanMessage
+from langgraph.types import StreamWriter
 
 
-async def audit_node(state: AuditState):
+async def audit_node(state: AuditState, writer: StreamWriter) -> dict:
     llm = ModelFactory(state["model_config"])
     context_block = "\n\n".join(
         [
@@ -14,11 +15,17 @@ async def audit_node(state: AuditState):
             f"最近章节正文：\n{state.get('input_recent_chapters', '')}",
         ]
     )
-    print(f":{context_block}")
     task_input = json.dumps(state["input_context"], ensure_ascii=False, indent=2)
     messages = [
         SystemMessage(state["system_prompt"]),
         HumanMessage(f"项目上下文\n{context_block}\n\n当前任务输入：\n{task_input}"),
     ]
-    response = await llm.audit.ainvoke(messages)
-    return {"output": response.content}
+
+    full_content = ""
+    async for chunk in llm.audit.astream(messages):
+        if chunk.content:
+            content = chunk.content
+            full_content += content
+            writer(content)
+
+    return {"output": full_content}

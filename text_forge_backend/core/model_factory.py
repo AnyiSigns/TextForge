@@ -4,6 +4,11 @@ from model.model import ModelConfig
 from langchain_core.language_models import BaseChatModel
 
 
+class _EmbeddingStub:
+    async def aembed_query(self, text: str):
+        return []
+
+
 class ModelFactory:
     DETAILED = {
         ("main", "main_config"),
@@ -22,6 +27,8 @@ class ModelFactory:
                 config = user_config.get("main_config", {})
             model = self._get_create_model(config)
             setattr(self, attr_name, model)
+
+        self.embedding = _EmbeddingStub()
 
     def _get_create_model(self, config: Dict[str, Any]) -> BaseChatModel:
         cache_key = (
