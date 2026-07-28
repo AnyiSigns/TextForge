@@ -13,7 +13,7 @@ interface Props {
   step: Step;
   index: number;
   onSetAsMainText?: (step: Step) => void;
-  bookId?: string;
+  bookId?: number;
 }
 
 export const StepCard = memo(function StepCard({
@@ -62,7 +62,7 @@ export const StepCard = memo(function StepCard({
         </div>
       )}
 
-      {step.status === 'completed' && projectId && (
+      {step.status === 'completed' && bookId != null && (
         <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border/30">
           {onSetAsMainText && (
             <Button size="sm" variant="secondary" onClick={() => onSetAsMainText(step)}>

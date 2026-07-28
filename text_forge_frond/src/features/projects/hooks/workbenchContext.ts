@@ -34,7 +34,7 @@ export function makeBuildContext(deps: BuildContextDeps) {
         relationships: c.relationshipChain?.length
           ? c.relationshipChain
               .filter((r) => r.target && r.relation.trim())
-              .map((r) => ({ target: charNameById(r.target) || r.target, relation: r.relation.trim() }))
+              .map((r) => ({ target: charNameById(Number(r.target)) || r.target, relation: r.relation.trim() }))
           : undefined,
       }));
 

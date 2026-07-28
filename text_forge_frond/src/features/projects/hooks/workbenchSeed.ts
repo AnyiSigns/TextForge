@@ -24,7 +24,7 @@ export function makeSeedActions(d: SeedActionDeps) {
   const handleSendToManuscript = async (step: Step) => {
     const titleMatch = step.content.match(/^#\s*(.+)$/m);
     const title = titleMatch?.[1]?.trim() || `${activeWorkflow?.name ?? '章节'}片段`;
-    await useManuscriptStore.getState().importFromStep(bookId, title, step.content, step.id, 'ai');
+    await useManuscriptStore.getState().importFromStep(String(bookId), title, step.content, step.id, 'ai');
     toast.success('已发送到手稿（可继续人写）');
   };
 

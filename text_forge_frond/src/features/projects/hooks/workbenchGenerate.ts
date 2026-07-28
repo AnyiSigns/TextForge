@@ -111,13 +111,14 @@ export function makeGeneration(d: GenerationDeps) {
       const newSteps = await generateWithWorkflow(bookId, {
         workflowId: activeWorkflowId,
         context: buildContext(),
-        runOpts: { simulateDelay: true },
+        runOpts: {},
         shouldPause: () => pausedRef.current,
         isAborted: () => !!abortRef.current?.signal.aborted,
-        onStep: (step, _label, _output, _systemPrompt, status) => {
+        onStep: (step) => {
           const workflowLabel = activeWorkflow?.nodes.find((n) => n.id === step.nodeId)?.label;
           const resolvedLabel = workflowLabel || step.nodeId || '步骤';
           const enriched: Step = { ...step, agentName: resolvedLabel, agent: step.nodeId || resolvedLabel };
+          const status = enriched.status;
           enqueueStepUpdate((prev) => {
             const idx = enriched.nodeId ? prev.findIndex((s) => s.nodeId === enriched.nodeId) : -1;
             let next: Step[];
@@ -131,7 +132,7 @@ export function makeGeneration(d: GenerationDeps) {
             } else {
               next = [...prev, enriched];
             }
-            if (status === 'done' && enriched.nodeId) {
+            if (status === 'completed' && enriched.nodeId) {
               completedNodeIdsRef.current.add(enriched.nodeId);
               const nodeIdx = nodeIndexMap.get(enriched.nodeId);
               if (nodeIdx !== undefined && nodeIdx + 1 < sortedNodeIds.length) {
