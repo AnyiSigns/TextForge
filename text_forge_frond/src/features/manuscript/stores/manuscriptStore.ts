@@ -6,7 +6,7 @@ import {
   putManuscriptChapter,
   getManuscriptChapters,
   deleteManuscriptChapter,
-  deleteManuscriptByProject,
+  deleteManuscriptByBook,
 } from '@/lib/storage/indexedDB';
 
 import { uid } from '@/lib/utils/id';
@@ -14,26 +14,26 @@ import { uid } from '@/lib/utils/id';
 interface ManuscriptStore {
   chapters: ManuscriptChapter[];
   loadedProject: string | null;
-  load: (projectId: string) => Promise<void>;
-  addChapter: (projectId: string, title?: string) => Promise<ManuscriptChapter>;
+  load: (bookId: string) => Promise<void>;
+  addChapter: (bookId: string, title?: string) => Promise<ManuscriptChapter>;
   updateChapter: (id: string, patch: Partial<Pick<ManuscriptChapter, 'title' | 'content' | 'index'>>) => Promise<void>;
   removeChapter: (id: string) => Promise<void>;
-  importFromStep: (projectId: string, title: string, content: string, linkedStepId?: string, source?: 'ai' | 'ai_edited' | 'manual' | 'imported') => Promise<ManuscriptChapter>;
-  clearProject: (projectId: string) => Promise<void>;
-  byProject: (projectId: string) => ManuscriptChapter[];
+  importFromStep: (bookId: string, title: string, content: string, linkedStepId?: string, source?: 'ai' | 'ai_edited' | 'manual' | 'imported') => Promise<ManuscriptChapter>;
+  clearProject: (bookId: string) => Promise<void>;
+  byProject: (bookId: string) => ManuscriptChapter[];
 }
 
 export const useManuscriptStore = create<ManuscriptStore>((set, get) => ({
   chapters: [],
   loadedProject: null,
 
-  load: async (projectId) => {
-    const chapters = await getManuscriptChapters(projectId);
-    set({ chapters, loadedProject: projectId });
+  load: async (bookId) => {
+    const chapters = await getManuscriptChapters(bookId);
+    set({ chapters, loadedProject: bookId });
   },
 
-  addChapter: async (projectId, title) => {
-    const list = get().chapters.filter((c) => c.projectId === projectId);
+  addChapter: async (bookId, title) => {
+    const list = get().chapters.filter((c) => c.bookId === bookId);
     // 默认标题基于实时列表长度，并对重名做去重（避免并发/双调用产生同名"第 N 章"）
     let finalTitle = title || `第 ${list.length + 1} 章`;
     if (!title) {
@@ -44,7 +44,7 @@ export const useManuscriptStore = create<ManuscriptStore>((set, get) => ({
     }
     const chapter: ManuscriptChapter = {
       id: uid('ms'),
-      projectId,
+      bookId,
       index: list.length,
       title: finalTitle,
       content: '',
@@ -69,11 +69,11 @@ export const useManuscriptStore = create<ManuscriptStore>((set, get) => ({
     set((s) => ({ chapters: s.chapters.filter((c) => c.id !== id) }));
   },
 
-  importFromStep: async (projectId, title, content, linkedStepId, source = 'imported') => {
-    const list = get().chapters.filter((c) => c.projectId === projectId);
+  importFromStep: async (bookId, title, content, linkedStepId, source = 'imported') => {
+    const list = get().chapters.filter((c) => c.bookId === bookId);
     const chapter: ManuscriptChapter = {
       id: uid('ms'),
-      projectId,
+      bookId,
       index: list.length,
       title: title || `导入章节 ${list.length + 1}`,
       content,
@@ -86,10 +86,10 @@ export const useManuscriptStore = create<ManuscriptStore>((set, get) => ({
     return chapter;
   },
 
-  clearProject: async (projectId) => {
-    await deleteManuscriptByProject(projectId);
-    set((s) => ({ chapters: s.chapters.filter((c) => c.projectId !== projectId) }));
+  clearProject: async (bookId) => {
+    await deleteManuscriptByBook(bookId);
+    set((s) => ({ chapters: s.chapters.filter((c) => c.bookId !== bookId) }));
   },
 
-  byProject: (projectId) => get().chapters.filter((c) => c.projectId === projectId),
+  byProject: (bookId) => get().chapters.filter((c) => c.bookId === bookId),
 }));
