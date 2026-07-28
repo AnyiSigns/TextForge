@@ -1,52 +1,82 @@
-// src/components/projects/InspirationBoard.tsx
-'use client';
-
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { ChevronDown, Plus, Trash2, FileInput, BookOpen, FileText } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { ChevronDown, BookOpen, FileText, Save } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { loadInspiration, saveInspiration, type InspirationItem } from '@/lib/storage/backup';
-import { dispatchInsertStep } from '@/lib/events/projectEvents';
+import { listOutlines, updateOutline, fetchBookMeta } from '@/features/projects';
 import { toast } from 'sonner';
-import { listOutlines } from '@/features/projects';
 import type { OutlineVolume } from '@/lib/storage/backup';
 
 export function InspirationBoard({ projectId }: { projectId: string }) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [items, setItems] = useState<InspirationItem[]>([]);
-  const [newContent, setNewContent] = useState('');
   const [volumes, setVolumes] = useState<OutlineVolume[]>([]);
+  const [outlineId, setOutlineId] = useState<number | null>(null);
+  const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  const didHydrate = useRef(false);
 
   useEffect(() => {
     let active = true;
-    loadInspiration(projectId).then((s) => { if (active) setItems(s); }).catch(() => {});
-    listOutlines(Number(projectId)).then((res) => {
-      if (!active) return;
-      if (res.length > 0 && Array.isArray(res[0].data)) {
-        setVolumes(res[0].data);
+    (async () => {
+      try {
+        const [outlineRes] = await Promise.all([
+          listOutlines(Number(projectId)),
+          fetchBookMeta(Number(projectId)).catch(() => null),
+        ]);
+        if (!active) return;
+        if (outlineRes.length > 0 && Array.isArray(outlineRes[0].data)) {
+          setVolumes(outlineRes[0].data);
+          setOutlineId(outlineRes[0].id);
+        }
+      } finally {
+        if (active) didHydrate.current = true;
       }
-    }).catch(() => {});
+    })();
     return () => { active = false; };
   }, [projectId]);
 
-  useEffect(() => {
-    saveInspiration(projectId, items).catch(() => {});
-  }, [items, projectId]);
-
-  const addItem = () => {
-    if (!newContent.trim()) return;
-    setItems([...items, {
-      id: `ins-${Date.now()}`,
-      type: 'text',
-      content: newContent.trim(),
-      createdAt: new Date().toISOString(),
-    }]);
-    setNewContent('');
+  const updateChapterSummary = (volId: string, chId: string, summary: string) => {
+    setVolumes((vs) => vs.map((v) => {
+      if (v.id !== volId) return v;
+      return {
+        ...v,
+        chapters: v.chapters.map((c) => (c.id === chId ? { ...c, summary } : c)),
+      };
+    }));
   };
 
-  const deleteItem = (id: string) => setItems(items.filter(i => i.id !== id));
+  const handleSaveChapter = async (chId: string) => {
+    if (!outlineId) return;
+    setSavingIds((prev) => new Set(prev).add(chId));
+    try {
+      let summary = '';
+      for (const vol of volumes) {
+        const ch = (vol.chapters || []).find((c) => c.id === chId);
+        if (ch) {
+          summary = ch.summary ?? '';
+          break;
+        }
+      }
+      await updateOutline(Number(projectId), outlineId, undefined, chId, summary);
+      setSavedIds((prev) => new Set(prev).add(chId));
+      setTimeout(() => {
+        setSavedIds((prev) => {
+          const next = new Set(prev);
+          next.delete(chId);
+          return next;
+        });
+      }, 1500);
+    } catch {
+      toast.error('保存失败');
+    } finally {
+      setSavingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(chId);
+        return next;
+      });
+    }
+  };
 
   return (
     <Card className="glass-card mt-6">
@@ -61,54 +91,53 @@ export function InspirationBoard({ projectId }: { projectId: string }) {
       </CardHeader>
       {isExpanded && (
         <CardContent className="space-y-4">
-          <div className="flex gap-2">
-            <Input value={newContent} onChange={e => setNewContent(e.target.value)} placeholder="记录章节摘要..." onKeyDown={e => e.key === 'Enter' && addItem()} />
-            <Button size="sm" onClick={addItem}><Plus className="w-4 h-4" /></Button>
-          </div>
-
-          <div className="space-y-2 max-h-60 overflow-y-auto">
-            {items.map(item => (
-              <div key={item.id} className="rounded-xl border border-border/40 p-3 text-xs flex justify-between">
-                <p className="flex-1 truncate">{item.content}</p>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  title="插入工作台"
-                  onClick={() => {
-                    dispatchInsertStep({ projectId, title: '章节摘要', content: item.content });
-                    toast.success('已发送到工作台');
-                  }}
-                >
-                  <FileInput className="w-3 h-3" />
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => deleteItem(item.id)}>
-                  <Trash2 className="w-3 h-3" />
-                </Button>
-              </div>
-            ))}
-          </div>
-
-          {items.length > 0 && (
-            <p className="text-xs text-center text-muted-foreground">已自动保存</p>
-          )}
-
-          <div className="space-y-2 border-t border-border/40 pt-3">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-              <BookOpen className="w-3.5 h-3.5" /> 章节摘要
+          {!volumes.length ? (
+            <p className="text-sm text-muted-foreground text-center py-6">
+              暂无大纲，请先在大纲页创建卷与章节。
             </p>
-            {(() => {
-              const chapters = (Array.isArray(volumes) ? volumes : []).flatMap((v) => Array.isArray(v.chapters) ? v.chapters : []);
-              if (!chapters.length) return null;
-              return chapters.map((ch) => (
-                <div key={ch.id} className="rounded-xl border border-border/40 bg-background/40 p-3 text-xs">
-                  <p className="font-medium text-foreground/80 mb-1">{ch.title || '未命名章节'}</p>
-                  <p className="text-muted-foreground leading-relaxed">{ch.summary || '尚未生成摘要'}</p>
+          ) : (
+            <div className="space-y-4">
+              {volumes.map((vol) => (
+                <div key={vol.id} className="space-y-3">
+                  <p className="text-xs font-medium text-foreground/70 flex items-center gap-1.5">
+                    <BookOpen className="w-3.5 h-3.5" /> {vol.title || '未命名卷'}
+                  </p>
+                  <div className="space-y-2">
+                    {(Array.isArray(vol.chapters) ? vol.chapters : []).map((ch) => {
+                      const isSaving = savingIds.has(ch.id);
+                      const isSaved = savedIds.has(ch.id);
+                      return (
+                        <div key={ch.id} className="rounded-xl border border-border/40 bg-background/40 p-3">
+                          <div className="flex items-center justify-between gap-2 mb-2">
+                            <p className="font-medium text-foreground/80 text-xs">{ch.title || '未命名章节'}</p>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 px-2 text-xs"
+                              disabled={isSaving}
+                              onClick={() => handleSaveChapter(ch.id)}
+                            >
+                              <Save className="w-3.5 h-3.5 mr-1" />
+                              {isSaving ? '保存中...' : isSaved ? '已保存' : '保存'}
+                            </Button>
+                          </div>
+                          <Textarea
+                            value={ch.summary ?? ''}
+                            onChange={(e) => updateChapterSummary(vol.id, ch.id, e.target.value)}
+                            placeholder="尚未生成摘要，可直接在此输入..."
+                            rows={3}
+                            className="text-xs"
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              ));
-            })()}
-          </div>
+              ))}
+            </div>
+          )}
         </CardContent>
-        )}
+      )}
     </Card>
   );
 }

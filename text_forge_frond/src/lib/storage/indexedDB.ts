@@ -51,41 +51,40 @@ export async function clearAll(): Promise<void> {
 
 export interface ProjectVersion {
   id: string;
-  projectId: string;
+  bookId: string;
   steps: Step[];
-  brief?: { genre?: string; worldview?: string; tone?: string; forbidden?: string; styleGuide?: string; wordCountGoal?: number; dailyWordCountGoal?: number; defaultVisionModel?: string; defaultStyle?: string };
   createdAt: string;
   wordCount: number;
 }
 
-const DRAFT_KEY = 'project-draft';
-const HISTORY_KEY = 'project-history';
+const DRAFT_KEY = 'book-draft';
+const HISTORY_KEY = 'book-history';
 
-export async function saveDraft(projectId: string, steps: Step[]): Promise<void> {
+export async function saveDraft(bookId: string, steps: Step[]): Promise<void> {
   const draft = {
-    projectId,
+    bookId,
     steps,
     savedAt: new Date().toISOString(),
   };
-  await setItem(`${DRAFT_KEY}-${projectId}`, draft);
+  await setItem(`${DRAFT_KEY}-${bookId}`, draft);
 }
 
-export async function getDraft(projectId: string): Promise<{ steps: Step[] } | undefined> {
-  return await getItem(`${DRAFT_KEY}-${projectId}`);
+export async function getDraft(bookId: string): Promise<{ steps: Step[] } | undefined> {
+  return await getItem(`${DRAFT_KEY}-${bookId}`);
 }
 
-export async function clearDraft(projectId: string): Promise<void> {
-  await removeItem(`${DRAFT_KEY}-${projectId}`);
+export async function clearDraft(bookId: string): Promise<void> {
+  await removeItem(`${DRAFT_KEY}-${bookId}`);
 }
 
-export async function saveVersion(projectId: string, version: ProjectVersion): Promise<void> {
-  const history = await getItem<ProjectVersion[]>(`${HISTORY_KEY}-${projectId}`) || [];
+export async function saveVersion(bookId: string, version: ProjectVersion): Promise<void> {
+  const history = await getItem<ProjectVersion[]>(`${HISTORY_KEY}-${bookId}`) || [];
   const updated = [version, ...history.filter(v => v.id !== version.id)].slice(0, 20);
-  await setItem(`${HISTORY_KEY}-${projectId}`, updated);
+  await setItem(`${HISTORY_KEY}-${bookId}`, updated);
 }
 
-export async function getVersionHistory(projectId: string): Promise<ProjectVersion[]> {
-  return await getItem<ProjectVersion[]>(`${HISTORY_KEY}-${projectId}`) || [];
+export async function getVersionHistory(bookId: string): Promise<ProjectVersion[]> {
+  return await getItem<ProjectVersion[]>(`${HISTORY_KEY}-${bookId}`) || [];
 }
 
 export interface ProjectTemplate {
@@ -161,11 +160,11 @@ export async function putManuscriptChapter(ch: ManuscriptChapter): Promise<void>
   await db.put(MS_STORE, ch);
 }
 
-export async function getManuscriptChapters(projectId: string): Promise<ManuscriptChapter[]> {
+export async function getManuscriptChapters(bookId: string): Promise<ManuscriptChapter[]> {
   const db = await getDB();
   const all = (await db.getAll(MS_STORE)) as ManuscriptChapter[];
   return all
-    .filter((c) => c.projectId === projectId)
+    .filter((c) => c.bookId === bookId)
     .sort((a, b) => a.index - b.index || a.updatedAt.localeCompare(b.updatedAt));
 }
 
@@ -174,8 +173,8 @@ export async function deleteManuscriptChapter(id: string): Promise<void> {
   await db.delete(MS_STORE, id);
 }
 
-export async function deleteManuscriptByProject(projectId: string): Promise<void> {
+export async function deleteManuscriptByBook(bookId: string): Promise<void> {
   const db = await getDB();
   const all = (await db.getAll(MS_STORE)) as ManuscriptChapter[];
-  await Promise.all(all.filter((c) => c.projectId === projectId).map((c) => db.delete(MS_STORE, c.id)));
+  await Promise.all(all.filter((c) => c.bookId === bookId).map((c) => db.delete(MS_STORE, c.id)));
 }

@@ -14,7 +14,7 @@ async def audit_node(state: AuditState):
             f"最近章节正文：\n{state.get('input_recent_chapters', '')}",
         ]
     )
-    print(f"哈哈哈哈:{context_block}")
+    print(f":{context_block}")
     task_input = json.dumps(state["input_context"], ensure_ascii=False, indent=2)
     messages = [
         SystemMessage(state["system_prompt"]),

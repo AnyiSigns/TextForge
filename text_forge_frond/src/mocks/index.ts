@@ -6,11 +6,11 @@ import { NextResponse } from 'next/server';
 import { MOCK_USER } from './data';
 import {
   handleLogin,
-  handleProjectsGet,
-  handleProjectsPost,
-  handleProjectDetail,
-  handleProjectPut,
-  handleProjectDelete,
+  handleBooksGet,
+  handleBooksPost,
+  handleBookDetail,
+  handleBookPut,
+  handleBookDelete,
   handleCharactersGet,
   handleCharactersPost,
   handleCharacterDetail,
@@ -65,18 +65,18 @@ export async function handleDevApi(req: NextRequest) {
   if (url === '/api/user/avatar' && method === 'POST') return json({ avatar_url: '' });
 
   // ---- 项目 ----
-  if (url === '/api/projects' && method === 'GET') return await handleProjectsGet();
-  if (url === '/api/projects' && method === 'POST') return await handleProjectsPost(req);
-  if (url.startsWith('/api/projects/') && url.endsWith('/characters') && method === 'GET') return json({ characters: [] });
-  if (url.startsWith('/api/projects/') && url.endsWith('/portfolio') && method === 'GET') return json({ items: [] });
-  if (url.startsWith('/api/projects/') && url.endsWith('/brief') && method === 'PUT') return json({ ok: true });
+  if (url === '/api/books' && method === 'GET') return await handleBooksGet();
+  if (url === '/api/books' && method === 'POST') return await handleBooksPost(req);
+  if (url.startsWith('/api/books/') && url.endsWith('/characters') && method === 'GET') return json({ characters: [] });
+  if (url.startsWith('/api/books/') && url.endsWith('/portfolio') && method === 'GET') return json({ items: [] });
+  if (url.startsWith('/api/creative-settings/books/') && method === 'PUT') return json({ ok: true });
 
-  const projIdMatch = url.match(/^\/api\/projects\/([^/]+)$/);
-  if (projIdMatch) {
-    const id = projIdMatch[1];
-    if (method === 'GET') return await handleProjectDetail(id);
-    if (method === 'PUT') return await handleProjectPut(id, req);
-    if (method === 'DELETE') return handleProjectDelete(id);
+  const bookIdMatch = url.match(/^\/api\/books\/([^/]+)$/);
+  if (bookIdMatch) {
+    const id = bookIdMatch[1];
+    if (method === 'GET') return await handleBookDetail(id);
+    if (method === 'PUT') return await handleBookPut(id, req);
+    if (method === 'DELETE') return handleBookDelete(id);
   }
 
   // ---- 角色 ----

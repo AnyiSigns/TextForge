@@ -4,9 +4,9 @@ from infrastructure.database import db_manager
 from repository.model_repo import ModelConfRepository
 from agents.state import ParentState
 from repository.project_repo import (
-    BriefRepository,
+    CreativeSettingRepository,
     CharacterRepository,
-    ProjectRepository,
+    BookRepository,
 )
 from repository.workflow_repo import WorkflowRepository
 from repository.outline_repo import OutlineRepository
@@ -75,25 +75,25 @@ class WorkflowExecutor:
         workflow = await workflow_repo.get_workflow_id(workflow_id, user_id)
         if not workflow:
             raise ValueError("流水线不存在")
-        project_repo = ProjectRepository(self.session)
-        project = await project_repo.get(project_id)
-        if not project or project.user_id != user_id:
-            raise ValueError("项目不存在")
-        parts = [f"#项目标题\n{project.title}"]
-        if project.description:
-            parts.append(f"#项目描述\n{project.description}")
-        if project.genre:
-            parts.append(f"类型\n{project.genre}")
+        book_repo = BookRepository(self.session)
+        book = await book_repo.get(project_id)
+        if not book or book.user_id != user_id:
+            raise ValueError("书籍不存在")
+        parts = [f"#书名\n{book.title}"]
+        if book.description:
+            parts.append(f"#书籍描述\n{book.description}")
+        if book.genre:
+            parts.append(f"类型\n{book.genre}")
 
-        brief_repo = BriefRepository(self.session)
-        brief = await brief_repo.get_brief(project_id)
+        setting_repo = CreativeSettingRepository(self.session)
+        setting = await setting_repo.get_setting(project_id)
         worldview_text = ""
-        if brief:
-            worldview_text = f"# 世界观\n{brief.worldview or ''}\n# 文风/基调\n{brief.tone or ''}\n# 创作禁忌\n{brief.forbidden or ''}\n# 风格指南\n{brief.style_guide or ''}"
+        if setting:
+            worldview_text = f"# 世界观\n{setting.worldview or ''}\n# 文风/基调\n{setting.tone or ''}\n# 创作禁忌\n{setting.writing_taboos or ''}"
             parts.append(worldview_text)
 
         char_repo = CharacterRepository(self.session)
-        characters = await char_repo.project_character_detail(user_id, project_id)
+        characters = await char_repo.book_character_detail(user_id, project_id)
         char_text = ""
         if characters:
             char_lines = [f"-{c.name}:{c.description}" for c in characters]
@@ -231,7 +231,7 @@ class WorkflowExecutor:
         if not first_output:
             return
         try:
-            model_config = await self._get_user_model_config(outlines[0].project_id)
+            model_config = await self._get_user_model_config(outlines[0].book_id)
             llm = ModelFactory(model_config)
             prompt = (
                 "请用2-3句话概括以下章节内容，保留关键情节和核心信息，语言简洁。\n\n章节标题："

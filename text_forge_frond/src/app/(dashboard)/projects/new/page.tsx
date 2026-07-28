@@ -12,14 +12,14 @@ import { ArrowLeft, Plus, BookPlus, LayoutTemplate } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader } from '@/shared/components';
 import { cn } from '@/lib/utils';
-import { useProjectStore } from '@/features/projects';
+import { useBookStore } from '@/features/projects';
 
 const PRESET_GENRES = ['科幻', '奇幻', '言情', '悬疑', '武侠', '都市', '历史', '仙侠', '末世', '轻小说'];
 
 export default function NewProjectPage() {
   const router = useRouter();
-  const addProject = useProjectStore((s) => s.addProject);
-  const templates = useProjectStore((s) => s.templates);
+  const addProject = useBookStore((s) => s.addBook);
+  const templates = useBookStore((s) => s.templates);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [genre, setGenre] = useState('');
@@ -59,10 +59,9 @@ export default function NewProjectPage() {
     }
     setIsLoading(true);
     try {
-      const project = await addProject({ title, description, genre: genre.trim() });
-      // 跳转工作台：项目设定/角色/大纲/生成都从工作台进入更顺手
-      toast.success('项目创建成功，前往工作台开始创作');
-      router.push(`/projects/${project.id}`);
+      const book = await addProject({ title, description, genre: genre.trim() });
+      toast.success('书籍创建成功，前往工作台开始创作');
+      router.push(`/projects/${book.id}`);
     } catch (e) {
       toast.error('创建出错了', { description: e instanceof Error ? e.message : '未知错误' });
     } finally {
@@ -76,11 +75,11 @@ export default function NewProjectPage() {
         <ArrowLeft className="w-4 h-4 mr-2" /> 返回
       </Button>
 
-      <PageHeader icon={BookPlus} title="新建小说项目" description="设置小说基本信息，AI 将根据这些信息开始创作" className="mb-5" />
+      <PageHeader icon={BookPlus} title="新建书籍项目" description="设置书籍基本信息，AI 将根据这些信息开始创作" className="mb-5" />
 
       <Card className="glass-card mb-4">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><LayoutTemplate className="w-4 h-4" /> 项目模板</CardTitle>
+          <CardTitle className="flex items-center gap-2"><LayoutTemplate className="w-4 h-4" /> 书籍模板</CardTitle>
           <CardDescription>选择预设模板快速开始，也可自定义</CardDescription>
         </CardHeader>
         <CardContent>
@@ -105,7 +104,7 @@ export default function NewProjectPage() {
 
       <Card className="glass-card">
         <CardHeader>
-          <CardTitle>项目信息</CardTitle>
+          <CardTitle>书籍信息</CardTitle>
           <CardDescription>题材可自定义，选择预设或填写你自己的分类</CardDescription>
         </CardHeader>
         <CardContent>
@@ -167,7 +166,7 @@ export default function NewProjectPage() {
             </div>
 
             <div className="flex gap-3 pt-1">
-              <Button type="submit" disabled={isLoading}>{isLoading ? '创建中...' : '创建项目'}</Button>
+              <Button type="submit" disabled={isLoading}>{isLoading ? '创建中...' : '创建书籍'}</Button>
               <Button type="button" variant="outline" onClick={() => router.back()}>取消</Button>
             </div>
           </form>

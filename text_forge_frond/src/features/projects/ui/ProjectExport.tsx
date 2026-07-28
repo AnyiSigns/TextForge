@@ -5,9 +5,9 @@ import { useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Download, Upload, FileJson, FileText, FileType, HelpCircle } from 'lucide-react';
-import { useProjectStore } from '@/features/projects';
+import { useBookStore } from '@/features/projects';
 import { useCharacterStore } from '@/features/characters';
-import { useBriefStore } from '@/features/projects';
+import { useCreativeSettingStore } from '@/features/projects';
 import { useModelStore } from '@/features/settings';
 import { useSettingsStore } from '@/features/settings';
 import {
@@ -70,9 +70,9 @@ export function ProjectExport({ projectId, compact = false }: { projectId?: stri
   const handleExportAll = async () => {
     setBusy('all');
     try {
-      const { projects } = useProjectStore.getState();
+      const { books } = useBookStore.getState();
       const { characters } = useCharacterStore.getState();
-      const { briefs } = useBriefStore.getState();
+      const { settings } = useCreativeSettingStore.getState();
       const { models } = useModelStore.getState();
       const s = useSettingsStore.getState();
       const settingsData = {
@@ -84,8 +84,8 @@ export function ProjectExport({ projectId, compact = false }: { projectId?: stri
       };
 
       const backup = await exportWorkspace(
-        { projects, characters, briefs, models, settings: settingsData },
-        projects.map((p) => p.id),
+        { projects: books, characters, creativeSettings: settings, models, settings: settingsData },
+        books.map((p) => p.id),
       );
       downloadBackup(backup);
       toast.success('已导出完整工作区备份');
@@ -104,9 +104,9 @@ export function ProjectExport({ projectId, compact = false }: { projectId?: stri
       await importWorkspace(
         backup,
         {
-          projects: (d) => { useProjectStore.setState({ projects: d as never }); },
+          projects: (d) => { useBookStore.setState({ books: d as never }); },
           characters: (d) => { useCharacterStore.setState({ characters: d as never }); },
-          briefs: (d) => { useBriefStore.setState({ briefs: d as never }); },
+          creativeSettings: (d) => { useCreativeSettingStore.setState({ settings: d as never }); },
           models: (d) => { useModelStore.setState({ models: d as never }); },
           settings: (d) => { useSettingsStore.setState(d as never); },
         },

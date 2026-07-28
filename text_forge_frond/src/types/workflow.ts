@@ -41,20 +41,17 @@ export interface GenerationContextCharacter {
 }
 
 export interface GenerationContext {
-  project_id: string;
-  project_title?: string;
+  book_id: number;
+  book_title?: string;
   summary?: string;
   plot_summary?: string;
   characters?: GenerationContextCharacter[];
-  /** 大纲骨架（文本折叠，供 mock 占位与后端文本兜底） */
   outline?: string;
-  /** 大纲结构化树（卷→章→节点），后端 LangGraph 可精确消费，不必反解文本 */
   outlineTree?: GenerationContextOutlineVolume[];
-  sections?: { title: string; content: string }[];  // 本章相关自定义维度
+  sections?: { title: string; content: string }[];
   source?: 'character' | 'chapter';
   source_ref?: string;
-  brief?: string;
-  // 个人库本地向量检索命中的片段，随请求发后端（后端可见、可溯源，但不存不检）
+  creativeSetting?: string;
   rag_chunks?: RagChunk[];
 }
 

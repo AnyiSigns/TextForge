@@ -3,40 +3,66 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class ProjectResponse(BaseModel):
+class BookResponse(BaseModel):
     id: int
     title: str
-    status: str
     genre: Optional[str] = None
     description: Optional[str] = None
     pinned: Optional[bool] = False
     workflow_id: Optional[str] = Field(alias="workflowId")
+    total_word_goal: Optional[int] = Field(default=0, alias="totalWordGoal")
+    current_word_count: Optional[int] = Field(default=0, alias="currentWordCount")
     created_at: datetime = Field(alias="createdAt")
     updated_at: datetime = Field(alias="updatedAt")
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)
 
 
-class ProjectVersionResponse(BaseModel):
-    project: ProjectResponse
+class BookVersionResponse(BaseModel):
+    book: BookResponse
     version: Optional[int]
+
+
+class VolumeResponse(BaseModel):
+    id: int
+    book_id: int = Field(alias="bookId")
+    title: str
+    summary: Optional[str] = None
+    sort_order: int = Field(default=0, alias="sortOrder")
+    created_at: datetime = Field(alias="createdAt")
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
+
+
+class ChapterResponse(BaseModel):
+    id: int
+    volume_id: int = Field(alias="volumeId")
+    title: str
+    summary: Optional[str] = None
+    sort_order: int = Field(default=0, alias="sortOrder")
+    created_at: datetime = Field(alias="createdAt")
+    updated_at: datetime = Field(alias="updatedAt")
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
+
+
+class ChapterContentResponse(BaseModel):
+    id: int
+    chapter_id: int = Field(alias="chapterId")
+    content: Optional[str] = None
+    created_at: datetime = Field(alias="createdAt")
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
 
 
 class CharacterResponse(BaseModel):
     id: int
     name: str
     description: str
-    project_id: Optional[int] = Field(alias="projectId")
-    avatar: Optional[str] = None
+    book_id: Optional[int] = Field(alias="bookId")
+    avatar_url: Optional[str] = Field(default=None, alias="avatarUrl")
     aliases: Optional[List[str]] = None
-    role: Optional[str] = None
+    role_type: Optional[str] = Field(default=None, alias="roleType")
     status: Optional[str] = None
-    current_profile: Optional[str] = Field(default=None, alias="currentProfile")
-    custom_role: Optional[str] = Field(default=None, alias="customRole")
-    relationships: Optional[List[Dict[str, Any]]] = None
-    images: Optional[Dict[str, Any]] = None
-    reference_images: Optional[Dict[str, Any]] = None
-    reference_image: Optional[str] = None
-    image_seed: Optional[int] = None
+    relationship_chain: Optional[List[Dict[str, Any]]] = Field(default=None, alias="relationshipChain")
+    created_at: datetime = Field(alias="createdAt")
+    updated_at: datetime = Field(alias="updatedAt")
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
@@ -45,25 +71,20 @@ class ListCharactersResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
-class ProjectDetailResponse(BaseModel):
-    project: ProjectResponse
+class BookDetailResponse(BaseModel):
+    book: BookResponse
     characters: List[CharacterResponse]
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
-class BriefResponse(BaseModel):
-    project_id: int = Field(alias="projectId")
-    genre: str
-    worldview: str
-    tone: str
-    forbidden: str
-    style_guide: str = Field(alias="styleGuide")
-    word_count_goal: Optional[int] = Field(default=None, alias="wordCountGoal")
-    daily_word_count_goal: Optional[int] = Field(default=None, alias="dailyWordCountGoal")
-    sections: List[Dict[str, Any]]
-    field_origins: Optional[Dict[str, Any]] = Field(default=None, alias="fieldOrigins")
-    auto_summary: Optional[bool] = Field(default=None, alias="autoSummary")
+class CreativeSettingResponse(BaseModel):
+    book_id: int = Field(alias="bookId")
+    tone: Optional[str] = None
+    worldview: Optional[str] = None
+    writing_taboos: Optional[str] = Field(default=None, alias="writingTaboos")
+    custom_dimensions: Optional[dict] = Field(default=None, alias="customDimensions")
 
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)
+
 

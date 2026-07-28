@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg18
+    container_name: text_forge_db
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 1234
+      POSTGRES_DB: text_forge
+    volumes:
+      - pgdata:/var/lib/postgresql
+volumes:
+  pgdata:

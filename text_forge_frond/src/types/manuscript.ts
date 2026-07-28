@@ -4,7 +4,7 @@
 /** 作家手稿章节（独立于工作台 AI steps，可双向互导） */
 export interface ManuscriptChapter {
   id: string;
-  projectId: string;
+  bookId: string;
   index: number;             // 章节序号，用于排序
   title: string;
   content: string;

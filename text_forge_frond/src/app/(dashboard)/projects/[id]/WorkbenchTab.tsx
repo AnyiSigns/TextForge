@@ -30,19 +30,19 @@ import { toast } from 'sonner';
 
 export function WorkbenchTab({
   wb,
-  projectId,
+  bookId,
   onNavigateToManuscript,
-  onNavigateToBrief,
+  onNavigateToCreativeSetting,
 }: {
   wb: ReturnType<typeof useWorkbench>;
-  projectId: string;
+  bookId: string;
   onNavigateToManuscript?: () => void;
-  onNavigateToBrief?: () => void;
+  onNavigateToCreativeSetting?: () => void;
 }) {
   const [mainTextOpen, setMainTextOpen] = useState(false);
   const [mainText, setMainText] = useState('');
   const {
-    brief,
+    creativeSetting,
     projectChars,
     seeded,
     setSeedOpen,
@@ -75,15 +75,15 @@ export function WorkbenchTab({
 
   const handleSetAsMainText = async (step: Step) => {
     setMainText(step.content || '');
-    const pid = Number(projectId);
+    const bid = Number(bookId);
     try {
-      const items = await listOutlines(pid);
+      const items = await listOutlines(bid);
       if (items.length > 0) {
         const raw = items[0].data;
         const volumes: OutlineVolume[] = Array.isArray(raw) ? raw : ((raw as unknown as { data?: OutlineVolume[] })?.data ?? []);
         setOutlineVolumes(Array.isArray(volumes) ? volumes : []);
       } else {
-        const local = await loadOutline(projectId);
+        const local = await loadOutline(bookId);
         setOutlineVolumes(local);
       }
     } catch {
@@ -93,7 +93,7 @@ export function WorkbenchTab({
   };
 
   const handleMainTextConfirm = async (action: 'create_volume' | 'create_chapter' | 'overwrite_chapter', payload: { volumeId?: string; chapterId?: string; volumeTitle?: string; chapterTitle?: string }) => {
-    const pid = Number(projectId);
+    const bid = Number(bookId);
     setOutlineVolumes((prev) => {
       const clone = JSON.parse(JSON.stringify(prev)) as OutlineVolume[];
       if (action === 'create_volume' && payload.volumeTitle) {
@@ -115,14 +115,10 @@ export function WorkbenchTab({
       return clone;
     });
     try {
-      let loadingToastId: string | number | undefined;
-      if (brief?.autoSummary) {
-        loadingToastId = toast.loading('正在保存正文并生成摘要...');
-      }
-      const existing = await listOutlines(pid);
+      const existing = await listOutlines(bid);
       if (existing.length === 0) {
         if (action === 'create_volume' && payload.volumeTitle) {
-          await createOutline(pid, [{
+          await createOutline(bid, [{
             id: `vol-${Date.now()}`,
             title: payload.volumeTitle,
             chapters: [],
@@ -155,12 +151,9 @@ export function WorkbenchTab({
             }
           }
         }
-        await updateOutline(pid, existing[0].id, clone);
+        await updateOutline(bid, existing[0].id, clone);
       }
-      window.dispatchEvent(new CustomEvent('outline-seeded', { detail: { projectId } }));
-      if (loadingToastId) {
-        toast.dismiss(loadingToastId);
-      }
+      window.dispatchEvent(new CustomEvent('outline-seeded', { detail: { bookId } }));
       if (action !== 'create_volume') {
         toast.success('正文写入成功');
         setMainTextOpen(false);
@@ -207,13 +200,13 @@ export function WorkbenchTab({
             <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
               <Layers className="w-3.5 h-3.5" /> 本章相关设定维度
             </p>
-            {(brief?.sections ?? []).length === 0 ? (
+            {(creativeSetting?.customDimensions ?? []).length === 0 ? (
               <p className="text-xs text-muted-foreground">
                 暂无自定义维度，去「创作设定」添加（势力/战力/阵营…）。
               </p>
             ) : (
               <div className="flex flex-wrap gap-2">
-                {brief!.sections!.map((sec) => {
+                {creativeSetting!.customDimensions!.map((sec) => {
                   const on = selectedSectionIds.includes(sec.id);
                   return (
                     <button
@@ -240,7 +233,7 @@ export function WorkbenchTab({
         workflowName={activeWorkflow?.name}
       />
 
-      {seeded && (steps.length > 0 || brief?.worldview || projectChars.length > 0) && (
+      {seeded && (steps.length > 0 || creativeSetting?.worldview || projectChars.length > 0) && (
         <div className="my-4 flex items-start gap-2 rounded-lg bg-primary/10 border border-primary/30 p-2.5 text-xs text-primary/90">
           <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
           <span>
@@ -277,7 +270,7 @@ export function WorkbenchTab({
                 <Button size="sm" onClick={onNavigateToManuscript}>
                   <PenLine className="w-4 h-4 mr-1.5" /> 直接写第一章
                 </Button>
-                <Button size="sm" variant="outline" onClick={onNavigateToBrief}>
+                <Button size="sm" variant="outline" onClick={onNavigateToCreativeSetting}>
                   <FileCog className="w-4 h-4 mr-1.5" /> 写创作设定
                 </Button>
                 <Button size="sm" variant="default" onClick={handleGenerate}>
@@ -300,7 +293,7 @@ export function WorkbenchTab({
               step={step}
               index={index}
               onSetAsMainText={handleSetAsMainText}
-              projectId={projectId}
+              bookId={bookId}
             />
           ))}
         </div>

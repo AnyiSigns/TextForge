@@ -17,7 +17,7 @@ import type { GenerationContext } from '@/types';
 export function GenerationForm({
   kind,
   defaultPrompt = '',
-  defaultProjectId = null,
+  defaultBookId = null,
   defaultCharacterId = null,
   defaultChapterId = null,
   chapterOptions = [],
@@ -28,12 +28,12 @@ export function GenerationForm({
   steps,
   projectCharacters,
   characters,
-  onProjectChange,
+  onBookChange,
   useCase: forcedUseCase,
 }: {
   kind: GenKind;
   defaultPrompt?: string;
-  defaultProjectId?: string | null;
+  defaultBookId?: string | null;
   defaultCharacterId?: string | null;
   defaultChapterId?: string | null;
   chapterOptions?: { id: string; label: string }[];
@@ -47,7 +47,7 @@ export function GenerationForm({
     count?: number;
     duration?: number;
     aspect?: string;
-    project_id?: string;
+    book_id?: string;
     context?: GenerationContext;
     source_step?: string;
     chapter_id?: string;
@@ -61,10 +61,10 @@ export function GenerationForm({
   steps?: { id: string; agent?: string; content?: string }[];
   projectCharacters?: { id: string; name: string }[];
   characters?: { id: string; name: string; referenceImages?: string[] | null; referenceImage?: string | null }[];
-  onProjectChange?: (projectId: string | null) => void;
+  onBookChange?: (bookId: string | null) => void;
   useCase?: GenUseCase;
 }) {
-  const f = useGenerationForm({ kind, defaultPrompt, defaultProjectId, defaultCharacterId, defaultChapterId, context, steps, forcedUseCase, characters });
+  const f = useGenerationForm({ kind, defaultPrompt, defaultBookId, defaultCharacterId, defaultChapterId, context, steps, forcedUseCase, characters });
   const icon = kind === 'image' ? <Wand2 className="w-4 h-4 text-primary" /> : <Clapperboard className="w-4 h-4 text-primary" />;
   const title = kind === 'image' ? '生成图片' : '生成视频';
 
@@ -210,9 +210,9 @@ export function GenerationForm({
             )}
 
             <ProjectPicker
-              value={f.projectId}
-              onChange={(v) => { f.setProjectId(v); onProjectChange?.(v); }}
-              label="关联项目（可选）"
+              value={f.bookId}
+              onChange={(v) => { f.setBookId(v); onBookChange?.(v); }}
+              label="关联书籍（可选）"
             />
 
         {((kind === 'image' && projectCharacters && projectCharacters.length > 0 && f.useCase !== 'chapter_art') || (kind === 'video' && projectCharacters && projectCharacters.length > 0 && f.useCase === 'character_card')) && (

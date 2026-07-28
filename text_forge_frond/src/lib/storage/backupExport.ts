@@ -5,62 +5,62 @@ import { sanitizeFileName } from '@/lib/utils/filename';
 import { getItem } from './indexedDB';
 import { loadOutline, loadInspiration } from './backupOutline';
 import type { OutlineVolume, InspirationItem } from './backupSchema';
-import type { Project, Step, Character, ProjectBrief, ManuscriptChapter } from '@/types';
-import { useProjectStore } from '@/features/projects';
+import type { Book, Step, Character, BookCreativeSetting, ManuscriptChapter } from '@/types';
+import { useBookStore } from '@/features/projects';
 import { useCharacterStore } from '@/features/characters';
-import { useBriefStore } from '@/features/projects';
+import { useCreativeSettingStore } from '@/features/projects';
 import { useManuscriptStore } from '@/features/manuscript';
 
-export interface SingleProjectBundle {
-  project: Project;
+export interface SingleBookBundle {
+  book: Book;
   steps: Step[];
   outline: OutlineVolume[];
   inspiration: InspirationItem[];
   characters: Character[];
-  brief: ProjectBrief | null;
+  creativeSetting: BookCreativeSetting | null;
 }
 
-export async function buildProjectBundle(projectId: string): Promise<SingleProjectBundle> {
-  const project = useProjectStore.getState().projects.find((p) => p.id === projectId);
-  const steps = (await getItem<Step[]>(`steps-${projectId}`)) || [];
-  const outline = await loadOutline(projectId);
-  const inspiration = await loadInspiration(projectId);
-  const characters = useCharacterStore.getState().characters.filter((c) => (c.projectId ?? null) === projectId);
-  const brief = useBriefStore.getState().briefs[projectId] || null;
+export async function buildBookBundle(bookId: number): Promise<SingleBookBundle> {
+  const book = useBookStore.getState().books.find((b) => b.id === bookId);
+  const steps = (await getItem<Step[]>(`steps-${bookId}`)) || [];
+  const outline = await loadOutline(bookId);
+  const inspiration = await loadInspiration(bookId);
+  const characters = useCharacterStore.getState().characters;
+  const creativeSetting = useCreativeSettingStore.getState().settings[bookId] || null;
 
   return {
-    project: project || { id: projectId, title: '未命名项目', status: 'draft', createdAt: '', updatedAt: '' },
+    book: book || { id: bookId, title: '未命名书籍', createdAt: '', updatedAt: '' },
     steps,
     outline,
     inspiration,
     characters,
-    brief,
+    creativeSetting,
   };
 }
 
-export function projectBundleToMarkdown(bundle: SingleProjectBundle): string {
-  const { project, steps, outline, inspiration, characters, brief } = bundle;
+export function bookBundleToMarkdown(bundle: SingleBookBundle): string {
+  const { book, steps, outline, inspiration, characters, creativeSetting } = bundle;
   const lines: string[] = [];
-  lines.push(`# ${project.title || '未命名项目'}`);
+  lines.push(`# ${book.title || '未命名书籍'}`);
   lines.push('');
-  if (project.genre) lines.push(`> 题材：${project.genre}`);
-  if (project.description) lines.push(`> ${project.description}`);
+  if (book.genre) lines.push(`> 题材：${book.genre}`);
+  if (book.description) lines.push(`> ${book.description}`);
   lines.push('');
 
-  if (brief) {
+  if (creativeSetting) {
     lines.push(`## 创作设定`);
     lines.push('');
     const fields: [string, string | undefined][] = [
-      ['类型', brief.genre],
-      ['世界观', brief.worldview],
-      ['基调', brief.tone],
-      ['风格指南', brief.styleGuide],
-      ['禁忌', brief.forbidden],
+      ['世界观', creativeSetting.worldview],
+      ['基调', creativeSetting.tone],
+      ['禁忌', creativeSetting.writingTaboos],
     ];
     for (const [k, v] of fields) {
       if (v) lines.push(`- **${k}**：${v}`);
     }
-    if (brief.wordCountGoal) lines.push(`- **总字数目标**：${brief.wordCountGoal}`);
+    for (const s of creativeSetting.customDimensions ?? []) {
+      if (s.content.trim()) lines.push(`- **${s.title}**：${s.content}`);
+    }
     lines.push('');
   }
 
@@ -120,14 +120,14 @@ export function projectBundleToMarkdown(bundle: SingleProjectBundle): string {
   return lines.join('\n');
 }
 
-export async function exportProjectJson(projectId: string): Promise<void> {
-  const bundle = await buildProjectBundle(projectId);
-  downloadText(JSON.stringify(bundle, null, 2), `${sanitizeFileName(bundle.project.title)}.json`, 'application/json');
+export async function exportBookJson(bookId: number): Promise<void> {
+  const bundle = await buildBookBundle(bookId);
+  downloadText(JSON.stringify(bundle, null, 2), `${sanitizeFileName(bundle.book.title)}.json`, 'application/json');
 }
 
-export async function exportProjectMarkdown(projectId: string): Promise<void> {
-  const bundle = await buildProjectBundle(projectId);
-  downloadText(projectBundleToMarkdown(bundle), `${sanitizeFileName(bundle.project.title)}.md`, 'text/markdown');
+export async function exportBookMarkdown(bookId: number): Promise<void> {
+  const bundle = await buildBookBundle(bookId);
+  downloadText(bookBundleToMarkdown(bundle), `${sanitizeFileName(bundle.book.title)}.md`, 'text/markdown');
 }
 
 // 去除正文里的图片链接（![说明](url)），保证纯文字导出不含配图标记
@@ -200,25 +200,25 @@ function toPlainBody(stepsContent: string[], mode: TxtMode): string {
 }
 
 // TXT 仅导出正文内容（不含设定/角色/大纲/章节摘要），并剥离图片链接，保证纯文字。
-export async function exportProjectText(projectId: string, mode: TxtMode = 'tidy'): Promise<void> {
-  const bundle = await buildProjectBundle(projectId);
+export async function exportBookText(bookId: number, mode: TxtMode = 'tidy'): Promise<void> {
+  const bundle = await buildBookBundle(bookId);
   const body = toPlainBody(bundle.steps.map((s) => s.content || ''), mode);
-  const plain = lightTidy(`${bundle.project.title || '未命名项目'}\n\n${body}`);
-  downloadText(plain, `${sanitizeFileName(bundle.project.title)}.txt`, 'text/plain');
+  const plain = lightTidy(`${bundle.book.title || '未命名书籍'}\n\n${body}`);
+  downloadText(plain, `${sanitizeFileName(bundle.book.title)}.txt`, 'text/plain');
 }
 
 // 仅导出手稿书籍正文（不含设定/角色/工作台步骤），支持 Markdown / 纯文本。
 export async function exportManuscriptBook(
-  projectId: string,
+  bookId: number,
   fmt: 'markdown' | 'txt' = 'txt',
   mode: TxtMode = 'tidy',
 ): Promise<void> {
-  await useManuscriptStore.getState().load(projectId);
+  await useManuscriptStore.getState().load(bookId);
   const chapters = useManuscriptStore.getState().chapters
-    .filter((c: ManuscriptChapter) => c.projectId === projectId)
+    .filter((c: ManuscriptChapter) => c.bookId === bookId)
     .sort((a, b) => a.index - b.index || a.updatedAt.localeCompare(b.updatedAt));
-  const project = useProjectStore.getState().projects.find((p) => p.id === projectId);
-  const title = project?.title || '未命名书籍';
+  const book = useBookStore.getState().books.find((b) => b.id === bookId);
+  const title = book?.title || '未命名书籍';
 
   const md = [`# ${title}`, ''].concat(
     chapters.map((c) => [`## ${c.title}`, '', c.content, ''].join('\n')),

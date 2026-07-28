@@ -9,7 +9,7 @@ export interface WorkspaceBackup {
   exportedAt: string;
   projects?: unknown;
   characters?: unknown;
-  briefs?: unknown;
+  creativeSettings?: unknown;
   models?: unknown;
   settings?: unknown;
   outlines?: Record<string, OutlineVolume[]>;
@@ -22,24 +22,24 @@ export async function exportWorkspace(
   stores: {
     projects?: unknown;
     characters?: unknown;
-    briefs?: unknown;
+    creativeSettings?: unknown;
     models?: unknown;
     settings?: unknown;
   },
-  projectIds: string[],
+  bookIds: string[],
 ): Promise<WorkspaceBackup> {
   const outlines: Record<string, OutlineVolume[]> = {};
   const inspirations: Record<string, InspirationItem[]> = {};
-  for (const pid of projectIds) {
-    outlines[pid] = await loadOutline(pid);
-    inspirations[pid] = await loadInspiration(pid);
+  for (const bid of bookIds) {
+    outlines[bid] = await loadOutline(bid);
+    inspirations[bid] = await loadInspiration(bid);
   }
   return {
     version: 1,
     exportedAt: new Date().toISOString(),
     projects: stores.projects,
     characters: stores.characters,
-    briefs: stores.briefs,
+    creativeSettings: stores.creativeSettings,
     models: stores.models,
     settings: stores.settings,
     outlines,
@@ -59,20 +59,20 @@ export async function importWorkspace(
   apply: {
     projects?: (data: unknown) => void | Promise<void>;
     characters?: (data: unknown) => void | Promise<void>;
-    briefs?: (data: unknown) => void | Promise<void>;
+    creativeSettings?: (data: unknown) => void | Promise<void>;
     models?: (data: unknown) => void | Promise<void>;
     settings?: (data: unknown) => void | Promise<void>;
   },
-  projectIds: string[],
+  bookIds: string[],
 ): Promise<void> {
   if (backup.projects !== undefined && apply.projects) await apply.projects(backup.projects);
   if (backup.characters !== undefined && apply.characters) await apply.characters(backup.characters);
-  if (backup.briefs !== undefined && apply.briefs) await apply.briefs(backup.briefs);
+  if (backup.creativeSettings !== undefined && apply.creativeSettings) await apply.creativeSettings(backup.creativeSettings);
   if (backup.models !== undefined && apply.models) await apply.models(backup.models);
   if (backup.settings !== undefined && apply.settings) await apply.settings(backup.settings);
 
-  for (const pid of projectIds) {
-    if (backup.outlines?.[pid]) await saveOutline(pid, backup.outlines[pid]);
-    if (backup.inspirations?.[pid]) await saveInspiration(pid, backup.inspirations[pid]);
+  for (const bid of bookIds) {
+    if (backup.outlines?.[bid]) await saveOutline(bid, backup.outlines[bid]);
+    if (backup.inspirations?.[bid]) await saveInspiration(bid, backup.inspirations[bid]);
   }
 }

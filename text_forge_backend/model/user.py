@@ -38,16 +38,19 @@ class User(Base):
         back_populates="users", cascade="all, delete-orphan"
     )
     conversations: Mapped[List["Conversation"]] = relationship(back_populates="users", cascade="all, delete-orphan")  # type: ignore
-    projects: Mapped[List["Project"]] = relationship(
-        back_populates="users", cascade="all,delete-orphan"
+    books: Mapped[List["Book"]] = relationship(
+        back_populates="user", cascade="all,delete-orphan"
     )
     characters: Mapped[List["Character"]] = relationship(
-        back_populates="users", cascade="all,delete-orphan"
+        back_populates="user", cascade="all,delete-orphan"
     )
     model_configs: Mapped["ModelConfig"] = relationship(
         cascade="all,delete-orphan", back_populates="users"
     )
     workflows: Mapped[List["Workflow"]] = relationship(
+        back_populates="users", cascade="all,delete-orphan"
+    )
+    documents: Mapped[List["Document"]] = relationship(
         back_populates="users", cascade="all,delete-orphan"
     )
 

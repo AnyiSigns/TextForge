@@ -10,7 +10,7 @@ import type { Character } from '@/types';
  * - sync：手动触发一次后端同步（角色 tab 进入时常需强制刷新）
  * hook 内默认在本地无角色数据时拉取；其余场景由调用方按需调用 sync。
  */
-export function useProjectCharacters(projectId: string): {
+export function useProjectCharacters(bookId: number): {
   projectChars: Character[];
   allCharacters: Character[];
   sync: () => Promise<unknown>;
@@ -18,13 +18,13 @@ export function useProjectCharacters(projectId: string): {
   const characters = useCharacterStore((s) => s.characters);
   const syncFromBackend = useCharacterStore((s) => s.syncFromBackend);
 
-  const projectChars = characters.filter((c) => (c.projectId ?? null) === projectId);
+  const projectChars = characters.filter((c) => c.bookId === bookId);
 
   useEffect(() => {
     if (useCharacterStore.getState().characters.length === 0) {
       syncFromBackend().catch(() => {});
     }
-  }, [projectId, syncFromBackend]);
+  }, [bookId, syncFromBackend]);
 
   return { projectChars, allCharacters: characters, sync: syncFromBackend };
 }

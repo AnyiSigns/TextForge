@@ -2,40 +2,39 @@
 // 工作台上下文构造与章节级辅助：buildContext（注入生成基座）、summarizePlot（压缩前文）、
 // depositCharacterProfiles（复盘沉淀角色状态）。均为接收依赖的纯函数工厂，便于复用与测试。
 import type { Character } from '@/types';
-import { briefToContextLine, briefSectionsToContext } from '@/features/projects';
+import { creativeSettingToContextLine, creativeSettingDimensionsToContext } from '@/features/projects';
 import { characterRoleLabel } from '@/shared/lib/agentRoles';
 import type { OutlineVolume } from '@/lib/storage/backup';
-import type { ProjectBrief } from '@/types';
+import type { BookCreativeSetting } from '@/types';
 
 export interface BuildContextDeps {
-  projectId: string;
-  projectTitle: string | undefined;
-  brief: ProjectBrief | undefined;
+  bookId: number;
+  bookTitle: string | undefined;
+  creativeSetting: BookCreativeSetting | undefined;
   projectChars: Character[];
-  selectedCharIds: string[];
+  selectedCharIds: number[];
   outlineVolumes: OutlineVolume[];
   plotSummary: string;
   selectedSectionIds: string[];
-  charNameById: (id: string) => string;
+  charNameById: (id: number) => string;
 }
 
 export function makeBuildContext(deps: BuildContextDeps) {
-  const { projectId, projectTitle, brief, projectChars, selectedCharIds, outlineVolumes, plotSummary, selectedSectionIds, charNameById } = deps;
+  const { bookId, bookTitle, creativeSetting, projectChars, selectedCharIds, outlineVolumes, plotSummary, selectedSectionIds, charNameById } = deps;
   return () => {
-    const briefLine = briefToContextLine(brief);
+    const briefLine = creativeSettingToContextLine(creativeSetting);
 
     const contextChars = projectChars
       .filter((c) => selectedCharIds.includes(c.id))
       .map((c) => ({
         name: c.name,
-        role: c.role && c.role !== 'custom' ? characterRoleLabel(c.role) : c.role === 'custom' ? (c.customRole ?? undefined) : undefined,
+        role: c.roleType && c.roleType !== 'custom' ? characterRoleLabel(c.roleType) : c.roleType === 'custom' ? undefined : undefined,
         description: c.description,
-        currentProfile: c.currentProfile,
         status: c.status ?? '存活',
-        relationships: c.relationships?.length
-          ? c.relationships
-              .filter((r) => r.targetId && r.relation.trim())
-              .map((r) => ({ target: charNameById(r.targetId) || r.targetId, relation: r.relation.trim() }))
+        relationships: c.relationshipChain?.length
+          ? c.relationshipChain
+              .filter((r) => r.target && r.relation.trim())
+              .map((r) => ({ target: charNameById(r.target) || r.target, relation: r.relation.trim() }))
           : undefined,
       }));
 
@@ -54,7 +53,7 @@ export function makeBuildContext(deps: BuildContextDeps) {
       : undefined;
     const outlineTree = outlineVolumes.length ? outlineVolumes : undefined;
 
-    const sectionLine = briefSectionsToContext(brief?.sections, selectedSectionIds);
+    const sectionLine = creativeSettingDimensionsToContext(creativeSetting?.customDimensions, selectedSectionIds);
     const sections = sectionLine
       ? sectionLine.split('；').map((s) => {
           const idx = s.indexOf('：');
@@ -63,8 +62,8 @@ export function makeBuildContext(deps: BuildContextDeps) {
       : undefined;
 
     return {
-      project_id: projectId,
-      project_title: projectTitle,
+      book_id: bookId,
+      book_title: bookTitle,
       brief: briefLine,
       plot_summary: plotSummary || undefined,
       outline: outlineText,
@@ -75,7 +74,7 @@ export function makeBuildContext(deps: BuildContextDeps) {
   };
 }
 
-export function makeSummarizePlot(_projectId: string) {
+export function makeSummarizePlot(_bookId: number) {
   return async (text: string): Promise<string> => {
     if (!text.trim()) return '';
     const paras = text.split(/\n{2,}|\n/).map((s) => s.trim()).filter(Boolean);
@@ -98,15 +97,13 @@ export function makeDepositCharacterProfiles(projectChars: Character[]) {
       const died = /死亡|陨落|牺牲|毙命|咽气/.test(text);
       if (died && c.status !== '死亡') {
         const note = `于剧情中死亡（由生成结果自动沉淀）`;
-        const base = c.currentProfile ? `${c.currentProfile}\n` : '';
         try {
-          await updateCharacter(c.id, { status: '死亡', currentProfile: `${base}${note}` });
+          await updateCharacter(c.id, { status: '死亡' });
         } catch { /* 忽略 */ }
-      } else if (!c.currentProfile?.includes('本章出场')) {
+      } else {
         const note = `本章出场并参与剧情`;
-        const base = c.currentProfile ? `${c.currentProfile}\n` : '';
         try {
-          await updateCharacter(c.id, { currentProfile: `${base}${note}` });
+          await updateCharacter(c.id, { status: '出场' });
         } catch { /* 忽略 */ }
       }
     }

@@ -2,6 +2,7 @@ from infrastructure.database import db_manager
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from repository.outline_repo import OutlineRepository
+from repository.project_repo import BookRepository
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -11,26 +12,25 @@ class OutlineService:
     def __init__(self, session: AsyncSession):
         self.session = session
         self.outline_repo = OutlineRepository(session)
+        self.book_repo = BookRepository(session)
 
-    async def list_outlines(self, project_id: int):
+    async def list_outlines(self, book_id: int):
         try:
-            return await self.outline_repo.list_outlines(project_id)
+            return await self.outline_repo.list_outlines(book_id)
         except Exception:
             logger.error("获取大纲列表失败", exc_info=True)
             return []
 
-    async def get_outline(self, project_id: int, outline_id: int):
+    async def get_outline(self, book_id: int, outline_id: int):
         try:
-            return await self.outline_repo.project_outline_detail(
-                project_id, outline_id
-            )
+            return await self.outline_repo.book_outline_detail(book_id, outline_id)
         except Exception:
             logger.error("获取大纲失败", exc_info=True)
             return None
 
-    async def create_outline(self, project_id: int, **data):
+    async def create_outline(self, book_id: int, **data):
         try:
-            return await self.outline_repo.create_outline(project_id, data)
+            return await self.outline_repo.create_outline(book_id, data)
         except Exception:
             logger.error("创建大纲失败", exc_info=True)
             return None
@@ -49,16 +49,15 @@ class OutlineService:
             logger.error("删除大纲失败", exc_info=True)
             return False
 
-    async def auto_summarize_if_needed(self, outline_id: int, project_id: int, user_id: int, data: dict):
+    async def auto_summarize_if_needed(self, outline_id: int, book_id: int, user_id: int, data: dict):
         try:
-            from repository.project_repo import BriefRepository
             from repository.model_repo import ModelConfRepository
             from model.model import ModelConfig
             from core.model_factory import ModelFactory
             from langchain_core.messages import SystemMessage, HumanMessage
 
-            brief = await BriefRepository(self.session).get_brief(project_id)
-            if not brief or not getattr(brief, "auto_summary", False):
+            book = await self.book_repo.get(book_id)
+            if not book:
                 return
 
             volumes = data if isinstance(data, list) else data.get("data", [])
@@ -103,3 +102,4 @@ class OutlineService:
 
 async def outline_db(db: AsyncSession = Depends(db_manager.get_db)):
     return OutlineService(db)
+

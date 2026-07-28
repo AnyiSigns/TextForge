@@ -52,8 +52,8 @@ export interface WorkflowResponse { workflow: Workflow; }
 export interface RunWorkflowOptions {
   /** 每个 agent 节点产出后实时回调（用于项目页流式注入 steps） */
   onStep?: (nodeId: string, label: string, output: string, systemPrompt?: string, status?: 'running' | 'done') => void;
-  /** 项目 id（仅用于日志/后续扩展） */
-  projectId?: string;
+  /** 书籍 id（仅用于日志/后续扩展） */
+  bookId?: number;
   /** 节点生成器（可注入真实模型调用；默认本地占位）。
    *  - context（字符串）：上游 fan-in 产出 + 工具/检索片段，作为模型 **user 消息**；
    *  - systemPrompt：角色预设 + 节点补充，作为模型 **system 消息**；

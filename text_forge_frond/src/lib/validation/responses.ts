@@ -1,30 +1,29 @@
 // src/lib/validation/responses.ts
-// 关键端点的 zod 响应校验，防后端脏数据导致前端白屏（规范缺口4.3）。
-// 与 openapi/seed-api.yaml 保持一致；schema 校验失败会上报 monitoring 并抛出。
+// 关键端点的 zod 响应校验，防后端脏数据导致前端白屏。
 import { z } from 'zod';
 import { captureException } from '@/lib/monitoring';
 
 const optionalStringArray = z.array(z.string()).nullable().optional();
 
-export const projectSchema = z.object({
-  id: z.string(),
+export const bookSchema = z.object({
+  id: z.number(),
   title: z.string(),
-  status: z.enum(['draft', 'generating', 'completed', 'paused']),
   genre: z.string().optional(),
   description: z.string().optional(),
   pinned: z.boolean().optional(),
   workflowId: z.string().optional(),
+  totalWordGoal: z.number().optional(),
+  currentWordCount: z.number().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
 
-export const projectListResponseSchema = z.object({
-  projects: z.array(projectSchema),
+export const bookListResponseSchema = z.object({
+  books: z.array(bookSchema),
 });
 
-export const projectResponseSchema = z.object({
-  project: projectSchema,
-  version: z.number().int().optional(),
+export const bookResponseSchema = z.object({
+  book: bookSchema,
 });
 
 export const stepSchema = z.object({
@@ -40,29 +39,22 @@ export const stepsResponseSchema = z.object({
   steps: z.array(stepSchema),
 });
 
-export const characterRelationshipSchema = z.object({
-  id: z.string(),
-  targetId: z.string(),
+export const characterRelationSchema = z.object({
+  target: z.string(),
   relation: z.string(),
 });
 
 export const characterSchema = z.object({
-  id: z.string(),
+  id: z.number(),
   name: z.string(),
-  avatar: z.string().optional(),
+  avatarUrl: z.string().optional(),
   aliases: optionalStringArray,
   description: z.string(),
-  role: z.string().optional(),
+  roleType: z.string().optional(),
   status: z.string().optional(),
-  currentProfile: z.string().optional(),
-  customRole: z.string().optional(),
-  relationships: z.array(characterRelationshipSchema).nullable().optional(),
-  projectId: z.string().nullable().optional(),
-  images: z.array(z.string()).optional(),
-  referenceImages: optionalStringArray,
-  referenceImage: z.string().nullable().optional(),
-  imageSeed: z.number().int().nullable().optional(),
+  relationshipChain: z.array(characterRelationSchema).nullable().optional(),
   createdAt: z.string(),
+  updatedAt: z.string(),
 });
 
 export const charactersResponseSchema = z.object({

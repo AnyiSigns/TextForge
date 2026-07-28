@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 class OutlineResponse(BaseModel):
     id: int
-    project_id: int = Field(alias="projectId")
+    book_id: int = Field(alias="bookId")
     data: Optional[Any] = Field(default=None, description="大纲嵌套结构")
     created_at: datetime = Field(alias="createdAt")
     updated_at: datetime = Field(alias="updatedAt")

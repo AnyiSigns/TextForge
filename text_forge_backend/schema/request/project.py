@@ -1,19 +1,34 @@
 from typing import List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
-class ProjectRequest(BaseModel):
+class BookRequest(BaseModel):
     title: str
     description: Optional[str] = None
     genre: Optional[str] = None
-    version: Optional[int] = None
 
 
-class UpdateProjectRequest(BaseModel):
+class UpdateBookRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    
     workflow_id: Optional[str] = Field(default=None, alias="workflowId")
     title: Optional[str] = None
     description: Optional[str] = None
     genre: Optional[str] = None
+
+
+class VolumeRequest(BaseModel):
+    title: str
+    summary: Optional[str] = None
+
+
+class ChapterRequest(BaseModel):
+    title: str
+    summary: Optional[str] = None
+
+
+class ChapterContentRequest(BaseModel):
+    content: str
 
 
 class SectionsRequest(BaseModel):
@@ -23,16 +38,8 @@ class SectionsRequest(BaseModel):
     pinned: Optional[bool] = None
 
 
-class BriefRequest(BaseModel):
-    project_id: int = Field(..., alias="projectId")
-    genre: str
-    worldview: str
-    tone: str
-    forbidden: str
-    style_guide: str = Field(alias="styleGuide")
-    word_count_goal: Optional[int] = Field(default=None, alias="wordCountGoal")
-    daily_word_count_goal: Optional[int] = Field(
-        default=None, alias="dailyWordCountGoal"
-    )
-    sections: List[SectionsRequest]
-    auto_summary: Optional[bool] = Field(default=None, alias="autoSummary")
+class CreativeSettingRequest(BaseModel):
+    tone: Optional[str] = None
+    worldview: Optional[str] = None
+    writing_taboos: Optional[str] = Field(default=None, alias="writingTaboos")
+    custom_dimensions: Optional[dict] = Field(default=None, alias="customDimensions")

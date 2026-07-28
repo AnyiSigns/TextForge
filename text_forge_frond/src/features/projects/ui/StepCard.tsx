@@ -13,11 +13,11 @@ interface Props {
   step: Step;
   index: number;
   onSetAsMainText?: (step: Step) => void;
-  projectId?: string;
+  bookId?: string;
 }
 
 export const StepCard = memo(function StepCard({
-  step, index, onSetAsMainText, projectId,
+  step, index, onSetAsMainText, bookId,
 }: Props) {
   const agentLabel = step.agentName || AGENTS.find(a => a.id === step.agent)?.label || '步骤';
 
@@ -71,12 +71,12 @@ export const StepCard = memo(function StepCard({
           )}
           <span className="text-xs text-muted-foreground">用本章生成：</span>
           <Button size="sm" variant="ghost" className="text-muted-foreground" asChild>
-            <Link href={`/assets?project=${projectId}&chapter=${step.id}`}>
+            <Link href={`/assets?book=${bookId}&chapter=${step.id}`}>
               <ImageIcon className="w-4 h-4 mr-1.5" /> 章节插图
             </Link>
           </Button>
           <Button size="sm" variant="ghost" className="text-muted-foreground" asChild>
-            <Link href={`/tasks?project=${projectId}&chapter=${step.id}`}>
+            <Link href={`/tasks?book=${bookId}&chapter=${step.id}`}>
               <Clapperboard className="w-4 h-4 mr-1.5" /> 章节动画
             </Link>
           </Button>

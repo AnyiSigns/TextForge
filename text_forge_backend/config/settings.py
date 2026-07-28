@@ -24,9 +24,9 @@ class Settings(BaseSettings):
 
     # 数据库
     AUTO_CREATE_TABLES: bool = True
-    POSTGRES_GRAPH_URL: str = "postgresql://postgres:1234@localhost:5432/text_forge"
+    POSTGRES_GRAPH_URL: str = "postgresql://postgres:1234@localhost:5433/text_forge"
     POSTGRES_DB_URL: str = (
-        "postgresql+asyncpg://postgres:1234@localhost:5432/text_forge"
+        "postgresql+asyncpg://postgres:1234@localhost:5433/text_forge"
     )
 
     # 模型

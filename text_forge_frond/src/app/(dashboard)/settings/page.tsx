@@ -13,7 +13,7 @@ import { EMBED_TIERS, isTierDownloaded, downloadEmbedModel } from '@/lib/rag/emb
 import { toast } from 'sonner';
 import { useProjectStore } from '@/features/projects';
 import { useCharacterStore } from '@/features/characters';
-import { useBriefStore } from '@/features/projects';
+import { useCreativeSettingStore } from '@/features/projects';
 import { useModelStore } from '@/features/settings';
 import { exportWorkspace, downloadBackup } from '@/lib/storage/backup';
 import { ProfileSection } from './sections/ProfileSection';
@@ -178,14 +178,14 @@ export default function SettingsPage() {
     try {
       const projects = useProjectStore.getState().projects;
       const characters = useCharacterStore.getState().characters;
-      const briefs = useBriefStore.getState().briefs;
+      const settingsMap = useCreativeSettingStore.getState().settings;
       const models = useModelStore.getState().models;
       const settings = useSettingsStore.getState();
       const projectIds = Array.isArray(projects)
         ? projects.map((p: { id: string }) => p.id)
         : Object.keys(projects || {});
       const backup = await exportWorkspace(
-        { projects, characters, briefs, models, settings },
+        { projects, characters, creativeSettings: settingsMap, models, settings },
         projectIds,
       );
       downloadBackup(backup);

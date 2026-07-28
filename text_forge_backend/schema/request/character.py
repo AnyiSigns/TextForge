@@ -3,34 +3,24 @@ from pydantic import BaseModel, Field
 
 
 class CharacterRequest(BaseModel):
-    project_id: Optional[int] = Field(default=None, alias="projectId")
+    book_id: Optional[int] = Field(default=None, alias="bookId")
     name: str
     description: str
-    role: str = ""
+    avatar_url: Optional[str] = Field(default=None, alias="avatarUrl")
     aliases: Optional[List[str]] = None
+    role_type: Optional[str] = Field(default=None, alias="roleType")
     status: Optional[str] = None
-    current_profile: str = Field(default="", alias="currentProfile")
-    custom_role: str = Field(default="", alias="customRole")
-    relationships: Optional[List[Dict[str, Any]]] = None
-    images: Optional[Dict[str, Any]] = None
-    reference_images: Optional[Dict[str, Any]] = None
-    reference_image: str = ""
-    image_seed: int = 0
+    relationship_chain: Optional[List[Dict[str, Any]]] = Field(default=None, alias="relationshipChain")
     model_config = {"populate_by_name": True}
 
 
 class CharacterUpdateRequest(BaseModel):
-    project_id: Optional[int] = Field(default=None, alias="projectId")
+    book_id: Optional[int] = Field(default=None, alias="bookId")
     name: Optional[str] = None
     description: Optional[str] = None
-    role: Optional[str] = None
+    avatar_url: Optional[str] = Field(default=None, alias="avatarUrl")
     aliases: Optional[List[str]] = None
+    role_type: Optional[str] = Field(default=None, alias="roleType")
     status: Optional[str] = None
-    current_profile: Optional[str] = Field(default=None, alias="currentProfile")
-    custom_role: Optional[str] = Field(default=None, alias="customRole")
-    relationships: Optional[List[Dict[str, Any]]] = None
-    images: Optional[Dict[str, Any]] = None
-    reference_images: Optional[Dict[str, Any]] = None
-    reference_image: Optional[str] = None
-    image_seed: Optional[int] = None
+    relationship_chain: Optional[List[Dict[str, Any]]] = Field(default=None, alias="relationshipChain")
     model_config = {"populate_by_name": True}

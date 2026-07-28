@@ -3,7 +3,7 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useProjectStore } from '@/features/projects';
+import { useBookStore } from '@/features/projects';
 import { exportWorkspace, downloadBackup } from '@/lib/storage/backup';
 import { toast } from 'sonner';
 
@@ -37,9 +37,9 @@ export function GlobalShortcuts() {
       if (key === 'e' && e.shiftKey) {
         e.preventDefault();
         void (async () => {
-          const { projects } = useProjectStore.getState();
+          const { books } = useBookStore.getState();
           const { characters } = (await import('@/features/characters')).useCharacterStore.getState();
-          const { briefs } = (await import('@/features/projects')).useBriefStore.getState();
+          const { settings } = (await import('@/features/projects')).useCreativeSettingStore.getState();
           const { models } = (await import('@/features/settings')).useModelStore.getState();
           const s = (await import('@/features/settings')).useSettingsStore.getState();
           const settingsData = {
@@ -50,8 +50,8 @@ export function GlobalShortcuts() {
             motionEnabled: s.motionEnabled, suggestionFrequency: s.suggestionFrequency, theme: s.theme,
           };
           const backup = await exportWorkspace(
-            { projects, characters, briefs, models, settings: settingsData },
-            projects.map((p) => p.id),
+            { projects: books, characters, creativeSettings: settings, models, settings: settingsData },
+            books.map((p) => p.id),
           );
           downloadBackup(backup);
           toast.success('已导出工作区备份');
@@ -78,13 +78,13 @@ export function GlobalShortcuts() {
       if (key === 'delete' && e.shiftKey) {
         e.preventDefault();
         if (typeof window !== 'undefined' && window.confirm('确定清除所有本地草稿？此操作不可撤销')) {
-          void (async () => {
-            const { projects } = useProjectStore.getState();
-            for (const p of projects) {
-              try { await useProjectStore.getState().saveDraft(p.id, []); } catch { /* ignore */ }
-            }
-            toast.success('已清除所有草稿');
-          })();
+        void (async () => {
+          const { books } = useBookStore.getState();
+          for (const b of books) {
+            try { await useBookStore.getState().saveDraft(b.id, []); } catch { /* ignore */ }
+          }
+          toast.success('已清除所有草稿');
+        })();
         }
         return;
       }

@@ -4,7 +4,6 @@ import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { ProjectCard } from '@/features/projects';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Plus, Search, FolderKanban, Pin, PinOff, LayoutGrid, List, Trash2, Loader2, Sparkles } from 'lucide-react';
@@ -12,20 +11,18 @@ import { toast } from 'sonner';
 import { Project } from '@/types';
 import { PageHeader } from '@/shared/components';
 import { Spinner, EmptyState } from '@/shared/components';
-import { useProjectStore, STATUS_MAP } from '@/features/projects';
+import { useBookStore } from '@/features/projects';
 import { generateSeed } from '@/lib/seed/generate';
 
 type ViewMode = 'grid' | 'list';
-type FilterStatus = 'all' | Project['status'];
 
 export default function ProjectsPage() {
-  const projects = useProjectStore((s) => s.projects);
-  const load = useProjectStore((s) => s.load);
-  const removeProject = useProjectStore((s) => s.removeProject);
-  const togglePin = useProjectStore((s) => s.togglePin);
+  const books = useBookStore((s) => s.books);
+  const load = useBookStore((s) => s.load);
+  const removeProject = useBookStore((s) => s.removeBook);
+  const togglePin = useBookStore((s) => s.togglePin);
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('list');
-  const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
   const [isLoading, setIsLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   // 空态「一句话开局」：从一句话直接建项目并生成设定
@@ -38,7 +35,7 @@ export default function ProjectsPage() {
   }, [load]);
 
   const handleDelete = async (id: string) => {
-    if (!confirm('确定要删除这个项目吗？')) return;
+    if (!confirm('确定要删除这本书吗？')) return;
     try {
       await removeProject(id);
       toast.success('已删除');
@@ -50,29 +47,29 @@ export default function ProjectsPage() {
   const handleBatchDelete = async () => {
     const count = selectedIds.size;
     if (count === 0) return;
-    if (!confirm(`确定要删除选中的 ${count} 个项目吗？`)) return;
+    if (!confirm(`确定要删除选中的 ${count} 本书吗？`)) return;
     try {
       await Promise.all(Array.from(selectedIds).map(id => removeProject(id)));
       setSelectedIds(new Set());
-      toast.success(`已删除 ${count} 个项目`);
+      toast.success(`已删除 ${count} 本书`);
     } catch (e) {
       toast.error('删除出错了', { description: e instanceof Error ? e.message : '未知错误' });
     }
   };
 
-  // 空态「一句话开局」：先本地建项目（拿到 id），再生成世界观/角色/大纲回填
+  // 空态「一句话开局」：先本地建书籍（拿到 id），再生成世界观/角色/大纲回填
   const handleSeedFromEmpty = async () => {
     if (!seedPrompt.trim() || isSeeding) return;
     setIsSeeding(true);
     const prompt = seedPrompt.trim();
     try {
-      const project = await useProjectStore.getState().addProject({
+      const book = await useBookStore.getState().addBook({
         title: prompt.slice(0, 30),
         description: prompt,
         genre: '',
       });
-      await generateSeed(project.id, prompt);
-      toast.success('已创建项目并生成设定，去项目里继续完善');
+      await generateSeed(book.id, prompt);
+      toast.success('已创建书籍并生成设定，去书籍里继续完善');
       setSeedPrompt('');
     } catch (e) {
       toast.error('开局出错了', { description: e instanceof Error ? e.message : '未知错误' });
@@ -81,18 +78,17 @@ export default function ProjectsPage() {
     }
   };
 
-  // 置顶项目排在最前，其余保持原有顺序
+  // 置顶书籍排在最前，其余保持原有顺序
   const sorted = useMemo(() => {
-    return [...projects].sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned));
-  }, [projects]);
+    return [...books].sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned));
+  }, [books]);
 
   const filtered = sorted.filter(p => {
     const term = searchTerm.trim().toLowerCase();
     const matchesSearch = !term
       || p.title.toLowerCase().includes(term)
       || (p.description ?? '').toLowerCase().includes(term);
-    const matchesStatus = filterStatus === 'all' || p.status === filterStatus;
-    return matchesSearch && matchesStatus;
+    return matchesSearch;
   });
 
   if (isLoading) return <Spinner label="正在加载项目..." />;
@@ -133,17 +129,6 @@ export default function ProjectsPage() {
                 <List className="w-4 h-4" />
               </Button>
             </div>
-            <select
-              value={filterStatus}
-              onChange={e => setFilterStatus(e.target.value as FilterStatus)}
-              className="h-8 text-xs bg-background/50 border border-border/40 rounded px-2"
-            >
-              <option value="all">全部状态</option>
-              <option value="draft">草稿</option>
-              <option value="generating">生成中</option>
-              <option value="completed">已完成</option>
-              <option value="paused">已暂停</option>
-            </select>
             <Button asChild>
               <Link href="/projects/new"><Plus className="w-4 h-4 mr-2" /> 新建项目</Link>
             </Button>
@@ -161,7 +146,7 @@ export default function ProjectsPage() {
         />
       </div>
 
-      {projects.length === 0 ? (
+      {books.length === 0 ? (
         <div className="my-4 space-y-4">
           <div className="glass-card border-primary/40 rounded-xl">
             <div className="p-5 space-y-3">
@@ -170,7 +155,7 @@ export default function ProjectsPage() {
                 一句话开局
               </div>
               <p className="text-xs text-muted-foreground">
-                输入一句话（如「一艘拾荒船打捞星海记忆的科幻故事」），自动创建项目并生成世界观、角色与大纲。
+                输入一句话（如「一艘拾荒船打捞星海记忆的科幻故事」），自动创建书籍并生成世界观、角色与大纲。
               </p>
               <div className="flex gap-2">
                 <Input
@@ -202,53 +187,53 @@ export default function ProjectsPage() {
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={FolderKanban}
-          title="没有匹配的项目"
+          title="没有匹配的书籍"
           description="试试别的关键词"
         />
       ) : viewMode === 'list' ? (
         <div className="max-h-[600px] overflow-y-auto scrollbar-thin">
           <div className="space-y-2 stagger">
-            {filtered.map(project => (
+            {filtered.map(book => (
               <ProjectRow
-                key={project.id}
-                project={project}
-                selected={selectedIds.has(project.id)}
+                key={book.id}
+                project={book}
+                selected={selectedIds.has(book.id)}
                 onToggleSelect={(checked) => {
                   const newSet = new Set(selectedIds);
-                  if (checked) newSet.add(project.id);
-                  else newSet.delete(project.id);
+                  if (checked) newSet.add(book.id);
+                  else newSet.delete(book.id);
                   setSelectedIds(newSet);
                 }}
                 onDelete={handleDelete}
-                onTogglePin={() => togglePin(project.id)}
+                onTogglePin={() => togglePin(book.id)}
               />
             ))}
           </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 stagger">
-          {filtered.map(project => (
-            <div key={project.id} className="relative">
+          {filtered.map(book => (
+            <div key={book.id} className="relative">
               <div className="absolute top-3 left-3 z-10">
                 <Checkbox
-                  checked={selectedIds.has(project.id)}
+                  checked={selectedIds.has(book.id)}
                   onCheckedChange={(checked) => {
                     const newSet = new Set(selectedIds);
-                    if (checked) newSet.add(project.id);
-                    else newSet.delete(project.id);
+                    if (checked) newSet.add(book.id);
+                    else newSet.delete(book.id);
                     setSelectedIds(newSet);
                   }}
                 />
               </div>
               <button
                 type="button"
-                onClick={() => togglePin(project.id)}
-                aria-label={project.pinned ? '取消置顶' : '置顶'}
+                onClick={() => togglePin(book.id)}
+                aria-label={book.pinned ? '取消置顶' : '置顶'}
                 className="absolute top-3 right-3 z-10 text-muted-foreground/40 hover:text-primary transition-colors"
               >
-                {project.pinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
+                {book.pinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
               </button>
-              <ProjectCard project={project} onDelete={handleDelete} />
+              <ProjectCard project={book} onDelete={handleDelete} />
             </div>
           ))}
         </div>
@@ -258,21 +243,18 @@ export default function ProjectsPage() {
 }
 
 function ProjectRow({
-  project,
+  book,
   selected,
   onToggleSelect,
   onDelete,
   onTogglePin,
 }: {
-  project: Project;
+  book: Project;
   selected: boolean;
   onToggleSelect: (checked: boolean) => void;
   onDelete: (id: string) => void;
   onTogglePin: () => void;
 }) {
-  const s = STATUS_MAP[project.status];
-  const StatusIcon = s.icon;
-
   return (
     <div className="flex items-center gap-2 p-2 border border-border/40 rounded-lg bg-background/30">
       <Checkbox
@@ -282,26 +264,23 @@ function ProjectRow({
       <button
         type="button"
         onClick={onTogglePin}
-        aria-label={project.pinned ? '取消置顶' : '置顶'}
+        aria-label={book.pinned ? '取消置顶' : '置顶'}
         className="text-muted-foreground/40 hover:text-primary transition-colors"
       >
-        {project.pinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
+        {book.pinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
       </button>
       <div className="flex-1 min-w-0">
-        <p className="font-medium truncate">{project.title}</p>
-        <p className="text-xs text-muted-foreground">{project.description?.slice(0, 60) || ''}</p>
+        <p className="font-medium truncate">{book.title}</p>
+        <p className="text-xs text-muted-foreground">{book.description?.slice(0, 60) || ''}</p>
       </div>
-      <Badge variant={s.variant} className="text-xs gap-1 shrink-0">
-        <StatusIcon className="w-3 h-3" /> {s.label}
-      </Badge>
       <Button asChild size="sm" variant="ghost" className="h-7 px-2">
-        <Link href={`/projects/${project.id}`}>打开</Link>
+        <Link href={`/projects/${book.id}`}>打开</Link>
       </Button>
       <Button
         variant="ghost"
         size="sm"
         className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-        onClick={() => onDelete(project.id)}
+        onClick={() => onDelete(book.id)}
       >
         <Trash2 className="w-3 h-3" />
       </Button>

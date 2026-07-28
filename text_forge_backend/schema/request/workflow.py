@@ -1,5 +1,5 @@
-from typing import Optional, List
-from pydantic import Field, BaseModel
+from typing import Any, Optional, List
+from pydantic import Field, BaseModel, ConfigDict, model_validator
 
 
 class RagFilter(BaseModel):
@@ -48,5 +48,17 @@ class WorkflowDetailRequest(BaseModel):
 
 
 class WorkflowRunRequest(BaseModel):
-    project_id: int
-    thread_id: str
+    book_id: Optional[int] = Field(default=None, alias="bookId")
+    thread_id: Optional[str] = None
+    input: Optional[str] = None
+    model_config = ConfigDict(populate_by_name=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def clean_undefined(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            for key in ("book_id", "thread_id", "input"):
+                val = data.get(key)
+                if val == "undefined" or val == "":
+                    data[key] = None
+        return data

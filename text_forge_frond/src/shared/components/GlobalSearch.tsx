@@ -22,13 +22,6 @@ interface SearchResult {
   icon: React.ReactNode;
 }
 
-const PROJECT_STATUS_LABEL: Record<string, string> = {
-  draft: '草稿',
-  generating: '生成中',
-  completed: '已完成',
-  paused: '已暂停',
-};
-
 export function GlobalSearch() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -73,7 +66,7 @@ export function GlobalSearch() {
         results.push({
           id: `project-${p.id}`,
           title: p.title,
-          subtitle: `项目 · ${PROJECT_STATUS_LABEL[p.status || 'draft'] || '草稿'}`,
+          subtitle: `项目 · ${p.title}`,
           type: 'project',
           href: `/projects/${p.id}`,
           icon: <BookOpen className="w-4 h-4 text-blue-500" />,

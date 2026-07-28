@@ -6,9 +6,9 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { toast } from 'sonner';
 import { useManuscriptStore } from '../stores/manuscriptStore';
 import { useProjectCharacters } from '@/features/projects';
-import { useBriefStore } from '@/features/projects';
+import { useCreativeSettingStore } from '@/features/projects';
 import { useSettingsStore } from '@/features/settings';
-import type { ProjectBrief, ManuscriptChapter } from '@/types';
+import type { BookCreativeSetting, ManuscriptChapter } from '@/types';
 import { buildSettingKeywords, buildCharSuggestions, computeSuggestionsFor } from './manuscriptSuggestions';
 import { makeManuscriptIO } from './manuscriptIO';
 import { transformText, AI_ACTION_LABEL } from '@/lib/aiTextTransform';
@@ -24,16 +24,16 @@ export interface SuggestState {
   left: number;
 }
 
-export function useManuscriptEditor(projectId: string) {
+export function useManuscriptEditor(bookId: number) {
   const allChapters = useManuscriptStore((s) => s.chapters);
-  const chapters = useMemo(() => allChapters.filter((c) => c.projectId === projectId), [allChapters, projectId]);
+  const chapters = useMemo(() => allChapters.filter((c) => c.projectId === bookId), [allChapters, bookId]);
   const addChapter = useManuscriptStore((s) => s.addChapter);
   const updateChapter = useManuscriptStore((s) => s.updateChapter);
   const removeChapter = useManuscriptStore((s) => s.removeChapter);
   const clearProject = useManuscriptStore((s) => s.clearProject);
 
-  const { projectChars: characters } = useProjectCharacters(projectId);
-  const brief = useBriefStore((s) => s.briefs[projectId]) as ProjectBrief | undefined;
+  const { projectChars: characters } = useProjectCharacters(bookId);
+  const creativeSetting = useCreativeSettingStore((s) => s.settings[bookId]);
   const freq = useSettingsStore((s) => s.suggestionFrequency);
 
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -93,7 +93,7 @@ export function useManuscriptEditor(projectId: string) {
     if (ensuringRef.current) return;
     if (chapters.length === 0) {
       ensuringRef.current = true;
-      addChapter(projectId, '第 1 章')
+      addChapter(bookId, '第 1 章')
         .then((c) => { setActiveId(c.id); setDraftContent(''); setTitle(c.title); })
         .finally(() => { ensuringRef.current = false; });
     } else if (!activeId) {
@@ -147,7 +147,7 @@ export function useManuscriptEditor(projectId: string) {
     };
   }, [activeId, dirty, save]);
 
-  const settingKeywords = useMemo(() => buildSettingKeywords(brief), [brief]);
+  const settingKeywords = useMemo(() => buildSettingKeywords(creativeSetting), [creativeSetting]);
   const charSuggestions = useMemo(() => buildCharSuggestions(characters), [characters]);
   const computeSuggestions = (kind: SuggestionKind, query: string): Suggestion[] =>
     computeSuggestionsFor(kind, query, settingKeywords, charSuggestions);
@@ -273,7 +273,7 @@ export function useManuscriptEditor(projectId: string) {
   const [askBookTxt, setAskBookTxt] = useState(false);
 
   const { openSend, confirmSend, onPickBook, confirmBookImport, handleExportBook, doExportBookTxt } = makeManuscriptIO({
-    id: projectId,
+    id: bookId,
     activeId,
     active,
     bookChapters,

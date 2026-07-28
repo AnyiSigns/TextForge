@@ -28,13 +28,13 @@ export type GenUseCase = ImageUseCase | VideoUseCase;
 export interface GenerationFormOptions {
   kind: GenKind;
   defaultPrompt?: string;
-  defaultProjectId?: string | null;
+  defaultBookId?: string | null;
   defaultCharacterId?: string | null;
   defaultChapterId?: string | null;
   context?: GenerationContext;
   steps?: { id: string; agent?: string; content?: string }[];
   forcedUseCase?: GenUseCase;
-  /** 项目内角色列表（章节插图按章节自动匹配出场角色参考图用） */
+  /** 书籍内角色列表（章节插图按章节自动匹配出场角色参考图用） */
   characters?: { id: string; name: string; referenceImages?: string[] | null; referenceImage?: string | null }[];
 }
 
@@ -46,7 +46,7 @@ export interface GenerationSubmitPayload {
   count?: number;
   duration?: number;
   aspect?: string;
-  project_id?: string;
+  book_id?: string;
   context?: GenerationContext;
   source_step?: string;
   chapter_id?: string;
@@ -58,7 +58,7 @@ export interface GenerationSubmitPayload {
 }
 
 export function useGenerationForm(opts: GenerationFormOptions) {
-  const { kind, defaultPrompt = '', defaultProjectId = null, defaultCharacterId = null, defaultChapterId = null, context, steps, forcedUseCase, characters } = opts;
+  const { kind, defaultPrompt = '', defaultBookId = null, defaultCharacterId = null, defaultChapterId = null, context, steps, forcedUseCase, characters } = opts;
 
   const [prompt, setPrompt] = useState(defaultPrompt);
   const [negative, setNegative] = useState('');
@@ -67,7 +67,7 @@ export function useGenerationForm(opts: GenerationFormOptions) {
   const [count, setCount] = useState(1);
   const [duration, setDuration] = useState(0.5);
   const [aspect, setAspect] = useState(ASPECTS[0]);
-  const [projectId, setProjectId] = useState<string | null>(defaultProjectId);
+  const [bookId, setBookId] = useState<string | null>(defaultBookId);
   const [characterId, setCharacterId] = useState<string | null>(defaultCharacterId);
   const [chapterId, setChapterId] = useState<string | null>(defaultChapterId);
   const [stylePreset, setStylePreset] = useState<string>('guoman');
@@ -121,9 +121,9 @@ export function useGenerationForm(opts: GenerationFormOptions) {
   const [internalSteps, setInternalSteps] = useState<{ id: string; agent?: string; content?: string }[]>([]);
   useEffect(() => {
     let cancelled = false;
-    if (!steps && projectId && projectId !== NO_PROJECT) {
+    if (!steps && bookId && bookId !== NO_PROJECT) {
       import('@/features/projects').then(({ listOutlines }) =>
-        listOutlines(Number(projectId))
+        listOutlines(Number(bookId))
           .then((items) => {
             if (!cancelled) {
               const chapters = (items[0]?.data || []).flatMap((v: any) => v.chapters || []);
@@ -136,7 +136,7 @@ export function useGenerationForm(opts: GenerationFormOptions) {
       setInternalSteps([]);
     }
     return () => { cancelled = true; };
-  }, [steps, projectId]);
+  }, [steps, bookId]);
 
   const effectiveSteps = steps ?? internalSteps;
 
@@ -164,7 +164,7 @@ export function useGenerationForm(opts: GenerationFormOptions) {
       const base = {
         prompt: prompt.trim(),
         negative_prompt: negative.trim() || undefined,
-        project_id: projectId && projectId !== NO_PROJECT ? projectId : undefined,
+        book_id: bookId && bookId !== NO_PROJECT ? bookId : undefined,
         context,
       };
 
@@ -281,7 +281,7 @@ export function useGenerationForm(opts: GenerationFormOptions) {
     count, setCount,
     duration, setDuration,
     aspect, setAspect,
-    projectId, setProjectId,
+    bookId, setBookId,
     characterId, setCharacterId,
     chapterId, setChapterId,
     stylePreset, setStylePreset,

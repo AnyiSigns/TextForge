@@ -3,20 +3,20 @@
 import { getItem, setItem } from './indexedDB';
 import type { OutlineVolume, OutlineSection, InspirationItem } from './backupSchema';
 
-const outlineKey = (projectId: string) => `outline-${projectId}`;
-const inspirationKey = (projectId: string) => `inspiration-${projectId}`;
+const outlineKey = (bookId: string) => `outline-${bookId}`;
+const inspirationKey = (bookId: string) => `inspiration-${bookId}`;
 
-export async function loadOutline(projectId: string): Promise<OutlineVolume[]> {
-  const raw = await getItem<OutlineVolume[]>(outlineKey(projectId));
+export async function loadOutline(bookId: string): Promise<OutlineVolume[]> {
+  const raw = await getItem<OutlineVolume[]>(outlineKey(bookId));
   if (Array.isArray(raw) && raw.length) return raw;
   // 兼容旧扁平结构：title+content → 单卷单章单节点
-  const legacy = (await getItem<OutlineSection[]>(outlineKey(projectId))) ?? [];
+  const legacy = (await getItem<OutlineSection[]>(outlineKey(bookId))) ?? [];
   if (legacy.length) {
     return [{
-      id: `vol-legacy-${projectId}`,
+      id: `vol-legacy-${bookId}`,
       title: '大纲',
       chapters: [{
-        id: `ch-legacy-${projectId}`,
+        id: `ch-legacy-${bookId}`,
         title: '正文',
         nodes: legacy.map((s) => ({ id: s.id, title: s.title, content: s.content })),
       }],
@@ -25,15 +25,15 @@ export async function loadOutline(projectId: string): Promise<OutlineVolume[]> {
   return [];
 }
 
-export async function saveOutline(projectId: string, volumes: OutlineVolume[]): Promise<void> {
-  if (volumes.length > 0) await setItem(outlineKey(projectId), volumes);
-  else await setItem(outlineKey(projectId), []);
+export async function saveOutline(bookId: string, volumes: OutlineVolume[]): Promise<void> {
+  if (volumes.length > 0) await setItem(outlineKey(bookId), volumes);
+  else await setItem(outlineKey(bookId), []);
 }
 
-export async function loadInspiration(projectId: string): Promise<InspirationItem[]> {
-  return (await getItem<InspirationItem[]>(inspirationKey(projectId))) || [];
+export async function loadInspiration(bookId: string): Promise<InspirationItem[]> {
+  return (await getItem<InspirationItem[]>(inspirationKey(bookId))) || [];
 }
 
-export async function saveInspiration(projectId: string, items: InspirationItem[]): Promise<void> {
-  await setItem(inspirationKey(projectId), items);
+export async function saveInspiration(bookId: string, items: InspirationItem[]): Promise<void> {
+  await setItem(inspirationKey(bookId), items);
 }

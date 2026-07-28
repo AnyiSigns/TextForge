@@ -1,7 +1,6 @@
 from sqlalchemy import select
-
 from repository.base_repo import BaseRepository
-from model.project import Workflow
+from model.model import Workflow
 from sqlalchemy.ext.asyncio import AsyncSession
 
 

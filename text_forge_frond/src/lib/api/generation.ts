@@ -37,9 +37,9 @@ export async function fetchVideoTasks(): Promise<MediaTask[]> {
   return (data.tasks || []).map((t) => ({ ...t, kind: 'video' as const }) as MediaTask);
 }
 
-export async function fetchImageResults(projectId?: string): Promise<MediaTask[]> {
+export async function fetchImageResults(bookId?: string): Promise<MediaTask[]> {
   const { data } = await apiClient.get<ImageResultsResponse>('/api/generate/image/results', {
-    params: projectId ? { project_id: projectId } : undefined,
+    params: bookId ? { book_id: bookId } : undefined,
   });
   const list = data.tasks || data.results || [];
   return list.map((t) => ({ ...t, kind: 'image' as const }) as MediaTask);
@@ -54,9 +54,9 @@ export function describeGenError(error: unknown): string {
   return err?.message || '未知错误';
 }
 
-export async function fetchProjectPortfolio(projectId?: string): Promise<MediaTask[]> {
+export async function fetchProjectPortfolio(bookId?: string): Promise<MediaTask[]> {
   try {
-    const { data } = await apiClient.get<PortfolioResponse>(`/api/projects/${projectId}/portfolio`);
+    const { data } = await apiClient.get<PortfolioResponse>(`/api/books/${bookId}/portfolio`);
     const list = data.items || data.tasks || [];
     if (Array.isArray(list) && list.length) {
       return list.map((t) => ({
@@ -70,7 +70,7 @@ export async function fetchProjectPortfolio(projectId?: string): Promise<MediaTa
 
   const [videos, images] = await Promise.all([
     fetchVideoTasks().catch(() => []),
-    fetchImageResults(projectId).catch(() => []),
+    fetchImageResults(bookId).catch(() => []),
   ]);
-  return [...videos, ...images].filter((t) => t.project_id === projectId);
+  return [...videos, ...images].filter((t) => t.book_id === bookId);
 }

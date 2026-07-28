@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { fetchCharacterDetail, fetchCharacterMessages, sendChatMessage } from '@/features/characters';
-import { useBriefStore, briefToContextLine } from '@/features/projects';
+import { useCreativeSettingStore, creativeSettingToContextLine } from '@/features/projects';
 import { useManuscriptStore } from '@/features/manuscript';
 import { loadInspiration, saveInspiration, type InspirationItem } from '@/lib/storage/backup';
 import { toast } from 'sonner';
@@ -32,7 +32,8 @@ export default function CharacterChatPage() {
   const setThreadId = useCharacterStore((s) => s.setThreadId);
 
   const projectId = character?.projectId ?? null;
-  const briefLine = useBriefStore((s) => (projectId ? briefToContextLine(s.briefs[projectId]) : ''));
+  const creativeSetting = useCreativeSettingStore((s) => (projectId ? s.settings[Number(projectId)] : undefined));
+  const briefLine = creativeSettingToContextLine(creativeSetting);
   const [threadId, setThreadIdState] = useState<string | undefined>(character ? getThreadId(character.id, projectId) : undefined);
 
   useEffect(() => {

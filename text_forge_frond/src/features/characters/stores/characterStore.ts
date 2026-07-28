@@ -13,8 +13,6 @@ import { createIdbStorage } from '@/lib/storage/zustandIdb';
 import type { Character, Message } from '@/types';
 import { syncManager } from '@/lib/storage/syncManager';
 
-// 角色单一数据源：本地 persist 为主，写操作乐观更新并 push 后端；
-// 项目页/角色页共用同一份，避免跨页面不一致。
 interface CharacterStore {
   characters: Character[];
   currentCharacter: Character | null;
@@ -36,52 +34,33 @@ interface CharacterStore {
   addCharacter: (input: {
     name: string;
     description: string;
-    projectId?: string | null;
-    avatar?: string;
+    bookId?: number | null;
+    avatarUrl?: string;
   }) => Promise<Character>;
   updateCharacter: (
-    id: string,
+    id: number,
     patch: Partial<
       Pick<
         Character,
-        | 'name'
-        | 'description'
-        | 'avatar'
-        | 'images'
-        | 'role'
-        | 'status'
-        | 'currentProfile'
-        | 'customRole'
-        | 'relationships'
-        | 'aliases'
+        'name' | 'description' | 'avatarUrl' | 'aliases' | 'roleType' | 'status' | 'relationshipChain'
       >
-    > & {
-      referenceImage?: string | null;
-      referenceImages?: string[] | null;
-      imageSeed?: number | null;
-    },
+    >,
   ) => Promise<Character>;
-  addCharacterImage: (id: string, imageUrl: string) => Promise<Character>;
-  removeCharacter: (id: string) => Promise<void>;
+  removeCharacter: (id: number) => Promise<void>;
 
   getVersionMeta: () => { lastSyncAt: string; version?: number };
   setVersionMeta: (meta: { lastSyncAt: string; version?: number }) => void;
 
-  getThreadId: (characterId: string, projectId?: string | null) => string | undefined;
-  setThreadId: (characterId: string, projectId: string | null, threadId: string) => void;
-  clearThreadId: (characterId: string, projectId?: string | null) => void;
-  fetchMessagesWithThread: (characterId: string, projectId?: string | null) => Promise<Message[]>;
+  getThreadId: (characterId: number, bookId?: number | null) => string | undefined;
+  setThreadId: (characterId: number, bookId: number | null, threadId: string) => void;
+  clearThreadId: (characterId: number, bookId?: number | null) => void;
+  fetchMessagesWithThread: (characterId: number, bookId?: number | null) => Promise<Message[]>;
 }
 
 let versionMeta: { lastSyncAt: string; version?: number } = {
   lastSyncAt: new Date(0).toISOString(),
   version: 0,
 };
-
-const normalizeChar = (char: Character): Character => ({
-  ...char,
-  projectId: char.projectId !== undefined && char.projectId !== null ? String(char.projectId) : null,
-});
 
 export const useCharacterStore = create<CharacterStore>()(
   persist(
@@ -114,22 +93,22 @@ export const useCharacterStore = create<CharacterStore>()(
         versionMeta = meta;
       },
 
-      getThreadId: (characterId, projectId) => {
-        const key = `${characterId}:${projectId ?? ''}`;
+      getThreadId: (characterId, bookId) => {
+        const key = `${characterId}:${bookId ?? ''}`;
         return get().threadMap[key];
       },
-      setThreadId: (characterId, projectId, threadId) => {
-        const key = `${characterId}:${projectId ?? ''}`;
+      setThreadId: (characterId, bookId, threadId) => {
+        const key = `${characterId}:${bookId ?? ''}`;
         set((s) => ({ threadMap: { ...s.threadMap, [key]: threadId } }));
       },
-      clearThreadId: (characterId, projectId) => {
-        const key = `${characterId}:${projectId ?? ''}`;
+      clearThreadId: (characterId, bookId) => {
+        const key = `${characterId}:${bookId ?? ''}`;
         const next = { ...get().threadMap };
         delete next[key];
         set({ threadMap: next });
       },
-      fetchMessagesWithThread: async (characterId, projectId) => {
-        const threadId = get().getThreadId(characterId, projectId);
+      fetchMessagesWithThread: async (characterId, bookId) => {
+        const threadId = get().getThreadId(characterId, bookId);
         const msgs = await fetchCharacterMessages(characterId, threadId);
         set({ messages: msgs });
         return msgs;
@@ -138,7 +117,7 @@ export const useCharacterStore = create<CharacterStore>()(
       syncFromBackend: async () => {
         try {
           const chars = await fetchCharacters();
-          set({ characters: chars.map(normalizeChar) });
+          set({ characters: chars });
         } catch {
           /* 后端未就绪，保留本地 */
         }
@@ -146,20 +125,20 @@ export const useCharacterStore = create<CharacterStore>()(
 
       addCharacter: async (input) => {
         const optimistic: Character = {
-          id: uid('c'),
+          id: uid(),
+          bookId: input.bookId ?? 0,
           name: input.name,
           description: input.description,
-          projectId: input.projectId ?? null,
-          avatar: input.avatar || undefined,
-          origin: 'init', // 用户从零自建，种子回填不覆盖
+          avatarUrl: input.avatarUrl || undefined,
           createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
         };
         set((s) => ({ characters: [optimistic, ...s.characters] }));
         try {
           const created = await apiCreateCharacter(input);
           set((s) => ({
             characters: s.characters.map((c) =>
-              c.id === optimistic.id ? { ...normalizeChar(created), id: created.id || optimistic.id } : c,
+              c.id === optimistic.id ? { ...optimistic, id: created.id || optimistic.id } : c,
             ),
           }));
           return created ?? optimistic;
@@ -182,77 +161,18 @@ export const useCharacterStore = create<CharacterStore>()(
 
       updateCharacter: async (id, patch) => {
         const prev = get().characters;
-        // B2: 旧字段 referenceImage（单张）向 referenceImages（数组）归一，消除双源口径；
-        // 合并去重、最多 5 张，下游统一只读 referenceImages。
-        const normalizeInner = (
-          c: Character & {
-            referenceImage?: string | null;
-            referenceImages?: string[] | null;
-            imageSeed?: number | null;
-          },
-        ): Character => {
-          const legacy = c.referenceImage ? [c.referenceImage] : [];
-          const refs = Array.from(
-            new Set([...(c.referenceImages ?? []).filter(Boolean), ...legacy]),
-          ).slice(0, 5);
-          return {
-            ...c,
-            referenceImage: c.referenceImage ?? undefined,
-            referenceImages: refs.length ? refs : undefined,
-            imageSeed: c.imageSeed ?? undefined,
-          };
-        };
         set((s) => ({
           characters: s.characters.map((c) =>
-            c.id === id ? normalizeInner({ ...c, ...patch, origin: 'user' }) : c,
+            c.id === id ? { ...c, ...patch, updatedAt: new Date().toISOString() } : c,
           ),
         }));
         try {
           const updated = await apiUpdateCharacter(id, patch);
           if (updated)
             set((s) => ({
-              characters: s.characters.map((c) =>
-                c.id === id ? normalizeInner(normalizeChar({ ...c, ...updated })) : c,
-              ),
+              characters: s.characters.map((c) => (c.id === id ? { ...c, ...updated } : c)),
             }));
           return updated;
-        } catch (e) {
-          set({ characters: prev });
-          throw e;
-        }
-      },
-
-      addCharacterImage: async (id, imageUrl) => {
-        const prev = get().characters;
-        set((s) => ({
-          characters: s.characters.map((c) => {
-            if (c.id !== id) return c;
-            const images = c.images ?? [];
-            if (images.includes(imageUrl)) return c;
-            const nextImages = [imageUrl, ...images];
-            // 自动锁定：若尚未设参考图则把首图锁进参考图（最多 5 张，去重）
-            const existingRefs = (c.referenceImages ?? []).filter(Boolean);
-            const nextRefs = existingRefs.includes(imageUrl)
-              ? existingRefs
-              : [...existingRefs, imageUrl].slice(0, 5);
-            return {
-              ...c,
-              images: nextImages,
-              referenceImages: nextRefs.length ? nextRefs : c.referenceImages,
-            };
-          }),
-        }));
-        try {
-          const target = get().characters.find((c) => c.id === id);
-          const updated = await apiUpdateCharacter(id, {
-            images: target?.images ?? [imageUrl],
-            referenceImages: target?.referenceImages ?? null,
-          });
-          if (updated)
-            set((s) => ({
-              characters: s.characters.map((c) => (c.id === id ? { ...normalizeChar(c), ...updated } : c)),
-            }));
-          return updated ?? (get().characters.find((c) => c.id === id) as Character);
         } catch (e) {
           set({ characters: prev });
           throw e;
@@ -270,7 +190,6 @@ export const useCharacterStore = create<CharacterStore>()(
   ),
 );
 
-// 注册统一同步管理器
 syncManager.register({
   name: 'characters',
   applyUpdates: (updates, version) => {

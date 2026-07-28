@@ -9,7 +9,6 @@ import { OutlinePanel } from '@/features/projects';
 import { InspirationBoard } from '@/features/projects';
 import { ProjectCharactersTab } from '@/features/projects';
 import { ProjectExport } from '@/features/projects';
-import { WritePanel } from '@/features/projects';
 import { WorkbenchTab } from './WorkbenchTab';
 import { ProjectDialogs } from './ProjectDialogs';
 import { PageHeader } from '@/shared/components';
@@ -20,14 +19,14 @@ import { ProcessNav, type ProcessTab } from '@/features/projects';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { BUILTIN_WORKFLOW_ID } from '@/types';
 
-import { FileText, ListTree, Lightbulb, FileCog, Users, ImageIcon, Clapperboard, BookOpen, Info, Wand2, Check, CheckCircle2, PenLine, Sparkles, Wand } from 'lucide-react';
+import { FileText, ListTree, FileCog, Users, ImageIcon, Clapperboard, BookOpen, Info, Wand2, Check, CheckCircle2, PenLine, Sparkles } from 'lucide-react';
 import { useWorkbench } from '@/features/projects';
 
 export default function ProjectWorkbench() {
   const { id: projectId } = useParams<{ id: string }>();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('workbench');
-  const wb = useWorkbench(projectId);
+  const wb = useWorkbench(Number(projectId));
   const {
     isLoading,
     showPreviewNote,
@@ -41,12 +40,12 @@ export default function ProjectWorkbench() {
     savedAt,
     setSeedOpen,
     projectChars,
-    brief,
+    creativeSetting,
     outlineReady,
     steps,
     totalWords,
     completedWords,
-    projectTitle,
+    bookTitle,
     selectedCharIds,
   } = wb;
 
@@ -70,7 +69,6 @@ export default function ProjectWorkbench() {
         actions={<ProjectExport projectId={projectId} compact />}
       />
 
-      {/* 预览模式提示：后端未就绪时生成的是本地示例，非 AI 真写 */}
       {showPreviewNote && isPreviewMode && (
         <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-xs text-amber-700 dark:text-amber-300">
           <Info className="w-4 h-4 shrink-0 mt-0.5" />
@@ -81,7 +79,6 @@ export default function ProjectWorkbench() {
         </div>
       )}
 
-      {/* 创作流水线选择器：内置 / 用户工作流（多模板应用） */}
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         <span className="text-xs text-muted-foreground flex items-center gap-1.5">
           <Wand2 className="w-3.5 h-3.5" /> 创作流水线
@@ -107,7 +104,6 @@ export default function ProjectWorkbench() {
         <Button variant="ghost" size="sm" asChild>
           <a href="/workflow" className="text-xs">去编排 / 新建工作流</a>
         </Button>
-        {/* 4.3 工作台自动保存安心感：编辑中提示停笔自动留底，保存后常驻"已自动保存" */}
         <span className="text-xs text-muted-foreground/80 flex items-center gap-1 ml-auto">
           <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
           {Object.keys(editingMap).length > 0
@@ -126,11 +122,10 @@ export default function ProjectWorkbench() {
         </div>
       </div>
 
-      {/* 步骤引导：根据数据状态高亮「下一步」 */}
       <ProjectGuide
         onJump={(tab) => setActiveTab(tab)}
         steps={[
-          { key: 'brief', label: '创作设定', icon: FileCog, hint: '先写世界观/基调，让AI写作时参考', done: !!brief?.worldview || !!brief?.tone, tab: 'brief' },
+          { key: 'brief', label: '创作设定', icon: FileCog, hint: '先写世界观/基调，让AI写作时参考', done: !!creativeSetting?.worldview || !!creativeSetting?.tone, tab: 'brief' },
           { key: 'char', label: '角色', icon: Users, hint: '创建出场角色，生成更贴人物', done: projectChars.length > 0, tab: 'characters' },
           { key: 'outline', label: '大纲', icon: BookOpen, hint: '用大纲规划卷/章/节点，再生成更结构化的正文', done: outlineReady, tab: 'outline' },
           { key: 'gen', label: '生成正文', icon: Wand2, hint: `用「${activeWorkflow?.name ?? '创作流水线'}」产出章节`, done: steps.some((s) => s.content), tab: 'workbench' },
@@ -143,21 +138,20 @@ export default function ProjectWorkbench() {
             {activeTab === 'workbench' && (
               <WorkbenchTab
                 wb={wb}
-                projectId={projectId}
+                bookId={projectId}
                 onNavigateToManuscript={() => router.push(`/manuscript/${projectId}`)}
-                onNavigateToBrief={() => setActiveTab('brief')}
+                onNavigateToCreativeSetting={() => setActiveTab('brief')}
               />
             )}
 
             <ProjectDialogs wb={wb} />
 
-          {activeTab === 'outline' && <OutlinePanel projectId={projectId} />}
+          {activeTab === 'outline' && <OutlinePanel bookId={projectId} />}
           {activeTab === 'inspiration' && <InspirationBoard projectId={projectId} />}
-          {activeTab === 'brief' && <BriefPanel projectId={projectId} projectTitle={projectTitle} />}
+           {activeTab === 'brief' && <BriefPanel bookId={Number(projectId)} projectTitle={bookTitle} />}
           {activeTab === 'characters' && <ProjectCharactersTab projectId={projectId} />}
-          {activeTab === 'material' && <ProjectStudio projectId={projectId} projectTitle={projectTitle} steps={steps} mode="character" selectedCharIds={selectedCharIds} />}
-          {activeTab === 'animation' && <ProjectStudio projectId={projectId} projectTitle={projectTitle} steps={steps} mode="chapter" selectedCharIds={selectedCharIds} />}
-          {activeTab === 'write' && <WritePanel projectId={projectId} steps={steps} brief={brief} projectChars={projectChars} />}
+          {activeTab === 'material' && <ProjectStudio bookId={Number(projectId)} projectTitle={bookTitle} steps={steps} mode="character" selectedCharIds={selectedCharIds} />}
+          {activeTab === 'animation' && <ProjectStudio bookId={Number(projectId)} projectTitle={bookTitle} steps={steps} mode="chapter" selectedCharIds={selectedCharIds} />}
         </ErrorBoundary>
       </ProcessNav>
     </div>

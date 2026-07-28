@@ -7,7 +7,7 @@ import type { Step } from '@/types';
 import type { Workflow } from '@/features/workflow';
 
 export interface SeedActionDeps {
-  projectId: string;
+  bookId: number;
   activeWorkflow: Workflow | null;
   seedPrompt: string;
   isSeeding: boolean;
@@ -19,12 +19,12 @@ export interface SeedActionDeps {
 }
 
 export function makeSeedActions(d: SeedActionDeps) {
-  const { projectId, activeWorkflow, seedPrompt, isSeeding, setSeedOpen, setSeeded, setIsSeeding, setSteps, setEditingMap } = d;
+  const { bookId, activeWorkflow, seedPrompt, isSeeding, setSeedOpen, setSeeded, setIsSeeding, setSteps, setEditingMap } = d;
 
   const handleSendToManuscript = async (step: Step) => {
     const titleMatch = step.content.match(/^#\s*(.+)$/m);
     const title = titleMatch?.[1]?.trim() || `${activeWorkflow?.name ?? '章节'}片段`;
-    await useManuscriptStore.getState().importFromStep(projectId, title, step.content, step.id, 'ai');
+    await useManuscriptStore.getState().importFromStep(bookId, title, step.content, step.id, 'ai');
     toast.success('已发送到手稿（可继续人写）');
   };
 
@@ -45,7 +45,7 @@ export function makeSeedActions(d: SeedActionDeps) {
     if (!seedPrompt.trim() || isSeeding) return;
     setIsSeeding(true);
     try {
-      await generateSeed(projectId, seedPrompt.trim());
+      await generateSeed(bookId, seedPrompt.trim());
       setSeeded(true);
       setSeedOpen(false);
       toast.success('已生成世界观/角色/大纲，去各标签微调后就能生成正文');

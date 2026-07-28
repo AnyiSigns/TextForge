@@ -64,7 +64,7 @@ async def run_workflow(
         executor.run(
             workflow_id=id,
             user_id=user_id,
-            project_id=request.project_id,
+            project_id=request.book_id,
             thread_id=request.thread_id,
         ),
         media_type="text/event-stream",

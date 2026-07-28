@@ -10,7 +10,7 @@ import {
   handleCharacterDetail,
   handleCharactersGet,
   handleCharactersPost,
-  handleProjectsPost,
+  handleBooksPost,
   __resetMockStores,
 } from '@/mocks/handlers';
 import { handleDevApi } from '@/mocks/index';
@@ -83,40 +83,38 @@ describe('mock - 角色对话持久化 (P6)', () => {
 });
 
 describe('mock - 角色参考图取消 (P: 取消参考图不生效)', () => {
-  it('PUT referenceImage: null 被正常接收 (不再因序列化丢失)', async () => {
-    const created = await handleCharactersPost(makeReq({ url: '/api/characters', method: 'POST', body: { name: '测试角色', projectId: 'dev-p-1', referenceImage: 'https://x/y.png' } }));
+  it('PUT avatarUrl: null 被正常接收 (不再因序列化丢失)', async () => {
+    const created = await handleCharactersPost(makeReq({ url: '/api/characters', method: 'POST', body: { name: '测试角色', bookId: 'dev-p-1', avatarUrl: 'https://x/y.png' } }));
     const id = (await bodyOf(created)).character.id as string;
 
-    await handleCharacterPut(id, makeReq({ url: `/api/characters/${id}`, method: 'PUT', body: { referenceImage: null } }) as any);
+    await handleCharacterPut(id, makeReq({ url: `/api/characters/${id}`, method: 'PUT', body: { avatarUrl: null } }) as any);
     const detail = await bodyOf(await handleCharacterDetail(id));
-    // 关键断言：null 透传到回显，UI 据此判定"已取消"
-    expect(detail.character.referenceImage).toBeNull();
+    expect(detail.character.avatarUrl).toBeNull();
   });
 
-  it('PUT referenceImage: 字符串时保留', async () => {
-    const created = await handleCharactersPost(makeReq({ url: '/api/characters', method: 'POST', body: { name: '角色B', projectId: 'dev-p-1' } }));
+  it('PUT avatarUrl: 字符串时保留', async () => {
+    const created = await handleCharactersPost(makeReq({ url: '/api/characters', method: 'POST', body: { name: '角色B', bookId: 'dev-p-1' } }));
     const id = (await bodyOf(created)).character.id as string;
-    await handleCharacterPut(id, makeReq({ url: `/api/characters/${id}`, method: 'PUT', body: { referenceImage: 'https://a/b.png' } }) as any);
+    await handleCharacterPut(id, makeReq({ url: `/api/characters/${id}`, method: 'PUT', body: { avatarUrl: 'https://a/b.png' } }) as any);
     const detail = await bodyOf(await handleCharacterDetail(id));
-    expect(detail.character.referenceImage).toBe('https://a/b.png');
+    expect(detail.character.avatarUrl).toBe('https://a/b.png');
   });
 });
 
 describe('mock - 项目/角色 创建回显', () => {
   it('POST 项目回显 title/description', async () => {
-    const res = await handleProjectsPost(makeReq({ url: '/api/projects', method: 'POST', body: { title: '新世界', description: 'desc', genre: '科幻' } }));
-    const p = (await bodyOf(res)).project;
+    const res = await handleBooksPost(makeReq({ url: '/api/books', method: 'POST', body: { title: '新世界', description: 'desc', genre: '科幻' } }));
+    const p = (await bodyOf(res)).book;
     expect(p.title).toBe('新世界');
     expect(p.description).toBe('desc');
-    expect(p.id).toMatch(/^dev-p-/);
+    expect(p.id).toMatch(/^dev-b-/);
   });
 
-  it('POST 角色回显 name/projectId/images', async () => {
-    const res = await handleCharactersPost(makeReq({ url: '/api/characters', method: 'POST', body: { name: '阿强', projectId: 'dev-p-2', images: ['https://x/1.png'] } }));
+  it('POST 角色回显 name/bookId', async () => {
+    const res = await handleCharactersPost(makeReq({ url: '/api/characters', method: 'POST', body: { name: '阿强', bookId: 'dev-p-2' } }));
     const c = (await bodyOf(res)).character;
     expect(c.name).toBe('阿强');
-    expect(c.projectId).toBe('dev-p-2');
-    expect(c.images).toEqual(['https://x/1.png']);
+    expect(c.bookId).toBe('dev-p-2');
   });
 
   it('GET 角色会合并 mock 预置角色', async () => {

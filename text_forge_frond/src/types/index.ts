@@ -13,6 +13,7 @@ export * from './model';
 export * from './project';
 export * from './character';
 export * from './brief';
+export * from './creativeSetting';
 export * from './workflow';
 export * from './knowledge';
 export * from './manuscript';

@@ -27,19 +27,22 @@ export async function runWorkflow(
   opts?: RunWorkflowOptions,
   projectContext?: GenerationContext,
 ): Promise<WorkflowRunStep[]> {
-  const threadId = opts?.projectId
-    ? `${opts.projectId}-${Date.now()}`
+  const threadId = opts?.bookId
+    ? `${opts.bookId}-${Date.now()}`
     : `thread-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const visibleNodeIds = new Set(
     Array.isArray(opts?.visibleNodeIds) ? opts.visibleNodeIds : opts?.visibleNodeIds ? Array.from(opts.visibleNodeIds) : [],
   );
+  const body: Record<string, unknown> = { input };
+  if (opts?.bookId) body.book_id = opts.bookId;
+  if (threadId) body.thread_id = threadId;
   const res = await fetch(`${apiClient.defaults.baseURL}/api/workflows/${workflowId}/run`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${(await import('@/lib/stores/authStore')).useAuthStore.getState().accessToken}`,
     },
-    body: JSON.stringify({ input, project_id: opts?.projectId, thread_id: threadId }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`工作流运行失败: ${res.status}`);
   const reader = res.body?.getReader();

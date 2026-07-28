@@ -4,12 +4,12 @@
 import { useRef, useCallback, useMemo } from 'react';
 import { toast } from 'sonner';
 import { generateWithWorkflow } from '@/features/projects';
-import { useProjectStore } from '@/features/projects';
+import { useBookStore } from '@/features/projects';
 import type { Step, GenerationContext } from '@/types';
 import type { Workflow } from '@/features/workflow';
 
 export interface GenerationDeps {
-  projectId: string;
+  bookId: number;
   activeWorkflowId: string;
   activeWorkflow: Workflow | null;
   buildContext: () => GenerationContext;
@@ -24,7 +24,7 @@ export interface GenerationDeps {
 }
 
 export function makeGeneration(d: GenerationDeps) {
-  const { projectId, activeWorkflowId, activeWorkflow, buildContext, summarizePlot, depositCharacterProfiles, abortRef,   pausedRef, setSteps, setCurrentAgent, setIsStreaming, setPlotSummary } = d;
+  const { bookId, activeWorkflowId, activeWorkflow, buildContext, summarizePlot, depositCharacterProfiles, abortRef,   pausedRef, setSteps, setCurrentAgent, setIsStreaming, setPlotSummary } = d;
 
   const stepUpdatesRef = useRef<((prev: Step[]) => Step[])[]>([]);
   const pendingAgentRef = useRef<string | null>(null);
@@ -108,7 +108,7 @@ export function makeGeneration(d: GenerationDeps) {
       setSteps([placeholder]);
     }
     try {
-      const newSteps = await generateWithWorkflow(projectId, {
+      const newSteps = await generateWithWorkflow(bookId, {
         workflowId: activeWorkflowId,
         context: buildContext(),
         runOpts: { simulateDelay: true },
@@ -162,7 +162,7 @@ export function makeGeneration(d: GenerationDeps) {
         const text = newSteps.map((s) => s.content).join('\n');
         summarizePlot(text).then((s) => s && setPlotSummary(s)).catch(() => {});
         depositCharacterProfiles(text).catch(() => {});
-        useProjectStore.getState().saveVersion(projectId, newSteps).catch(() => {});
+        useBookStore.getState().saveVersion(bookId, newSteps).catch(() => {});
       }
     } catch (e) {
       toast.error('生成失败', { description: e instanceof Error ? e.message : '未知错误' });
@@ -173,7 +173,7 @@ export function makeGeneration(d: GenerationDeps) {
       setIsStreaming(false);
       setCurrentAgent(null);
     }
-  }, [projectId, activeWorkflowId, activeWorkflow?.name, buildContext, summarizePlot, depositCharacterProfiles, enqueueStepUpdate, setIsStreaming, setCurrentAgent, setSteps, abortRef, pausedRef, setPlotSummary, activeWorkflow, getSortedNodeIds, sortedNodeIds, nodeIndexMap]);
+  }, [bookId, activeWorkflowId, activeWorkflow?.name, buildContext, summarizePlot, depositCharacterProfiles, enqueueStepUpdate, setIsStreaming, setCurrentAgent, setSteps, abortRef, pausedRef, setPlotSummary, activeWorkflow, getSortedNodeIds, sortedNodeIds, nodeIndexMap]);
 
   return { stepUpdatesRef, pendingAgentRef, flushScheduledRef, flushStepUpdates, enqueueStepUpdate, handleGenerate };
 }

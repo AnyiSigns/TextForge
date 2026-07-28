@@ -6,9 +6,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { toast } from 'sonner';
 import { Step } from '@/types';
 import { BUILTIN_WORKFLOW_ID } from '@/types';
-import { fetchProjectMeta, bindWorkflow } from '@/features/projects';
-import { useProjectStore } from '@/features/projects';
-import { useBriefStore } from '@/features/projects';
+import { bindWorkflow, fetchBookMeta } from '@/features/projects';
+import { useBookStore } from '@/features/projects';
+import { useCreativeSettingStore } from '@/features/projects';
 import { useCharacterStore } from '@/features/characters';
 import { useManuscriptStore } from '@/features/manuscript';
 import { listWorkflows, type Workflow } from '@/features/workflow';
@@ -20,7 +20,8 @@ import { makeSeedActions } from './workbenchSeed';
 import { onInsertStep } from '@/lib/events/projectEvents';
 import { transformText } from '@/lib/aiTextTransform';
 
-export function useWorkbench(projectId: string) {
+export function useWorkbench(bookId: number) {
+  const bookIdStr = String(bookId);
   const [isGraphOpen, setIsGraphOpen] = useState(true);
   const [seedPrompt, setSeedPrompt] = useState('');
   const [isSeeding, setIsSeeding] = useState(false);
@@ -35,9 +36,9 @@ export function useWorkbench(projectId: string) {
   const isPreviewMode = API_URL === '';
   const [showPreviewNote, setShowPreviewNote] = useState(isPreviewMode);
   const [isLoading, setIsLoading] = useState(true);
-  const [projectTitle, setProjectTitle] = useState<string | undefined>();
+  const [bookTitle, setBookTitle] = useState<string | undefined>();
   const [plotSummary, setPlotSummary] = useState('');
-  const [selectedCharIds, setSelectedCharIds] = useState<string[]>([]);
+  const [selectedCharIds, setSelectedCharIds] = useState<number[]>([]);
   const [selectedSectionIds, setSelectedSectionIds] = useState<string[]>([]);
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [activeWorkflowId, setActiveWorkflowId] = useState<string>(BUILTIN_WORKFLOW_ID);
@@ -52,26 +53,26 @@ export function useWorkbench(projectId: string) {
   const [outlineReady, setOutlineReady] = useState(false);
   const [outlineVolumes, setOutlineVolumes] = useState<OutlineVolume[]>([]);
 
-  const brief = useBriefStore((s) => s.briefs[projectId]);
-  const projectChars = useCharacterStore((s) => s.characters).filter((c) => (c.projectId ?? null) === projectId);
+  const creativeSetting = useCreativeSettingStore((s) => s.settings[bookId]);
+  const projectChars = useCharacterStore((s) => s.characters);
 
   const charNameById = useCallback(
-    (id: string) => projectChars.find((c) => c.id === id)?.name ?? '',
+    (id: string | number) => projectChars.find((c) => c.id === Number(id))?.name ?? '',
     [projectChars],
   );
 
   const buildContext = useCallback(
-    makeBuildContext({ projectId, projectTitle, brief, projectChars, selectedCharIds, outlineVolumes, plotSummary, selectedSectionIds, charNameById }),
-    [projectId, projectTitle, brief, projectChars, selectedCharIds, outlineVolumes, plotSummary, selectedSectionIds, charNameById],
+    makeBuildContext({ bookId, bookTitle, creativeSetting, projectChars, selectedCharIds, outlineVolumes, plotSummary, selectedSectionIds, charNameById }),
+    [bookId, bookTitle, creativeSetting, projectChars, selectedCharIds, outlineVolumes, plotSummary, selectedSectionIds, charNameById],
   );
-  const summarizePlot = useCallback(makeSummarizePlot(projectId), [projectId]);
+  const summarizePlot = useCallback(makeSummarizePlot(bookId), [bookId]);
   const depositCharacterProfiles = useCallback(makeDepositCharacterProfiles(projectChars), [projectChars]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const outline = await loadOutline(projectId);
+        const outline = await loadOutline(bookIdStr);
         if (!cancelled) {
           setOutlineVolumes(outline);
           setOutlineReady(outline.length > 0);
@@ -81,14 +82,14 @@ export function useWorkbench(projectId: string) {
       }
     })();
     return () => { cancelled = true; };
-  }, [projectId]);
+  }, [bookIdStr]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const [meta, wfs] = await Promise.all([
-          fetchProjectMeta(projectId).catch(() => null),
+          fetchBookMeta(bookId).catch(() => null),
           listWorkflows().catch(() => []),
         ]);
         if (cancelled) return;
@@ -97,12 +98,11 @@ export function useWorkbench(projectId: string) {
         const activeWf = wfs.find((w) => w.id === targetWorkflowId) ?? wfs.find((w) => w.id === BUILTIN_WORKFLOW_ID) ?? wfs[0] ?? null;
 
         setWorkflows(wfs);
-        setProjectTitle(meta?.title);
+        setBookTitle(meta?.title);
         setActiveWorkflowId(activeWf?.id ?? (wfs.length > 0 ? targetWorkflowId : ''));
         setActiveWorkflow(activeWf);
 
-        // 草稿恢复
-        const draft = await useProjectStore.getState().getDraft(projectId);
+        const draft = await useBookStore.getState().getDraft(bookId);
         if (draft && draft.length > 0) {
           setSteps(draft);
           toast.success('已恢复上次草稿');
@@ -114,20 +114,11 @@ export function useWorkbench(projectId: string) {
       }
     })();
     return () => { cancelled = true; };
-  }, [projectId]);
-
-  useEffect(() => {
-    if (scrollRef.current) {
-      const last = scrollRef.current.querySelector('[data-step-card]:last-of-type')
-        ?? scrollRef.current.lastElementChild?.lastElementChild
-        ?? null;
-      (last as HTMLElement | null)?.scrollIntoView({ block: 'end', behavior: 'smooth' });
-    }
-  }, [steps]);
+  }, [bookId]);
 
   useEffect(() => {
     return onInsertStep((detail) => {
-      if (detail.projectId !== projectId) return;
+      if (detail.bookId !== bookIdStr && detail.bookId !== String(bookId)) return;
       const step: Step = {
         id: `step-${Date.now()}`,
         agent: detail.title || '大纲/章节摘要',
@@ -137,17 +128,18 @@ export function useWorkbench(projectId: string) {
       setSteps((prev) => [...prev, step]);
       toast.success('已插入章节，可在下方续写');
     });
-  }, [projectId]);
+  }, [bookId, bookIdStr]);
 
   useEffect(() => {
     if (steps.length > 0 && !isStreaming) {
       const timer = setTimeout(() => {
-        useProjectStore.getState().saveDraft(projectId, steps);
+        useBookStore.getState().saveDraft(bookId, steps);
         toast.success('草稿已保存', { duration: 1500 });
       }, 2000);
       return () => clearTimeout(timer);
     }
-  }, [steps, isStreaming, projectId]);
+  }, [steps, isStreaming, bookId]);
+
 
   const handleConfirm = (stepId: string) => {
     setSteps(prev => prev.map(s => s.id === stepId ? { ...s, status: 'completed' } : s));
@@ -155,7 +147,7 @@ export function useWorkbench(projectId: string) {
     if (step) {
       const titleMatch = step.content.match(/^#\s*(.+)$/m);
       const title = titleMatch?.[1]?.trim() || `${activeWorkflow?.name ?? '章节'}片段`;
-      useManuscriptStore.getState().importFromStep(projectId, title, step.content, step.id, 'ai');
+      useManuscriptStore.getState().importFromStep(bookIdStr, title, step.content, step.id, 'ai');
     }
     toast.success('已确认');
   };
@@ -191,12 +183,12 @@ export function useWorkbench(projectId: string) {
       }
       if (changed) {
         setSteps(next);
-        await useProjectStore.getState().saveDraft(projectId, next).catch(() => {});
+        await useBookStore.getState().saveDraft(bookId, next).catch(() => {});
       }
       setSavedAt(Date.now());
     }, 1500);
     return () => clearTimeout(t);
-  }, [editingMap, projectId, steps]);
+  }, [editingMap, bookId, steps]);
 
   const handleSkip = (stepId: string) => {
     setSteps(prev => prev.map(s => s.id === stepId ? { ...s, status: 'completed' } : s));
@@ -236,7 +228,7 @@ export function useWorkbench(projectId: string) {
     setAiDialog((d) => ({ ...d, open: false }));
   };
 
-  const toggleChar = (id: string) =>
+  const toggleChar = (id: number) =>
     setSelectedCharIds((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
   const toggleSection = (id: string) =>
     setSelectedSectionIds((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
@@ -246,13 +238,13 @@ export function useWorkbench(projectId: string) {
     setActiveWorkflowId(wfId);
     const wf = workflows.find((w) => w.id === wfId) ?? null;
     setActiveWorkflow(wf);
-    try { await bindWorkflow(projectId, wfId); } catch { /* mock 期静默 */ }
+    try { await bindWorkflow(bookId, wfId); } catch { /* mock 期静默 */ }
   };
 
   const {
     handleGenerate,
   } = makeGeneration({
-    projectId,
+    bookId,
     activeWorkflowId,
     activeWorkflow,
     buildContext,
@@ -267,7 +259,7 @@ export function useWorkbench(projectId: string) {
   });
 
   const { handleSendToManuscript, handleWriteFirstChapter, handleSeed } = makeSeedActions({
-    projectId,
+    bookId,
     activeWorkflow,
     seedPrompt,
     isSeeding,
@@ -282,7 +274,7 @@ export function useWorkbench(projectId: string) {
   const completedWords = steps.reduce((acc, s) => acc + (s.status === 'completed' ? s.content?.length || 0 : 0), 0);
 
   return {
-    brief,
+    creativeSetting,
     projectChars,
     isPreviewMode,
     isLoading,
@@ -329,7 +321,7 @@ export function useWorkbench(projectId: string) {
     isSeeding,
     handleSeed,
     handleWriteFirstChapter,
-    projectTitle,
+    bookTitle,
     totalWords,
     completedWords,
   };

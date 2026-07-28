@@ -1,32 +1,33 @@
 // src/types/project.ts
-// 项目与项目请求体类型。
-import type { ProjectBrief } from './brief';
+// 书籍与书籍请求体类型。
+import type { BookCreativeSetting } from './creativeSetting';
 
-export interface Project {
-  id: string;
+export interface Book {
+  id: number;
   title: string;
-  status: 'draft' | 'generating' | 'completed' | 'paused';
   genre?: string;
   description?: string;
   pinned?: boolean;
-  /** 绑定的创作流水线（工作流 id）；缺省使用内置创作流水线 BUILTIN_WORKFLOW_ID */
   workflowId?: string;
+  totalWordGoal?: number;
+  currentWordCount?: number;
   createdAt: string;
   updatedAt: string;
 }
 
-/** 内置创作流水线 id（项目默认使用的多 Agent 生成流程） */
+/** 内置创作流水线 id（书籍默认使用的多 Agent 生成流程） */
 export const BUILTIN_WORKFLOW_ID = 'builtin-novel-pipeline';
 export type WorkflowRef = string; // 工作流 id（含内置 id）
 
 // API 请求体类型
-export interface CreateProjectRequest {
+export interface CreateBookRequest {
   title: string;
-  description: string;
-  genre: string;
-  version?: number;
+  description?: string;
+  genre?: string;
 }
 
-export interface UpdateBriefRequest {
-  brief: ProjectBrief;
+export interface UpdateCreativeSettingRequest {
+  setting: BookCreativeSetting;
 }
+
+export type BookId = number;

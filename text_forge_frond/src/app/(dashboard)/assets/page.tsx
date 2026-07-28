@@ -23,21 +23,21 @@ import { PortfolioGallery } from '@/features/projects';
 import { Images, LayoutGrid, Download } from 'lucide-react';
 import { downloadSingleImage, downloadImagesZip } from '@/lib/storage/imageExport';
 import { useCharacterStore } from '@/features/characters';
-import { useBriefStore, briefToContextLine } from '@/features/projects';
+import { useCreativeSettingStore, creativeSettingToContextLine } from '@/features/projects';
 import type { GenerationContext } from '@/types';
 
 export default function AssetsPage() {
   const searchParams = useSearchParams();
   const [items, setItems] = useState<MediaTask[]>([]);
   const [tab, setTab] = useState('images');
-  const [projectId, setProjectId] = useState<string | null>(null);
+  const [bookId, setBookId] = useState<string | null>(null);
   const { characters } = useCharacterStore();
-  const brief = useBriefStore((s) => (projectId ? s.briefs[projectId] : undefined));
-  const genContext: GenerationContext | undefined = projectId
+  const creativeSetting = useCreativeSettingStore((s) => (bookId ? s.settings[Number(bookId)] : undefined));
+  const genContext: GenerationContext | undefined = bookId
     ? {
-        project_id: projectId,
-        summary: briefToContextLine(brief) || undefined,
-        brief: briefToContextLine(brief) || undefined,
+        book_id: bookId,
+        summary: creativeSettingToContextLine(creativeSetting) || undefined,
+        brief: creativeSettingToContextLine(creativeSetting) || undefined,
       }
     : undefined;
   // 角色页「生成立绘」深链：?character=ID&project=PID → 预选角色并自动拼提示词
@@ -48,7 +48,7 @@ export default function AssetsPage() {
     ? characters.find((c) => c.id === deepCharacterId)
     : undefined;
   const defaultCharacterId = deepCharacter?.id ?? null;
-  const defaultProjectId = deepProjectId ?? deepCharacter?.projectId ?? null;
+  const defaultProjectId = deepProjectId ?? deepCharacter?.bookId ?? null;
   // 工作台「章节插图」深链：?project=PID&chapter=STEPID → 预选章节插图用例
   const defaultUseCase = deepChapterId ? 'chapter_art' : undefined;
   const defaultChapterId = deepChapterId ?? null;
@@ -60,15 +60,12 @@ export default function AssetsPage() {
     : '';
 
   const characterImages = deepCharacter
-    ? (
-        deepCharacter.referenceImages ??
-        (deepCharacter.referenceImage ? [deepCharacter.referenceImage] : [])
-      ).slice(0, 5)
+    ? (deepCharacter.avatarUrl ? [deepCharacter.avatarUrl] : []).slice(0, 5)
     : [];
 
-  // 项目内角色：下拉与选项统一使用同一份（深链时也与底层 matching 用的 characters 同源，避免口径分裂）
-  const projectCharacters = projectId
-    ? characters.filter((c) => (c.projectId ?? null) === projectId)
+  // 书籍内角色：下拉与选项统一使用同一份（深链时也与底层 matching 用的 characters 同源，避免口径分裂）
+  const projectCharacters = bookId
+    ? characters.filter((c) => c.bookId === Number(bookId))
     : [];
 
   useEffect(() => {
@@ -104,25 +101,21 @@ export default function AssetsPage() {
     load();
     const interval = setInterval(load, 3000);
     return () => clearInterval(interval);
-  }, [projectId]);
+  }, [bookId]);
 
   const handleGenerate = async (p: ImageRequest) => {
     try {
-      // 角色一致性：按提交的角色 id 取该角色自身锁定的多张参考图/种子（避免深链角色与表单所选角色错配）
       const selChar = p.characterId ? characters.find((c) => c.id === p.characterId) : undefined;
       const refImages = selChar
-        ? (
-            selChar.referenceImages ?? (selChar.referenceImage ? [selChar.referenceImage] : [])
-          ).slice(0, 5)
+        ? (selChar.avatarUrl ? [selChar.avatarUrl] : []).slice(0, 5)
         : undefined;
       const payload: ImageRequest = {
         ...p,
         ...(refImages?.length ? { reference_images: refImages } : {}),
-        ...(selChar?.imageSeed != null ? { seed: selChar.imageSeed } : {}),
       };
       await submitImage(payload);
       toast.success('生成成功，已加入队列');
-      if (payload.project_id) setProjectId(payload.project_id);
+      if (payload.book_id) setBookId(String(payload.book_id));
     } catch (error: unknown) {
       toast.error('提交失败', { description: describeGenError(error) });
     }
@@ -145,7 +138,7 @@ export default function AssetsPage() {
             <GenerationForm
               key={`${defaultCharacterId ?? ''}-${defaultChapterId ?? ''}`}
               kind="image"
-              defaultProjectId={defaultProjectId}
+              defaultBookId={defaultProjectId}
               defaultCharacterId={defaultCharacterId}
               defaultChapterId={defaultChapterId}
               useCase={defaultUseCase}
@@ -154,9 +147,9 @@ export default function AssetsPage() {
               characterImages={characterImages}
               projectCharacters={projectCharacters}
               characters={
-                projectId ? characters.filter((c) => (c.projectId ?? null) === projectId) : []
+                bookId ? characters.filter((c) => c.bookId === Number(bookId)) : []
               }
-              onProjectChange={setProjectId}
+              onBookChange={setBookId}
               onSubmit={handleGenerate}
             />
 

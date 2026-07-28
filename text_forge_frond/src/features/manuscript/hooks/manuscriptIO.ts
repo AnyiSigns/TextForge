@@ -5,11 +5,11 @@ import { buildStepFromManuscript, buildBookSteps } from '@/features/projects';
 import { exportManuscriptBook } from '@/lib/storage/backup';
 import { parseBookText } from '@/lib/utils/bookImport';
 import { useManuscriptStore } from '../stores/manuscriptStore';
-import { useProjectStore } from '@/features/projects';
+import { useBookStore } from '@/features/projects';
 import type { ManuscriptChapter } from '@/types';
 
 export interface ManuscriptIO {
-  id: string;
+  id: number;
   activeId: string | null;
   active: ManuscriptChapter | null;
   bookChapters: { title: string; content: string }[] | null;
@@ -21,16 +21,16 @@ export interface ManuscriptIO {
 }
 
 export function makeManuscriptIO(d: ManuscriptIO) {
-  const { id: projectId, active, bookChapters, setBookName, setBookChapters, setAskBookTxt, setExportOpen, setSendOpen } = d;
+  const { id: bookId, active, bookChapters, setBookName, setBookChapters, setAskBookTxt, setExportOpen, setSendOpen } = d;
 
   const openSend = () => { if (active) setSendOpen(true); };
   const confirmSend = async (syncGlobal: boolean) => {
     if (!active) return;
     if (syncGlobal) {
-      const step = buildStepFromManuscript(projectId, active.title, active.content);
-      const draft = (await useProjectStore.getState().getDraft(projectId)) ?? [];
-      await useProjectStore.getState().saveDraft(projectId, [...draft, step]);
-      toast.success('已同步到工作台（作为项目步骤，可被 Agent 流读取为前文）');
+      const step = buildStepFromManuscript(bookId, active.title, active.content);
+      const draft = (await useBookStore.getState().getDraft(bookId)) ?? [];
+      await useBookStore.getState().saveDraft(bookId, [...draft, step]);
+      toast.success('已同步到工作台（作为书籍步骤，可被 Agent 流读取为前文）');
     } else {
       toast.success('已留在手稿本地（未同步到工作台）');
     }
@@ -46,13 +46,13 @@ export function makeManuscriptIO(d: ManuscriptIO) {
   const confirmBookImport = async (syncGlobal: boolean) => {
     if (!bookChapters) return;
     if (syncGlobal) {
-      const steps = buildBookSteps(projectId, bookChapters);
-      const draft = (await useProjectStore.getState().getDraft(projectId)) ?? [];
-      await useProjectStore.getState().saveDraft(projectId, [...draft, ...steps]);
+      const steps = buildBookSteps(bookId, bookChapters);
+      const draft = (await useBookStore.getState().getDraft(bookId)) ?? [];
+      await useBookStore.getState().saveDraft(bookId, [...draft, ...steps]);
       toast.success(`已导入 ${steps.length} 章到工作台（Agent 续写将以此为前文）`);
     } else {
       for (const c of bookChapters) {
-        await useManuscriptStore.getState().importFromStep(projectId, c.title, c.content);
+        await useManuscriptStore.getState().importFromStep(bookId, c.title, c.content);
       }
       toast.success(`已导入 ${bookChapters.length} 章到手稿（本地续写）`);
     }
@@ -61,13 +61,13 @@ export function makeManuscriptIO(d: ManuscriptIO) {
 
   const handleExportBook = (fmt: 'markdown' | 'txt') => {
     if (fmt === 'markdown') {
-      exportManuscriptBook(projectId, 'markdown').then(() => setExportOpen(false));
+      exportManuscriptBook(bookId, 'markdown').then(() => setExportOpen(false));
       return;
     }
     setAskBookTxt(true);
   };
   const doExportBookTxt = (mode: 'tidy' | 'format') => {
-    exportManuscriptBook(projectId, 'txt', mode)
+    exportManuscriptBook(bookId, 'txt', mode)
       .then(() => { setAskBookTxt(false); setExportOpen(false); });
   };
 

@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   submitImage, submitVideo, fetchProjectPortfolio, type MediaTask, type GenerationContext, type ImageRequest, type VideoRequest,
 } from '@/lib/api/generation';
-import { useBriefStore, briefToContextLine, briefSectionsToContext } from '@/features/projects';
+import { useCreativeSettingStore, creativeSettingToContextLine, creativeSettingDimensionsToContext } from '@/features/projects';
 import { useCharacterStore } from '@/features/characters';
 import { usePortfolioStore } from '@/features/projects';
 import { useShallow } from 'zustand/react/shallow';
@@ -22,7 +22,7 @@ import type { Character } from '@/types';
 
 type StudioMode = 'character' | 'chapter';
 
-export function ProjectStudio({ projectId, steps, mode, selectedCharIds, projectTitle }: { projectId: string; steps: { id: string; agent: string; content: string }[]; mode: StudioMode; selectedCharIds?: string[]; projectTitle?: string }) {
+export function ProjectStudio({ bookId, steps, mode, selectedCharIds, projectTitle }: { bookId: number; steps: { id: string; agent: string; content: string }[]; mode: StudioMode; selectedCharIds?: number[]; projectTitle?: string }) {
   const [isExpanded, setIsExpanded] = useState(mode === 'character');
   const [trailerChars, setTrailerChars] = useState<string[]>([]);
   const portfolio = usePortfolioStore((s) => s.portfolio);
@@ -30,8 +30,8 @@ export function ProjectStudio({ projectId, steps, mode, selectedCharIds, project
   const hasRunningTasks = portfolio.some((t) => t.status === 'pending' || t.status === 'processing');
 
   const taskCount = portfolio.filter((t) => t.status === 'pending' || t.status === 'processing').length;
-  const characters = useCharacterStore(useShallow((s) => s.characters.filter((c: Character) => (c.projectId ?? null) === projectId)));
-  const brief = useBriefStore((s) => s.briefs[projectId]);
+  const characters = useCharacterStore(useShallow((s) => s.characters.filter((c: Character) => c.bookId === bookId)));
+  const creativeSetting = useCreativeSettingStore((s) => s.settings[bookId]);
 
   const charRefsForChapter = useCallback((stepId: string): { ids: string[]; images: string[] } => {
     const step = steps.find((s) => s.id === stepId);
@@ -60,25 +60,23 @@ export function ProjectStudio({ projectId, steps, mode, selectedCharIds, project
     return map;
   }, [steps]);
 
-  const projectChars = useCharacterStore(useShallow((s) => s.characters.filter((c: Character) => (c.projectId ?? null) === projectId)));
+  const projectChars = useCharacterStore(useShallow((s) => s.characters.filter((c: Character) => c.bookId === bookId)));
   const charNameById = useCallback((id: string) => projectChars.find((c) => c.id === id)?.name ?? id, [projectChars]);
 
   const buildContext = useCallback((source?: GenerationContext['source'], sourceRef?: string): GenerationContext => {
     const chapter = source === 'chapter' && sourceRef ? chapterMap.get(sourceRef) : undefined;
-    // A2: 与工作台 makeBuildContext 口径一致——补齐角色 role/relationships/currentProfile、自定义维度 sections
     const projectCharacters = characters.map((c) => ({
       name: c.name,
-      role: c.role && c.role !== 'custom' ? characterRoleLabel(c.role) : c.role === 'custom' ? (c.customRole ?? undefined) : undefined,
+      role: c.roleType && c.roleType !== 'custom' ? characterRoleLabel(c.roleType) : undefined,
       description: c.description,
-      currentProfile: c.currentProfile,
       status: c.status ?? '存活',
-      relationships: c.relationships?.length
-        ? c.relationships
-            .filter((r) => r.targetId && r.relation.trim())
-            .map((r) => ({ target: charNameById(r.targetId) || r.targetId, relation: r.relation.trim() }))
+      relationships: c.relationshipChain?.length
+        ? c.relationshipChain
+            .filter((r) => r.target && r.relation.trim())
+            .map((r) => ({ target: charNameById(r.target) || r.target, relation: r.relation.trim() }))
         : undefined,
     }));
-    const sectionLine = briefSectionsToContext(brief?.sections, brief?.sections?.map((s) => s.id) ?? []);
+    const sectionLine = creativeSettingDimensionsToContext(creativeSetting?.customDimensions, creativeSetting?.customDimensions?.map((s) => s.id) ?? []);
     const sections = sectionLine
       ? sectionLine.split('；').map((s) => {
           const idx = s.indexOf('：');
@@ -86,18 +84,17 @@ export function ProjectStudio({ projectId, steps, mode, selectedCharIds, project
         })
       : undefined;
     return {
-      project_id: projectId,
-      // A1: 用真实作品标题，而非 projectId
-      project_title: projectTitle || brief?.genre || projectId,
-      summary: briefToContextLine(brief) || undefined,
+      book_id: bookId,
+      book_title: projectTitle || creativeSetting?.worldview || bookId,
+      summary: creativeSettingToContextLine(creativeSetting) || undefined,
       characters: projectCharacters,
       sections,
       outline: chapter ? chapter.content.slice(0, 3000) : outline,
       source,
       source_ref: sourceRef,
-      brief: briefToContextLine(brief),
+      brief: creativeSettingToContextLine(creativeSetting),
     };
-  }, [projectId, characters, outline, brief, chapterMap, projectTitle, charNameById]);
+  }, [bookId, characters, outline, creativeSetting, chapterMap, projectTitle, charNameById]);
 
   const upsertOptimistic = useCallback((task: MediaTask) => {
     const updateInPortfolio = usePortfolioStore.getState().updateInPortfolio;
@@ -108,18 +105,18 @@ export function ProjectStudio({ projectId, steps, mode, selectedCharIds, project
 
   const reloadPortfolio = useCallback(async () => {
     try {
-      const remote = await fetchProjectPortfolio(projectId);
+      const remote = await fetchProjectPortfolio(bookId);
       setPortfolio([...remote]);
       for (const it of remote) {
         if (it.status === 'completed' && it.result_url && it.source === 'character' && it.source_ref) {
           const char = useCharacterStore.getState().characters.find((c) => c.id === it.source_ref);
-          if (char && !(char.images ?? []).includes(it.result_url)) {
-            await useCharacterStore.getState().addCharacterImage(it.source_ref, it.result_url).catch(() => {});
+          if (char && !(char.avatarUrl ?? '').includes(it.result_url)) {
+            await useCharacterStore.getState().updateCharacter(it.source_ref, { avatarUrl: it.result_url }).catch(() => {});
           }
         }
       }
     } catch { /* 后端未就绪时保留本地乐观记录 */ }
-  }, [projectId, setPortfolio]);
+  }, [bookId, setPortfolio]);
 
   useEffect(() => {
     if (!isExpanded || !hasRunningTasks) return;
@@ -135,7 +132,7 @@ export function ProjectStudio({ projectId, steps, mode, selectedCharIds, project
       prompt: p.prompt,
       status: 'pending',
       kind,
-      project_id: projectId,
+      book_id: bookId,
       source: ctx?.source,
       source_ref: ctx?.source_ref,
       chapter_id: (p as VideoRequest).chapter_id,
@@ -178,9 +175,9 @@ export function ProjectStudio({ projectId, steps, mode, selectedCharIds, project
 
   const setAvatar = (charId: string, url: string) => {
     useCharacterStore.setState((s) => ({
-      characters: s.characters.map((c) => (c.id === charId ? { ...c, avatar: url } : c)),
+      characters: s.characters.map((c) => (c.id === charId ? { ...c, avatarUrl: url } : c)),
     }));
-    useCharacterStore.getState().updateCharacter(charId, { avatar: url }).catch(() => {});
+    useCharacterStore.getState().updateCharacter(charId, { avatarUrl: url }).catch(() => {});
     toast.success('已设为角色头像');
   };
 
@@ -208,14 +205,14 @@ export function ProjectStudio({ projectId, steps, mode, selectedCharIds, project
           {mode === 'character' ? (
             <CharacterMaterialPanel
               characters={characters}
-              projectId={projectId}
+              bookId={bookId}
               buildContext={buildContext}
               onImage={handleImage}
             />
           ) : (
             <ChapterAnimationPanel
               characters={characters}
-              projectId={projectId}
+              bookId={bookId}
               steps={steps}
               trailerChars={trailerChars}
               buildContext={buildContext}

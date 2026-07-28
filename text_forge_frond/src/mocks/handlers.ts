@@ -4,7 +4,7 @@
 // POST/PUT 一律回显请求体，避免返回固定假数据覆盖前端真实输入。
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { MOCK_USER, MOCK_PROJECTS, MOCK_CHARACTERS, MOCK_PROJECT_STEPS } from './data';
+import { MOCK_USER, MOCK_BOOKS, MOCK_CHARACTERS, MOCK_BOOK_STEPS } from './data';
 import type { Message } from '@/types';
 
 // 进程内对话仓储：按角色 id 持久化消息，刷新后仍可从 /messages 读回
@@ -35,7 +35,7 @@ async function parseBody(req: NextRequest): Promise<Record<string, unknown>> {
 }
 
 // ---- 内存仓储 ----
-const projectsStore: Record<string, Record<string, unknown>> = {};
+const booksStore: Record<string, Record<string, unknown>> = {};
 const charactersStore: Record<string, Record<string, unknown>> = {};
 let seq = 0;
 function uid(prefix: string) {
@@ -45,7 +45,7 @@ function uid(prefix: string) {
 
 // 测试用：清空进程内仓储，避免用例间（尤其是共享 charId 的对话/角色）状态污染
 export function __resetMockStores() {
-  for (const k of Object.keys(projectsStore)) delete projectsStore[k];
+  for (const k of Object.keys(booksStore)) delete booksStore[k];
   for (const k of Object.keys(charactersStore)) delete charactersStore[k];
   chatStore.clear();
 }
@@ -66,55 +66,50 @@ export function handleLogin() {
   return res;
 }
 
-// ============ 项目 ============
-export function handleProjectsGet() {
-  // 标准方案：MOCK_PROJECTS 是"基础事实"（含 title 等权威字段），
-  // 用户在内存仓储新建的项目（id 不在 mock 中）作为增量追加；
-  // mock 已有项目以 MOCK_PROJECTS 为准，避免被残缺记录（缺 title）覆盖导致页面"未知项目"。
-  const mockIds = new Set(MOCK_PROJECTS.map((p) => p.id));
-  const userProjects = Object.values(projectsStore).filter((p) => !mockIds.has((p.id as string) ?? ''));
-  return json({ projects: [...MOCK_PROJECTS, ...userProjects] });
+// ============ 书籍 ============
+export function handleBooksGet() {
+  const mockIds = new Set(MOCK_BOOKS.map((p) => p.id));
+  const userBooks = Object.values(booksStore).filter((p) => !mockIds.has((p.id as string) ?? ''));
+  return json({ books: [...MOCK_BOOKS, ...userBooks] });
 }
 
-export async function handleProjectsPost(req: NextRequest) {
+export async function handleBooksPost(req: NextRequest) {
   const body = await parseBody(req);
-  const id = uid('dev-p');
-  const project = {
+  const id = uid('dev-b');
+  const book = {
     id,
-    title: typeof body.title === 'string' ? body.title : '未命名项目',
+    title: typeof body.title === 'string' ? body.title : '未命名书籍',
     description: typeof body.description === 'string' ? body.description : '',
     genre: typeof body.genre === 'string' ? body.genre : 'general',
-    status: 'draft' as const,
     createdAt: now(),
     updatedAt: now(),
   };
-  projectsStore[id] = project;
-  return json({ project });
+  booksStore[id] = book;
+  return json({ book });
 }
 
-export function handleProjectDetail(id: string) {
-  const stored = projectsStore[id];
+export function handleBookDetail(id: string) {
+  const stored = booksStore[id];
   if (stored) {
-    return json({ project: stored, steps: MOCK_PROJECT_STEPS });
+    return json({ book: stored, steps: MOCK_BOOK_STEPS });
   }
-  // 未知 id（如 mock 预置项目）：返回基础信息与示例步骤，便于演示
-  const base = MOCK_PROJECTS.find((p) => p.id === id);
+  const base = MOCK_BOOKS.find((p) => p.id === id);
   return json({
-    project: base ?? { id, title: '星海拾遗', status: 'draft', createdAt: now(), updatedAt: now() },
-    steps: MOCK_PROJECT_STEPS,
+    book: base ?? { id, title: '星海拾遗', createdAt: now(), updatedAt: now() },
+    steps: MOCK_BOOK_STEPS,
   });
 }
 
-export async function handleProjectPut(id: string, req: NextRequest) {
+export async function handleBookPut(id: string, req: NextRequest) {
   const body = await parseBody(req);
-  const prev = projectsStore[id] ?? { id, createdAt: now() };
+  const prev = booksStore[id] ?? { id, createdAt: now() };
   const next = { ...prev, ...body, id, updatedAt: now() };
-  projectsStore[id] = next;
-  return json({ project: next });
+  booksStore[id] = next;
+  return json({ book: next });
 }
 
-export function handleProjectDelete(id: string) {
-  delete projectsStore[id];
+export function handleBookDelete(id: string) {
+  delete booksStore[id];
   return json({ ok: true });
 }
 
@@ -134,9 +129,8 @@ export async function handleCharactersPost(req: NextRequest) {
     id,
     name: typeof body.name === 'string' ? body.name : '未命名角色',
     description: typeof body.description === 'string' ? body.description : '',
-    projectId: (body.projectId as string | null) ?? null,
-    avatar: typeof body.avatar === 'string' ? body.avatar : undefined,
-    images: Array.isArray(body.images) ? body.images : [],
+    bookId: (body.bookId as string | null) ?? null,
+    avatarUrl: typeof body.avatarUrl === 'string' ? body.avatarUrl : undefined,
     createdAt: now(),
   };
   charactersStore[id] = character;
@@ -182,9 +176,9 @@ export async function handleCharacterAvatar(id: string, req: NextRequest) {
     }
   }
   if (charactersStore[id]) {
-    charactersStore[id] = { ...charactersStore[id], avatar: url };
+    charactersStore[id] = { ...charactersStore[id], avatarUrl: url };
   }
-  return json({ avatar_url: url, url, avatar: url });
+  return json({ avatar_url: url, url, avatarUrl: url });
 }
 
 export function handleCharacterMessages(id: string) {

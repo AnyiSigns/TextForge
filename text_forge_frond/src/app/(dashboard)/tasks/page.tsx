@@ -17,7 +17,7 @@ import { EmptyState } from '@/shared/components';
 import { ProcessNav } from '@/features/projects';
 import { PortfolioGallery } from '@/features/projects';
 import { useCharacterStore } from '@/features/characters';
-import { useBriefStore, briefToContextLine } from '@/features/projects';
+import { useCreativeSettingStore, creativeSettingToContextLine } from '@/features/projects';
 import type { GenerationContext } from '@/types';
 import { Video, Clapperboard, Film, Link as LinkIcon, LayoutGrid, BookOpen, Download } from 'lucide-react';
 import { downloadSingleImage, downloadImagesZip } from '@/lib/storage/imageExport';
@@ -34,9 +34,9 @@ export default function TasksPage() {
   const [projectSteps, setProjectSteps] = useState<{ id: string; agent?: string; nodeId?: string; content?: string }[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(defaultProjectId);
   const { characters } = useCharacterStore();
-  const brief = useBriefStore((s) => (activeProjectId ? s.briefs[activeProjectId] : undefined));
+  const creativeSetting = useCreativeSettingStore((s) => (activeProjectId ? s.settings[Number(activeProjectId)] : undefined));
   const genContext: GenerationContext | undefined = activeProjectId
-    ? { project_id: activeProjectId, summary: briefToContextLine(brief) || undefined, outline: brief?.worldview || brief?.tone || undefined }
+    ? { project_id: activeProjectId, summary: creativeSettingToContextLine(creativeSetting) || undefined, outline: creativeSetting?.worldview || creativeSetting?.tone || undefined }
     : undefined;
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -122,10 +122,10 @@ export default function TasksPage() {
               useCase={deepChapterId ? 'chapter_anim' : undefined}
               steps={projectSteps}
               chapterOptions={chapterOptions}
-              characters={activeProjectId ? characters.filter((c) => (c.projectId ?? null) === activeProjectId) : []}
-              projectCharacters={activeProjectId ? characters.filter((c) => (c.projectId ?? null) === activeProjectId) : []}
+              characters={activeProjectId ? characters.filter((c) => c.bookId === Number(activeProjectId)) : []}
+              projectCharacters={activeProjectId ? characters.filter((c) => c.bookId === Number(activeProjectId)) : []}
               context={genContext}
-              onProjectChange={setActiveProjectId}
+              onBookChange={setActiveProjectId}
               onSubmit={handleGenerate}
             />
 

@@ -3,7 +3,7 @@ from infrastructure.database import db_manager
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from repository.project_repo import CharacterRepository
-from model.project import Character
+from model.book import Character
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -14,11 +14,11 @@ class CharacterService:
         self.session = session
         self.character_repo = CharacterRepository(session)
 
-    async def get_user_characters(self, user_id: int, project_id: int | None = None):
+    async def get_user_characters(self, user_id: int, book_id: int | None = None):
         try:
             stmt = select(Character).where(Character.user_id == user_id)
-            if project_id is not None:
-                stmt = stmt.where(Character.project_id == project_id)
+            if book_id is not None:
+                stmt = stmt.where(Character.book_id == book_id)
             result = await self.session.execute(stmt)
             return result.scalars().all()
         except Exception:
@@ -76,8 +76,8 @@ class CharacterService:
             instance = await self.character_repo.get(character_id)
             if not instance or instance.user_id != user_id:
                 return None
-            old_avatar = instance.avatar
-            instance.avatar = None
+            old_avatar = instance.avatar_url
+            instance.avatar_url = None
             await self.session.commit()
             await self.session.refresh(instance)
             return old_avatar

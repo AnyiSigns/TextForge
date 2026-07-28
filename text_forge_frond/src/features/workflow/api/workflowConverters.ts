@@ -4,7 +4,7 @@ import type { WorkflowRunStep } from './workflowTypes';
 import type { Step } from '@/types';
 import { BUILTIN_WORKFLOW_ID } from '@/types';
 import type { OutlineVolume, OutlineChapter, OutlineNode } from '@/lib/storage/backup';
-import { useProjectStore } from '@/features/projects';
+import { useBookStore } from '@/features/projects';
 
 // 把 DAG 运行结果转为项目 steps：仅 agent 节点生成步骤；
 // writer 节点（写作）标记为待确认正文（waiting），其余 completed。
@@ -39,11 +39,11 @@ export function workflowToSteps(runs: WorkflowRunStep[], outline?: OutlineVolume
   return [...flowSteps, ...outlineSteps];
 }
 
-// 统计某工作流被多少项目绑定（供工作流列表"已应用到 N 个项目"展示）
+// 统计某工作流被多少书籍绑定（供工作流列表"已应用到 N 个书籍"展示）
 export function countWorkflowUsages(workflowId: string): number {
   try {
-    const projects = useProjectStore.getState().projects;
-    return projects.filter((p) => (p.workflowId ?? BUILTIN_WORKFLOW_ID) === workflowId).length;
+    const books = useBookStore.getState().books;
+    return books.filter((b) => (b.workflowId ?? BUILTIN_WORKFLOW_ID) === workflowId).length;
   } catch {
     return 0;
   }

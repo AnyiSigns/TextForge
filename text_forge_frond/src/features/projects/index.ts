@@ -11,7 +11,7 @@ export { CharacterRelationsSheet } from './ui/CharacterRelationsSheet';
 export { CharacterStatusSheet } from './ui/CharacterStatusSheet';
 export { InspirationBoard } from './ui/InspirationBoard';
 export { OutlinePanel } from './ui/OutlinePanel';
-export { WritePanel } from './ui/WritePanel';
+
 export { PortfolioGallery } from './ui/PortfolioGallery';
 export { PortfolioGrid } from './ui/PortfolioGrid';
 export { ProcessNav } from './ui/ProcessNav';
@@ -38,11 +38,11 @@ export { makeSeedActions } from './hooks/workbenchSeed';
 
 // ---- API ----
 export {
-  fetchProjects,
-  createProject,
-  deleteProject,
-  fetchProjectMeta,
-  fetchProjectCharacters,
+  fetchBooks,
+  createBook,
+  deleteBook,
+  fetchBookMeta,
+  fetchBookCharacters,
   bindWorkflow,
   generateWithWorkflow,
   buildStepFromManuscript,
@@ -56,7 +56,6 @@ export {
   deleteOutline,
 } from './api/outline';
 export type {
-  CreateProjectResponse,
   ProjectListResponse,
   ProjectResponse,
   CharactersResponse,
@@ -65,12 +64,12 @@ export type {
 } from './api/projects';
 
 // ---- Stores ----
-export { useProjectStore } from './stores/projectStore';
+export { useBookStore, useProjectStore } from './stores/bookStore';
 export { usePortfolioStore } from './stores/portfolioStore';
-export { useBriefStore, briefToContextLine, briefSectionsToContext } from './stores/briefStore';
+export { useCreativeSettingStore, creativeSettingToContextLine, creativeSettingDimensionsToContext } from './stores/creativeSettingStore';
 
 // ---- 类型 ----
 export type { ProcessTab } from './ui/ProcessNav';
 
 // ---- 共享工具 ----
-export { STATUS_MAP } from './utils/status';
+// export { STATUS_MAP } from './utils/status';

@@ -46,7 +46,7 @@ export interface ApiResponse<T = unknown> {
   message?: string;
 }
 
-export type SyncEntityType = 'projects' | 'characters' | 'briefs' | 'models' | 'settings' | 'portfolio';
+export type SyncEntityType = 'books' | 'characters' | 'creativeSettings' | 'models' | 'settings' | 'portfolio';
 
 // 后端同步响应包装；updates 默认 unknown[]，可在 syncManager 注册处标注具体类型
 // （如 SyncResponse<Project[]>），避免 unknown 丢失类型。

@@ -13,10 +13,10 @@ router = APIRouter(prefix="/characters", tags=["角色"])
 async def list_characters(
     user_id: Annotated[int, Depends(get_current)],
     character_service: Annotated[CharacterService, Depends(character_db)],
-    project_id: Annotated[int | None, Query(description="项目ID，可选")] = None,
+    book_id: Annotated[int | None, Query(description="书籍ID，可选")] = None,
 ):
     characters = await character_service.get_user_characters(
-        user_id=user_id, project_id=project_id
+        user_id=user_id, book_id=book_id
     )
     return ListCharactersResponse(characters=characters)
 
@@ -83,7 +83,7 @@ async def get_character_avatar(
     character = await character_service.get_character(user_id=user_id, character_id=id)
     if not character:
         raise HTTPException(status_code=404, detail="角色不存在")
-    return {"avatar_url": character.avatar or ""}
+    return {"avatar_url": character.avatar_url or ""}
 
 
 @router.delete("/{id}/avatar")

@@ -11,16 +11,16 @@ import { cn } from '@/lib/utils';
 import { loadOutline, saveOutline, type OutlineVolume, type OutlineChapter, type OutlineNode, type OutlineNodeStatus } from '@/lib/storage/backup';
 import { dispatchInsertStep } from '@/lib/events/projectEvents';
 import { useCharacterStore } from '@/features/characters';
-import { useBriefStore } from '@/features/projects';
+import { useCreativeSettingStore } from '@/features/projects';
 import { toast } from 'sonner';
 import { uid } from '@/lib/utils/id';
-import { listOutlines, createOutline, updateOutline, deleteOutline } from '@/features/projects';
+import { listOutlines, createOutline, updateOutline } from '@/features/projects';
 const STATUS_META: Record<OutlineNodeStatus, { label: string; cls: string; icon: typeof Circle }> = {
   writing: { label: '写', cls: 'text-amber-500', icon: PenLine },
   done: { label: '完', cls: 'text-green-500', icon: CheckCircle2 },
 };
 
-export function OutlinePanel({ projectId }: { projectId: string }) {
+export function OutlinePanel({ bookId }: { bookId: string }) {
   const [volumes, setVolumes] = useState<OutlineVolume[]>([]);
   const [loaded, setLoaded] = useState(false);
   const didHydrate = useRef(false);
@@ -31,24 +31,24 @@ export function OutlinePanel({ projectId }: { projectId: string }) {
   const [newNode, setNewNode] = useState<Record<string, string>>({});
 
   const characters = useCharacterStore((s) => s.characters);
-  const brief = useBriefStore((s) => s.briefs[projectId]);
-  const briefSections = brief?.sections ?? [];
+  const creativeSetting = useCreativeSettingStore((s) => s.settings[Number(bookId)]);
+  const creativeSettingSections = creativeSetting?.customDimensions ?? [];
   const projChars = useMemo(
-    () => characters.filter((c) => (c.projectId ?? null) === projectId),
-    [characters, projectId],
+    () => characters.filter((c) => (c.bookId ?? null) === Number(bookId)),
+    [characters, bookId],
   );
 
-  useEffect(() => {
+   useEffect(() => {
     let active = true;
     setLoaded(false);
     (async () => {
       try {
-        const items = await listOutlines(Number(projectId));
+        const items = await listOutlines(Number(bookId));
         if (!active) return;
         if (items.length > 0 && Array.isArray(items[0].data)) {
           setVolumes(items[0].data);
         } else {
-          const local = await loadOutline(projectId);
+          const local = await loadOutline(bookId);
           if (!active) return;
           setVolumes((prev) => {
             if (prev.length) return prev;
@@ -58,7 +58,7 @@ export function OutlinePanel({ projectId }: { projectId: string }) {
         }
       } catch {
         if (!active) return;
-        loadOutline(projectId).then((v) => {
+        loadOutline(bookId).then((v) => {
           if (!active) return;
           setVolumes((prev) => {
             if (prev.length) return prev;
@@ -71,30 +71,30 @@ export function OutlinePanel({ projectId }: { projectId: string }) {
       setLoaded(true);
     })();
     return () => { active = false; };
-  }, [projectId]);
+  }, [bookId]);
 
   // 种子生成写回大纲后，被动刷新本地 state（用户在大纲 tab 时不会错过更新）
   useEffect(() => {
     const onSeeded = (e: Event) => {
-      const detail = (e as CustomEvent<{ projectId: string }>).detail;
-      if (detail?.projectId !== projectId) return;
+      const detail = (e as CustomEvent<{ bookId: string }>).detail;
+      if (detail?.bookId !== bookId) return;
       skipNextSave.current = true;
-      loadOutline(projectId).then((v) => setVolumes(v)).catch(() => {});
+      loadOutline(bookId).then((v) => setVolumes(v)).catch(() => {});
     };
     window.addEventListener('outline-seeded', onSeeded);
     return () => window.removeEventListener('outline-seeded', onSeeded);
-  }, [projectId]);
+  }, [bookId]);
 
   useEffect(() => {
     if (!didHydrate.current) return; // 首载完成前不保存，避免吞掉/误存加载前的编辑
     if (skipNextSave.current) { skipNextSave.current = false; return; }
-    saveOutline(projectId, volumes).catch(() => {});
-  }, [loaded, volumes, projectId]);
+    saveOutline(bookId, volumes).catch(() => {});
+  }, [loaded, volumes, bookId]);
 
   useEffect(() => {
     if (!loaded || !didHydrate.current) return;
     if (skipNextSave.current) { skipNextSave.current = false; return; }
-    const pid = Number(projectId);
+    const pid = Number(bookId);
     (async () => {
       try {
         const existing = await listOutlines(pid);
@@ -107,7 +107,7 @@ export function OutlinePanel({ projectId }: { projectId: string }) {
         // backend sync failure is non-blocking
       }
     })();
-  }, [loaded, volumes, projectId]);
+  }, [loaded, volumes, bookId]);
 
   const stats = useMemo(() => {
     const arr = Array.isArray(volumes) ? volumes : [];
@@ -162,7 +162,7 @@ export function OutlinePanel({ projectId }: { projectId: string }) {
 
   const generateThisChapter = (volTitle: string, chap: OutlineChapter) => {
     const summary = chap.nodes.map((n) => `- ${n.title}：${n.content || ''}`).join('\n');
-    dispatchInsertStep({ projectId, title: `大纲·${volTitle}/${chap.title}`, content: summary });
+    dispatchInsertStep({ bookId: String(bookId), title: `大纲·${volTitle}/${chap.title}`, content: summary });
     toast.success(`已把「${chap.title}」大纲发送到工作台，可在工作台生成此章`);
     // 标记该章节点为写作中
     chap.nodes.forEach((n) => patchNode(chap.id, n.id, { status: 'writing' }));
@@ -284,16 +284,16 @@ export function OutlinePanel({ projectId }: { projectId: string }) {
                               <div className="flex items-center gap-2 flex-wrap">
                                 {/* 关联角色 */}
                                 <div className="flex flex-wrap gap-1">
-                                  {projChars.map((c) => {
-                                    const on = node.charIds?.includes(c.id);
-                                    return (
-                                      <button
-                                        key={c.id}
-                                        onClick={() => {
-                                          const set = new Set(node.charIds ?? []);
-                                          if (on) set.delete(c.id); else set.add(c.id);
-                                          patchNode(chap.id, node.id, { charIds: [...set] });
-                                        }}
+                                 {projChars.map((c) => {
+                                   const on = node.charIds?.includes(String(c.id));
+                                   return (
+                                     <button
+                                       key={c.id}
+                                       onClick={() => {
+                                         const set = new Set(node.charIds ?? []);
+                                         if (on) set.delete(String(c.id)); else set.add(String(c.id));
+                                         patchNode(chap.id, node.id, { charIds: [...set] });
+                                       }}
                                         className={cn('px-1.5 py-0.5 rounded-full text-[10px] border', on ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground')}
                                       >
                                         {c.name}
@@ -301,25 +301,25 @@ export function OutlinePanel({ projectId }: { projectId: string }) {
                                     );
                                   })}
                                 </div>
-                                {/* 关联设定维度 */}
-                                <div className="flex flex-wrap gap-1">
-                                  {briefSections.map((sec) => {
-                                    const on = node.sectionIds?.includes(sec.id);
-                                    return (
-                                      <button
-                                        key={sec.id}
-                                        onClick={() => {
-                                          const set = new Set(node.sectionIds ?? []);
-                                          if (on) set.delete(sec.id); else set.add(sec.id);
-                                          patchNode(chap.id, node.id, { sectionIds: [...set] });
-                                        }}
-                                        className={cn('px-1.5 py-0.5 rounded-full text-[10px] border', on ? 'bg-primary/10 text-primary border-primary/40' : 'border-border text-muted-foreground')}
-                                      >
-                                        {sec.title}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
+                                 {/* 关联设定维度 */}
+                                 <div className="flex flex-wrap gap-1">
+                                   {creativeSettingSections.map((sec) => {
+                                     const on = node.sectionIds?.includes(sec.id);
+                                     return (
+                                       <button
+                                         key={sec.id}
+                                         onClick={() => {
+                                           const set = new Set(node.sectionIds ?? []);
+                                           if (on) set.delete(sec.id); else set.add(sec.id);
+                                           patchNode(chap.id, node.id, { sectionIds: [...set] });
+                                         }}
+                                         className={cn('px-1.5 py-0.5 rounded-full text-[10px] border', on ? 'bg-primary/10 text-primary border-primary/40' : 'border-border text-muted-foreground')}
+                                       >
+                                         {sec.title}
+                                       </button>
+                                     );
+                                   })}
+                                 </div>
                                                                     
                               </div>
                             </div>

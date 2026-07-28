@@ -9,14 +9,14 @@ export type InsertTarget =
   | { kind: 'outline'; volumeId: string; chapterId: string; nodeId: string };
 
 export interface InsertStepDetail {
-  projectId: string;
+  bookId: string;
   title: string;
   content: string;
   target?: InsertTarget;
 }
 
 export interface InsertOutlineNoteDetail {
-  projectId: string;
+  bookId: string;
   volumeId: string;
   chapterId: string;
   nodeId: string;
