@@ -46,7 +46,7 @@ export default function DashboardPage() {
       await Promise.all(
         books.map(async (p) => {
           try {
-            const chs = await getManuscriptChapters(p.id);
+             const chs = await getManuscriptChapters(String(p.id));
             counts[p.id] = {
               total: chs.length,
               written: chs.filter((c) => c.content?.trim()).length,
@@ -169,7 +169,7 @@ export default function DashboardPage() {
                 {books.map((p) => {
                   const count = chapterCounts[p.id] ?? { total: 0, written: 0 };
                   const imgs = characters.filter((c) => c.bookId === p.id).reduce((acc, c) => acc + (c.avatarUrl ? 1 : 0), 0);
-                  const vids = mediaTasks.filter((t) => t.book_id === p.id).length;
+                  const vids = mediaTasks.filter((t) => t.project_id === String(p.id)).length;
                   return (
                     <Link key={p.id} href={`/projects/${p.id}`} className="flex items-center justify-between gap-3 rounded-xl border border-border/40 bg-background/40 px-4 py-3 hover:border-primary/30 transition-colors">
                       <div className="min-w-0">

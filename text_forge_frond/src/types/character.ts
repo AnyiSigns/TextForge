@@ -13,6 +13,7 @@ export type CharacterRole =
 
 /** 角色关系：指向本项目的另一个角色，并可自定义关系描述（如「青梅竹马、暗恋」）。 */
 export interface CharacterRelation {
+  id: string;
   target: string;
   relation: string;
 }
@@ -20,6 +21,7 @@ export interface CharacterRelation {
 export interface Character {
   id: number;
   bookId: number;
+  projectId?: number;
   name: string;
   avatarUrl?: string;
   aliases?: string[] | null;
@@ -29,4 +31,10 @@ export interface Character {
   relationshipChain?: CharacterRelation[];
   createdAt: string;
   updatedAt: string;
+  role?: string;
+  currentProfile?: string;
+  images?: string[];
+  referenceImages?: string[];
+  referenceImage?: string;
+  imageSeed?: string;
 }

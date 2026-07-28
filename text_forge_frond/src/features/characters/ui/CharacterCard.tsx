@@ -12,7 +12,7 @@ import { CharacterStudioSheet } from './CharacterStudioSheet';
 
 interface Props {
   character: Character;
-  onDelete: (id: string) => void;
+  onDelete: (id: number) => void;
 }
 
 export function CharacterCard({ character, onDelete }: Props) {
@@ -24,12 +24,12 @@ export function CharacterCard({ character, onDelete }: Props) {
       <CardHeader className="pb-2">
         <div className="flex items-center gap-3">
           <Avatar className="w-12 h-12 border-2 border-border">
-            <AvatarImage src={character.avatar} />
+            <AvatarImage src={character.avatarUrl} />
             <AvatarFallback className="text-lg">{character.name.slice(0, 2)}</AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
             <CardTitle className="text-lg">{character.name}</CardTitle>
-            {character.novelId && (
+            {character.bookId && (
               <Badge variant="outline" className="text-xs gap-1 mt-0.5">已关联小说</Badge>
             )}
           </div>

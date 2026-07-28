@@ -1,7 +1,7 @@
 // src/features/characters/lib/characterRefs.ts
 // 角色参考图 / 匹配 / 关系 id 的纯函数集合（跨 hook 复用，避免重复实现）。
 // 纯函数、无副作用，便于单测。
-import type { Character, CharacterRelationship } from '@/types';
+import type { Character, CharacterRelation } from '@/types';
 
 /** 归并角色参考图 URL：优先用多张 referenceImages，否则回退单张 referenceImage（与原内联逻辑一致）。 */
 export function collectReferenceImages(
@@ -31,8 +31,8 @@ export function makeRelationId(): string {
 }
 
 /** 仅保留已选对端且填写关系描述的项（保存关系前过滤）。 */
-export function pruneRelations(draft: CharacterRelationship[]): CharacterRelationship[] {
-  return draft.filter((r) => r.targetId && r.relation.trim());
+export function pruneRelations(draft: CharacterRelation[]): CharacterRelation[] {
+  return draft.filter((r) => r.target && r.relation.trim());
 }
 
 export type { Character };

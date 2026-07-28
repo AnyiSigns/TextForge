@@ -4,6 +4,8 @@
 import apiClient from '@/shared/lib/apiClient';
 import type { Volume, VolumeRequest, VolumeResponse } from '@/types';
 
+export type { Volume, VolumeRequest };
+
 export interface ListVolumesResponse {
   volumes: VolumeResponse[];
 }

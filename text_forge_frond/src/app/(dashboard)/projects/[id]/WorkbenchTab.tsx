@@ -293,7 +293,7 @@ export function WorkbenchTab({
               step={step}
               index={index}
               onSetAsMainText={handleSetAsMainText}
-              bookId={bookId}
+              bookId={Number(bookId)}
             />
           ))}
         </div>

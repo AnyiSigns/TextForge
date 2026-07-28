@@ -29,7 +29,7 @@ export async function fetchCharacters(bookId?: number): Promise<Character[]> {
 export interface CreateCharacterRequest {
   name: string;
   description: string;
-  bookId?: number;
+  bookId?: number | null;
   avatarUrl?: string;
 }
 
@@ -81,7 +81,7 @@ export async function sendChatMessage(id: number, req: ChatMessageRequest): Prom
   const body: Record<string, unknown> = {
     message: req.message,
   };
-  if (req.book_id) body.book_id = req.book_id;
+  if (req.project_id) body.project_id = req.project_id;
   if (req.brief) body.brief = req.brief;
   if (req.character_name) body.character_name = req.character_name;
   if (req.character_description) body.character_description = req.character_description;

@@ -35,7 +35,7 @@ export default function AssetsPage() {
   const creativeSetting = useCreativeSettingStore((s) => (bookId ? s.settings[Number(bookId)] : undefined));
   const genContext: GenerationContext | undefined = bookId
     ? {
-        book_id: bookId,
+        project_id: Number(bookId),
         summary: creativeSettingToContextLine(creativeSetting) || undefined,
         brief: creativeSettingToContextLine(creativeSetting) || undefined,
       }
@@ -45,7 +45,7 @@ export default function AssetsPage() {
   const deepProjectId = searchParams.get('project');
   const deepChapterId = searchParams.get('chapter');
   const deepCharacter = deepCharacterId
-    ? characters.find((c) => c.id === deepCharacterId)
+    ? characters.find((c) => c.id === Number(deepCharacterId))
     : undefined;
   const defaultCharacterId = deepCharacter?.id ?? null;
   const defaultProjectId = deepProjectId ?? deepCharacter?.bookId ?? null;
@@ -68,32 +68,11 @@ export default function AssetsPage() {
     ? characters.filter((c) => c.bookId === Number(bookId))
     : [];
 
-  useEffect(() => {
+   useEffect(() => {
     const load = async () => {
       try {
-        const list = await fetchImageResults(projectId ?? undefined);
+        const list = await fetchImageResults(bookId ?? undefined);
         setItems(list);
-        // 生成完成的图片自动写回角色图库（后端未回写时本地兜底）
-        const { addCharacterImage } = useCharacterStore.getState();
-        for (const it of list) {
-          if (it.status !== 'completed' || !it.result_url) continue;
-          if (it.source === 'character' && it.source_ref) {
-            const char = useCharacterStore
-              .getState()
-              .characters.find((c) => c.id === it.source_ref);
-            if (char && !(char.images ?? []).includes(it.result_url)) {
-              await addCharacterImage(it.source_ref, it.result_url).catch(() => {});
-            }
-          } else if (it.source === 'chapter' && it.character_ids && it.character_ids.length) {
-            // 章节插图：自动加入该章出场角色的角色素材
-            for (const cid of it.character_ids) {
-              const char = useCharacterStore.getState().characters.find((c) => c.id === cid);
-              if (char && !(char.images ?? []).includes(it.result_url)) {
-                await addCharacterImage(cid, it.result_url).catch(() => {});
-              }
-            }
-          }
-        }
       } catch {
         /* ignore */
       }
@@ -105,7 +84,7 @@ export default function AssetsPage() {
 
   const handleGenerate = async (p: ImageRequest) => {
     try {
-      const selChar = p.characterId ? characters.find((c) => c.id === p.characterId) : undefined;
+      const selChar = p.characterId ? characters.find((c) => c.id === Number(p.characterId)) : undefined;
       const refImages = selChar
         ? (selChar.avatarUrl ? [selChar.avatarUrl] : []).slice(0, 5)
         : undefined;
@@ -115,7 +94,7 @@ export default function AssetsPage() {
       };
       await submitImage(payload);
       toast.success('生成成功，已加入队列');
-      if (payload.book_id) setBookId(String(payload.book_id));
+      if (payload.project_id) setBookId(String(payload.project_id));
     } catch (error: unknown) {
       toast.error('提交失败', { description: describeGenError(error) });
     }
@@ -138,16 +117,16 @@ export default function AssetsPage() {
             <GenerationForm
               key={`${defaultCharacterId ?? ''}-${defaultChapterId ?? ''}`}
               kind="image"
-              defaultBookId={defaultProjectId}
-              defaultCharacterId={defaultCharacterId}
+              defaultBookId={defaultProjectId ? String(defaultProjectId) : null}
+              defaultCharacterId={defaultCharacterId ? String(defaultCharacterId) : null}
               defaultChapterId={defaultChapterId}
               useCase={defaultUseCase}
               defaultPrompt={defaultPrompt}
               context={genContext}
               characterImages={characterImages}
-              projectCharacters={projectCharacters}
+              projectCharacters={projectCharacters.map(c => ({ id: String(c.id), name: c.name }))}
               characters={
-                bookId ? characters.filter((c) => c.bookId === Number(bookId)) : []
+                bookId ? characters.filter((c) => c.bookId === Number(bookId)).map(c => ({ id: String(c.id), name: c.name })) : []
               }
               onBookChange={setBookId}
               onSubmit={handleGenerate}

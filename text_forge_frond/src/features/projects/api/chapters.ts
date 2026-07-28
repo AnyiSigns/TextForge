@@ -4,6 +4,8 @@
 import apiClient from '@/shared/lib/apiClient';
 import type { Chapter, ChapterRequest, ChapterResponse } from '@/types';
 
+export type { Chapter, ChapterRequest };
+
 export interface ListChaptersResponse {
   chapters: ChapterResponse[];
 }

@@ -29,7 +29,7 @@ const ManuscriptEditor = dynamic(
 
 export default function ManuscriptProjectPage() {
   const { id: projectId } = useParams<{ id: string }>();
-  const projects = useProjectStore((s) => s.projects);
+  const projects = useProjectStore((s) => s.books);
   const loadProjects = useProjectStore((s) => s.load);
   const loadChapters = useManuscriptStore((s) => s.load);
   const [ready, setReady] = useState(false);
@@ -39,7 +39,7 @@ export default function ManuscriptProjectPage() {
     loadChapters(projectId).catch(() => {});
   }, [projectId, loadProjects, loadChapters]);
 
-  const project = projects.find((p) => p.id === projectId);
+  const project = projects.find((p) => p.id === Number(projectId));
 
   if (!ready) return <Spinner label="正在加载手稿编辑器…" />;
 

@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Plus, Search, FolderKanban, Pin, PinOff, LayoutGrid, List, Trash2, Loader2, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
-import { Project } from '@/types';
+import type { Book } from '@/types';
 import { PageHeader } from '@/shared/components';
 import { Spinner, EmptyState } from '@/shared/components';
 import { useBookStore } from '@/features/projects';
@@ -24,7 +24,7 @@ export default function ProjectsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   // 空态「一句话开局」：从一句话直接建项目并生成设定
   const [seedPrompt, setSeedPrompt] = useState('');
   const [isSeeding, setIsSeeding] = useState(false);
@@ -34,7 +34,7 @@ export default function ProjectsPage() {
       .finally(() => setIsLoading(false));
   }, [load]);
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: number) => {
     if (!confirm('确定要删除这本书吗？')) return;
     try {
       await removeProject(id);
@@ -196,7 +196,7 @@ export default function ProjectsPage() {
             {filtered.map(book => (
               <ProjectRow
                 key={book.id}
-                project={book}
+                book={book}
                 selected={selectedIds.has(book.id)}
                 onToggleSelect={(checked) => {
                   const newSet = new Set(selectedIds);
@@ -233,7 +233,7 @@ export default function ProjectsPage() {
               >
                 {book.pinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
               </button>
-              <ProjectCard project={book} onDelete={handleDelete} />
+              <ProjectCard book={book} onDelete={handleDelete} />
             </div>
           ))}
         </div>
@@ -249,10 +249,10 @@ function ProjectRow({
   onDelete,
   onTogglePin,
 }: {
-  book: Project;
+  book: Book;
   selected: boolean;
   onToggleSelect: (checked: boolean) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: number) => void;
   onTogglePin: () => void;
 }) {
   return (

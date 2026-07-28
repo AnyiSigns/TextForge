@@ -39,7 +39,7 @@ export async function fetchVideoTasks(): Promise<MediaTask[]> {
 
 export async function fetchImageResults(bookId?: string): Promise<MediaTask[]> {
   const { data } = await apiClient.get<ImageResultsResponse>('/api/generate/image/results', {
-    params: bookId ? { book_id: bookId } : undefined,
+    params: bookId ? { project_id: bookId } : undefined,
   });
   const list = data.tasks || data.results || [];
   return list.map((t) => ({ ...t, kind: 'image' as const }) as MediaTask);
@@ -72,5 +72,5 @@ export async function fetchProjectPortfolio(bookId?: string): Promise<MediaTask[
     fetchVideoTasks().catch(() => []),
     fetchImageResults(bookId).catch(() => []),
   ]);
-  return [...videos, ...images].filter((t) => t.book_id === bookId);
+  return [...videos, ...images].filter((t) => t.project_id === bookId);
 }

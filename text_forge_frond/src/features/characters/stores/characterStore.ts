@@ -125,7 +125,7 @@ export const useCharacterStore = create<CharacterStore>()(
 
       addCharacter: async (input) => {
         const optimistic: Character = {
-          id: uid(),
+          id: Number(uid()),
           bookId: input.bookId ?? 0,
           name: input.name,
           description: input.description,

@@ -99,10 +99,10 @@ export type {
   CreativeSettingResponse,
 } from './api/creativeSettings';
 export type {
-  ProjectListResponse,
-  ProjectResponse,
+  BookListResponse,
+  BookResponse,
+  BookDetail,
   CharactersResponse,
-  ProjectDetail,
   GenerateOptions,
 } from './api/projects';
 

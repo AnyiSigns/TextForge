@@ -23,7 +23,7 @@ export async function fetchBooks(): Promise<Book[]> {
   return data.books || [];
 }
 
-export async function createBook(body: CreateBookRequest, version?: number): Promise<Book> {
+export async function createBook(body: CreateBookRequest, version?: number): Promise<Book & { version?: number }> {
   const config = version ? { headers: { 'If-Match': String(version) } } : undefined;
   const { data } = await apiClient.post<Book>('/api/books', body, config);
   return { ...data, version };
@@ -86,7 +86,7 @@ export async function generateWithWorkflow(
 
   const streamStep: NonNullable<RunWorkflowOptions['onStep']> = (nodeId, label, output, systemPrompt, status) => {
     const resolved = resolveLabel(nodeId, label);
-    const step = runStepToStreamStep({ nodeId, label: resolved, output, status: status === 'done' ? 'completed' : 'streaming', systemPrompt });
+    const step = runStepToStreamStep({ nodeId, label: resolved, output, status: status ?? 'done', systemPrompt });
     if (step) onStep?.(step);
     runOpts?.onStep?.(nodeId, resolved, output, systemPrompt);
   };
@@ -106,12 +106,17 @@ export async function generateWithWorkflow(
 
 function runStepToStreamStep(run: WorkflowRunStep): Step | null {
   if (!run.nodeId) return null;
+  const statusMap: Record<string, Step['status']> = {
+    running: 'streaming',
+    done: 'completed',
+    error: 'failed',
+  };
   return {
     id: `step-${run.nodeId}-${Date.now()}`,
     agent: run.nodeId,
     agentName: run.label,
     content: run.output,
-    status: 'completed',
+    status: statusMap[run.status] ?? 'completed',
     nodeId: run.nodeId,
   };
 }

@@ -6,7 +6,7 @@ import {
   makeRelationId,
   pruneRelations,
 } from './characterRefs';
-import type { CharacterRelationship } from '@/types';
+import type { CharacterRelation } from '@/types';
 
 describe('characterRefs - 角色参考图与匹配纯函数', () => {
   it('collectReferenceImages 多张优先、单张回退、去重', () => {
@@ -41,11 +41,11 @@ describe('characterRefs - 角色参考图与匹配纯函数', () => {
   });
 
   it('pruneRelations 仅保留有对端与关系描述的项', () => {
-    const draft: CharacterRelationship[] = [
-      { id: '1', targetId: 'a', relation: '宿敌' },
-      { id: '2', targetId: '', relation: '友' },
-      { id: '3', targetId: 'b', relation: '   ' },
+    const draft: CharacterRelation[] = [
+      { target: 'a', relation: '宿敌' },
+      { target: '', relation: '友' },
+      { target: 'b', relation: '   ' },
     ];
-    expect(pruneRelations(draft).map((r) => r.id)).toEqual(['1']);
+    expect(pruneRelations(draft).map((r) => r.target)).toEqual(['a']);
   });
 });

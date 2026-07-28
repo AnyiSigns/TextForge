@@ -31,19 +31,19 @@ export default function CharacterChatPage() {
   const getThreadId = useCharacterStore((s) => s.getThreadId);
   const setThreadId = useCharacterStore((s) => s.setThreadId);
 
-  const projectId = character?.projectId ?? null;
-  const creativeSetting = useCreativeSettingStore((s) => (projectId ? s.settings[Number(projectId)] : undefined));
+  const bookId = character?.bookId ?? null;
+  const creativeSetting = useCreativeSettingStore((s) => (bookId ? s.settings[Number(bookId)] : undefined));
   const briefLine = creativeSettingToContextLine(creativeSetting);
-  const [threadId, setThreadIdState] = useState<string | undefined>(character ? getThreadId(character.id, projectId) : undefined);
+  const [threadId, setThreadIdState] = useState<string | undefined>(character ? getThreadId(character.id, bookId) : undefined);
 
   useEffect(() => {
-    setThreadIdState(character ? getThreadId(character.id, projectId) : undefined);
-  }, [character?.id, projectId]);
+    setThreadIdState(character ? getThreadId(character.id, bookId) : undefined);
+  }, [character?.id, bookId]);
 
   useEffect(() => {
     if (!threadId || !charId) return;
     let cancelled = false;
-    fetchCharacterMessages(charId, threadId)
+    fetchCharacterMessages(Number(charId), threadId)
       .then(msgs => { if (!cancelled) setMessages(msgs); })
       .catch(e => toast.error('加载历史失败', { description: e instanceof Error ? e.message : '未知错误' }));
     return () => { cancelled = true; };
@@ -60,8 +60,8 @@ export default function CharacterChatPage() {
 
   useEffect(() => {
     Promise.all([
-      fetchCharacterDetail(charId),
-      fetchCharacterMessages(charId, threadId),
+      fetchCharacterDetail(Number(charId)),
+      fetchCharacterMessages(Number(charId), threadId),
     ])
       .then(([char, msgs]) => { setCharacter(char); setMessages(msgs); })
       .catch(e => toast.error('加载失败', { description: e instanceof Error ? e.message : '未知错误' }))
@@ -97,9 +97,9 @@ export default function CharacterChatPage() {
         .slice(-20)
         .map((m) => ({ role: m.role, content: m.content }));
 
-      const response = await sendChatMessage(charId, {
+      const response = await sendChatMessage(Number(charId), {
         message: sentInput,
-        project_id: projectId ?? undefined,
+        project_id: bookId ? String(bookId) : undefined,
         brief: briefLine || undefined,
         character_name: name,
         character_description: desc,
@@ -122,7 +122,7 @@ export default function CharacterChatPage() {
           try {
             const parsed = JSON.parse(data);
             if (parsed?.type === 'meta' && typeof parsed?.thread_id === 'string') {
-              setThreadId(character.id, projectId, parsed.thread_id);
+              setThreadId(character.id, bookId, parsed.thread_id);
             } else if (typeof parsed?.content === 'string') {
               aiContent += parsed.content;
               setMessages(prev => prev.map(m => m.id === placeholderId ? { ...m, content: aiContent } : m));
@@ -138,36 +138,35 @@ export default function CharacterChatPage() {
   };
 
   const convertToChapter = async () => {
-    if (!projectId) { toast.error('该角色未关联项目，无法转为章节'); return; }
+    if (!bookId) { toast.error('该角色未关联项目，无法转为章节'); return; }
     const content = messages
       .map((m) => (m.role === 'user' ? '你' : name) + '：' + m.content)
       .join('\n\n');
     if (!content.trim()) { toast.error('当前对话为空'); return; }
     try {
-      const chapter = await addChapter(projectId, `${name}的对话记录`);
+      const chapter = await addChapter(String(bookId), `${name}的对话记录`);
       await useManuscriptStore.getState().updateChapter(chapter.id, { content });
-      toast.success('已转为手稿章节，去手稿继续创作', { action: { label: '前往', onClick: () => router.push(`/manuscript/${projectId}`) } });
+      toast.success('已转为手稿章节，去手稿继续创作', { action: { label: '前往', onClick: () => router.push(`/manuscript/${bookId}`) } });
     } catch {
       toast.error('转为章节失败');
     }
   };
 
   const saveAsInspiration = async () => {
-    if (!projectId) { toast.error('该角色未关联项目，无法保存章节摘要'); return; }
+    if (!bookId) { toast.error('该角色未关联项目，无法保存章节摘要'); return; }
     const content = messages
       .map((m) => (m.role === 'user' ? '你' : name) + '：' + m.content)
       .join('\n\n');
     if (!content.trim()) { toast.error('当前对话为空'); return; }
     try {
-      const items = await loadInspiration(projectId);
+      const items = await loadInspiration(String(bookId));
       const item: InspirationItem = {
         id: `insp-${Date.now()}`,
         type: 'text',
         content: `【与${name}的对话】\n${content}`,
         note: `来自角色对话 · ${new Date().toLocaleString('zh-CN')}`,
-        createdAt: new Date().toISOString(),
       };
-      await saveInspiration(projectId, [item, ...items]);
+      await saveInspiration(String(bookId), [item, ...items]);
       toast.success('已保存为项目章节摘要');
     } catch {
       toast.error('保存章节摘要失败');
@@ -188,7 +187,7 @@ export default function CharacterChatPage() {
 
   if (isLoadingData) return <div className="flex items-center justify-center h-full">加载中...</div>;
   const name = character?.name ?? '';
-  const avatar = character?.avatar ?? '';
+  const avatar = character?.avatarUrl ?? '';
   const desc = character?.description ?? '';
 
   if (!character) return <div className="flex items-center justify-center h-full">角色不存在</div>;
@@ -201,7 +200,7 @@ export default function CharacterChatPage() {
         name={name}
         avatar={avatar}
         desc={desc}
-        projectId={projectId}
+        projectId={bookId ? String(bookId) : null}
         search={search}
         isLoading={isLoading}
         showClearConfirm={showClearConfirm}
@@ -245,7 +244,7 @@ export default function CharacterChatPage() {
         name={name}
         avatar={avatar}
         desc={desc}
-        projectId={projectId}
+        projectId={bookId ? String(bookId) : null}
         open={isSettingsOpen}
         onOpenChange={setIsSettingsOpen}
       />

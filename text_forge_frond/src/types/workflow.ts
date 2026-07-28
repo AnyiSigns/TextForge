@@ -41,13 +41,14 @@ export interface GenerationContextCharacter {
 }
 
 export interface GenerationContext {
-  book_id: number;
+  project_id: number;
   book_title?: string;
   summary?: string;
+  brief?: string;
   plot_summary?: string;
-  characters?: GenerationContextCharacter[];
   outline?: string;
   outlineTree?: GenerationContextOutlineVolume[];
+  characters?: GenerationContextCharacter[];
   sections?: { title: string; content: string }[];
   source?: 'character' | 'chapter';
   source_ref?: string;

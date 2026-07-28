@@ -53,7 +53,7 @@ export default function CreateCharacterPage() {
     }
     setIsLoading(true);
     try {
-      const character = await useCharacterStore.getState().addCharacter({ name, description, projectId, avatar: avatarFile ? undefined : avatar || undefined });
+      const character = await useCharacterStore.getState().addCharacter({ name, description, bookId: projectId ? Number(projectId) : null, avatarUrl: avatarFile ? undefined : avatar || undefined });
       if (avatarFile) {
         try {
           await uploadAvatar(character.id, avatarFile);

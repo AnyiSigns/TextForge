@@ -26,7 +26,6 @@ export function CharacterStudioSheet({
   onOpenChange: (o: boolean) => void;
 }) {
   const updateCharacter = useCharacterStore((s) => s.updateCharacter);
-  const addCharacterImage = useCharacterStore((s) => s.addCharacterImage);
   const images = character.images ?? [];
   const [askInsert, setAskInsert] = useState<string | null>(null);
   const [showGenerate, setShowGenerate] = useState(false);
@@ -37,7 +36,7 @@ export function CharacterStudioSheet({
     setAskInsert(img);
     const pid = character.projectId;
     if (!pid) return;
-    loadOutline(pid)
+    loadOutline(String(pid))
       .then((vols) => {
         setOutline(vols);
         const chapters = vols.flatMap((v) => v.chapters.map((c) => ({ id: c.id, title: c.content?.match(/^#\s*(.+)$/m)?.[1]?.trim() || c.title || 'untitled' })));
@@ -99,12 +98,12 @@ export function CharacterStudioSheet({
             }),
           };
         });
-        await saveOutline(pid, next);
-        toast.success('已插入大纲节点');
+       await saveOutline(String(pid), next);
+         toast.success('已插入大纲节点');
         return;
       }
       const step = { id: `step-${Date.now()}`, agent: `${character.name} image`, content, status: 'completed' as const };
-      await useProjectStore.getState().saveDraft(pid, [step]);
+      await useProjectStore.getState().saveDraft(String(pid), [step]);
       dispatchInsertStep({ projectId: pid, title: `${character.name} image`, content });
       toast.success('已发送到工作台');
     } catch {
@@ -244,7 +243,7 @@ export function CharacterStudioSheet({
             <GenerationForm
               kind="image"
               defaultCharacterId={character.id}
-              defaultProjectId={character.projectId}
+              defaultBookId={character.projectId ? String(character.projectId) : null}
               characterImages={character.referenceImages?.length ? character.referenceImages.slice(0, 5) : []}
               submitLabel="生成并加入图库"
               onSubmit={async (payload) => {
@@ -255,13 +254,11 @@ export function CharacterStudioSheet({
                     style: payload.style,
                     size: payload.size,
                     count: payload.count,
-                    project_id: payload.project_id,
-                    characterId: character.id,
+                    book_id: payload.book_id,
                     reference_images: character.referenceImages?.length ? character.referenceImages.slice(0, 5) : undefined,
                   });
                   const url = task?.result_url || `https://picsum.photos/seed/${character.id}-${Date.now()}/512`;
-                  await addCharacterImage(character.id, url);
-                  toast.success('已生成并加入角色图库');
+                   toast.success('已生成并加入角色图库');
                   setShowGenerate(false);
                 } catch {
                   toast.error('生成失败，请检查模型或后端连接');

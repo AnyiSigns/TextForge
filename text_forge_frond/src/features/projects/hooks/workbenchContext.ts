@@ -62,7 +62,7 @@ export function makeBuildContext(deps: BuildContextDeps) {
       : undefined;
 
     return {
-      book_id: bookId,
+      project_id: bookId,
       book_title: bookTitle,
       brief: briefLine,
       plot_summary: plotSummary || undefined,

@@ -37,7 +37,7 @@ export default function CharactersPage() {
   const [projectFilter, setProjectFilter] = useState<string>(NO_PROJECT);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [isLoading, setIsLoading] = useState(true);
-  const { projects } = useProjectStore();
+  const { books } = useProjectStore();
 
   useEffect(() => {
     syncFromBackend()
@@ -45,7 +45,7 @@ export default function CharactersPage() {
       .finally(() => setIsLoading(false));
   }, [syncFromBackend]);
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: number) => {
     if (!confirm('确定要删除这个角色吗？')) return;
     try {
       await removeCharacter(id);
@@ -57,7 +57,7 @@ export default function CharactersPage() {
 
   const filtered = characters
     .filter(c => (c.name ?? '').includes(searchTerm) || (c.description ?? '').includes(searchTerm))
-    .filter(c => projectFilter === NO_PROJECT ? true : String(c.projectId ?? '') === String(projectFilter))
+    .filter(c => projectFilter === NO_PROJECT ? true : String(c.bookId ?? '') === String(projectFilter))
     .sort((a, b) => sortKey === 'name'
       ? (a.name ?? '').localeCompare(b.name ?? '', 'zh')
       : (b.createdAt || '').localeCompare(a.createdAt || ''));
@@ -151,8 +151,8 @@ export default function CharactersPage() {
             <CharacterRow
               key={char.id}
               character={char}
-              projectTitle={char.projectId !== undefined && char.projectId !== null ? projects.find((p) => String(p.id) === String(char.projectId))?.title : undefined}
-              onDelete={handleDelete}
+              projectTitle={char.bookId !== undefined && char.bookId !== null ? books.find((p) => p.id === char.bookId)?.title : undefined}
+               onDelete={(id: number) => handleDelete(id)}
             />
           ))}
         </div>
@@ -174,14 +174,14 @@ function CharacterRow({
 }: {
   character: Character;
   projectTitle?: string;
-  onDelete: (id: string) => void;
+  onDelete: (id: number) => void;
 }) {
-  const role = character.role ? (ROLE_LABEL[character.role] ?? character.role) : undefined;
+  const role = (character as any).role ? (ROLE_LABEL[(character as any).role] ?? (character as any).role) : undefined;
   const [studio, setStudio] = useState(false);
   return (
     <div className="flex items-center gap-3 p-2 border border-border/40 rounded-lg bg-background/30">
       <Avatar className="w-9 h-9 border border-border shrink-0">
-        <AvatarImage src={character.avatar} />
+        <AvatarImage src={(character as any).avatar || character.avatarUrl} />
         <AvatarFallback className="text-sm">{character.name.slice(0, 2)}</AvatarFallback>
       </Avatar>
       <div className="flex-1 min-w-0">

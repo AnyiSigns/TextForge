@@ -5,7 +5,7 @@
 // 行为与抽离前保持一致，未做功能改动。
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Character, CharacterRole, CharacterRelationship } from '@/types';
+import { Character, CharacterRole, CharacterRelation } from '@/types';
 import { useCharacterStore } from '@/features/characters';
 import { useProjectCharacters } from '@/features/projects';
 import { uploadAvatar } from '@/features/characters';
@@ -27,7 +27,7 @@ export function useProjectCharactersTab(bookId: number) {
   const [statusTarget, setStatusTarget] = useState<Character | null>(null);
   const [statusDraft, setStatusDraft] = useState('');
   const [relTarget, setRelTarget] = useState<Character | null>(null);
-  const [relDraft, setRelDraft] = useState<CharacterRelationship[]>([]);
+  const [relDraft, setRelDraft] = useState<CharacterRelation[]>([]);
   const [studioTarget, setStudioTarget] = useState<Character | null>(null);
   const [detailRole, setDetailRole] = useState<string>('');
   const avatarInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -114,7 +114,7 @@ export function useProjectCharactersTab(bookId: number) {
     setRelDraft((p) => [...p, { id: makeRelationId(), target: '', relation: '' }]);
   };
 
-  const updateRelation = (id: string, patch: Partial<CharacterRelationship>) => {
+  const updateRelation = (id: string, patch: Partial<CharacterRelation>) => {
     setRelDraft((p) => p.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   };
 

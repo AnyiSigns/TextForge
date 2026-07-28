@@ -15,7 +15,7 @@ import { useManuscriptStore } from '@/features/manuscript';
 type ViewMode = 'grid' | 'list';
 
 export default function ManuscriptListPage() {
-  const projects = useProjectStore((s) => s.projects);
+  const projects = useProjectStore((s) => s.books);
   const load = useProjectStore((s) => s.load);
   const chapters = useManuscriptStore((s) => s.chapters);
   const loadChapters = useManuscriptStore((s) => s.load);
@@ -28,11 +28,10 @@ export default function ManuscriptListPage() {
   }, [load]);
 
   useEffect(() => {
-    // 载入所有项目的手稿章节数（简单起见逐个 load）
-    Promise.all(projects.map((p) => loadChapters(p.id))).catch(() => {});
+    Promise.all(projects.map((p) => loadChapters(String(p.id)))).catch(() => {});
   }, [projects, loadChapters]);
 
-  const countFor = (projectId: string) => chapters.filter((c) => c.projectId === projectId).length;
+  const countFor = (bookId: number) => chapters.filter((c) => c.bookId === bookId).length;
 
   const filtered = projects.filter((p) => p.title.includes(search));
 

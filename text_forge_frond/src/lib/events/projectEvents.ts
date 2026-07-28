@@ -10,6 +10,7 @@ export type InsertTarget =
 
 export interface InsertStepDetail {
   bookId: string;
+  projectId?: number;
   title: string;
   content: string;
   target?: InsertTarget;

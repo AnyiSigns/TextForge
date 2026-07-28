@@ -36,7 +36,7 @@ export default function TasksPage() {
   const { characters } = useCharacterStore();
   const creativeSetting = useCreativeSettingStore((s) => (activeProjectId ? s.settings[Number(activeProjectId)] : undefined));
   const genContext: GenerationContext | undefined = activeProjectId
-    ? { project_id: activeProjectId, summary: creativeSettingToContextLine(creativeSetting) || undefined, outline: creativeSetting?.worldview || creativeSetting?.tone || undefined }
+    ? { project_id: Number(activeProjectId), summary: creativeSettingToContextLine(creativeSetting) || undefined, outline: creativeSetting?.worldview || creativeSetting?.tone || undefined }
     : undefined;
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 

@@ -176,7 +176,7 @@ export default function SettingsPage() {
 
   const handleExportAllJson = async () => {
     try {
-      const projects = useProjectStore.getState().projects;
+      const projects = useProjectStore.getState().books;
       const characters = useCharacterStore.getState().characters;
       const settingsMap = useCreativeSettingStore.getState().settings;
       const models = useModelStore.getState().models;
