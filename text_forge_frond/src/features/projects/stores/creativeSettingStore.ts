@@ -5,6 +5,7 @@ import type { BookCreativeSetting, CustomDimension, Origin } from '@/types';
 import apiClient from '@/lib/api/client';
 import { createIdbStorage } from '@/lib/storage/zustandIdb';
 import { syncManager } from '@/lib/storage/syncManager';
+import { updateCreativeSetting } from '../api/creativeSettings';
 
 interface CreativeSettingStore {
   settings: Record<number, BookCreativeSetting>;
@@ -31,23 +32,23 @@ export const useCreativeSettingStore = create<CreativeSettingStore>()(
       getVersionMeta: () => settingVersionMeta,
       setVersionMeta: (meta) => { settingVersionMeta = meta; },
 
-  upsertSetting: (setting, _origin: Origin = 'user') => {
-    set((s) => {
-      const _prev = s.settings[setting.bookId];
-      return {
-        settings: {
-          ...s.settings,
-          [setting.bookId]: { ...setting, updatedAt: new Date().toISOString() },
-        },
-      };
-    });
-    const run = async () => {
-      await apiClient.put(`/api/creative-settings/books/${setting.bookId}`, { setting });
-    };
-    run().catch(() => {
-      enqueueSync(`creativeSetting:${setting.bookId}`, run);
-    });
-  },
+      upsertSetting: (setting, _origin: Origin = 'user') => {
+        set((s) => {
+          const _prev = s.settings[setting.bookId];
+          return {
+            settings: {
+              ...s.settings,
+              [setting.bookId]: { ...setting, updatedAt: new Date().toISOString() },
+            },
+          };
+        });
+        const run = async () => {
+          await updateCreativeSetting(setting.bookId, setting);
+        };
+        run().catch(() => {
+          enqueueSync(`creativeSetting:${setting.bookId}`, run);
+        });
+      },
     }),
     {
       name: 'novel-creative-settings',
@@ -78,7 +79,6 @@ syncManager.register({
   setMeta: (meta) => useCreativeSettingStore.getState().setVersionMeta(meta),
 });
 
-// 将 CreativeSetting 折叠成一行文本上下文，注入生成/对话请求
 export function creativeSettingToContextLine(setting?: BookCreativeSetting): string {
   if (!setting) return '';
   const parts: string[] = [];
@@ -91,7 +91,6 @@ export function creativeSettingToContextLine(setting?: BookCreativeSetting): str
   return parts.join('；');
 }
 
-// 章节级按需挑选相关维度（仅本章相关的自定义设定，避免全量注入）
 export function creativeSettingDimensionsToContext(
   dimensions: CustomDimension[] | undefined,
   pickedIds: string[],

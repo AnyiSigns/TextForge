@@ -55,6 +55,49 @@ export {
   updateOutline,
   deleteOutline,
 } from './api/outline';
+export {
+  listVolumes,
+  createVolume,
+  updateVolume,
+  deleteVolume,
+} from './api/volumes';
+export {
+  listChapters,
+  createChapter,
+  updateChapter,
+  deleteChapter,
+} from './api/chapters';
+export {
+  listChapterContents,
+  getLatestChapterContent,
+  createChapterContent,
+} from './api/chapterContents';
+export {
+  getCreativeSetting,
+  updateCreativeSetting,
+} from './api/creativeSettings';
+export type {
+  ListOutlinesResponse,
+  OutlineItem,
+} from './api/outline';
+export type {
+  ListVolumesResponse,
+  Volume,
+  VolumeRequest,
+} from './api/volumes';
+export type {
+  ListChaptersResponse,
+  Chapter,
+  ChapterRequest,
+} from './api/chapters';
+export type {
+  ListChapterContentsResponse,
+  ChapterContent,
+  ChapterContentRequest,
+} from './api/chapterContents';
+export type {
+  CreativeSettingResponse,
+} from './api/creativeSettings';
 export type {
   ProjectListResponse,
   ProjectResponse,

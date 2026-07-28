@@ -19,3 +19,6 @@ export * from './knowledge';
 export * from './manuscript';
 export * from './seed';
 export * from './chat';
+export * from './volume';
+export * from './chapter';
+export * from './chapterContent';
