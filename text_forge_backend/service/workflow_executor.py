@@ -4,8 +4,6 @@ from infrastructure.database import db_manager
 from repository.model_repo import ModelConfRepository
 from agents.state import ParentState
 from repository.project_repo import (
-    CreativeSettingRepository,
-    CharacterRepository,
     BookRepository,
 )
 from repository.workflow_repo import WorkflowRepository
@@ -15,7 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from collections import deque
 from model.model import ModelConfig
 from core.model_factory import ModelFactory
-from langchain_core.messages import SystemMessage, HumanMessage
 
 logger = get_logger(__name__)
 
@@ -78,71 +75,26 @@ class WorkflowExecutor:
         book = await book_repo.get(book_id)
         if not book or book.user_id != user_id:
             raise ValueError("书籍不存在")
-        parts = [f"#书名\n{book.title}"]
-        if book.description:
-            parts.append(f"#书籍描述\n{book.description}")
-        if book.genre:
-            parts.append(f"类型\n{book.genre}")
-
-        setting_repo = CreativeSettingRepository(self.session)
-        setting = await setting_repo.get_setting(book_id)
-        worldview_text = ""
-        if setting:
-            worldview_text = f"# 世界观\n{setting.worldview or ''}\n# 文风/基调\n{setting.tone or ''}\n# 创作禁忌\n{setting.writing_taboos or ''}"
-            parts.append(worldview_text)
-
-        char_repo = CharacterRepository(self.session)
-        characters = await char_repo.book_character_detail(user_id, book_id)
-        char_text = ""
-        if characters:
-            char_lines = [f"-{c.name}:{c.description}" for c in characters]
-            char_text = f"#角色设定\n" + "\n".join(char_lines)
-            parts.append(char_text)
-
-        outline_repo = OutlineRepository(self.session)
-        outlines = await outline_repo.list_outlines(book_id)
-        outline_text = ""
-        recent_chapters_text = ""
-        brief_summary_text = ""
-        if outlines:
-            raw = outlines[0].data
-            volumes = raw if isinstance(raw, list) else raw.get("data", [])
-            outline_lines = []
-            for vol in volumes:
-                outline_lines.append(f"## {vol.get('title', '')}")
-                for ch in vol.get("chapters", []):
-                    outline_lines.append(f"- {ch.get('title', '')}")
-                    if ch.get("summary"):
-                        brief_summary_text += f"- {ch['title']}：{ch['summary']}\n"
-                    if ch.get("content"):
-                        recent_chapters_text += (
-                            f"\n# {ch['title']}\n{ch['content'][:3000]}"
-                        )
-            outline_text = "\n".join(outline_lines)
-
-        input_text = "\n\n".join(parts)
-        nodes = self._topological_store(workflow.nodes or [], workflow.edges or [])  # type: ignore
         model_config = await self._get_user_model_config(user_id)
-
+        nodes = workflow.nodes or []
         initial_state: ParentState = {
-            "input_summary": input_text,
-            "input_worldview": worldview_text,
-            "input_brief_summary": brief_summary_text,
-            "input_characters": char_text,
-            "input_recent_chapters": recent_chapters_text,
-            "input_outline": outline_text,
+            "book_id": book_id,
+            "user_id": user_id,
+            "model_config": model_config,
             "workflow_nodes": nodes,
             "step_outputs": {},
             "executed_steps": [],
             "metadata": {},
             "next_step_id": None,
-            "model_config": model_config,
-            "book_id": book_id,
-            "user_id": user_id,
             "edges": workflow.edges or [],
-        }
+            "book_title": book.title or "",
+            "book_description": book.description or "",
+            "book_genre": book.genre or "",
+        }  # type: ignore
         config = {"configurable": {"thread_id": thread_id}}
         parent_graph = await self._get_parent_graph()
+        current_display_id = None
+        current_display_label = None
         try:
             outputs_map: dict = {}
             async for event in parent_graph.astream_events(
@@ -158,15 +110,21 @@ class WorkflowExecutor:
                     "call_audit",
                     "call_compression",
                 ):
-                    input_data = data.get("input", {})
-                    exec_meta = input_data.get("_exec_meta", {})
-                    display_label = exec_meta.get("node_label", name)
-                    display_id = exec_meta.get("node_id", name)
+                    input_data = data.get("input", {}) or {}
+                    exec_meta = input_data.get("_exec_meta") or {}
+                    metadata = input_data.get("metadata", {})
+                    if not exec_meta:
+                        exec_meta = {
+                            "node_id": metadata.get("current_node_id", name),
+                            "node_label": metadata.get("current_node_label", name),
+                        }
+                    current_display_label = exec_meta.get("node_label", name)
+                    current_display_id = exec_meta.get("node_id", name)
 
-                    yield f"event:node_start\ndata:{json.dumps({'node': display_label, 'node_id': display_id})}\n\n"
+                    yield f"event:node_start\ndata:{json.dumps({'node': current_display_label, 'node_id': current_display_id})}\n\n"
                     continue
 
-                if kind == "on_chat_model_stream" and name:
+                if kind == "on_chat_model_stream" and current_display_id is not None:
                     raw_chunk = data.get("chunk")
                     chunk = ""
                     if isinstance(raw_chunk, dict):
@@ -176,12 +134,69 @@ class WorkflowExecutor:
                             or raw_chunk.get("delta")
                             or ""
                         )
-                        chunk = candidate if isinstance(candidate, str) else str(candidate)
+                        chunk = (
+                            candidate if isinstance(candidate, str) else str(candidate)
+                        )
+                    elif isinstance(raw_chunk, str):
+                        chunk = raw_chunk
+                    else:
+                        chunk = getattr(raw_chunk, "content", "") or ""
+                    chunk = chunk.strip()
+                    if chunk:
+                        payload = {
+                            "output": chunk,
+                            "node_id": current_display_id,
+                            "node": current_display_label,
+                        }
+                        yield f"event:node_stream\ndata:{json.dumps(payload)}\n\n"
+                    continue
+
+                if kind == "on_chain_stream" and name in (
+                    "call_main",
+                    "call_tool",
+                    "call_audit",
+                    "call_compression",
+                ):
+                    raw_chunk = data.get("chunk")
+                    chunk = ""
+                    if isinstance(raw_chunk, dict):
+                        candidate = (
+                            raw_chunk.get("content")
+                            or raw_chunk.get("text")
+                            or raw_chunk.get("delta")
+                            or raw_chunk.get("output")
+                            or ""
+                        )
+                        chunk = (
+                            candidate if isinstance(candidate, str) else str(candidate)
+                        )
+                    elif isinstance(raw_chunk, str):
+                        chunk = raw_chunk
                     elif raw_chunk is not None:
                         chunk = getattr(raw_chunk, "content", None) or ""
                     chunk = chunk.strip()
+                    if chunk and current_display_id is not None:
+                        payload = {
+                            "output": chunk,
+                            "node_id": current_display_id,
+                            "node": current_display_label or name,
+                        }
+                        yield f"event:node_stream\ndata:{json.dumps(payload)}\n\n"
+                    continue
+
+                if (
+                    kind == "on_custom"
+                    and isinstance(data.get("chunk"), str)
+                    and current_display_id is not None
+                ):
+                    chunk = data["chunk"].strip()
                     if chunk:
-                        yield f"event:node_stream\ndata:{json.dumps({'node': name, 'output': chunk})}\n\n"
+                        payload = {
+                            "output": chunk,
+                            "node_id": current_display_id,
+                            "node": current_display_label or name,
+                        }
+                        yield f"event:node_stream\ndata:{json.dumps(payload)}\n\n"
                     continue
 
                 if kind == "on_chain_end" and name in (
@@ -190,21 +205,31 @@ class WorkflowExecutor:
                     "call_audit",
                     "call_compression",
                 ):
-                    input_data = data.get("input", {})
-                    exec_meta = input_data.get("_exec_meta", {})
+                    input_data = data.get("input", {}) or {}
+                    exec_meta = input_data.get("_exec_meta") or {}
+                    metadata = input_data.get("metadata", {})
+                    if not exec_meta:
+                        exec_meta = {
+                            "node_id": metadata.get("current_node_id", name),
+                            "node_label": metadata.get("current_node_label", name),
+                        }
                     display_label = exec_meta.get("node_label", name)
                     display_id = exec_meta.get("node_id", name)
 
                     output_data = data.get("output", {})
                     step_outputs = output_data.get("step_outputs", {}) or {}
-                    node_output = step_outputs.get(display_id, "") or output_data.get("output", "")
+                    node_output = step_outputs.get(display_id, "") or output_data.get(
+                        "output", ""
+                    )
                     if not isinstance(node_output, str):
                         node_output = json.dumps(node_output, ensure_ascii=False)
                     outputs_map.update(step_outputs)
                     logger.info(
-                        f"[SSE] chain_end -> {display_label}, output={str(node_output)[:80]}"
+                        f"[stream] end {display_label}, output={str(node_output)[:80]}"
                     )
                     yield f"event:node_end\ndata:{json.dumps({'node': display_label, 'node_id': display_id, 'output': node_output})}\n\n"
+                    current_display_id = None
+                    current_display_label = None
                     continue
 
                 if kind == "on_stream_end":
@@ -213,12 +238,15 @@ class WorkflowExecutor:
                     step_outputs = final_output.get("step_outputs", outputs_map)
                     steps_payload = []
                     for sid in executed:
-                        steps_payload.append({
-                            "nodeId": sid,
-                            "label": sid,
-                            "output": step_outputs.get(sid, ""),
-                            "status": "done",
-                        })
+                        steps_payload.append(
+                            {
+                                "nodeId": sid,
+                                "label": sid,
+                                "output": step_outputs.get(sid, ""),
+                                "status": "done",
+                            }
+                        )
+                    logger.info(f"[stream] done steps={len(steps_payload)}")
                     yield f"event:done\ndata:{json.dumps({'steps': steps_payload, 'output': final_output})}\n\n"
                     continue
         except Exception as e:
@@ -226,15 +254,29 @@ class WorkflowExecutor:
             yield f"event:error\ndata:{json.dumps({'error': str(e)})}\n\n"
             return
 
-    async def _auto_summarize(self, session, project_id, outputs_map):
-        outlines = await OutlineRepository(session).list_outlines(project_id)
+    async def _auto_summarize(self, session, book_id, outputs_map):
+        outlines = await OutlineRepository(session).list_outlines(book_id=book_id)
         if not outlines:
             return
-        raw = outlines[0].data
-        volumes = raw if isinstance(raw, list) else raw.get("data", [])
-        all_chapters = [ch for vol in volumes for ch in vol.get("chapters", [])]
+        content = outlines[0].content or "[]"
+        try:
+            volumes = json.loads(content) if isinstance(content, str) else content
+        except Exception:
+            volumes = []
+        if not isinstance(volumes, list):
+            volumes = []
+        all_chapters = [
+            ch
+            for vol in volumes
+            if isinstance(vol, dict)
+            for ch in (vol.get("chapters") or [])
+        ]
         target = next(
-            (ch for ch in all_chapters if not ch.get("summary") and ch.get("content")),
+            (
+                ch
+                for ch in all_chapters
+                if ch.get("summary") is None and ch.get("content")
+            ),
             None,
         )
         if not target:

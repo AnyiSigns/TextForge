@@ -6,14 +6,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from infrastructure.database import db_manager
 from model.book import Book, Chapter
 from service.chapter_content_service import ChapterContentService, chapter_content_db
-from schema.request.project import ChapterContentRequest
-from schema.response.projiect import ChapterContentResponse
+from text_forge_backend.schema.request.book import ChapterContentRequest
+from text_forge_backend.schema.response.book import ChapterContentResponse
 
 router = APIRouter(prefix="/chapter-contents", tags=["ChapterContent"])
 
 
 async def _assert_chapter_owner(chapter_id: int, user_id: int, session: AsyncSession):
-    stmt = select(Chapter).join(Book).where(Chapter.id == chapter_id, Book.user_id == user_id)
+    stmt = (
+        select(Chapter)
+        .join(Book)
+        .where(Chapter.id == chapter_id, Book.user_id == user_id)
+    )
     result = await session.execute(stmt)
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="章节不存在或无权访问")

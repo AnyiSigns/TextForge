@@ -4,7 +4,7 @@
 import { memo } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, PauseCircle, CheckCircle2, RotateCcw, Sparkles, Image as ImageIcon, Clapperboard, FileText } from 'lucide-react';
+import { Loader2, PauseCircle, CheckCircle2, RotateCcw, Sparkles, Image as ImageIcon, Clapperboard, FileText, X } from 'lucide-react';
 import Link from 'next/link';
 import { Step } from '@/types';
 import { AGENTS } from './WorkflowGraph';
@@ -13,11 +13,12 @@ interface Props {
   step: Step;
   index: number;
   onSetAsMainText?: (step: Step) => void;
+  onCancel?: () => void;
   bookId?: number;
 }
 
 export const StepCard = memo(function StepCard({
-  step, index, onSetAsMainText, bookId,
+  step, index, onSetAsMainText, onCancel, bookId,
 }: Props) {
   const agentLabel = step.agentName || AGENTS.find(a => a.id === step.agent)?.label || '步骤';
 
@@ -43,6 +44,11 @@ export const StepCard = memo(function StepCard({
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground">步骤 {index + 1}</span>
+          {step.status === 'streaming' && onCancel && (
+            <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-destructive" onClick={onCancel} title="取消生成">
+              <X className="w-3.5 h-3.5" />
+            </Button>
+          )}
         </div>
       </div>
 

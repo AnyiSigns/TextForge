@@ -44,7 +44,7 @@ const PROJECT_INPUT = `项目标题：星海拾遗
 【剧情摘要】前文无，本章为开篇`;
 
 // 每个节点拟真产出（仅用于演示上下文如何向下游汇聚）
-function fakeGenerate(node: WorkflowNode, context: string, _tier: 'cheap' | 'standard', _rag?: RagChunk[], _sys?: string): string {
+function fakeGenerate(node: WorkflowNode, context: string, _rag?: RagChunk[], _sys?: string): string {
   switch (node.id) {
     case 'planner':
       return '核心创意：用「记忆晶核」串联逝者与生者的对话。目标读者：软科幻爱好者。钩子：晶核里传来已故同伴的声音。悬念：晶核是谁留下的？记忆为何在消散？';
@@ -67,17 +67,16 @@ function fakeGenerate(node: WorkflowNode, context: string, _tier: 'cheap' | 'sta
 
 describe('模拟小说生成：上下文拼接样式', () => {
   it('跑内置流水线并导出每个节点的 system + user 上下文', async () => {
-    const captured: { nodeId: string; label: string; tier: string; system: string; context: string; output: string }[] = [];
+    const captured: { nodeId: string; label: string; system: string; context: string; output: string }[] = [];
 
-    await runWorkflow('builtin-novel-pipeline', PROJECT_INPUT, {
-      generate: (node, context, tier, _rag, sys) => {
+    await runWorkflow('builtin-novel-pipeline', {
+      generate: (node, context, _rag, sys) => {
         captured.push({
           nodeId: node.id,
           label: node.label,
-          tier,
           system: sys ?? '',
           context,
-          output: fakeGenerate(node, context, tier, _rag, sys),
+          output: fakeGenerate(node, context, _rag, sys),
         });
         return captured[captured.length - 1].output;
       },
@@ -111,7 +110,7 @@ describe('模拟小说生成：上下文拼接样式', () => {
     lines.push('==================================================');
     for (const c of captured) {
       lines.push('');
-      lines.push(`────────── 节点 [${c.nodeId}] ${c.label} · tier=${c.tier} ──────────`);
+      lines.push(`────────── 节点 [${c.nodeId}] ${c.label} ──────────`);
       lines.push('【SYSTEM 消息】');
       lines.push(c.system || '（空）');
       lines.push('');
@@ -129,7 +128,7 @@ describe('模拟小说生成：上下文拼接样式', () => {
     lines.push('   各上游产出按定义顺序以「【上游·标签】」分段拼接（见 gatherContext）。');
     lines.push('3. 首层节点无依赖时回退为 input（项目上下文：大纲/维度设定/角色）。');
     lines.push('4. RAG 片段以「[RAG·个人库检索片段]」带标头文本注入（本模拟未挂 rag 工具，故无）。');
-    lines.push('5. tier 由节点显式字段决定（writer=standard，审校/总编=cheap），后端无需反解中文 label。');
+    lines.push('5. 节点 systemPrompt 由角色预设默认提示词 + 节点补充合并而成。');
     lines.push('==================================================');
 
     const outPath = join(process.cwd(), 'simulation-context-sample.txt');

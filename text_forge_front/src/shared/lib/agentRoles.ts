@@ -6,6 +6,8 @@
 
 export type AgentTool = 'rag:personal' | 'rag:public' | 'rag:both' | 'web';
 
+export const RAG_TOOLS: AgentTool[] = ['rag:personal', 'rag:public', 'web'];
+
 export const RAG_SCOPE_LABEL: Record<string, string> = {
   'rag:personal': '参考我的资料',
   'rag:public': '参考公共资料',

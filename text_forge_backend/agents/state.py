@@ -22,8 +22,12 @@ class RouterState(TypedDict):
 
 class ToolState(TypedDict):
     query: str
-    tool_result: str
+    project_id: int
+    workflow_node: Dict[str, Any]
     model_config: dict
+    tool_result: str
+    context_fields: List[str]
+    context_pool: Dict[str, List[int]]
 
 
 class MainState(TypedDict):
@@ -31,11 +35,9 @@ class MainState(TypedDict):
     input_context: Dict[str, Any]
     output: str
     model_config: dict
-    input_worldview: str
-    input_characters: str
-    input_brief_summary: str
-    input_recent_chapters: str
-    input_outline: str
+    project_id: int
+    context_fields: List[str]
+    context_pool: Dict[str, List[int]]
 
 
 class AuditState(TypedDict):
@@ -43,26 +45,21 @@ class AuditState(TypedDict):
     input_context: Dict[str, Any]
     output: str
     model_config: dict
-    input_worldview: str
-    input_characters: str
-    input_brief_summary: str
-    input_recent_chapters: str
-    input_outline: str
+    project_id: int
+    context_fields: List[str]
+    context_pool: Dict[str, List[int]]
 
 
 class ParentState(TypedDict):
-    input_summary: str
-    input_worldview: str
-    input_brief_summary: str
-    input_characters: str
-    input_recent_chapters: str
-    input_outline: str
+    book_id: int
+    user_id: int
+    model_config: dict
     workflow_nodes: List[Dict[str, Any]]
     step_outputs: Annotated[dict, _merge_dicts]
     executed_steps: Annotated[List[str], operator.add]
     metadata: Dict[str, Any]
     next_step_id: Optional[str]
-    model_config: dict
-    book_id: int
-    user_id: int
     edges: List[Dict[str, Any]]
+    book_title: str
+    book_description: str
+    book_genre: str

@@ -6,8 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from infrastructure.database import db_manager
 from model.book import Book, Volume
 from service.chapter_service import ChapterService, chapter_db
-from schema.request.project import ChapterRequest
-from schema.response.projiect import ChapterResponse
+from text_forge_backend.schema.request.book import ChapterRequest
+from text_forge_backend.schema.response.book import ChapterResponse
 
 router = APIRouter(prefix="/chapters", tags=["Chapter"])
 

@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import HTTPException
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
@@ -27,6 +28,24 @@ class DBManager:
         )
 
     async def get_db(self):
+        async with self.session_factory() as session:
+            try:
+                yield session
+            except RequestValidationError:
+                await session.rollback()
+                logger.warning("数据已回滚")
+                raise
+            except HTTPException:
+                await session.rollback()
+                logger.warning("数据已回滚")
+                raise
+            except Exception as e:
+                await session.rollback()
+                logger.error(f"数据库操作失败*{e}*")
+                raise
+
+    @asynccontextmanager
+    async def with_db(self):
         async with self.session_factory() as session:
             try:
                 yield session

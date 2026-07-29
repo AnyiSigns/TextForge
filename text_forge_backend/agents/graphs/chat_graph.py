@@ -66,6 +66,14 @@ def build_audit_graph():
     return builder
 
 
+def build_compression_graph():
+    builder = StateGraph(AuditState)
+    builder.add_node("compression", audit_node)
+    builder.add_edge(START, "compression")
+    builder.add_edge("compression", END)
+    return builder
+
+
 def build_parent_graph():
     builder = StateGraph(ParentState)
 
@@ -97,4 +105,5 @@ router_graph = build_router_graph()
 tool_graph = build_tool_graph()
 audit_graph = build_audit_graph()
 main_graph = build_main_graph()
+compression_graph = build_compression_graph()
 parent_graph = build_parent_graph()

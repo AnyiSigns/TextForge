@@ -1,18 +1,24 @@
-from typing import Annotated, List
+from typing import Annotated, List as TypingList
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
 from sqlalchemy import select
 from core.auth import get_current
 from service.project import BookService, book_db
-from schema.response.projiect import (
+from text_forge_backend.schema.response.book import (
     ListCharactersResponse,
     BookResponse,
     BookDetailResponse,
 )
-from schema.request.project import (
+from text_forge_backend.schema.request.book import (
     CreativeSettingRequest,
     BookRequest,
     UpdateBookRequest,
 )
+from service.volume_service import VolumeService, volume_db
+from service.chapter_service import ChapterService, chapter_db
+from sqlalchemy.ext.asyncio import AsyncSession
+from infrastructure.database import db_manager
+from model.book import Book, Volume, Chapter, Outline
+from repository.context_config_repo import BookContextConfigRepository
 
 router = APIRouter(prefix="/books", tags=["Book"])
 
@@ -104,6 +110,79 @@ async def book_characters(
     return ListCharactersResponse(characters=result)
 
 
+@router.get("/{id}/volumes", response_model=dict)
+async def book_volumes(
+    id: Annotated[int, Path(description="书籍ID")],
+    user_id: Annotated[int, Depends(get_current)],
+    volume_service: Annotated[VolumeService, Depends(volume_db)],
+    session: Annotated[AsyncSession, Depends(db_manager.get_db)],
+):
+    stmt = select(Book).where(Book.id == id, Book.user_id == user_id)
+    res = await session.execute(stmt)
+    if not res.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="书籍不存在或无权访问")
+    items = await volume_service.list_volumes(id)
+    return {
+        "volumes": [
+            {
+                "id": v.id,
+                "title": v.title,
+                "summary": v.summary,
+                "sort_order": v.sort_order,
+            }
+            for v in items
+        ]
+    }
+
+
+@router.get("/{id}/chapters", response_model=dict)
+async def book_chapters_volume_tree(
+    id: Annotated[int, Path(description="书籍ID")],
+    user_id: Annotated[int, Depends(get_current)],
+    chapter_service: Annotated[ChapterService, Depends(chapter_db)],
+    session: Annotated[AsyncSession, Depends(db_manager.get_db)],
+):
+    stmt = select(Book).where(Book.id == id, Book.user_id == user_id)
+    res = await session.execute(stmt)
+    if not res.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="书籍不存在或无权访问")
+
+    volume_stmt = (
+        select(Volume)
+        .where(Volume.book_id == id)
+        .order_by(Volume.sort_order, Volume.id)
+    )
+    volume_res = await session.execute(volume_stmt)
+    volumes = volume_res.scalars().all()
+
+    tree = []
+    for vol in volumes:
+        ch_stmt = (
+            select(Chapter)
+            .where(Chapter.volume_id == vol.id)
+            .order_by(Chapter.sort_order, Chapter.id)
+        )
+        ch_res = await session.execute(ch_stmt)
+        chapters = ch_res.scalars().all()
+        tree.append(
+            {
+                "id": vol.id,
+                "title": vol.title,
+                "summary": vol.summary,
+                "chapters": [
+                    {
+                        "id": c.id,
+                        "title": c.title,
+                        "summary": c.summary,
+                        "sort_order": c.sort_order,
+                    }
+                    for c in chapters
+                ],
+            }
+        )
+    return {"volumes": tree}
+
+
 @router.put("/{id}/creative-settings")
 async def book_creative_setting(
     id: Annotated[int, Path],
@@ -116,3 +195,69 @@ async def book_creative_setting(
     if not status:
         raise HTTPException(status_code=404, detail="设定保存失败")
     return {"ok": True}
+
+
+@router.get("/{id}/outline-tree", response_model=dict)
+async def book_outline_tree(
+    id: Annotated[int, Path(description="书籍ID")],
+    user_id: Annotated[int, Depends(get_current)],
+    session: Annotated[AsyncSession, Depends(db_manager.get_db)],
+):
+    stmt = select(Book).where(Book.id == id, Book.user_id == user_id)
+    res = await session.execute(stmt)
+    if not res.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="书籍不存在或无权访问")
+
+    stmt = (
+        select(Outline)
+        .where(Outline.book_id == id)
+        .order_by(Outline.sort_order, Outline.id)
+    )
+    result = await session.execute(stmt)
+    rows = result.scalars().all()
+    nodes = []
+    for r in rows:
+        nodes.append(
+            {
+                "id": r.id,
+                "node_type": r.node_type,
+                "title": r.title,
+                "content": r.content,
+                "parent_id": r.parent_id,
+                "target_volume_id": r.target_volume_id,
+                "target_chapter_id": r.target_chapter_id,
+                "sort_order": r.sort_order,
+            }
+        )
+    return {"nodes": nodes}
+
+
+@router.get("/{id}/context-config", response_model=dict)
+async def get_book_context_config(
+    id: Annotated[int, Path(description="书籍ID")],
+    user_id: Annotated[int, Depends(get_current)],
+    session: Annotated[AsyncSession, Depends(db_manager.get_db)],
+):
+    stmt = select(Book).where(Book.id == id, Book.user_id == user_id)
+    res = await session.execute(stmt)
+    if not res.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="书籍不存在或无权访问")
+    repo = BookContextConfigRepository(session)
+    data = await repo.get_config(id)
+    return data
+
+
+@router.put("/{id}/context-config", response_model=dict)
+async def save_book_context_config(
+    id: Annotated[int, Path(description="书籍ID")],
+    config: Annotated[Dict[str, List[int]], Body(embed=False)],
+    user_id: Annotated[int, Depends(get_current)],
+    session: Annotated[AsyncSession, Depends(db_manager.get_db)],
+):
+    stmt = select(Book).where(Book.id == id, Book.user_id == user_id)
+    res = await session.execute(stmt)
+    if not res.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="书籍不存在或无权访问")
+    repo = BookContextConfigRepository(session)
+    data = await repo.save_config(id, config or {})
+    return data

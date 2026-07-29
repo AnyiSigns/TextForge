@@ -55,6 +55,7 @@ export function WorkbenchTab({
     steps,
     currentAgent,
     handleGenerate,
+    handleCancel,
     selectedCharIds,
     selectedSectionIds,
     toggleChar,
@@ -293,6 +294,7 @@ export function WorkbenchTab({
               step={step}
               index={index}
               onSetAsMainText={handleSetAsMainText}
+              onCancel={step.status === 'streaming' ? handleCancel : undefined}
               bookId={Number(bookId)}
             />
           ))}

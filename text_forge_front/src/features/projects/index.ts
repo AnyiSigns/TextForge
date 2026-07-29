@@ -23,8 +23,10 @@ export { ProjectStudio } from './ui/ProjectStudio';
 export { StepCard } from './ui/StepCard';
 export { MainTextTargetDialog } from './ui/MainTextTargetDialog';
 export { WorkflowGraph } from './ui/WorkflowGraph';
+export { ProjectContextConfigTab } from './ui/ProjectContextConfigTab';
 
 // ---- Hooks ----
+export { useOutline } from './hooks/useOutline';
 export { useProjectCharacters } from './hooks/useProjectCharacters';
 export { useProjectCharactersTab } from './hooks/useProjectCharactersTab';
 export { useWorkbench } from './hooks/useWorkbench';
@@ -41,8 +43,14 @@ export {
   fetchBooks,
   createBook,
   deleteBook,
+  updateBook,
   fetchBookMeta,
   fetchBookCharacters,
+  fetchBookVolumes,
+  fetchBookChaptersTree,
+  fetchBookOutlineTree,
+  fetchBookContextConfig,
+  saveBookContextConfig,
   bindWorkflow,
   generateWithWorkflow,
   buildStepFromManuscript,
@@ -103,6 +111,11 @@ export type {
   BookResponse,
   BookDetail,
   CharactersResponse,
+  BookContextConfig,
+  OutlineNode,
+  VolumeListItem,
+  ChapterListItem,
+  VolumeChapterTree,
   GenerateOptions,
 } from './api/projects';
 

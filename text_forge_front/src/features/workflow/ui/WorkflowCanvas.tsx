@@ -9,7 +9,6 @@ import { Input } from '@/components/ui/input';
 import { Save, Trash2, ArrowDown, GripVertical } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Workflow } from '@/features/workflow';
-import { KIND_META } from './workflowMeta';
 import { AGENT_ROLES } from '@/shared/lib/agentRoles';
 
 interface WorkflowCanvasProps {
@@ -44,11 +43,7 @@ export function WorkflowCanvas(props: WorkflowCanvasProps) {
 
         <AnimatePresence initial={false}>
           {wf.nodes.map((node, i) => {
-            const m = KIND_META[node.kind] ?? KIND_META.agent;
-            const Icon = m.icon;
-            const roleColor = node.kind === 'agent'
-              ? (AGENT_ROLES.find((r) => r.name === node.label)?.color ?? m.color)
-              : m.color;
+            const roleColor = AGENT_ROLES.find((r) => r.name === node.label)?.color ?? '#6b7280';
             return (
               <motion.div
                 key={node.id}
@@ -71,13 +66,12 @@ export function WorkflowCanvas(props: WorkflowCanvasProps) {
                   <GripVertical className="w-4 h-4" />
                 </span>
                 <span className="grid place-items-center w-9 h-9 rounded-lg shrink-0" style={{ background: `${roleColor}1a`, color: roleColor }}>
-                  <Icon className="w-4 h-4" />
+                  <span className="text-xs font-bold">{node.label.slice(0, 1)}</span>
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium truncate">{node.label}</p>
                   <p className="text-xs text-muted-foreground">
-                    {m.label}
-                    {node.toolIds?.length ? ` · ${node.toolIds.join('/')}` : ''}
+                    {node.systemPrompt ? '已配置提示词' : '未配置提示词'}
                   </p>
                 </div>
                 <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={(e) => { e.stopPropagation(); onRemoveNode(node.id); }}>

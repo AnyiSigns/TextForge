@@ -10,6 +10,7 @@ import { InspirationBoard } from '@/features/projects';
 import { ProjectCharactersTab } from '@/features/projects';
 import { ProjectExport } from '@/features/projects';
 import { WorkbenchTab } from './WorkbenchTab';
+import { ProjectContextConfigTab } from '@/features/projects';
 import { ProjectDialogs } from './ProjectDialogs';
 import { PageHeader } from '@/shared/components';
 import { Spinner } from '@/shared/components';
@@ -19,7 +20,7 @@ import { ProcessNav, type ProcessTab } from '@/features/projects';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { BUILTIN_WORKFLOW_ID } from '@/types';
 
-import { FileText, ListTree, FileCog, Users, ImageIcon, Clapperboard, BookOpen, Info, Wand2, Check, CheckCircle2, PenLine, Sparkles } from 'lucide-react';
+import { FileText, ListTree, FileCog, Users, ImageIcon, Clapperboard, BookOpen, Info, Wand2, Check, CheckCircle2, PenLine, Sparkles, Settings2 } from 'lucide-react';
 import { useWorkbench } from '@/features/projects';
 
 export default function ProjectWorkbench() {
@@ -57,6 +58,7 @@ export default function ProjectWorkbench() {
     { value: 'inspiration', label: '章节摘要', icon: FileText },
     { value: 'brief', label: '创作设定', icon: FileCog },
     { value: 'characters', label: '角色', icon: Users },
+    { value: 'context', label: '工作流上下文', icon: Settings2 },
     { value: 'material', label: '角色素材', icon: ImageIcon },
     { value: 'animation', label: '章节动画', icon: Clapperboard },
   ];
@@ -149,8 +151,9 @@ export default function ProjectWorkbench() {
           {activeTab === 'outline' && <OutlinePanel bookId={projectId} />}
           {activeTab === 'inspiration' && <InspirationBoard projectId={projectId} />}
            {activeTab === 'brief' && <BriefPanel bookId={Number(projectId)} projectTitle={bookTitle} />}
-          {activeTab === 'characters' && <ProjectCharactersTab projectId={Number(projectId)} />}
-          {activeTab === 'material' && <ProjectStudio bookId={Number(projectId)} projectTitle={bookTitle} steps={steps} mode="character" selectedCharIds={selectedCharIds} />}
+           {activeTab === 'characters' && <ProjectCharactersTab projectId={Number(projectId)} />}
+           {activeTab === 'context' && <ProjectContextConfigTab projectId={Number(projectId)} />}
+           {activeTab === 'material' && <ProjectStudio bookId={Number(projectId)} projectTitle={bookTitle} steps={steps} mode="character" selectedCharIds={selectedCharIds} />}
           {activeTab === 'animation' && <ProjectStudio bookId={Number(projectId)} projectTitle={bookTitle} steps={steps} mode="chapter" selectedCharIds={selectedCharIds} />}
         </ErrorBoundary>
       </ProcessNav>

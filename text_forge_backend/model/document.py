@@ -21,7 +21,7 @@ class Document(Base):
     )
     file_size: Mapped[int] = mapped_column(Integer, nullable=True)
     scope: Mapped[str] = mapped_column(String(32), nullable=False, server_default="personal", index=True)
-    metadata: Mapped[dict] = mapped_column(JSONB, default=dict, comment="元数据")
+    metadatas: Mapped[dict] = mapped_column(JSONB, default=dict, comment="元数据")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     users: Mapped["User"] = relationship(back_populates="documents")
@@ -42,8 +42,8 @@ class Chunk(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     documents: Mapped["Document"] = relationship(back_populates="chunks")
-    metadata: Mapped[dict] = mapped_column(
+    metadatas: Mapped[dict] = mapped_column(
         JSONB, nullable=True, default={}, comment="上下文信息,页码等"
     )
 
-    __table_args__ = Index("idx_chunks_doc_id", "doc_id")
+    __table_args__ = (Index("idx_chunks_doc_id", "doc_id"),)

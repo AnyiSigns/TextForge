@@ -15,6 +15,7 @@ class UpdateBookRequest(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     genre: Optional[str] = None
+    total_word_goal: Optional[int] = Field(default=None, alias="totalWordGoal")
 
 
 class VolumeRequest(BaseModel):

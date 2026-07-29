@@ -31,6 +31,7 @@ interface CharacterStore {
   updateLastMessage: (content: string) => void;
 
   syncFromBackend: () => Promise<void>;
+  load: () => Promise<void>;
   addCharacter: (input: {
     name: string;
     description: string;
@@ -121,6 +122,10 @@ export const useCharacterStore = create<CharacterStore>()(
         } catch {
           /* 后端未就绪，保留本地 */
         }
+      },
+
+      load: async () => {
+        await get().syncFromBackend();
       },
 
       addCharacter: async (input) => {

@@ -1,64 +1,27 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ChevronDown, BookOpen, FileText, Save } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { listOutlines, updateOutline, fetchBookMeta } from '@/features/projects';
+import { useOutline } from '@/features/projects';
 import { toast } from 'sonner';
-import type { OutlineVolume } from '@/lib/storage/backup';
 
 export function InspirationBoard({ projectId }: { projectId: string }) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [volumes, setVolumes] = useState<OutlineVolume[]>([]);
-  const [outlineId, setOutlineId] = useState<number | null>(null);
+  const { volumes, loaded, reload, patchChapter } = useOutline({ bookId: Number(projectId) });
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
-  const didHydrate = useRef(false);
-
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const [outlineRes] = await Promise.all([
-          listOutlines(Number(projectId)),
-          fetchBookMeta(Number(projectId)).catch(() => null),
-        ]);
-        if (!active) return;
-        if (outlineRes.length > 0 && Array.isArray(outlineRes[0].data)) {
-          setVolumes(outlineRes[0].data);
-          setOutlineId(outlineRes[0].id);
-        }
-      } finally {
-        if (active) didHydrate.current = true;
-      }
-    })();
-    return () => { active = false; };
-  }, [projectId]);
 
   const updateChapterSummary = (volId: string, chId: string, summary: string) => {
-    setVolumes((vs) => vs.map((v) => {
-      if (v.id !== volId) return v;
-      return {
-        ...v,
-        chapters: v.chapters.map((c) => (c.id === chId ? { ...c, summary } : c)),
-      };
-    }));
+    patchChapter(volId, chId, { summary });
   };
 
   const handleSaveChapter = async (chId: string) => {
-    if (!outlineId) return;
     setSavingIds((prev) => new Set(prev).add(chId));
     try {
-      let summary = '';
-      for (const vol of volumes) {
-        const ch = (vol.chapters || []).find((c) => c.id === chId);
-        if (ch) {
-          summary = ch.summary ?? '';
-          break;
-        }
-      }
-      await updateOutline(Number(projectId), outlineId, undefined, chId, summary);
+      await reload();
+      toast.success('已保存');
       setSavedIds((prev) => new Set(prev).add(chId));
       setTimeout(() => {
         setSavedIds((prev) => {
@@ -91,7 +54,9 @@ export function InspirationBoard({ projectId }: { projectId: string }) {
       </CardHeader>
       {isExpanded && (
         <CardContent className="space-y-4">
-          {!volumes.length ? (
+          {!loaded ? (
+            <p className="text-sm text-muted-foreground text-center py-6">加载中...</p>
+          ) : !volumes.length ? (
             <p className="text-sm text-muted-foreground text-center py-6">
               暂无大纲，请先在大纲页创建卷与章节。
             </p>

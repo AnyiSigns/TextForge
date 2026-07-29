@@ -1,13 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useAuthStore } from '@/lib/stores/authStore';
 import { useBookStore } from '@/features/projects';
 import { useCharacterStore } from '@/features/characters';
 import { getManuscriptChapters } from '@/lib/storage/indexedDB';
 import { fetchVideoTasks, type MediaTask } from '@/lib/api/generation';
-import apiClient from '@/lib/api/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { BookOpen, LayoutDashboard, Target, Users, BarChart3 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -22,22 +21,38 @@ export default function DashboardPage() {
   const books = useBookStore((s) => s.books);
   const loadBooks = useBookStore((s) => s.load);
   const characters = useCharacterStore((s) => s.characters);
+  const loadCharacters = useCharacterStore((s) => s.load);
   const [mediaTasks, setMediaTasks] = useState<MediaTask[]>([]);
-  // 各项目真实手稿章节数（直接读 IndexedDB，避免 manuscriptStore 仅缓存单项目导致统计恒为 0）
   const [chapterCounts, setChapterCounts] = useState<Record<string, { total: number; written: number }>>({});
 
-  const totalWordGoal = books.reduce((acc, b) => acc + (b.totalWordGoal ?? 0), 0);
-  const dailyGoal = books.reduce((acc, b) => acc + (b.currentWordCount ?? 0), 0);
+  const totalWordGoal = useMemo(() => books.reduce((acc, b) => acc + (b.totalWordGoal ?? 0), 0), [books]);
+  const dailyGoal = useMemo(() => books.reduce((acc, b) => acc + (b.currentWordCount ?? 0), 0), [books]);
 
   useEffect(() => {
     fetchVideoTasks().then(setMediaTasks).catch(() => {});
   }, []);
 
   useEffect(() => {
-    loadBooks();
-  }, [loadBooks]);
+    let cancelled = false;
+    const load = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        await Promise.all([loadBooks(), loadCharacters()]);
+        if (cancelled) return;
+      } catch (err: unknown) {
+        if (cancelled) return;
+        const e = err instanceof Error ? err : new Error(String(err));
+        setError(e.message || '加载失败');
+        toast.error('加载仪表盘数据失败', { description: e.message });
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [loadBooks, loadCharacters]);
 
-  // 真实统计各书籍手稿章节数（含空章节也计入"已建"），修复仪表盘恒显 0 章
   useEffect(() => {
     if (books.length === 0) return;
     let cancelled = false;
@@ -46,7 +61,7 @@ export default function DashboardPage() {
       await Promise.all(
         books.map(async (p) => {
           try {
-             const chs = await getManuscriptChapters(p.id);
+            const chs = await getManuscriptChapters(p.id);
             counts[p.id] = {
               total: chs.length,
               written: chs.filter((c) => c.content?.trim()).length,
@@ -62,37 +77,13 @@ export default function DashboardPage() {
   }, [books]);
 
   useEffect(() => {
-    let cancelled = false;
-    const fetchStats = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const [booksRes, charactersRes] = await Promise.all([
-          apiClient.get('/api/books'),
-          apiClient.get('/api/characters'),
-        ]);
-        if (cancelled) return;
-        const books = booksRes.data.books || [];
-        const characters = charactersRes.data.characters || [];
-        const totalWords = books.reduce((acc: number, b: { currentWordCount?: number }) => acc + (b.currentWordCount || 0), 0);
-        setStats({
-          books: books.length,
-          characters: characters.length,
-          totalWords,
-          completedWords: totalWords,
-        });
-      } catch (err: unknown) {
-        if (cancelled) return;
-        const e = err instanceof Error ? err : new Error(String(err));
-        setError(e.message || '加载失败');
-        toast.error('加载仪表盘数据失败', { description: e.message });
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    };
-    fetchStats();
-    return () => { cancelled = true; };
-  }, []);
+    setStats({
+      books: books.length,
+      characters: characters.length,
+      totalWords: dailyGoal,
+      completedWords: dailyGoal,
+    });
+  }, [books.length, characters.length, dailyGoal]);
 
   const statCards = [
     { icon: BookOpen, label: '书籍数', value: String(stats.books), color: 'text-blue-500' },

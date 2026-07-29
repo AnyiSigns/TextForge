@@ -18,12 +18,12 @@
 //   GET    /api/workflows/:id
 //   PUT    /api/workflows/:id
 //   DELETE /api/workflows/:id
-//   POST   /api/workflows/:id/run   body: { input: string }  -> SSE 流式返回步骤
+//   POST   /api/workflows/:id/run   body: { book_id, thread_id }  -> SSE 流式返回步骤
 //
 // 本文件为聚合层，具体实现见：
 //   workflowTypes.ts     类型定义
 //   workflowStorage.ts   本地持久化 + 示例/内置流水线 + 列表/增删
-//   workflowRunner.ts    运行引擎（拓扑执行/RAG/tier 路由）
+//   workflowRunner.ts    运行引擎（拓扑执行/RAG/agent-tool 路由）
 //   workflowConverters.ts 运行结果 → 项目步骤 / 使用统计
 
 export * from './workflowTypes';

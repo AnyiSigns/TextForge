@@ -6,8 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from infrastructure.database import db_manager
 from model.book import Book
 from service.volume_service import VolumeService, volume_db
-from schema.request.project import VolumeRequest
-from schema.response.projiect import VolumeResponse
+from text_forge_backend.schema.request.book import VolumeRequest
+from text_forge_backend.schema.response.book import VolumeResponse
 
 router = APIRouter(prefix="/volumes", tags=["Volume"])
 
@@ -40,7 +40,9 @@ async def create_volume(
     session: Annotated[AsyncSession, Depends(db_manager.get_db)],
 ):
     await _assert_book_owner(book_id, user_id, session)
-    item = await volume_service.create_volume(book_id, title=request.title, summary=request.summary)
+    item = await volume_service.create_volume(
+        book_id, title=request.title, summary=request.summary
+    )
     if not item:
         raise HTTPException(status_code=500, detail="创建卷失败")
     return VolumeResponse.model_validate(item)
@@ -60,7 +62,9 @@ async def update_volume(
         if not item:
             raise HTTPException(status_code=404, detail="卷不存在")
     await _assert_book_owner(item.book_id, user_id, session)
-    item = await volume_service.update_volume(volume_id, title=request.title, summary=request.summary)
+    item = await volume_service.update_volume(
+        volume_id, title=request.title, summary=request.summary
+    )
     if not item:
         raise HTTPException(status_code=404, detail="卷不存在")
     return VolumeResponse.model_validate(item)

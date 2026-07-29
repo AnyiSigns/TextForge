@@ -34,7 +34,7 @@ interface Props {
 export function WorkflowGraph({ steps, currentAgent, isOpen, onToggle, workflow, workflowName }: Props) {
   // 取工作流的 agent 节点（保持拓扑顺序）；无则回退内置
   const agents = workflow
-    ? workflow.nodes.filter((n) => n.kind === 'agent').map((n) => {
+    ? workflow.nodes.map((n) => {
         const fallback = AGENTS.find((a) => a.id === n.id);
         const Icon = fallback?.icon ?? ClipboardList;
         return {

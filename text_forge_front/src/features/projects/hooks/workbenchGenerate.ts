@@ -94,21 +94,6 @@ export function makeGeneration(d: GenerationDeps) {
     setCurrentAgent(null);
     setSteps([]);
     completedNodeIdsRef.current.clear();
-    const firstNode = activeWorkflow?.nodes.find((n) => {
-      const inDeg = (activeWorkflow?.edges || []).filter((e) => e.to === n.id).length;
-      return inDeg === 0;
-    }) || activeWorkflow?.nodes[0];
-    if (firstNode) {
-      const placeholder: Step = {
-        id: `step-${Date.now()}`,
-        nodeId: firstNode.id,
-        agent: firstNode.id,
-        agentName: firstNode.label || '步骤',
-        content: '',
-        status: 'streaming',
-      };
-      setSteps([placeholder]);
-    }
     try {
       const newSteps = await generateWithWorkflow(bookId, {
         workflowId: activeWorkflowId,
@@ -116,6 +101,7 @@ export function makeGeneration(d: GenerationDeps) {
         runOpts: {},
         shouldPause: () => pausedRef.current,
         isAborted: () => !!abortRef.current?.signal.aborted,
+        signal: abortRef.current.signal,
         onStep: (step) => {
           const workflowLabel = activeWorkflow?.nodes.find((n) => n.id === step.nodeId)?.label;
           const resolvedLabel = workflowLabel || step.nodeId || '步骤';

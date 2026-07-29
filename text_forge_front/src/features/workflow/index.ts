@@ -7,7 +7,7 @@ export { WorkflowCanvas } from './ui/WorkflowCanvas';
 export { WorkflowEditor } from './ui/WorkflowEditor';
 export { WorkflowInspector } from './ui/WorkflowInspector';
 export { WorkflowNodePanel } from './ui/WorkflowNodePanel';
-export { KIND_META } from './ui/workflowMeta';
+export { inferNodeKind, NODE_KIND_META } from './ui/workflowMeta';
 
 // ---- API ----
 export {
@@ -22,9 +22,17 @@ export {
 export type {
   Workflow,
   WorkflowNode,
-  WorkflowNodeKind,
   WorkflowRunStep,
   RunWorkflowOptions,
   ListWorkflowsResponse,
   WorkflowResponse,
 } from './api/workflow';
+export {
+  CONTEXT_FIELD_GROUPS,
+  DEFAULT_CONTEXT_FIELDS,
+  BACKEND_CONTEXT_FIELD_MAP,
+} from './api/workflowTypes';
+export type {
+  ContextFieldKey,
+  ContextFieldGroup,
+} from './api/workflowTypes';

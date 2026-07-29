@@ -5,7 +5,6 @@ import { useState, useRef, useEffect } from 'react';
 import type { Workflow, WorkflowNode } from '@/features/workflow';
 import { saveWorkflow } from '@/features/workflow';
 import { agentRoleById } from '@/shared/lib/agentRoles';
-import { useProjectStore } from '@/features/projects';
 import { toast } from 'sonner';
 import { WorkflowNodePanel } from './WorkflowNodePanel';
 import { WorkflowCanvas } from './WorkflowCanvas';
@@ -15,25 +14,22 @@ export function WorkflowEditor({ initial, onSaved }: { initial: Workflow; onSave
   const initWf = { ...initial, nodes: initial.nodes ?? [], edges: initial.edges ?? [] };
   const [wf, setWf] = useState<Workflow>(initWf);
   const [selected, setSelected] = useState<string | null>(initWf.nodes[0]?.id ?? null);
-  const projects = useProjectStore((s) => s.books);
 
   const [personalDocs, setPersonalDocs] = useState<{ id: string; name: string; uploaderName?: string }[]>([]);
 
   const seqRef = useRef(100);
   const nid = () => `n${Date.now()}-${seqRef.current++}`;
 
-  const update = (patch: Partial<Workflow>) => setWf((w) => ({ ...w, ...patch, updatedAt: new Date().toISOString() }));
+  const update = (patch: Partial<Workflow>) => setWf((w) => ({ ...w, ...patch }));
 
   const applyRole = (roleId: string) => {
     const role = agentRoleById(roleId);
     if (!role) return;
     const node: WorkflowNode = {
       id: nid(),
-      kind: 'agent',
       label: role.short,
-      modelId: '',
       systemPrompt: role.defaultPrompt,
-      toolIds: role.recommendedTools,
+      toolIds: [...role.recommendedTools],
     };
     update({ nodes: [...wf.nodes, node] });
     setSelected(node.id);
@@ -78,7 +74,10 @@ export function WorkflowEditor({ initial, onSaved }: { initial: Workflow; onSave
 
   const handleSave = async () => {
     try {
-      const saved = await saveWorkflow(wf);
+      const nodes = wf.nodes;
+      const edges = nodes.flatMap((n) => (n.upstreams || []).map((from) => ({ from, to: n.id })));
+      const payload = { ...wf, nodes, edges };
+      const saved = await saveWorkflow(payload);
       setWf(saved);
       onSaved?.(saved);
       toast.success('工作流已保存');
@@ -105,7 +104,6 @@ export function WorkflowEditor({ initial, onSaved }: { initial: Workflow; onSave
         wf={wf}
         selectedNode={selectedNode}
         personalDocs={personalDocs}
-        nodeHasPersonalRag={nodeHasPersonalRag}
         onPatchNode={patchNode}
       />
     </div>

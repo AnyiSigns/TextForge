@@ -6,7 +6,7 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# ===================== 前端 (text_forge_frond) =====================
+# ===================== 前端 (text_forge_front) =====================
 node_modules/
 .next/
 /out/

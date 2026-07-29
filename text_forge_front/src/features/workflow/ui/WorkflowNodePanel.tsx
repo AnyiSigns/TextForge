@@ -13,12 +13,16 @@ export function WorkflowNodePanel({ onApplyRole }: WorkflowNodePanelProps) {
       <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">添加角色</p>
       <div className="space-y-1.5">
         {AGENT_ROLES.map((r) => (
-          <button key={r.id} onClick={() => onApplyRole(r.id)}
-            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm hover:bg-accent/40"
-            title={r.contextHint}>
-            <span className="h-3 w-3 rounded-full shrink-0" style={{ background: r.color }} />
+          <button
+            key={r.id}
+            onClick={() => onApplyRole(r.id)}
+            className="flex w-full items-center gap-2.5 rounded-lg border-l-2 px-3 py-2.5 text-left text-sm transition-colors hover:bg-accent/40"
+            style={{ borderLeftColor: r.color }}
+            title={r.contextHint}
+          >
+            <span className="h-2 w-2 rounded-full shrink-0" style={{ background: r.color }} />
             <span className="flex-1 truncate">{r.name}</span>
-            <span className="text-xs text-muted-foreground">{r.tier === 'cheap' ? '省' : '标'}</span>
+            <span className="text-[10px] text-muted-foreground">{r.tier === 'cheap' ? '轻量' : '标准'}</span>
           </button>
         ))}
       </div>

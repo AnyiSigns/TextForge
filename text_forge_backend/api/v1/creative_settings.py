@@ -6,8 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from infrastructure.database import db_manager
 from model.book import Book
 from service.project import BookService, book_db
-from schema.request.project import CreativeSettingRequest
-from schema.response.projiect import CreativeSettingResponse
+from text_forge_backend.schema.request.book import CreativeSettingRequest
+from text_forge_backend.schema.response.book import CreativeSettingResponse
 
 router = APIRouter(prefix="/creative-settings", tags=["CreativeSetting"])
 
@@ -24,6 +24,7 @@ async def get_creative_setting(
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="书籍不存在或无权访问")
     from repository.project_repo import CreativeSettingRepository
+
     repo = CreativeSettingRepository(session)
     setting = await repo.get_setting(book_id)
     if not setting:
@@ -45,6 +46,7 @@ async def update_creative_setting(
         raise HTTPException(status_code=404, detail="书籍不存在或无权访问")
     data = request.model_dump(by_alias=False, exclude_none=True)
     from repository.project_repo import CreativeSettingRepository
+
     repo = CreativeSettingRepository(session)
     setting = await repo.save_setting(book_id, data)
     if not setting:

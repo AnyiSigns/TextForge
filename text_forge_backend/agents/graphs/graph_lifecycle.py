@@ -5,15 +5,17 @@ from agents.graphs.chat_graph import (
     audit_graph,
     tool_graph,
     parent_graph,
+    compression_graph,
 )
 from agents.graphs.registry import graph_register
 
 graph_register.register_builder("chat", chat_graph)
-graph_register.register_builder("main", main_graph)
+graph_register.register_builder("main_graph", main_graph)
 graph_register.register_builder("router", router_graph)
-graph_register.register_builder("audit", audit_graph)
-graph_register.register_builder("tool", tool_graph)
+graph_register.register_builder("audit_graph", audit_graph)
+graph_register.register_builder("tool_graph", tool_graph)
 graph_register.register_builder("parent", parent_graph)
+graph_register.register_builder("compression_graph", compression_graph)
 
 
 async def compiled_all(checkpointer):

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { saveDraft, getDraft, saveVersion, getVersionHistory, type ProjectVersion, type ProjectTemplate } from '@/lib/storage/indexedDB';
-import { fetchBooks, createBook as apiCreateBook, deleteBook as apiDeleteBook } from '@/features/projects';
+import { fetchBooks, createBook as apiCreateBook, deleteBook as apiDeleteBook, updateBook as apiUpdateBook } from '@/features/projects';
 import { uid } from '@/lib/utils/id';
 import { createIdbStorage } from '@/lib/storage/zustandIdb';
 import type { Book, Step } from '@/types';
@@ -28,6 +28,7 @@ interface BookStore {
   setHasHydrated: (v: boolean) => void;
   load: () => Promise<void>;
   addBook: (input: { title: string; description: string; genre: string }) => Promise<Book>;
+  updateBook: (id: number, patch: { title?: string; description?: string; genre?: string; totalWordGoal?: number }) => Promise<Book>;
   removeBook: (id: number) => Promise<void>;
   togglePin: (id: number) => void;
   getVersionMeta: () => BookVersionMeta;
@@ -86,6 +87,28 @@ export const useBookStore = create<BookStore>()(
             toast.error('创建冲突', { description: '服务器已有更新版本，已尝试自动合并，请重试' });
           }
           set((s) => ({ books: s.books.filter((b) => b.id !== optimistic.id) }));
+          throw e;
+        }
+      },
+
+      updateBook: async (id, patch) => {
+        const prev = get().books;
+        set((s) => ({
+          books: s.books.map((b) => (b.id === id ? { ...b, ...patch, updatedAt: new Date().toISOString() } : b)),
+        }));
+        try {
+          const updated = await apiUpdateBook(id, patch);
+          set((s) => ({
+            books: s.books.map((b) => (b.id === id ? { ...updated, updatedAt: new Date().toISOString() } : b)),
+          }));
+          return updated;
+        } catch (e) {
+          const apiError = e as ApiError;
+          if (apiError.status === 409) {
+            await syncManager.resolveConflict('books', get().books, null);
+            toast.error('更新冲突', { description: '服务器已有更新版本，已尝试自动合并，请重试' });
+          }
+          set({ books: prev });
           throw e;
         }
       },

@@ -3,8 +3,6 @@
 import type { WorkflowRunStep, RunWorkflowOptions } from './workflowTypes';
 import apiClient from '@/shared/lib/apiClient';
 
-type GenerationContext = import('@/types').GenerationContext;
-
 function parseSSE(text: string): Record<string, unknown> | null {
   const lines = text.split('\n');
   const dataLine = lines.find((l) => l.startsWith('data:'));
@@ -21,11 +19,24 @@ function parseSSE(text: string): Record<string, unknown> | null {
   }
 }
 
+function resolveId(
+  nodeId: string | undefined,
+  label: string,
+  visibleNodeIds: Set<string>,
+  labelToIdMap?: Map<string, string>,
+): string {
+  const candidate = nodeId || label;
+  if (visibleNodeIds.has(candidate)) return candidate;
+  if (labelToIdMap) {
+    const mapped = labelToIdMap.get(label);
+    if (mapped && visibleNodeIds.has(mapped)) return mapped;
+  }
+  return candidate;
+}
+
 export async function runWorkflow(
   workflowId: string,
-  input: string,
-  opts?: RunWorkflowOptions,
-  projectContext?: GenerationContext,
+  opts?: Omit<RunWorkflowOptions, 'input'>,
 ): Promise<WorkflowRunStep[]> {
   const threadId = opts?.bookId
     ? `${opts.bookId}-${Date.now()}`
@@ -33,9 +44,11 @@ export async function runWorkflow(
   const visibleNodeIds = new Set(
     Array.isArray(opts?.visibleNodeIds) ? opts.visibleNodeIds : opts?.visibleNodeIds ? Array.from(opts.visibleNodeIds) : [],
   );
-  const body: Record<string, unknown> = { input };
-  if (opts?.bookId) body.book_id = opts.bookId;
-  if (threadId) body.thread_id = threadId;
+  const labelToIdMap = opts?.labelToIdMap;
+  const body: Record<string, number | string> = {
+    book_id: opts?.bookId ?? 0,
+    thread_id: threadId,
+  };
   const res = await fetch(`${apiClient.defaults.baseURL}/api/workflows/${workflowId}/run`, {
     method: 'POST',
     headers: {
@@ -43,6 +56,7 @@ export async function runWorkflow(
       Authorization: `Bearer ${(await import('@/lib/stores/authStore')).useAuthStore.getState().accessToken}`,
     },
     body: JSON.stringify(body),
+    signal: opts?.signal,
   });
   if (!res.ok) throw new Error(`工作流运行失败: ${res.status}`);
   const reader = res.body?.getReader();
@@ -65,28 +79,39 @@ export async function runWorkflow(
       }
       console.log('[SSE parsed]', event);
       const eventType = event.type || event.event || '';
-      if ((eventType === 'node_start' || eventType === 'on_chain_start') && event.node && event.node !== '__input__') {
-        const nodeId = String(event.node);
-        currentNode = { id: nodeId, label: nodeId };
+      if (eventType === 'node_start' && event.node) {
+        const label = String(event.node);
+        const nodeId = resolveId(String(event.node_id ?? event.node), label, visibleNodeIds, labelToIdMap);
+        currentNode = { id: nodeId, label };
       }
-      if ((eventType === 'node_stream' || eventType === 'on_chat_model_stream') && event.node && typeof event.output === 'string') {
+      if (eventType === 'node_stream' && event.node && typeof event.output === 'string') {
         const text = event.output;
         if (!text) continue;
-        const target = currentNode?.id ? currentNode.id : String(event.node);
-        const nodeId = target === 'ChatOpenAI' ? (currentNode?.id || target) : target;
-        if (visibleNodeIds.size > 0 && !visibleNodeIds.has(nodeId)) continue;
-        const label = currentNode?.label || nodeId;
+        const label = currentNode?.label || String(event.node);
+        const nodeId = resolveId(
+          currentNode?.id ? currentNode.id : String(event.node_id ?? event.node),
+          label,
+          visibleNodeIds,
+          labelToIdMap,
+        );
+        if (visibleNodeIds.size > 0 && !visibleNodeIds.has(nodeId)) {
+          console.warn('[SSE] node_stream skipped by visibleNodeIds', nodeId, label, text.slice(0, 20));
+          continue;
+        }
         const existing = steps.find((s) => s.nodeId === nodeId);
         if (existing) {
           existing.output = (existing.output || '') + text;
           existing.status = 'running';
         } else {
           steps.push({ nodeId, label, output: text, status: 'running' });
+          console.info('[SSE] new step created', nodeId, label, text.slice(0, 30));
         }
+        console.debug('[SSE] onStep', nodeId, label, (existing ? existing.output : text).slice(0, 30));
         opts?.onStep?.(nodeId, label, existing ? existing.output : text, undefined, 'running');
       }
-      if ((eventType === 'node_end' || eventType === 'on_chain_end') && event.node) {
-        const nodeId = String(event.node);
+      if (eventType === 'node_end' && event.node) {
+        const label = String(event.node);
+        const nodeId = resolveId(String(event.node_id ?? event.node), label, visibleNodeIds, labelToIdMap);
         if (visibleNodeIds.size > 0 && !visibleNodeIds.has(nodeId)) {
           currentNode = null;
           continue;
@@ -97,18 +122,14 @@ export async function runWorkflow(
           if (text) existing.output = text;
           existing.status = 'done';
           currentNode = null;
-          if (existing.output) {
-            opts?.onStep?.(nodeId, existing.label || nodeId, existing.output, undefined, 'done');
-          }
+          opts?.onStep?.(nodeId, existing.label || nodeId, existing.output, undefined, 'done');
         } else {
-          steps.push({ nodeId, label: nodeId, output: text, status: 'done' });
+          steps.push({ nodeId, label, output: text, status: 'done' });
           currentNode = null;
-          if (text) {
-            opts?.onStep?.(nodeId, nodeId, text, undefined, 'done');
-          }
+          opts?.onStep?.(nodeId, label, text, undefined, 'done');
         }
       }
-      if (event.steps && Array.isArray(event.steps)) {
+      if (eventType === 'done' && event.steps && Array.isArray(event.steps)) {
         for (const s of event.steps as WorkflowRunStep[]) {
           if (visibleNodeIds.size > 0 && !visibleNodeIds.has(s.nodeId)) continue;
           const existing = steps.find((x) => x.nodeId === s.nodeId);

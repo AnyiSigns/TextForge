@@ -47,15 +47,14 @@ describe('修复#1：结构化设定注入生成上下文', () => {
 
     await runWorkflow(
       'builtin-novel-pipeline',
-      '', // input 为空，应退化为设定基座
       {
-        generate: (node: WorkflowNode, context: string, _tier, _rag, _sys, projectContext) => {
+        generate: (node: WorkflowNode, context: string, _rag, _sys, projectContext) => {
           captured.push({ nodeId: node.id, context, projectContext });
-           if (projectContext && projectContext.book_title === '星海拾遗验证') sawProjectContext = true;
+          if (projectContext && projectContext.book_title === '星海拾遗验证') sawProjectContext = true;
           return `[${node.label}] 产出`;
         },
+        projectContext: ctx,
       },
-      ctx, // 结构化 GenerationContext（修复点）
     );
 
     // 1) 根节点(planner)应含「项目设定基座」与角色/世界观

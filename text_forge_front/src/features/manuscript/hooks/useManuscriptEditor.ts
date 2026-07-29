@@ -58,6 +58,7 @@ export function useManuscriptEditor(bookId: number) {
 
   // 发送到工作台：确认弹窗（是否同步为全局项目 steps）
   const [sendOpen, setSendOpen] = useState(false);
+  const [diffState, setDiffState] = useState<{ original: string; proposed: string; action: 'expand' | 'rewrite' | 'summarize'; start: number; end: number } | null>(null);
   // 书籍导入：解析后的章节预览
   const [bookChapters, setBookChapters] = useState<{ title: string; content: string }[] | null>(null);
   const [bookName, setBookName] = useState('');
@@ -248,11 +249,20 @@ export function useManuscriptEditor(bookId: number) {
     const sel = el.value.slice(start, end);
     if (!sel.trim()) return;
     setAiMenu(null);
-    // mock 期：本地占位变换；后端期替换为 SSE 调用
     const next = el.value.slice(0, start) + transformText(action, sel) + el.value.slice(end);
-    commitContent(next);
-    toast.success(`已${AI_ACTION_LABEL[action]}`);
+    setDiffState({ original: el.value, proposed: next, action, start, end });
   };
+
+  const acceptDiff = useCallback(() => {
+    if (!diffState) return;
+    commitContent(diffState.proposed);
+    toast.success(`已${AI_ACTION_LABEL[diffState.action]}`);
+    setDiffState(null);
+  }, [diffState, commitContent]);
+
+  const rejectDiff = useCallback(() => {
+    setDiffState(null);
+  }, []);
 
   // Ctrl+Space 触发联想（由全局快捷键调用）
   useEffect(() => {
@@ -338,5 +348,10 @@ export function useManuscriptEditor(bookId: number) {
     confirmBookImport,
     handleExportBook,
     doExportBookTxt,
+    diffState,
+    acceptDiff,
+    rejectDiff,
+    streamingActive: false,
+    streamingStalled: false,
   };
 }

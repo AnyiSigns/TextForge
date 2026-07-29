@@ -195,6 +195,14 @@ export function useWorkbench(bookId: number) {
     toast.success('已跳过该环节');
   };
 
+  const handleCancel = () => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setIsStreaming(false);
+    setCurrentAgent(null);
+    toast.success('已取消生成');
+  };
+
   const handleAiAction = async (action: 'expand' | 'rewrite' | 'summarize', text: string, stepId: string) => {
     let out = transformText(action, text);
     try {
@@ -297,6 +305,7 @@ export function useWorkbench(bookId: number) {
     handleSaveEdit,
     handleConfirm,
     handleSkip,
+    handleCancel,
     handleSendToManuscript,
     currentAgent,
     handleGenerate,
