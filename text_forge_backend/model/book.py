@@ -28,6 +28,10 @@ class Book(Base):
     volumes: Mapped[List["Volume"]] = relationship(back_populates="book", cascade="all,delete-orphan")
     characters: Mapped[List["Character"]] = relationship(back_populates="book", cascade="all,delete-orphan")
     outlines: Mapped[List["Outline"]] = relationship(back_populates="book", cascade="all,delete-orphan")
+    locations: Mapped[List["Location"]] = relationship(back_populates="book", cascade="all,delete-orphan")
+    timeline_events: Mapped[List["TimelineEvent"]] = relationship(back_populates="book", cascade="all,delete-orphan")
+    foreshadowings: Mapped[List["Foreshadowing"]] = relationship(back_populates="book", cascade="all,delete-orphan")
+    plot_threads: Mapped[List["PlotThread"]] = relationship(back_populates="book", cascade="all,delete-orphan")
 
 
 class CreativeSetting(Base):
@@ -78,6 +82,7 @@ class ChapterContent(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     chapter_id: Mapped[int] = mapped_column(ForeignKey("chapters.id", ondelete="CASCADE"), nullable=False, index=True)
     content: Mapped[str] = mapped_column(Text, nullable=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     chapter: Mapped["Chapter"] = relationship(back_populates="contents")
@@ -121,3 +126,80 @@ class Outline(Base):
     book: Mapped["Book"] = relationship(back_populates="outlines")
     parent: Mapped[Optional["Outline"]] = relationship(back_populates="children", remote_side="Outline.id")
     children: Mapped[List["Outline"]] = relationship(back_populates="parent", cascade="all,delete-orphan")
+
+
+class Location(Base):
+    __tablename__ = "locations"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    book_id: Mapped[int] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    type: Mapped[str] = mapped_column(String(50), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=True)
+    parent_id: Mapped[int] = mapped_column(ForeignKey("locations.id", ondelete="SET NULL"), nullable=True)
+    attributes: Mapped[dict] = mapped_column(JSONB, default={})
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    book: Mapped["Book"] = relationship(back_populates="locations")
+    parent: Mapped[Optional["Location"]] = relationship(back_populates="children", remote_side="Location.id")
+    children: Mapped[List["Location"]] = relationship(back_populates="parent", cascade="all,delete-orphan")
+
+
+class TimelineEvent(Base):
+    __tablename__ = "timeline_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    book_id: Mapped[int] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    chapter_id: Mapped[int] = mapped_column(ForeignKey("chapters.id", ondelete="SET NULL"), nullable=True)
+    event_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    related_character_ids: Mapped[list] = mapped_column(JSONB, default=[])
+    related_location_id: Mapped[int] = mapped_column(ForeignKey("locations.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    book: Mapped["Book"] = relationship(back_populates="timeline_events")
+
+
+class Foreshadowing(Base):
+    __tablename__ = "foreshadowings"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    book_id: Mapped[int] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"), nullable=False, index=True)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    planted_at_chapter_id: Mapped[int] = mapped_column(ForeignKey("chapters.id", ondelete="SET NULL"), nullable=True)
+    resolved_at_chapter_id: Mapped[int] = mapped_column(ForeignKey("chapters.id", ondelete="SET NULL"), nullable=True)
+    related_character_ids: Mapped[list] = mapped_column(JSONB, default=[])
+    related_event_id: Mapped[int] = mapped_column(ForeignKey("timeline_events.id", ondelete="SET NULL"), nullable=True)
+    reveal_type: Mapped[str] = mapped_column(String(50), nullable=True)
+    notes: Mapped[str] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    book: Mapped["Book"] = relationship(back_populates="foreshadowings")
+
+
+class PlotThread(Base):
+    __tablename__ = "plot_threads"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    book_id: Mapped[int] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    parent_thread_id: Mapped[int] = mapped_column(ForeignKey("plot_threads.id", ondelete="SET NULL"), nullable=True)
+    type: Mapped[str] = mapped_column(String(50), nullable=False)
+    related_character_ids: Mapped[list] = mapped_column(JSONB, default=[])
+    start_chapter_id: Mapped[int] = mapped_column(ForeignKey("chapters.id", ondelete="SET NULL"), nullable=True)
+    end_chapter_id: Mapped[int] = mapped_column(ForeignKey("chapters.id", ondelete="SET NULL"), nullable=True)
+    progress_note: Mapped[str] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    book: Mapped["Book"] = relationship(back_populates="plot_threads")
+    parent: Mapped[Optional["PlotThread"]] = relationship(back_populates="children", remote_side="PlotThread.id")
+    children: Mapped[List["PlotThread"]] = relationship(back_populates="parent", cascade="all,delete-orphan")

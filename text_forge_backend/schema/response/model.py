@@ -37,6 +37,11 @@ class EmbeddingResponse(BaseModelBasicResponse):
     pass
 
 
+class SearchConfigResponse(BaseModel):
+    provider: Optional[str] = "bocha"
+    api_key: Optional[str] = None
+
+
 class ModelResponse(BaseModel):
     id: Optional[int] = None
     main_config: Optional[MainConfResponse] = None
@@ -45,5 +50,6 @@ class ModelResponse(BaseModel):
     tool_config: Optional[ToolResponse] = None
     vision_config: Optional[VisionResponse] = None
     embedding_config: Optional[EmbeddingResponse] = None
+    search_config: Optional[SearchConfigResponse] = None
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)

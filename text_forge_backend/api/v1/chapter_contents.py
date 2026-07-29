@@ -1,5 +1,5 @@
 from typing import Annotated
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from core.auth import get_current
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,7 +7,7 @@ from infrastructure.database import db_manager
 from model.book import Book, Chapter
 from service.chapter_content_service import ChapterContentService, chapter_content_db
 from text_forge_backend.schema.request.book import ChapterContentRequest
-from text_forge_backend.schema.response.book import ChapterContentResponse
+from text_forge_backend.schema.response.book import ChapterContentResponse, ChapterContentDiffResponse
 
 router = APIRouter(prefix="/chapter-contents", tags=["ChapterContent"])
 
@@ -62,3 +62,21 @@ async def create_content(
     if not item:
         raise HTTPException(status_code=500, detail="创建正文失败")
     return ChapterContentResponse.model_validate(item)
+
+
+@router.get("/chapters/{chapter_id}/diff", response_model=ChapterContentDiffResponse)
+async def diff_content(
+    chapter_id: Annotated[int, Path],
+    user_id: Annotated[int, Depends(get_current)],
+    content_service: Annotated[ChapterContentService, Depends(chapter_content_db)],
+    session: Annotated[AsyncSession, Depends(db_manager.get_db)],
+    from_version: Annotated[int, Query(gt=0)],
+    to_version: Annotated[int, Query(gt=0)],
+):
+    await _assert_chapter_owner(chapter_id, user_id, session)
+    if from_version == to_version:
+        raise HTTPException(status_code=400, detail="fromVersion 与 toVersion 不能相同")
+    data = await content_service.diff_versions(chapter_id, from_version, to_version)
+    if not data:
+        raise HTTPException(status_code=404, detail="指定版本不存在")
+    return ChapterContentDiffResponse(**data)

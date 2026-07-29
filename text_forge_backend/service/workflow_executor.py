@@ -6,13 +6,13 @@ from agents.state import ParentState
 from repository.project_repo import (
     BookRepository,
 )
-from repository.workflow_repo import WorkflowRepository
+from repository.workflow import WorkflowRepository
 from repository.outline_repo import OutlineRepository
+from repository.structured_repo import StructuredRepository
 from utils.logger import get_logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from collections import deque
 from model.model import ModelConfig
-from core.model_factory import ModelFactory
 
 logger = get_logger(__name__)
 
@@ -43,6 +43,21 @@ class WorkflowExecutor:
             "vision_config": instance.vision_config or {},
             "embedding_config": instance.embedding_config or {},
         }
+
+    async def _load_context(self, book_id: int) -> dict:
+        """一次性加载项目上下文到扁平字段"""
+        async with db_manager.with_db() as session:
+            repo = StructuredRepository(session)
+            # 这里暂时返回空字符串，实际可根据需求查询具体字段
+            # 也可以在此集成 Book/CreativeSetting/Outline/Characters 的组装
+            return {
+                "input_summary": "",
+                "input_worldview": "",
+                "input_brief_summary": "",
+                "input_characters": "",
+                "input_recent_chapters": "",
+                "input_outline": "",
+            }
 
     def _topological_store(self, nodes: list[dict], edges: list[dict]):
         in_degree = {n["id"]: 0 for n in nodes}
@@ -77,6 +92,10 @@ class WorkflowExecutor:
             raise ValueError("书籍不存在")
         model_config = await self._get_user_model_config(user_id)
         nodes = workflow.nodes or []
+
+        # 一次性加载上下文
+        context_data = await self._load_context(book_id)
+
         initial_state: ParentState = {
             "book_id": book_id,
             "user_id": user_id,
@@ -90,7 +109,8 @@ class WorkflowExecutor:
             "book_title": book.title or "",
             "book_description": book.description or "",
             "book_genre": book.genre or "",
-        }  # type: ignore
+            **context_data,
+        }
         config = {"configurable": {"thread_id": thread_id}}
         parent_graph = await self._get_parent_graph()
         current_display_id = None
@@ -98,8 +118,8 @@ class WorkflowExecutor:
         try:
             outputs_map: dict = {}
             async for event in parent_graph.astream_events(
-                initial_state, config=config, version="v2"  # type: ignore
-            ):  # type: ignore
+                initial_state, config=config, version="v2"
+            ):
                 kind = event.get("event")
                 name = event.get("name")
                 data = event.get("data", {})

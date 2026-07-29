@@ -11,6 +11,24 @@ from agents.main_node import main_node
 from agents.audit_node import audit_node
 
 
+CONTEXT_FIELD_MAP = {
+    "input_summary": "input_summary",
+    "input_worldview": "input_worldview",
+    "input_brief_summary": "input_brief_summary",
+    "input_characters": "input_characters",
+    "input_recent_chapters": "input_recent_chapters",
+    "input_outline": "input_outline",
+}
+
+
+def _build_context_payload(state: ParentState, fields: list[str]):
+    payload = {"model_config": state["model_config"]}
+    for f in fields:
+        if f in CONTEXT_FIELD_MAP:
+            payload[f] = state.get(f, "")
+    return payload
+
+
 def _to_serializable(value):
     if isinstance(value, (str, int, float, bool, type(None))):
         return value
@@ -95,14 +113,16 @@ async def manager_node(state: ParentState):
             },
         }
 
-    if next_node.get("rag_filter") or next_node.get("context_fields"):
-        target_executor = "tool"
+    executor = next_node.get("executor") or "auto"
+    if executor == "auto":
+        if next_node.get("rag_filter") or next_node.get("context_fields"):
+            target_executor = "tool"
+        else:
+            target_executor = "main"
     else:
-        target_executor = "main"
+        target_executor = executor
 
     print(f"[Manager] 代码路由决策 -> {target_executor}")
-
-    logger.info(f"[context] node={next_node['id']} label={next_node.get('label')} executor={target_executor} context_keys={list(context.keys())}")
 
     return {
         "next_step_id": next_node["id"],
@@ -137,14 +157,21 @@ async def call_tool(state: ParentState) -> dict:
 
     context_fields = workflow_node.get("context_fields") or []
     context_pool = await _load_context_pool(book_id)
+
+    meta = metadata.get("_exec_meta") or {}
+    node_id = meta.get("node_id", metadata.get("current_node_id", "step_tool"))
+    node_label = meta.get("node_label", metadata.get("current_node_label", "工具"))
+
     payload: ToolState = {
         "query": query,
         "project_id": book_id,
         "workflow_node": workflow_node,
         "model_config": state["model_config"],
         "tool_result": "",
-        "context_fields": context_fields,
-        "context_pool": context_pool,
+        "_exec_meta": {
+            "node_id": node_id,
+            "node_label": node_label,
+        },
     }
 
     result = await graph_register.get_compiled("tool_graph").ainvoke(payload)
@@ -166,14 +193,19 @@ async def call_main(state: ParentState) -> dict:
     fields = workflow_node.get("context_fields") or []
 
     context_pool = await _load_context_pool(state.get("book_id"))
+    context_payload = _build_context_payload(state, fields)
     payload: MainState = {
         "system_prompt": system_prompt,
         "input_context": context,
         "output": "",
-        "project_id": state.get("book_id"),
         "model_config": state["model_config"],
-        "context_fields": fields,
-        "context_pool": context_pool,
+        **context_payload,
+    }
+
+    meta = metadata.get("_exec_meta") or {}
+    payload["_exec_meta"] = {
+        "node_id": meta.get("node_id", node_id),
+        "node_label": meta.get("node_label", metadata.get("current_node_label", node_id)),
     }
 
     result = await graph_register.get_compiled("main_graph").ainvoke(payload)
@@ -195,10 +227,16 @@ async def call_compression(state: ParentState) -> dict:
         "system_prompt": compression_prompt,
         "input_context": {"text": compress_text},
         "output": "",
-        "project_id": state.get("book_id"),
         "model_config": state["model_config"],
-        "context_fields": ["setting"],
-        "context_pool": context_pool,
+        "input_worldview": "",
+        "input_characters": "",
+        "input_brief_summary": "",
+        "input_recent_chapters": "",
+        "input_outline": "",
+        "_exec_meta": {
+            "node_id": node_id,
+            "node_label": f"{source_id}压缩",
+        },
     }
 
     result = await graph_register.get_compiled("compression_graph").ainvoke(payload)
@@ -225,14 +263,19 @@ async def call_audit(state: ParentState) -> dict:
     ]
 
     context_pool = await _load_context_pool(state.get("book_id"))
+    context_payload = _build_context_payload(state, fields)
     payload: AuditState = {
         "system_prompt": system_prompt,
         "input_context": context,
         "output": "",
-        "project_id": state.get("book_id"),
         "model_config": state["model_config"],
-        "context_fields": fields,
-        "context_pool": context_pool,
+        **context_payload,
+    }
+
+    meta = metadata.get("_exec_meta") or {}
+    payload["_exec_meta"] = {
+        "node_id": meta.get("node_id", node_id),
+        "node_label": meta.get("node_label", metadata.get("current_node_label", node_id)),
     }
 
     result = await graph_register.get_compiled("audit_graph").ainvoke(payload)

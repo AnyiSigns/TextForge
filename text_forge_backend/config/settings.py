@@ -29,14 +29,6 @@ class Settings(BaseSettings):
         "postgresql+asyncpg://postgres:1234@localhost:5433/text_forge"
     )
 
-    # 模型
-    DASHSCOPE_MODEL: str = "glm-5.1"
-    DASHSCOPE_BASE_URL: str = (
-        "https://ws-6rnv50cb3kvs261t.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
-    )
-    DASHSCOPE_API_KEY: str = "sk-da98029948304384b660c0f07656e020"
-    DASHSCOPE_TEXT_MODEL: str = "text-embedding-v4"
-
     # email config
     EMAIL_SERVER: str = "smtp.yeah.net"
     EMAIL_PORT: int = 465

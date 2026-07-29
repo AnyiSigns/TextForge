@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 from sqlalchemy import Integer, ForeignKey, String, DateTime, func, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from model.base import Base
@@ -17,6 +17,12 @@ class Conversation(Base):
         nullable=False,
         comment="用户id",
     )
+    book_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("books.id", ondelete="CASCADE"), nullable=True, index=True, comment="关联书籍id"
+    )
+    type: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="chat", index=True, comment="会话类型: chat/user_agent"
+    )
     thread_id: Mapped[str] = mapped_column(
         String(255), nullable=False, index=True, unique=True, comment="线程"
     )
@@ -32,7 +38,7 @@ class Conversation(Base):
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,
-        comment="会话更新时间",
+        comment="会话更新时间"
     )
 
     users: Mapped["User"] = relationship(back_populates="conversations")

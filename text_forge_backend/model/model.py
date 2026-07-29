@@ -16,6 +16,7 @@ class ModelConfig(Base):
     tool_config: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=True)
     vision_config: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=True)
     embedding_config: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=True)
+    search_config: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=True)
 
     users: Mapped["User"] = relationship(back_populates="model_configs")
 
@@ -23,8 +24,8 @@ class ModelConfig(Base):
 class Workflow(Base):
     __tablename__ = "workflows"
     id: Mapped[str] = mapped_column(String(255), primary_key=True)
-    user_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True
+    user_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=True
     )
     name: Mapped[str] = mapped_column(String(128), index=True)
     description: Mapped[str] = mapped_column(Text, nullable=True)

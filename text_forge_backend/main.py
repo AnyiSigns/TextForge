@@ -6,6 +6,7 @@ from utils import get_logger
 from infrastructure.database import db_manager
 from infrastructure.graph_store import graph_pool_manager
 from api.router import router
+from service.workflow_seed import seed_builtin_workflows
 
 # 日志初始化
 logger = get_logger(__name__)
@@ -15,6 +16,8 @@ logger = get_logger(__name__)
 async def lifespan(_application: FastAPI):
     logger.info("应用启动中...")
     await db_manager.init()
+    async with db_manager.with_db() as session:
+        await seed_builtin_workflows(session)
     await graph_pool_manager.init()
     await compiled_all(checkpointer=graph_pool_manager.checkpoint)
     logger.info("应用已启动")

@@ -14,6 +14,12 @@ from api.v1 import (
     chapters,
     chapter_contents,
     creative_settings,
+    knowledge,
+    world,
+    agent_memory,
+    agent,
+    writing_sessions,
+    export,
 )
 
 router = APIRouter(prefix="/api")
@@ -31,3 +37,9 @@ router.include_router(volumes.router)
 router.include_router(chapters.router)
 router.include_router(chapter_contents.router)
 router.include_router(creative_settings.router)
+router.include_router(knowledge.router)
+router.include_router(world.router)
+router.include_router(agent_memory.router)
+router.include_router(agent.router)
+router.include_router(writing_sessions.router)
+router.include_router(export.router)

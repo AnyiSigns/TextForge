@@ -3,7 +3,7 @@ from infrastructure.database import db_manager
 from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from utils.logger import get_logger
-from repository.workflow_repo import WorkflowRepository
+from repository.workflow import WorkflowRepository
 
 logger = get_logger(__name__)
 

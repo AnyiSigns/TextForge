@@ -1,9 +1,17 @@
 from langchain_core.language_models import BaseChatModel
-from typing import Any, Dict, Type
+from typing import Any, Dict, Optional, Type
 from langchain_qwq import ChatQwen
 from langchain_deepseek import ChatDeepSeek
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
+from langchain_anthropic import ChatAnthropic
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_community.chat_models import ChatZhipuAI, ChatMoonshot, ChatTongyi
+
+
+class _EmbeddingStub:
+    async def aembed_query(self, text: str):
+        return []
 
 
 class ModelWrapper:
@@ -12,6 +20,26 @@ class ModelWrapper:
         "deepseek": ChatDeepSeek,
         "ollama": ChatOllama,
         "openai": ChatOpenAI,
+        "anthropic": ChatAnthropic,
+        "google": ChatGoogleGenerativeAI,
+        "glm": ChatZhipuAI,
+        "kimi": ChatMoonshot,
+        "wenxin": ChatTongyi,
+    }
+
+    EMBEDDING_MAP: Dict[str, Any] = {
+        "dashscope": "_create_dashscope_embedding",
+        "cohere": "_create_cohere_embedding",
+        "huggingface": "_create_huggingface_embedding",
+        "qianfan": "_create_qianfan_embedding",
+    }
+
+    VISION_MAP: Dict[str, Any] = {
+        "openai": "_create_openai_vision",
+        "stability": "_create_stability_vision",
+        "replicate": "_create_replicate_vision",
+        "modelslab": "_create_modelslab_vision",
+        "pollinations": "_create_pollinations_vision",
     }
 
     @classmethod
@@ -28,9 +56,157 @@ class ModelWrapper:
         except Exception as e:
             raise RuntimeError(f"初始化{provider}的模型{config.get("model_id")}失败{e}")
 
+    @classmethod
+    def get_embedding(cls, config: Dict[str, Any]):
+        provider = config.get("adapter")
+        factory_name = cls.EMBEDDING_MAP.get(provider)
+        if not factory_name:
+            return _EmbeddingStub()
+        factory = getattr(cls, factory_name)
+        try:
+            return factory(config)
+        except Exception:
+            return _EmbeddingStub()
+
+    @classmethod
+    def get_vision(cls, config: Dict[str, Any]) -> Optional[Any]:
+        provider = config.get("adapter")
+        factory_name = cls.VISION_MAP.get(provider)
+        if not factory_name:
+            return None
+        factory = getattr(cls, factory_name)
+        try:
+            return factory(config)
+        except Exception:
+            return None
+
+    @staticmethod
+    def _create_dashscope_embedding(config: Dict[str, Any]):
+        try:
+            from langchain_community.embeddings import DashScopeEmbeddings
+
+            return DashScopeEmbeddings(
+                model=config.get("model_id") or "text-embedding-v4",
+                dashscope_api_key=config.get("api_key", ""),
+            )
+        except Exception as e:
+            raise RuntimeError(f"初始化 dashscope embedding 失败: {e}")
+
+    @staticmethod
+    def _create_cohere_embedding(config: Dict[str, Any]):
+        try:
+            from langchain_cohere import CohereEmbeddings
+
+            return CohereEmbeddings(
+                model=config.get("model_id") or "embed-multilingual-v3.0",
+                cohere_api_key=config.get("api_key", ""),
+            )
+        except Exception as e:
+            raise RuntimeError(f"初始化 cohere embedding 失败: {e}")
+
+    @staticmethod
+    def _create_huggingface_embedding(config: Dict[str, Any]):
+        try:
+            from langchain_huggingface import HuggingFaceEndpointEmbeddings
+
+            kwargs = {"model": config.get("model_id") or "intfloat/multilingual-e5-large"}
+            if config.get("api_key"):
+                kwargs["huggingfacehub_api_token"] = config.get("api_key")
+            return HuggingFaceEndpointEmbeddings(**kwargs)
+        except Exception as e:
+            raise RuntimeError(f"初始化 huggingface embedding 失败: {e}")
+
+    @staticmethod
+    def _create_qianfan_embedding(config: Dict[str, Any]):
+        try:
+            from langchain_community.embeddings import QianfanEmbeddingsEndpoint
+
+            kwargs = {"model": config.get("model_id") or "bge-large-zh"}
+            if config.get("api_key"):
+                kwargs["qianfan_ak"] = config.get("api_key")
+            if config.get("base_url"):
+                kwargs["endpoint"] = config.get("base_url")
+            return QianfanEmbeddingsEndpoint(**kwargs)
+        except Exception as e:
+            raise RuntimeError(f"初始化 qianfan embedding 失败: {e}")
+
+    @staticmethod
+    def _create_openai_vision(config: Dict[str, Any]):
+        try:
+            from openai import OpenAI
+
+            return OpenAI(api_key=config.get("api_key"), base_url=config.get("base_url"))
+        except Exception as e:
+            raise RuntimeError(f"初始化 openai vision 失败: {e}")
+
+    @staticmethod
+    def _create_stability_vision(config: Dict[str, Any]):
+        try:
+            from langchain_community.llms.stability_ai_image_gen import StabilityAIImageGeneration
+
+            kwargs = {"model": config.get("model_id") or "stable-diffusion-xl-1024-v1-0"}
+            if config.get("api_key"):
+                kwargs["stability_ai_api_key"] = config.get("api_key")
+            return StabilityAIImageGeneration(**kwargs)
+        except Exception as e:
+            raise RuntimeError(f"初始化 stability vision 失败: {e}")
+
+    @staticmethod
+    def _create_replicate_vision(config: Dict[str, Any]):
+        try:
+            from langchain_replicate import Replicate
+
+            kwargs = {
+                "model": config.get("model_id") or "stability-ai/stable-diffusion:db21e45d3f7023abc2a46ee38a23973f6dce16bb082a930b0c49861f96d1e5bf",
+                "input": {},
+            }
+            if config.get("api_key"):
+                kwargs["replicate_api_token"] = config.get("api_key")
+            return Replicate(**kwargs)
+        except Exception as e:
+            raise RuntimeError(f"初始化 replicate vision 失败: {e}")
+
+    @staticmethod
+    def _create_modelslab_vision(config: Dict[str, Any]):
+        try:
+            from langchain.llms.base import LLM
+            import requests
+
+            class ModelsLab(LLM):
+                api_key: str = ""
+                model_id: str = "midjourney"
+                base_url: str = "https://modelslab.com/api/v6/images/text2img"
+
+                def _call(self, prompt: str, **kwargs):
+                    payload = {"key": self.api_key, "prompt": prompt, "model_id": self.model_id}
+                    resp = requests.post(self.base_url, json=payload)
+                    return resp.json().get("output") or ""
+
+                @property
+                def _llm_type(self) -> str:
+                    return "modelslab"
+
+            return ModelsLab(
+                api_key=config.get("api_key", ""),
+                model_id=config.get("model_id", "midjourney"),
+                base_url=config.get("base_url", "https://modelslab.com/api/v6/images/text2img"),
+            )
+        except Exception as e:
+            raise RuntimeError(f"初始化 modelslab vision 失败: {e}")
+
+    @staticmethod
+    def _create_pollinations_vision(config: Dict[str, Any]):
+        try:
+            from langchain_pollinations import PollinationsChat
+
+            return PollinationsChat(
+                model=config.get("model_id") or "flux",
+            )
+        except Exception as e:
+            raise RuntimeError(f"初始化 pollinations vision 失败: {e}")
+
     @staticmethod
     def _build_kwargs(provider: str, config: Dict[str, Any]):
-        # 基础参数
         base = {
             "model": config.get("model_id"),
             "temperature": config.get("temperature", 0.7),
@@ -38,13 +214,25 @@ class ModelWrapper:
         }
         base = {k: v for k, v in base.items() if v is not None}
 
-        if provider in ("dashscope", "deepseek", "openai"):
+        if provider == "google":
+            params = {**base, "google_api_key": config.get("api_key")}
+            return {k: v for k, v in params.items() if v is not None}
+
+        if provider == "anthropic":
             params = {
                 **base,
-                "base_url": config.get("base_url"),
                 "api_key": config.get("api_key"),
+                "anthropic_api_url": config.get("base_url"),
             }
             return {k: v for k, v in params.items() if v is not None}
+
         if provider == "ollama":
             params = {**base, "base_url": config.get("base_url")}
             return {k: v for k, v in params.items() if v is not None}
+
+        params = {
+            **base,
+            "api_key": config.get("api_key"),
+            "base_url": config.get("base_url"),
+        }
+        return {k: v for k, v in params.items() if v is not None}

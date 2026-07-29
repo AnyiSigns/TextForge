@@ -2,6 +2,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Dict, Any
 from model.document import Document, Chunk
+from infrastructure.redis import cached_rag_search, set_rag_cache
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class VectorRepository:
@@ -13,7 +17,20 @@ class VectorRepository:
         query_embedding: List[float],
         rag_filter: Dict[str, Any],
         top_k: int = 3,
+        use_cache: bool = True,
     ) -> List[Dict[str, Any]]:
+        query_text = rag_filter.get("query", "")
+        cache_hit = None
+        if use_cache and query_text:
+            cache_hit = await cached_rag_search(
+                query=query_text,
+                query_embedding=query_embedding,
+                rag_filter=rag_filter,
+                top_k=top_k,
+            )
+            if cache_hit is not None:
+                return cache_hit
+
         stmt = (
             select(
                 Chunk,
@@ -55,4 +72,15 @@ class VectorRepository:
                     ),
                 }
             )
+
+        if use_cache and query_text and items:
+            try:
+                await set_rag_cache(
+                    query=query_text,
+                    rag_filter=rag_filter,
+                    results=items,
+                )
+            except Exception as exc:
+                logger.warning(f"vector_repo 缓存写入失败: {exc}")
+
         return items

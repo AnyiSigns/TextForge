@@ -33,6 +33,31 @@ class ChapterContentService:
             logger.error("创建正文失败", exc_info=True)
             return None
 
+    async def get_content_by_version(self, chapter_id: int, version: int):
+        try:
+            return await self.content_repo.get_content_by_version(chapter_id, version)
+        except Exception:
+            logger.error("获取指定版本正文失败", exc_info=True)
+            return None
+
+    async def diff_versions(self, chapter_id: int, from_version: int, to_version: int):
+        try:
+            from_item = await self.content_repo.get_content_by_version(chapter_id, from_version)
+            to_item = await self.content_repo.get_content_by_version(chapter_id, to_version)
+            if not from_item or not to_item:
+                return None
+            return {
+                "from_version": from_item.version,
+                "to_version": to_item.version,
+                "from_content": from_item.content or "",
+                "to_content": to_item.content or "",
+                "from_created_at": from_item.created_at.isoformat() if from_item.created_at else None,
+                "to_created_at": to_item.created_at.isoformat() if to_item.created_at else None,
+            }
+        except Exception:
+            logger.error("获取版本差异失败", exc_info=True)
+            return None
+
 
 async def chapter_content_db(db: AsyncSession = Depends(db_manager.get_db)):
     return ChapterContentService(db)

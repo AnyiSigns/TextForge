@@ -2,7 +2,7 @@ from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Dict, List, Any, Optional
 
-from model.book import Book, Character, CreativeSetting, Outline, Chapter, Volume, ChapterContent
+from model.book import Book, Character, CreativeSetting, Outline, Chapter, Volume, ChapterContent, Location, TimelineEvent, Foreshadowing, PlotThread
 
 
 class StructuredRepository:
@@ -16,6 +16,10 @@ class StructuredRepository:
         "recent_chapters": Chapter,
         "outline_structure": Outline,
         "volumes": Volume,
+        "locations": Location,
+        "timeline_events": TimelineEvent,
+        "foreshadowings": Foreshadowing,
+        "plot_threads": PlotThread,
     }
 
     FIELD_ALIAS = {
@@ -225,6 +229,30 @@ class StructuredRepository:
                 getattr(model, "summary"),
                 getattr(model, "sort_order"),
             )
+            query_result = await self.session.execute(stmt)
+            rows = query_result.scalars().all()
+            return rows
+
+        if field == "locations":
+            stmt = stmt.where(model.book_id == book_id)
+            query_result = await self.session.execute(stmt)
+            rows = query_result.scalars().all()
+            return rows
+
+        if field == "timeline_events":
+            stmt = stmt.where(model.book_id == book_id)
+            query_result = await self.session.execute(stmt)
+            rows = query_result.scalars().all()
+            return rows
+
+        if field == "foreshadowings":
+            stmt = stmt.where(model.book_id == book_id)
+            query_result = await self.session.execute(stmt)
+            rows = query_result.scalars().all()
+            return rows
+
+        if field == "plot_threads":
+            stmt = stmt.where(model.book_id == book_id)
             query_result = await self.session.execute(stmt)
             rows = query_result.scalars().all()
             return rows

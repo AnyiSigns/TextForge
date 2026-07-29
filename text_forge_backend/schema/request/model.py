@@ -37,6 +37,11 @@ class EembeddingRequest(BaseModelBasicRequest):
     pass
 
 
+class SearchConfigRequest(BaseModel):
+    provider: Optional[str] = "bocha"
+    api_key: Optional[str] = None
+
+
 class ModelRequest(BaseModel):
     main_config: Optional[MainConfRequest] = None
     audit_config: Optional[AuditConfigRequest] = None
@@ -44,3 +49,4 @@ class ModelRequest(BaseModel):
     tool_config: Optional[ToolRequest] = None
     vision_config: Optional[VsionRequest] = None
     embedding_config: Optional[EembeddingRequest] = None
+    search_config: Optional[SearchConfigRequest] = None

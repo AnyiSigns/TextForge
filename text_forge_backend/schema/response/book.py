@@ -47,8 +47,20 @@ class ChapterContentResponse(BaseModel):
     id: int
     chapter_id: int = Field(alias="chapterId")
     content: Optional[str] = None
+    version: int
     created_at: datetime = Field(alias="createdAt")
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)
+
+
+class ChapterContentDiffResponse(BaseModel):
+    from_version: int = Field(alias="fromVersion")
+    to_version: int = Field(alias="toVersion")
+    from_content: str = Field(alias="fromContent")
+    to_content: str = Field(alias="toContent")
+    from_created_at: Optional[str] = Field(default=None, alias="fromCreatedAt")
+    to_created_at: Optional[str] = Field(default=None, alias="toCreatedAt")
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class CharacterResponse(BaseModel):

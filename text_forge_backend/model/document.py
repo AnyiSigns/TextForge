@@ -38,7 +38,7 @@ class Chunk(Base):
     )
     chunk_index: Mapped[int] = mapped_column(Integer)
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    embedding: Mapped[Vector] = mapped_column(Vector(1536), nullable=True)
+    embedding: Mapped[Vector] = mapped_column(Vector(None), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     documents: Mapped["Document"] = relationship(back_populates="chunks")

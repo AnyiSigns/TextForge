@@ -56,6 +56,9 @@ class UserAuthService:
             if not verify_pwd(pwd, user.hash_password):
                 logger.info("密码错误与数据库不一致")
                 return None, None, None, "密码错误"
+            if not user.is_verified:
+                logger.info("用户未验证邮箱")
+                return None, None, None, "邮箱未验证，请先验证邮箱"
 
             at_jti = str(uuid.uuid4())
             access_token = create_token(
