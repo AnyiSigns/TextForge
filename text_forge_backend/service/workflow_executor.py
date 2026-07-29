@@ -1,4 +1,5 @@
 import json
+import time
 from typing import AsyncGenerator
 from infrastructure.database import db_manager
 from repository.model_repo import ModelConfRepository
@@ -48,8 +49,6 @@ class WorkflowExecutor:
         """一次性加载项目上下文到扁平字段"""
         async with db_manager.with_db() as session:
             repo = StructuredRepository(session)
-            # 这里暂时返回空字符串，实际可根据需求查询具体字段
-            # 也可以在此集成 Book/CreativeSetting/Outline/Characters 的组装
             return {
                 "input_summary": "",
                 "input_worldview": "",
@@ -79,6 +78,15 @@ class WorkflowExecutor:
             raise ValueError("工作流存在循环依赖")
         return sorted_nodes
 
+    def _count_words(self, text: str) -> int:
+        if not text:
+            return 0
+        try:
+            import re
+            return len(re.findall(r"\S+", text))
+        except Exception:
+            return len(text)
+
     async def run(
         self, workflow_id: str, user_id: int, book_id: int, thread_id: str
     ) -> AsyncGenerator[str, None]:
@@ -92,8 +100,11 @@ class WorkflowExecutor:
             raise ValueError("书籍不存在")
         model_config = await self._get_user_model_config(user_id)
         nodes = workflow.nodes or []
+        edges = workflow.edges or []
 
-        # 一次性加载上下文
+        sorted_nodes = self._topological_store(nodes, edges)
+        total_nodes = len(sorted_nodes)
+
         context_data = await self._load_context(book_id)
 
         initial_state: ParentState = {
@@ -105,7 +116,7 @@ class WorkflowExecutor:
             "executed_steps": [],
             "metadata": {},
             "next_step_id": None,
-            "edges": workflow.edges or [],
+            "edges": edges,
             "book_title": book.title or "",
             "book_description": book.description or "",
             "book_genre": book.genre or "",
@@ -115,6 +126,9 @@ class WorkflowExecutor:
         parent_graph = await self._get_parent_graph()
         current_display_id = None
         current_display_label = None
+        executed_count = 0
+        total_words = 0
+        start_time = time.time()
         try:
             outputs_map: dict = {}
             async for event in parent_graph.astream_events(
@@ -141,6 +155,19 @@ class WorkflowExecutor:
                     current_display_label = exec_meta.get("node_label", name)
                     current_display_id = exec_meta.get("node_id", name)
 
+                    n = executed_count + 1
+                    eta = 0.0
+                    if executed_count > 0:
+                        elapsed = time.time() - start_time
+                        eta = (elapsed / executed_count) * (total_nodes - executed_count)
+                    progress_payload = {
+                        "step": current_display_label,
+                        "n": n,
+                        "total": total_nodes,
+                        "words": total_words,
+                        "eta": round(eta, 2),
+                    }
+                    yield f"event:progress\ndata:{json.dumps(progress_payload)}\n\n"
                     yield f"event:node_start\ndata:{json.dumps({'node': current_display_label, 'node_id': current_display_id})}\n\n"
                     continue
 
@@ -244,9 +271,21 @@ class WorkflowExecutor:
                     if not isinstance(node_output, str):
                         node_output = json.dumps(node_output, ensure_ascii=False)
                     outputs_map.update(step_outputs)
-                    logger.info(
-                        f"[stream] end {display_label}, output={str(node_output)[:80]}"
-                    )
+                    total_words += self._count_words(str(node_output))
+                    executed_count += 1
+                    n = executed_count
+                    eta = 0.0
+                    if executed_count > 0:
+                        elapsed = time.time() - start_time
+                        eta = (elapsed / executed_count) * (total_nodes - executed_count)
+                    progress_payload = {
+                        "step": display_label,
+                        "n": n,
+                        "total": total_nodes,
+                        "words": total_words,
+                        "eta": round(eta, 2),
+                    }
+                    yield f"event:progress\ndata:{json.dumps(progress_payload)}\n\n"
                     yield f"event:node_end\ndata:{json.dumps({'node': display_label, 'node_id': display_id, 'output': node_output})}\n\n"
                     current_display_id = None
                     current_display_label = None
