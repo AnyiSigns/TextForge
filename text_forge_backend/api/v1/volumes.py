@@ -6,8 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from infrastructure.database import db_manager
 from model.book import Book
 from service.volume_service import VolumeService, volume_db
-from text_forge_backend.schema.request.book import VolumeRequest
-from text_forge_backend.schema.response.book import VolumeResponse
+from schema.request.book import VolumeRequest
+from schema.response.book import VolumeResponse
 
 router = APIRouter(prefix="/volumes", tags=["Volume"])
 

@@ -13,4 +13,4 @@ def build_user_agent_graph(session_factory, model_config: Optional[dict] = None)
     builder.set_entry_point("agent")
     builder.add_conditional_edges("agent", agent_router)
     builder.add_edge("tool_calls", "agent")
-    return builder
+    return builder.compile()

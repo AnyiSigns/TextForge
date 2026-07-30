@@ -52,7 +52,7 @@ async def end_session(
 async def list_sessions(
     user_id=Depends(get_current),
     book_id: int = Query(...),
-    chapter_id: Optional[int] = Query(None),
+    chapter_id: Optional[int] = Query(default=None),
     service: WritingSessionService = Depends(writing_session_db),
 ):
     sessions = await service.list_sessions(user_id=user_id, book_id=book_id, chapter_id=chapter_id)
@@ -87,7 +87,7 @@ async def delete_session(
 async def get_statistics(
     user_id=Depends(get_current),
     book_id: int = Query(...),
-    chapter_id: Optional[int] = Query(None),
+    chapter_id: Optional[int] = Query(default=None),
     service: WritingSessionService = Depends(writing_session_db),
 ):
     stats = await service.get_statistics(user_id=user_id, book_id=book_id, chapter_id=chapter_id)

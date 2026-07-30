@@ -112,7 +112,7 @@ async def delete_timeline_event(
 async def list_foreshadowings(
     user_id=Depends(get_current),
     book_id: int = Query(...),
-    status: Optional[str] = Query(None),
+    status: str | None = None,
     service: WorldService = Depends(world_db),
 ):
     return await service.list_foreshadowings(book_id, status=status)

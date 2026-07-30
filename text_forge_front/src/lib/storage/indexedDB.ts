@@ -168,7 +168,7 @@ export async function getManuscriptChapters(bookId: number): Promise<ManuscriptC
     .sort((a, b) => a.index - b.index || a.updatedAt.localeCompare(b.updatedAt));
 }
 
-export async function deleteManuscriptChapter(id: string): Promise<void> {
+export async function deleteManuscriptChapter(id: number): Promise<void> {
   const db = await getDB();
   await db.delete(MS_STORE, id);
 }

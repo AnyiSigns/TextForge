@@ -5,18 +5,55 @@ import { useSettingsStore } from '@/features/settings';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { EMBED_TIERS, isTierDownloaded } from '@/lib/rag/embed';
+import { EMBED_TIERS, isTierDownloaded, downloadEmbedModel } from '@/lib/rag/embed';
 import { useEmbedDownloaded } from '@/lib/hooks/useEmbedDownloaded';
+import { toast } from 'sonner';
+import { useSettingsStore as useSettingsStoreImport } from '@/features/settings';
 
-interface AiPrefSectionProps {
-  onSwitchEmbedTier: (id: string) => void;
-}
-
-export function AiPrefSection({ onSwitchEmbedTier }: AiPrefSectionProps) {
+export function AiPrefSection() {
   const suggestionFrequency = useSettingsStore((s) => s.suggestionFrequency);
   const setSuggestionFrequency = useSettingsStore((s) => s.setSuggestionFrequency);
   const embedTierId = useSettingsStore((s) => s.embedTierId);
+  const setEmbedTierId = useSettingsStoreImport((s) => s.setEmbedTierId);
   const downloadedTiers = useEmbedDownloaded();
+
+  const handleSwitchEmbedTier = (id: string) => {
+    const t = EMBED_TIERS.find((x) => x.id === id);
+    if (!t) return;
+    if (isTierDownloaded(id)) {
+      (async () => {
+        try {
+          const { resetForTier } = await import('@/lib/rag/vectorStore');
+          const removed = await resetForTier(id);
+          setEmbedTierId(id);
+          toast.success(
+            removed > 0
+              ? `已切换到「${t.label}」，原有 ${removed} 篇文档需重新建库（在「知识库」中一键重建）`
+              : `已切换到「${t.label}」`
+          );
+        } catch {
+          toast.error('切换失败，请重试');
+        }
+      })();
+      return;
+    }
+    const ok = window.confirm(
+      `「${t.label}」尚未下载到本机（约 ${t.sizeMB}MB）。\n\n` +
+      '确定现在下载吗？下载完成后会自动切到该精度；你已有的文档需要在「知识库」中重新建库一次。'
+    );
+    if (!ok) return;
+    setEmbedTierId(id);
+    (async () => {
+      try {
+        const { resetForTier } = await import('@/lib/rag/vectorStore');
+        await resetForTier(id);
+        await downloadEmbedModel(id);
+        toast.success(`「${t.label}」已下载并启用。请到「知识库」重新建库以检索旧文档`);
+      } catch {
+        toast.error('下载失败，请重试或选择已下载的精度');
+      }
+    })();
+  };
 
   return (
     <Card className="glass-card">
@@ -63,7 +100,7 @@ export function AiPrefSection({ onSwitchEmbedTier }: AiPrefSectionProps) {
           <Label>检索精度（越高越准，但下载更大）</Label>
           <Select
             value={embedTierId}
-            onValueChange={(v) => { if (v) onSwitchEmbedTier(v); }}
+            onValueChange={(v) => { if (v) handleSwitchEmbedTier(v); }}
           >
             <SelectTrigger className="max-w-xs">
               <SelectValue placeholder="选择精度">
@@ -88,3 +125,4 @@ export function AiPrefSection({ onSwitchEmbedTier }: AiPrefSectionProps) {
     </Card>
   );
 }
+

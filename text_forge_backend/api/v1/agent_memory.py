@@ -37,8 +37,8 @@ async def _get_model_config(user_id: int, session: AsyncSession) -> dict:
 @router.get("/", response_model=List[AgentMemoryResponse])
 async def list_memories(
     user_id=Depends(get_current),
-    book_id: Optional[int] = Query(None),
-    memory_type: Optional[str] = Query(None),
+    book_id: Optional[int] = Query(default=None),
+    memory_type: Optional[str] = Query(default=None),
     service: AgentMemoryService = Depends(agent_memory_db),
 ):
     return await service.list_memories(user_id=user_id, book_id=book_id, memory_type=memory_type)
@@ -93,8 +93,8 @@ async def search_memories(
     user_id=Depends(get_current),
     q: str = Query(...),
     mode: str = Query("fulltext"),
-    book_id: Optional[int] = Query(None),
-    memory_type: Optional[str] = Query(None),
+    book_id: Optional[int] = Query(default=None),
+    memory_type: Optional[str] = Query(default=None),
     top_k: int = Query(5, ge=1, le=20),
     session: AsyncSession = Depends(db_manager.get_db),
     service: AgentMemoryService = Depends(agent_memory_db),

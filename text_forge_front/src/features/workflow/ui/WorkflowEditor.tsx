@@ -1,7 +1,7 @@
 // src/components/workflow/WorkflowEditor.tsx
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import type { Workflow, WorkflowNode } from '@/features/workflow';
 import { saveWorkflow } from '@/features/workflow';
 import { agentRoleById } from '@/shared/lib/agentRoles';
@@ -15,8 +15,6 @@ export function WorkflowEditor({ initial, onSaved }: { initial: Workflow; onSave
   const [wf, setWf] = useState<Workflow>(initWf);
   const [selected, setSelected] = useState<string | null>(initWf.nodes[0]?.id ?? null);
 
-  const [personalDocs, setPersonalDocs] = useState<{ id: string; name: string; uploaderName?: string }[]>([]);
-
   const seqRef = useRef(100);
   const nid = () => `n${Date.now()}-${seqRef.current++}`;
 
@@ -29,7 +27,6 @@ export function WorkflowEditor({ initial, onSaved }: { initial: Workflow; onSave
       id: nid(),
       label: role.short,
       systemPrompt: role.defaultPrompt,
-      toolIds: [...role.recommendedTools],
     };
     update({ nodes: [...wf.nodes, node] });
     setSelected(node.id);
@@ -59,18 +56,6 @@ export function WorkflowEditor({ initial, onSaved }: { initial: Workflow; onSave
   };
 
   const selectedNode = wf.nodes.find((n) => n.id === selected) || null;
-  const nodeHasPersonalRag = !!selectedNode?.toolIds?.some((t) => t === 'rag:personal' || t === 'rag:both');
-
-  useEffect(() => {
-    if (!nodeHasPersonalRag) return;
-    let alive = true;
-    import('@/lib/knowledge').then(({ ragClient }) =>
-      ragClient.listPersonal().then((list) => {
-        if (alive) setPersonalDocs(list.map((d) => ({ id: d.id, name: d.name, uploaderName: d.uploaderName })));
-      }).catch(() => {})
-    );
-    return () => { alive = false; };
-  }, [nodeHasPersonalRag, selected]);
 
   const handleSave = async () => {
     try {
@@ -103,7 +88,6 @@ export function WorkflowEditor({ initial, onSaved }: { initial: Workflow; onSave
       <WorkflowInspector
         wf={wf}
         selectedNode={selectedNode}
-        personalDocs={personalDocs}
         onPatchNode={patchNode}
       />
     </div>

@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { ListTodo, ChevronDown, Plus, Trash2, BookOpen, CheckCircle2, PenLine, Circle } from 'lucide-react';
+import { ListTodo, ChevronDown, Plus, Trash2, BookOpen, CheckCircle2, PenLine, Circle, Network } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { OutlineChapter, OutlineNode, OutlineNodeStatus } from '@/lib/storage/backupSchema';
 import { dispatchInsertStep } from '@/lib/events/projectEvents';
@@ -14,6 +14,7 @@ import { useCharacterStore } from '@/features/characters';
 import { useCreativeSettingStore } from '@/features/projects';
 import { useOutline } from '@/features/projects';
 import { toast } from 'sonner';
+import { OutlineTree } from './OutlineTree';
 
 const STATUS_META: Record<OutlineNodeStatus, { label: string; cls: string; icon: typeof Circle }> = {
   writing: { label: '写', cls: 'text-amber-500', icon: PenLine },
@@ -26,6 +27,7 @@ export function OutlinePanel({ bookId }: { bookId: string }) {
   const [newVol, setNewVol] = useState('');
   const [newChap, setNewChap] = useState<Record<string, string>>({});
   const [newNode, setNewNode] = useState<Record<string, string>>({});
+  const [view, setView] = useState<'tree' | 'graph'>('tree');
   const didHydrate = useRef(false);
 
   const characters = useCharacterStore((s) => s.characters);
@@ -125,7 +127,27 @@ export function OutlinePanel({ bookId }: { bookId: string }) {
             </span>
           )}
         </CardTitle>
-        {stats.total > 0 && (
+        <div className="flex items-center gap-2">
+          <div className="flex items-center rounded-lg border border-border/60 p-0.5">
+            <Button
+              variant={view === 'tree' ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-7 px-2.5 text-xs gap-1.5"
+              onClick={() => setView('tree')}
+            >
+              <ListTodo className="w-3.5 h-3.5" /> 列表
+            </Button>
+            <Button
+              variant={view === 'graph' ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-7 px-2.5 text-xs gap-1.5"
+              onClick={() => setView('graph')}
+            >
+              <Network className="w-3.5 h-3.5" /> 图谱
+            </Button>
+          </div>
+        </div>
+        {stats.total > 0 && view === 'tree' && (
           <div className="w-full sm:w-48 h-1.5 rounded-full bg-muted overflow-hidden">
             <div className="h-full bg-primary transition-all" style={{ width: `${(stats.done / Math.max(1, stats.total)) * 100}%` }} />
           </div>
@@ -133,19 +155,23 @@ export function OutlinePanel({ bookId }: { bookId: string }) {
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {/* 新建卷 */}
-        <div className="flex gap-2">
-          <Input value={newVol} onChange={(e) => setNewVol(e.target.value)} placeholder="新卷名，如「第一卷·星海」" onKeyDown={(e) => e.key === 'Enter' && handleAddVolume()} />
-          <Button size="sm" onClick={handleAddVolume}><Plus className="w-4 h-4" /></Button>
-        </div>
+        {view === 'graph' ? (
+          <OutlineTree volumes={volumes} />
+        ) : (
+          <>
+            {/* 新建卷 */}
+            <div className="flex gap-2">
+              <Input value={newVol} onChange={(e) => setNewVol(e.target.value)} placeholder="新卷名，如「第一卷·星海」" onKeyDown={(e) => e.key === 'Enter' && handleAddVolume()} />
+              <Button size="sm" onClick={handleAddVolume}><Plus className="w-4 h-4" /></Button>
+            </div>
 
-        {volumes.length === 0 && (
-           <p className="text-sm text-muted-foreground text-center py-6">
-             还没有大纲。先建一卷，再在卷下加「章」，章下加「情节节点」（可设摘要/状态/关联角色）。
-           </p>
-        )}
+            {volumes.length === 0 && (
+               <p className="text-sm text-muted-foreground text-center py-6">
+                 还没有大纲。先建一卷，再在卷下加「章」，章下加「情节节点」（可设摘要/状态/关联角色）。
+               </p>
+            )}
 
-        {volumes.map((vol) => (
+            {volumes.map((vol) => (
           <div key={vol.id} className="rounded-xl border border-border/40">
             {/* 卷头 */}
             <div className="flex items-center gap-2 p-3">
@@ -289,6 +315,8 @@ export function OutlinePanel({ bookId }: { bookId: string }) {
             )}
           </div>
         ))}
+        </>
+        )}
       </CardContent>
     </Card>
   );

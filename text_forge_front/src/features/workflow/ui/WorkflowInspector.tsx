@@ -1,44 +1,20 @@
 'use client';
 
-import { useState } from 'react';
 import { Card, CardContent } from '@/shared/ui/card';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
-import { Checkbox } from '@/shared/ui/checkbox';
-import { Button } from '@/shared/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/shared/ui/dialog';
-import { cn } from '@/lib/utils';
 import { AGENT_ROLES } from '@/shared/lib/agentRoles';
-import { RagConfigPopover } from './RagConfigPopover';
 import type { Workflow, WorkflowNode } from '@/features/workflow';
-import { CONTEXT_FIELD_GROUPS, DEFAULT_CONTEXT_FIELDS, type ContextFieldKey } from '@/features/workflow';
-
-const ALWAYS_ON_KEYS = new Set<ContextFieldKey>(DEFAULT_CONTEXT_FIELDS);
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select';
 
 interface WorkflowInspectorProps {
   wf: Workflow;
   selectedNode: WorkflowNode | null;
-  personalDocs: { id: string; name: string; uploaderName?: string }[];
   onPatchNode: (id: string, patch: Partial<WorkflowNode>) => void;
 }
 
 export function WorkflowInspector(props: WorkflowInspectorProps) {
-  const { selectedNode, personalDocs, onPatchNode } = props;
-  const [contextOpen, setContextOpen] = useState(false);
-  const [personalOpen, setPersonalOpen] = useState(false);
-  const [publicOpen, setPublicOpen] = useState(false);
-
-  const toggleContextField = (key: ContextFieldKey) => {
-    if (ALWAYS_ON_KEYS.has(key) || !selectedNode) return;
-    const cur = selectedNode.contextFields || [];
-    const next = cur.includes(key) ? cur.filter((x) => x !== key) : [...cur, key];
-    onPatchNode(selectedNode.id, { contextFields: next });
-  };
-
-  const isFieldOn = (key: ContextFieldKey) => {
-    if (ALWAYS_ON_KEYS.has(key)) return true;
-    return (selectedNode?.contextFields || []).includes(key);
-  };
+  const { selectedNode, onPatchNode } = props;
 
   if (!selectedNode) {
     return (
@@ -52,10 +28,6 @@ export function WorkflowInspector(props: WorkflowInspectorProps) {
   }
 
   const roleColor = AGENT_ROLES.find((r) => r.name === selectedNode.label)?.color ?? '#6b7280';
-  const activeTools = selectedNode.toolIds || [];
-  const hasWeb = activeTools.includes('web');
-  const hasPersonalRag = activeTools.includes('rag:personal');
-  const hasPublicRag = activeTools.includes('rag:public');
 
   return (
     <Card className="glass-card">
@@ -81,6 +53,24 @@ export function WorkflowInspector(props: WorkflowInspectorProps) {
           />
         </div>
 
+        <div className="space-y-1">
+          <Label>执行器</Label>
+          <Select
+            value={selectedNode.executor || 'auto'}
+            onValueChange={(v) => onPatchNode(selectedNode.id, { executor: v === 'auto' ? undefined : (v as 'main' | 'audit' | 'tool') })}
+          >
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue placeholder="自动" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="auto">自动（默认）</SelectItem>
+              <SelectItem value="main">主生成</SelectItem>
+              <SelectItem value="audit">审核</SelectItem>
+              <SelectItem value="tool">检索</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
         <div className="space-y-2">
           <Label className="text-xs">上游依赖</Label>
           <p className="text-[10px] text-muted-foreground">勾选会为本节点提供输入的步骤，支持多选</p>
@@ -101,113 +91,6 @@ export function WorkflowInspector(props: WorkflowInspectorProps) {
             })}
           </div>
         </div>
-
-        <div className="space-y-2">
-          <Label className="text-xs">配置</Label>
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-xs w-full justify-between"
-              onClick={() => setContextOpen(true)}
-            >
-              <span>注入上下文</span>
-              <span className="text-[10px] text-muted-foreground">
-                {(selectedNode.contextFields?.length ?? 0) > 0 ? `已选${selectedNode.contextFields!.length}项` : '默认'}
-              </span>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-xs w-full justify-between"
-              onClick={() => setPersonalOpen(true)}
-            >
-              <span>个人文档</span>
-              <span className="text-[10px] text-muted-foreground">{hasPersonalRag ? '已启用' : '未启用'}</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-xs w-full justify-between"
-              onClick={() => setPublicOpen(true)}
-            >
-              <span>公共文档</span>
-              <span className="text-[10px] text-muted-foreground">{hasPublicRag ? '已启用' : '未启用'}</span>
-            </Button>
-            <div
-              className={cn('flex items-center gap-2 rounded-lg border px-3 py-1.5 cursor-pointer transition-colors', hasWeb ? 'bg-primary/10 border-primary' : 'border-border/60')}
-              onClick={() => {
-                const next = hasWeb ? (selectedNode.toolIds || []).filter((t) => t !== 'web') : [...new Set([...(selectedNode.toolIds || []), 'web'])];
-                onPatchNode(selectedNode.id, { toolIds: next });
-              }}
-            >
-              <Checkbox checked={hasWeb} readOnly />
-              <span className="text-xs">联网查</span>
-            </div>
-          </div>
-        </div>
-
-        <Dialog open={contextOpen} onOpenChange={setContextOpen}>
-          <DialogContent className="glass-panel">
-            <DialogHeader>
-              <DialogTitle>注入上下文</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-3">
-              {CONTEXT_FIELD_GROUPS.map((group) => (
-                <div key={group.label} className="space-y-1.5">
-                  <p className="text-[10px] text-muted-foreground">{group.label}</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {group.fields.map((f) => {
-                      const on = isFieldOn(f.key);
-                      if (on && f.alwaysOn) {
-                        return (
-                          <span key={f.key} className="inline-flex items-center gap-1 rounded-full border border-primary bg-primary/10 px-2 py-0.5 text-[11px] text-primary">
-                            {f.label}
-                            <span className="text-[10px]">•</span>
-                          </span>
-                        );
-                      }
-                      return (
-                        <label key={f.key} className={cn('flex items-center gap-1.5 rounded-lg border px-2 py-0.5 text-[11px] cursor-pointer', on ? 'bg-primary/10 border-primary' : 'border-border hover:bg-accent/40')}>
-                          <Checkbox checked={on} onCheckedChange={() => toggleContextField(f.key)} />
-                          <span>{f.label}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </DialogContent>
-        </Dialog>
-
-        <Dialog open={personalOpen} onOpenChange={setPersonalOpen}>
-          <DialogContent className="glass-panel">
-            <DialogHeader>
-              <DialogTitle>个人资料检索</DialogTitle>
-            </DialogHeader>
-            <RagConfigPopover
-              filter={selectedNode.ragFilter}
-              docOptions={personalDocs}
-              inline
-              onChange={(f) => onPatchNode(selectedNode.id, { ragFilter: f, toolIds: [...new Set([...(selectedNode.toolIds || []), 'rag:personal'])] })}
-            />
-          </DialogContent>
-        </Dialog>
-
-        <Dialog open={publicOpen} onOpenChange={setPublicOpen}>
-          <DialogContent className="glass-panel">
-            <DialogHeader>
-              <DialogTitle>公共库检索范围</DialogTitle>
-            </DialogHeader>
-            <RagConfigPopover
-              filter={selectedNode.ragFilter}
-              docOptions={[]}
-              inline
-              onChange={(f) => onPatchNode(selectedNode.id, { ragFilter: f, toolIds: [...new Set([...(selectedNode.toolIds || []), 'rag:public'])] })}
-            />
-          </DialogContent>
-        </Dialog>
       </CardContent>
     </Card>
   );

@@ -2,7 +2,7 @@ from typing import Optional, List
 from langchain_core.tools import tool
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from repository.character_repo import CharacterRepository
+from repository.project_repo import CharacterRepository
 from repository.outline_repo import OutlineRepository
 from repository.world_repo import WorldRepository
 from repository.vector_repo import VectorRepository
@@ -18,6 +18,7 @@ logger = get_logger(__name__)
 def _build_lookup_tools(session_factory):
     @tool
     async def lookup_characters(book_id: int, names: Optional[List[str]] = None) -> List[dict]:
+        """lookup_characters tool."""
         session = await session_factory()
         characters = await CharacterRepository(session).book_character_detail(user_id=0, book_id=book_id)
         if names:
@@ -36,6 +37,7 @@ def _build_lookup_tools(session_factory):
 
     @tool
     async def lookup_outline(book_id: int, chapter_id: Optional[int] = None) -> List[dict]:
+        """lookup_outline tool."""
         session = await session_factory()
         outlines = await OutlineRepository(session).list_outlines(book_id)
         result = []
@@ -62,6 +64,7 @@ def _build_lookup_tools(session_factory):
 
     @tool
     async def lookup_locations(book_id: int, query: Optional[str] = None) -> List[dict]:
+        """lookup_locations tool."""
         session = await session_factory()
         locations = await WorldRepository(session).list_locations(book_id)
         if query:
@@ -80,6 +83,7 @@ def _build_lookup_tools(session_factory):
 
     @tool
     async def lookup_timeline(book_id: int, before_chapter: Optional[int] = None, limit: int = 20, query: Optional[str] = None) -> List[dict]:
+        """lookup_timeline tool."""
         session = await session_factory()
         events = await WorldRepository(session).list_timeline_events(book_id)
         if before_chapter is not None:
@@ -112,6 +116,7 @@ def _build_lookup_tools(session_factory):
 
     @tool
     async def lookup_foreshadowing(book_id: int, status: str = "planted", query: Optional[str] = None) -> List[dict]:
+        """lookup_foreshadowing tool."""
         session = await session_factory()
         items = await WorldRepository(session).list_foreshadowings(book_id, status=status)
         if query:
@@ -133,6 +138,7 @@ def _build_lookup_tools(session_factory):
 
     @tool
     async def lookup_plot_threads(book_id: int, status: str = "active", query: Optional[str] = None) -> List[dict]:
+        """lookup_plot_threads tool."""
         session = await session_factory()
         items = await WorldRepository(session).list_plot_threads(book_id)
         if status:
@@ -171,6 +177,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
 
     @tool
     async def search_public_docs(book_id: int, query: str, target_book_id: Optional[int] = None, top_k: int = 5) -> List[dict]:
+        """search_public_docs tool."""
         session = await session_factory()
         vector_repo = VectorRepository(session)
         embedding = None
@@ -203,6 +210,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
 
     @tool
     async def personal_rag_search(user_id: int, query: str, top_k: int = 5) -> List[dict]:
+        """personal_rag_search tool."""
         session = await session_factory()
         vector_repo = VectorRepository(session)
         embedding = None
@@ -245,6 +253,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
 
     @tool
     async def web_search(query: str, top_k: int = 5) -> List[dict]:
+        """web_search tool."""
         session = await session_factory()
         api_key = ""
         if model_config:
@@ -256,6 +265,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
 
     @tool
     async def list_user_books(user_id: int) -> List[dict]:
+        """list_user_books tool."""
         session = await session_factory()
         stmt = select(Book).where(Book.user_id == user_id).order_by(Book.id)
         result = await session.execute(stmt)
@@ -273,6 +283,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
 
     @tool
     async def get_book_context(user_id: int, book_id: int) -> dict:
+        """get_book_context tool."""
         session = await session_factory()
         from sqlalchemy import select as sa_select
         from model.book import Book, Volume, Chapter, ChapterContent, Character
@@ -308,6 +319,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
 
     @tool
     async def auto_extract_entities(user_id: int, book_id: int, content: str) -> dict:
+        """auto_extract_entities tool."""
         if not content.strip():
             return {"book_id": book_id, "entities": [], "message": "内容为空，无需提取"}
         llm = None
@@ -347,6 +359,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
 
     @tool
     async def batch_create_entities(book_id: int, characters: Optional[List[dict]] = None, locations: Optional[List[dict]] = None, timeline_events: Optional[List[dict]] = None) -> dict:
+        """batch_create_entities tool."""
         session = await session_factory()
         repo = WorldRepository(session)
         created = {"characters": [], "locations": [], "timeline_events": []}
@@ -371,6 +384,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
 
     @tool
     async def update_foreshadowing(item_id: int, book_id: int, data: dict) -> dict:
+        """update_foreshadowing tool."""
         session = await session_factory()
         instance = await WorldRepository(session).update_foreshadowing(item_id, book_id, data)
         if not instance:
@@ -379,6 +393,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
 
     @tool
     async def update_plot_thread(item_id: int, book_id: int, data: dict) -> dict:
+        """update_plot_thread tool."""
         session = await session_factory()
         instance = await WorldRepository(session).update_plot_thread(item_id, book_id, data)
         if not instance:
@@ -387,6 +402,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
 
     @tool
     async def update_timeline(item_id: int, book_id: int, data: dict) -> dict:
+        """update_timeline tool."""
         session = await session_factory()
         instance = await WorldRepository(session).update_timeline_event(item_id, book_id, data)
         if not instance:
@@ -395,6 +411,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
 
     @tool
     async def polish_text(text: str, instruction: str = "") -> dict:
+        """polish_text tool."""
         if not text.strip():
             return {"error": "文本为空"}
         llm = None
@@ -419,6 +436,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
 
     @tool
     async def rewrite_paragraph(text: str, instruction: str = "") -> dict:
+        """rewrite_paragraph tool."""
         if not text.strip():
             return {"error": "文本为空"}
         llm = None
@@ -443,6 +461,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
 
     @tool
     async def expand_text(text: str, target_length: Optional[int] = None) -> dict:
+        """expand_text tool."""
         if not text.strip():
             return {"error": "文本为空"}
         llm = None
@@ -468,6 +487,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
 
     @tool
     async def summarize_selected(text: str, max_length: Optional[int] = None) -> dict:
+        """summarize_selected tool."""
         if not text.strip():
             return {"error": "文本为空"}
         llm = None
@@ -492,6 +512,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
 
     @tool
     async def suggest_alternatives(text: str, position: Optional[int] = None, count: int = 3) -> dict:
+        """suggest_alternatives tool."""
         if not text.strip():
             return {"error": "文本为空"}
         llm = None
@@ -515,9 +536,10 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
 
     @tool
     async def check_consistency(book_id: int, chapter_id: Optional[int] = None) -> dict:
+        """check_consistency tool."""
         session = await session_factory()
         from model.book import Book, Chapter, ChapterContent, Character
-        from repository.character_repo import CharacterRepository
+        from repository.project_repo import CharacterRepository
         from repository.world_repo import WorldRepository
         book_stmt = select(Book).where(Book.id == book_id)
         book_result = await session.execute(book_stmt)
@@ -557,6 +579,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
 
     @tool
     async def check_grammar(text: str) -> dict:
+        """check_grammar tool."""
         if not text.strip():
             return {"error": "文本为空"}
         llm = None
@@ -580,6 +603,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
 
     @tool
     async def search_across_books(user_id: int, query: str, top_k: int = 5) -> List[dict]:
+        """search_across_books tool."""
         session = await session_factory()
         vector_repo = VectorRepository(session)
         embedding = None

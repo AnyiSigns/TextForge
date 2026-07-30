@@ -12,6 +12,8 @@ import {
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Plus, Pencil, Trash2, Check, AlertCircle, Loader2 } from 'lucide-react';
 import apiClient from '@/lib/api/client';
 import { toast } from 'sonner';
@@ -38,6 +40,7 @@ export function ModelsSettings() {
 
   const [visionConfig, setVisionConfig] = useState<RoleModelConfig | null>(null);
   const [embeddingPublicConfig, setEmbeddingPublicConfig] = useState<RoleModelConfig | null>(null);
+  const [searchConfig, setSearchConfig] = useState<{ api_key: string; provider: string } | null>(null);
 
   const [open, setOpen] = useState(false);
   const [editRole, setEditRole] = useState<ModelRole | null>(null);
@@ -57,6 +60,7 @@ export function ModelsSettings() {
         tool_config?: RoleModelConfig | null;
         vision_config?: RoleModelConfig | null;
         embedding_config?: RoleModelConfig | null;
+        search_config?: { api_key: string; provider: string } | null;
       } | undefined;
       if (!body) return;
 
@@ -74,6 +78,7 @@ export function ModelsSettings() {
 
       if (body.vision_config) setVisionConfig(body.vision_config);
       if (body.embedding_config) setEmbeddingPublicConfig(body.embedding_config);
+      if (body.search_config?.api_key) setSearchConfig(body.search_config);
     } catch {
       toast.error('模型配置加载失败');
     } finally {
@@ -121,7 +126,7 @@ export function ModelsSettings() {
     setOpen(true);
   };
 
-  const buildPayload = (): Record<string, RoleModelConfig | null> => {
+  const buildPayload = (): Record<string, RoleModelConfig | null | { api_key: string; provider: string } | null> => {
     const store = useModelStore.getState();
     return {
       main_config: store.textRoleModels.main,
@@ -130,6 +135,7 @@ export function ModelsSettings() {
       tool_config: store.textRoleModels.tool,
       vision_config: visionConfig,
       embedding_config: embeddingPublicConfig,
+      search_config: searchConfig,
     };
   };
 
@@ -356,6 +362,29 @@ export function ModelsSettings() {
               <Plus className="w-3.5 h-3.5 mr-1" /> 添加云端检索模型
             </Button>
           )}
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Web 搜索配置（博查）</p>
+          </div>
+          <div className="rounded-xl border border-border/40 bg-background/40 p-3 space-y-2">
+            <p className="text-xs text-muted-foreground">博查 Search API 用于 Agent 联网搜索工具（web_search）。</p>
+            <div className="space-y-1.5">
+              <Label htmlFor="search-api-key" className="text-xs">博查 API Key</Label>
+              <Input
+                id="search-api-key"
+                type="password"
+                value={searchConfig?.api_key ?? ''}
+                onChange={(e) => setSearchConfig(prev => prev ? { ...prev, api_key: e.target.value } : { api_key: e.target.value, provider: 'bocha' })}
+                placeholder="sk-xxx"
+                className="h-8 text-xs"
+              />
+            </div>
+            {searchConfig?.api_key && (
+              <p className="text-[10px] text-muted-foreground">Provider: bocha</p>
+            )}
+          </div>
         </div>
 
         <div className="space-y-2">

@@ -22,7 +22,10 @@ export const MODEL_TEMPLATES: ModelTemplate[] = [
   { key: 'dashscope', vendor: '通义千问', adapter: 'dashscope', category: 'llm', deployment: 'cloud', defaultModelId: 'qwen-plus', defaultBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', needsApiKey: true },
   { key: 'deepseek', vendor: 'DeepSeek', adapter: 'deepseek', category: 'llm', deployment: 'cloud', defaultModelId: 'deepseek-chat', defaultBaseUrl: 'https://api.deepseek.com', needsApiKey: true },
   { key: 'openai-compat', vendor: 'OpenAI 兼容', adapter: 'openai', category: 'llm', deployment: 'cloud', defaultModelId: '', defaultBaseUrl: '', needsApiKey: false, hint: '任意兼容 OpenAI 接口的服务（包括自建）' },
-
+  { key: 'gemini', vendor: 'Gemini', adapter: 'gemini', category: 'llm', deployment: 'cloud', defaultModelId: 'gemini-pro', defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1', needsApiKey: true },
+  { key: 'zhipu', vendor: '智谱 GLM', adapter: 'zhipu', category: 'llm', deployment: 'cloud', defaultModelId: 'glm-4', defaultBaseUrl: 'https://open.bigmodel.cn/api/paas/v4', needsApiKey: true },
+  { key: 'moonshot', vendor: 'Moonshot (Kimi)', adapter: 'moonshot', category: 'llm', deployment: 'cloud', defaultModelId: 'moonshot-v1-8k', defaultBaseUrl: 'https://api.moonshot.cn/v1', needsApiKey: true },
+  { key: 'qianfan', vendor: '百度文心', adapter: 'qianfan', category: 'llm', deployment: 'cloud', defaultModelId: 'ERNIE-4.0', defaultBaseUrl: 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat', needsApiKey: true },
    // ---------- 视觉模型 (vision) ----------
    { key: 'kling', vendor: 'Kling (快手)', adapter: 'kling', category: 'vision', deployment: 'cloud', defaultModelId: 'kling-v1', defaultBaseUrl: 'https://api.klingai.com/v1', needsApiKey: true },
    { key: 'runway', vendor: 'Runway', adapter: 'runway', category: 'vision', deployment: 'cloud', defaultModelId: 'gen-3', defaultBaseUrl: 'https://api.runwayml.com/v1', needsApiKey: true },
@@ -34,6 +37,7 @@ export const MODEL_TEMPLATES: ModelTemplate[] = [
    { key: 'openai-embed', vendor: 'OpenAI Embeddings', adapter: 'openai', category: 'embedding', deployment: 'cloud', defaultModelId: 'text-embedding-3-small', defaultBaseUrl: 'https://api.openai.com/v1', needsApiKey: true },
    { key: 'dashscope-embed', vendor: 'DashScope 文本向量', adapter: 'dashscope', category: 'embedding', deployment: 'cloud', defaultModelId: 'text-embedding-v4', defaultBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', needsApiKey: true },
    { key: 'ollama-embed', vendor: 'Ollama (本地向量)', adapter: 'ollama', category: 'embedding', deployment: 'local', defaultModelId: 'nomic-embed-text', defaultBaseUrl: 'http://localhost:11434/v1', needsApiKey: false, hint: '在本地运行，不需要密钥' },
+   { key: 'qianfan-embed', vendor: '百度千帆向量', adapter: 'baidu', category: 'embedding', deployment: 'cloud', defaultModelId: 'bge-large-zh', defaultBaseUrl: 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/embeddings', needsApiKey: true },
 ];
 
 export const CATEGORY_LABELS: Record<ModelCategory, string> = {

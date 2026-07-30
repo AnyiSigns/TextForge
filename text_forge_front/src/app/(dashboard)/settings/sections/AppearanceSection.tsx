@@ -1,6 +1,7 @@
 // src/app/(dashboard)/settings/sections/AppearanceSection.tsx
 'use client';
 
+import { useState, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useTheme } from 'next-themes';
 import { useSettingsStore, type BgArea } from '@/features/settings';
@@ -11,6 +12,7 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sun, Moon, Monitor, Image as ImageIcon } from 'lucide-react';
+import { toast } from 'sonner';
 
 const BG_AREA_OPTIONS: { value: BgArea; label: string }[] = [
   { value: 'global', label: '全部页面' },
@@ -32,14 +34,10 @@ const FONT_FAMILY_OPTIONS: { value: string; label: string }[] = [
   { value: 'fangsong', label: '仿宋' },
 ];
 
-interface AppearanceSectionProps {
-  isBgLoading: boolean;
-  onBgUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  bgFileInputRef: React.RefObject<HTMLInputElement | null>;
-}
-
-export function AppearanceSection({ isBgLoading, onBgUpload, bgFileInputRef }: AppearanceSectionProps) {
+export function AppearanceSection() {
   const { theme, setTheme } = useTheme();
+  const [isBgLoading, setIsBgLoading] = useState(false);
+  const bgFileInputRef = useRef<HTMLInputElement>(null);
   const {
     bgImage, bgOpacity, bgBlur, bgArea, bgSolidOpacity,
     inkEnabled, inkOpacity, motionEnabled, glassEnabled,
@@ -57,6 +55,26 @@ export function AppearanceSection({ isBgLoading, onBgUpload, bgFileInputRef }: A
     setCardGlassOpacity: s.setCardGlassOpacity, setCardGlassBlur: s.setCardGlassBlur, setSidebarGlassOpacity: s.setSidebarGlassOpacity, setSidebarGlassBlur: s.setSidebarGlassBlur,
     setFontFamily: s.setFontFamily, setContentScale: s.setContentScale,
   })));
+
+  const handleBgUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setIsBgLoading(true);
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        if (ev.target?.result) {
+          setBgImage(ev.target.result as string);
+          toast.success('背景已更新');
+        }
+        setIsBgLoading(false);
+      };
+      reader.onerror = () => {
+        toast.error('背景上传失败');
+        setIsBgLoading(false);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   return (
     <Card className="glass-card">
@@ -98,7 +116,7 @@ export function AppearanceSection({ isBgLoading, onBgUpload, bgFileInputRef }: A
               type="file"
               accept="image/*"
               className="hidden"
-              onChange={onBgUpload}
+              onChange={handleBgUpload}
             />
           </div>
 

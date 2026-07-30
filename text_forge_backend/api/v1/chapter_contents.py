@@ -4,10 +4,10 @@ from core.auth import get_current
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from infrastructure.database import db_manager
-from model.book import Book, Chapter
+from model.book import Book, Chapter, Volume
 from service.chapter_content_service import ChapterContentService, chapter_content_db
-from text_forge_backend.schema.request.book import ChapterContentRequest
-from text_forge_backend.schema.response.book import ChapterContentResponse, ChapterContentDiffResponse
+from schema.request.book import ChapterContentRequest
+from schema.response.book import ChapterContentResponse, ChapterContentDiffResponse
 
 router = APIRouter(prefix="/chapter-contents", tags=["ChapterContent"])
 
@@ -15,7 +15,9 @@ router = APIRouter(prefix="/chapter-contents", tags=["ChapterContent"])
 async def _assert_chapter_owner(chapter_id: int, user_id: int, session: AsyncSession):
     stmt = (
         select(Chapter)
-        .join(Book)
+        .select_from(Chapter)
+        .join(Volume, Chapter.volume_id == Volume.id)
+        .join(Book, Volume.book_id == Book.id)
         .where(Chapter.id == chapter_id, Book.user_id == user_id)
     )
     result = await session.execute(stmt)

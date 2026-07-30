@@ -5,6 +5,7 @@ export interface ChapterContent {
   id: number;
   chapterId: number;
   content?: string;
+  version: number;
   createdAt: string;
 }
 
@@ -16,5 +17,15 @@ export interface ChapterContentResponse {
   id: number;
   chapterId: number;
   content?: string;
+  version: number;
   createdAt: string;
+}
+
+export interface ChapterContentDiff {
+  fromVersion: number;
+  toVersion: number;
+  fromContent: string;
+  toContent: string;
+  fromCreatedAt?: string;
+  toCreatedAt?: string;
 }

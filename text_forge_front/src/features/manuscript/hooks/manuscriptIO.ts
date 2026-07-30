@@ -10,7 +10,7 @@ import type { ManuscriptChapter } from '@/types';
 
 export interface ManuscriptIO {
   id: number;
-  activeId: string | null;
+  activeId: number | null;
   active: ManuscriptChapter | null;
   bookChapters: { title: string; content: string }[] | null;
   setBookName: (v: string) => void;

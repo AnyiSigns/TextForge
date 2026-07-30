@@ -4,7 +4,6 @@ from . import project
 from . import health
 from . import workflow
 from . import model
-from . import chat
 from . import sync
 from . import characters
 from . import outline

@@ -11,6 +11,7 @@ logger = get_logger(__name__)
 def _build_feedback_tools(session_factory, model_config: Optional[dict] = None):
     @tool
     async def analyze_feedback_patterns(user_id: int, book_id: Optional[int] = None, days: int = 30) -> dict:
+        """analyze_feedback_patterns tool."""
         session = await session_factory()
         from model.agent_memory import AgentMemory
         from datetime import datetime, timedelta
@@ -69,6 +70,7 @@ def _build_feedback_tools(session_factory, model_config: Optional[dict] = None):
 
     @tool
     async def get_proactive_suggestions(user_id: int, book_id: int) -> List[dict]:
+        """get_proactive_suggestions tool."""
         session = await session_factory()
         from model.book import Chapter, Foreshadowing, PlotThread, Volume
         suggestions = []

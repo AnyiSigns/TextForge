@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { BookOpen, LayoutDashboard, Target, Users, BarChart3 } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader } from '@/shared/components';
+import { OnboardingWizard } from '@/shared/components/OnboardingWizard';
 import { Button } from '@/components/ui/button';
 
 export default function DashboardPage() {
@@ -112,97 +113,103 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {statCards.map((stat) => (
-          <Card key={stat.label}>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                {stat.label}
-              </CardTitle>
-              <stat.icon className={`w-4 h-4 ${stat.color}`} />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {isLoading ? '-' : stat.value}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {books.length === 0 && <OnboardingWizard />}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {progressCards.map((stat) => (
-          <Card key={stat.label}>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                {stat.label}
-              </CardTitle>
-              <stat.icon className={`w-4 h-4 ${stat.color}`} />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {isLoading ? '-' : stat.value}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>我的书进展</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {books.length === 0 ? (
-              <p className="text-sm text-muted-foreground">还没有书。点右下角「新建项目」开始你的第一部作品吧。</p>
-            ) : (
-              <div className="grid sm:grid-cols-2 gap-3">
-                {books.map((p) => {
-                  const count = chapterCounts[p.id] ?? { total: 0, written: 0 };
-                  const imgs = characters.filter((c) => c.bookId === p.id).reduce((acc, c) => acc + (c.avatarUrl ? 1 : 0), 0);
-                  const vids = mediaTasks.filter((t) => t.project_id === String(p.id)).length;
-                  return (
-                    <Link key={p.id} href={`/projects/${p.id}`} className="flex items-center justify-between gap-3 rounded-xl border border-border/40 bg-background/40 px-4 py-3 hover:border-primary/30 transition-colors">
-                      <div className="min-w-0">
-                        <p className="font-medium truncate">《{p.title}》</p>
-                        <p className="text-xs text-muted-foreground">已建 {count.total} 章 · 已写 {count.written} 章 · 角色图 {imgs} 张 · 视频 {vids} 段</p>
-                      </div>
-                      <BookOpen className="w-4 h-4 text-primary shrink-0" />
-                    </Link>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>快速开始</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex gap-3">
-            <Button asChild>
-              <Link href="/projects/new"><BookOpen className="w-4 h-4 mr-2" /> 新建项目</Link>
-            </Button>
-            <Button asChild variant="outline">
-              <Link href="/characters"><Users className="w-4 h-4 mr-2" /> 角色列表</Link>
-            </Button>
+      {books.length > 0 && (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {statCards.map((stat) => (
+              <Card key={stat.label}>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    {stat.label}
+                  </CardTitle>
+                  <stat.icon className={`w-4 h-4 ${stat.color}`} />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    {isLoading ? '-' : stat.value}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
-          {books.length > 0 && (
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-2">最近项目</p>
-              <div className="flex flex-wrap gap-2">
-                {books.slice(0, 4).map((p) => (
-                  <Button key={p.id} asChild size="sm" variant="ghost">
-                    <Link href={`/projects/${p.id}`}>{p.title}</Link>
-                  </Button>
-                ))}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {progressCards.map((stat) => (
+              <Card key={stat.label}>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    {stat.label}
+                  </CardTitle>
+                  <stat.icon className={`w-4 h-4 ${stat.color}`} />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    {isLoading ? '-' : stat.value}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>我的书进展</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {books.length === 0 ? (
+                <p className="text-sm text-muted-foreground">还没有书。点右下角「新建项目」开始你的第一部作品吧。</p>
+              ) : (
+                <div className="grid sm:grid-cols-2 gap-3">
+                  {books.map((p) => {
+                    const count = chapterCounts[p.id] ?? { total: 0, written: 0 };
+                    const imgs = characters.filter((c) => c.bookId === p.id).reduce((acc, c) => acc + (c.avatarUrl ? 1 : 0), 0);
+                    const vids = mediaTasks.filter((t) => t.project_id === String(p.id)).length;
+                    return (
+                      <Link key={p.id} href={`/projects/${p.id}`} className="flex items-center justify-between gap-3 rounded-xl border border-border/40 bg-background/40 px-4 py-3 hover:border-primary/30 transition-colors">
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">《{p.title}》</p>
+                          <p className="text-xs text-muted-foreground">已建 {count.total} 章 · 已写 {count.written} 章 · 角色图 {imgs} 张 · 视频 {vids} 段</p>
+                        </div>
+                        <BookOpen className="w-4 h-4 text-primary shrink-0" />
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>快速开始</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex gap-3">
+                <Button asChild>
+                  <Link href="/projects/new"><BookOpen className="w-4 h-4 mr-2" /> 新建项目</Link>
+                </Button>
+                <Button asChild variant="outline">
+                  <Link href="/characters"><Users className="w-4 h-4 mr-2" /> 角色列表</Link>
+                </Button>
               </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+              {books.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-2">最近项目</p>
+                  <div className="flex flex-wrap gap-2">
+                    {books.slice(0, 4).map((p) => (
+                      <Button key={p.id} asChild size="sm" variant="ghost">
+                        <Link href={`/projects/${p.id}`}>{p.title}</Link>
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </>
+      )}
     </div>
   );
 }

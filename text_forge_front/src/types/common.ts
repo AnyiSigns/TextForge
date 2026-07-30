@@ -12,7 +12,7 @@ export type AdapterType =
   | 'openai'
   | 'anthropic'
   | 'dashscope' // 阿里通义千问
-  | 'wenxin' // 百度文心
+  | 'qianfan' // 百度文心
   | 'deepseek'
   | 'gemini'
   | 'ollama' // 本地
@@ -23,6 +23,8 @@ export type AdapterType =
   | 'runway'
   | 'luma'
   | 'jimeng' // 即梦
+  | 'zhipu' // 智谱 GLM
+  | 'moonshot' // 月之暗面 Kimi
   | 'bge' // 本地嵌入
   | 'cohere'
   | 'jina'

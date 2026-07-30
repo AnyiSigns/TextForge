@@ -12,9 +12,10 @@ import { useModelStore } from '@/features/settings';
 import { useSettingsStore } from '@/features/settings';
 import {
   exportWorkspace, downloadBackup, importWorkspace,
-  exportBookJson, exportBookMarkdown, exportBookText,
+  exportBookJson,
   parseWorkspaceBackup,
 } from '@/lib/storage/backup';
+import { exportBook } from '@/features/projects/api/projects';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -36,12 +37,11 @@ export function ProjectExport({ projectId, compact = false }: { projectId?: stri
 
   const handleSingle = async (fmt: Format) => {
     if (!projectId) return;
-    if (fmt !== 'txt') {
-      setBusy(fmt);
+    if (fmt === 'json') {
+      setBusy('json');
       try {
-        if (fmt === 'json') await exportBookJson(Number(projectId));
-        else await exportBookMarkdown(Number(projectId));
-        toast.success(`已导出当前项目（${fmt.toUpperCase()}）`);
+        await exportBookJson(Number(projectId));
+        toast.success(`已导出当前项目（JSON）`);
       } catch (e) {
         toast.error('导出出错了', { description: e instanceof Error ? e.message : '未知错误' });
       } finally {
@@ -49,7 +49,24 @@ export function ProjectExport({ projectId, compact = false }: { projectId?: stri
       }
       return;
     }
-    // TXT：先询问排版方式
+    if (fmt === 'markdown') {
+      setBusy('markdown');
+      try {
+        const blob = await exportBook(Number(projectId), { fmt: 'md' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `book-${projectId}.md`;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast.success(`已导出当前项目（MD）`);
+      } catch (e) {
+        toast.error('导出出错了', { description: e instanceof Error ? e.message : '未知错误' });
+      } finally {
+        setBusy(null);
+      }
+      return;
+    }
     setAskTxt(true);
   };
 
@@ -58,7 +75,13 @@ export function ProjectExport({ projectId, compact = false }: { projectId?: stri
     setAskTxt(false);
     setBusyTxt(mode);
     try {
-      await exportBookText(Number(projectId), mode);
+      const blob = await exportBook(Number(projectId), { fmt: 'txt' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `book-${projectId}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
       toast.success(mode === 'format' ? '已导出（已分段排版）' : '已导出（原文保留，轻度整理）');
     } catch (e) {
       toast.error('导出出错了', { description: e instanceof Error ? e.message : '未知错误' });

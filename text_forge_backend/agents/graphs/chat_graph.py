@@ -1,5 +1,4 @@
 from agents.audit_node import audit_node
-from agents.chat_nodes import agent_call, tools_node, chat_router
 from agents.router_node import router_node
 from agents.state import (
     AuditState,
@@ -20,17 +19,6 @@ from agents.manager_node import (
     manager_node,
     route_after_manager,
 )
-
-
-def build_chat_graph():
-    """聊天对话图"""
-    builder = StateGraph(GraphState)  # type: ignore
-    builder.add_node("agent", agent_call)  # type: ignore
-    builder.add_node("tools", tools_node)
-    builder.set_entry_point("agent")
-    builder.add_conditional_edges("agent", chat_router)
-    builder.add_edge("tools", "agent")
-    return builder
 
 
 def build_router_graph():
@@ -100,7 +88,6 @@ def build_parent_graph():
     return builder
 
 
-chat_graph = build_chat_graph()
 router_graph = build_router_graph()
 tool_graph = build_tool_graph()
 audit_graph = build_audit_graph()

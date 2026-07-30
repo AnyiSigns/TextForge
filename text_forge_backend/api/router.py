@@ -6,7 +6,6 @@ from api.v1 import (
     health,
     workflow,
     model,
-    chat,
     sync,
     characters,
     outline,
@@ -24,7 +23,6 @@ from api.v1 import (
 
 router = APIRouter(prefix="/api")
 router.include_router(auth.router)
-router.include_router(chat.router)
 router.include_router(user.router)
 router.include_router(project.router)
 router.include_router(health.router)

@@ -1,4 +1,5 @@
-from sqlalchemy import select, update, insert
+from sqlalchemy import select, update, func
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from model.context_config import BookContextConfig
 
@@ -29,7 +30,7 @@ class BookContextConfigRepository:
 
     async def save_config(self, book_id: int, data: dict) -> dict:
         stmt = (
-            insert(BookContextConfig)
+            pg_insert(BookContextConfig)
             .values(
                 book_id=book_id,
                 character_ids=data.get("character_ids", []),

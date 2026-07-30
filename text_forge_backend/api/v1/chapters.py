@@ -6,14 +6,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from infrastructure.database import db_manager
 from model.book import Book, Volume
 from service.chapter_service import ChapterService, chapter_db
-from text_forge_backend.schema.request.book import ChapterRequest
-from text_forge_backend.schema.response.book import ChapterResponse
+from schema.request.book import ChapterRequest
+from schema.response.book import ChapterResponse
 
 router = APIRouter(prefix="/chapters", tags=["Chapter"])
 
 
 async def _assert_volume_owner(volume_id: int, user_id: int, session: AsyncSession):
-    stmt = select(Volume).join(Book).where(Volume.id == volume_id, Book.user_id == user_id)
+    stmt = (
+        select(Volume).join(Book).where(Volume.id == volume_id, Book.user_id == user_id)
+    )
     result = await session.execute(stmt)
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="卷不存在或无权访问")
@@ -40,7 +42,9 @@ async def create_chapter(
     session: Annotated[AsyncSession, Depends(db_manager.get_db)],
 ):
     await _assert_volume_owner(volume_id, user_id, session)
-    item = await chapter_service.create_chapter(volume_id, title=request.title, summary=request.summary)
+    item = await chapter_service.create_chapter(
+        volume_id, title=request.title, summary=request.summary
+    )
     if not item:
         raise HTTPException(status_code=500, detail="创建章节失败")
     return ChapterResponse.model_validate(item)
@@ -60,7 +64,9 @@ async def update_chapter(
         if not item:
             raise HTTPException(status_code=404, detail="章节不存在")
     await _assert_volume_owner(item.volume_id, user_id, session)
-    item = await chapter_service.update_chapter(chapter_id, title=request.title, summary=request.summary)
+    item = await chapter_service.update_chapter(
+        chapter_id, title=request.title, summary=request.summary
+    )
     if not item:
         raise HTTPException(status_code=404, detail="章节不存在")
     return ChapterResponse.model_validate(item)

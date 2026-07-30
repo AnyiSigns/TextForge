@@ -20,7 +20,7 @@ async def export_book(
     fmt: str = Query("md", pattern="^(md|txt|epub|pdf)$"),
     include_outline: bool = Query(False),
     include_characters: bool = Query(False),
-    volume_ids: Optional[List[int]] = Query(None),
+    volume_ids: Optional[List[int]] = Query(default=None),
 ):
     data = await service.export_book(
         user_id=user_id,

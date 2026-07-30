@@ -228,3 +228,31 @@ export function buildBookSteps(
     status: 'completed',
   }));
 }
+
+export interface ExportBookOptions {
+  fmt?: 'md' | 'txt' | 'epub' | 'pdf';
+  includeOutline?: boolean;
+  includeCharacters?: boolean;
+  volumeIds?: number[];
+}
+
+export async function exportBook(bookId: number, options: ExportBookOptions = {}): Promise<Blob> {
+  const { fmt = 'md', includeOutline = false, includeCharacters = false, volumeIds } = options;
+  const params = new URLSearchParams({ fmt });
+  if (includeOutline) params.set('include_outline', 'true');
+  if (includeCharacters) params.set('include_characters', 'true');
+  if (volumeIds && volumeIds.length > 0) params.set('volume_ids', volumeIds.join(','));
+  
+  const response = await fetch(`/api/books/${bookId}/export?${params.toString()}`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+  
+  if (!response.ok) {
+    throw new Error(`导出失败: ${response.statusText}`);
+  }
+  
+  return response.blob();
+}

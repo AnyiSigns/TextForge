@@ -3,12 +3,12 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
 from sqlalchemy import select
 from core.auth import get_current
 from service.project import BookService, book_db
-from text_forge_backend.schema.response.book import (
+from schema.response.book import (
     ListCharactersResponse,
     BookResponse,
     BookDetailResponse,
 )
-from text_forge_backend.schema.request.book import (
+from schema.request.book import (
     CreativeSettingRequest,
     BookRequest,
     UpdateBookRequest,
@@ -250,7 +250,7 @@ async def get_book_context_config(
 @router.put("/{id}/context-config", response_model=dict)
 async def save_book_context_config(
     id: Annotated[int, Path(description="书籍ID")],
-    config: Annotated[Dict[str, List[int]], Body(embed=False)],
+    config: Annotated[dict[str, list[int]], Body(embed=False)],
     user_id: Annotated[int, Depends(get_current)],
     session: Annotated[AsyncSession, Depends(db_manager.get_db)],
 ):

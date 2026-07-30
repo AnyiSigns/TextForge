@@ -6,8 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from infrastructure.database import db_manager
 from model.book import Book
 from service.project import BookService, book_db
-from text_forge_backend.schema.request.book import CreativeSettingRequest
-from text_forge_backend.schema.response.book import CreativeSettingResponse
+from schema.request.book import CreativeSettingRequest
+from schema.response.book import CreativeSettingResponse
 
 router = APIRouter(prefix="/creative-settings", tags=["CreativeSetting"])
 

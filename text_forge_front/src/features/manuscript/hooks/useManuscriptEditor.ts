@@ -12,6 +12,7 @@ import type { BookCreativeSetting, ManuscriptChapter } from '@/types';
 import { buildSettingKeywords, buildCharSuggestions, computeSuggestionsFor } from './manuscriptSuggestions';
 import { makeManuscriptIO } from './manuscriptIO';
 import { transformText, AI_ACTION_LABEL } from '@/lib/aiTextTransform';
+import { createChapterContent } from '@/features/projects/api/chapterContents';
 
 export type SuggestionKind = 'character' | 'setting' | 'hint';
 export interface Suggestion { kind: SuggestionKind; label: string; detail?: string; }
@@ -31,12 +32,16 @@ export function useManuscriptEditor(bookId: number) {
   const updateChapter = useManuscriptStore((s) => s.updateChapter);
   const removeChapter = useManuscriptStore((s) => s.removeChapter);
   const clearProject = useManuscriptStore((s) => s.clearProject);
+  const setServerChapterId = useManuscriptStore((s) => s.setServerChapterId);
+  const getServerChapterId = useManuscriptStore((s) => s.getServerChapterId);
+  const syncChapterToServer = useManuscriptStore((s) => s.syncChapterToServer);
+  const getOrCreateDefaultVolume = useManuscriptStore((s) => s.getOrCreateDefaultVolume);
 
   const { projectChars: characters } = useProjectCharacters(bookId);
   const creativeSetting = useCreativeSettingStore((s) => s.settings[bookId]);
   const freq = useSettingsStore((s) => s.suggestionFrequency);
 
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<number | null>(null);
   const [draftContent, setDraftContent] = useState('');
   const [title, setTitle] = useState('');
   const [dirty, setDirty] = useState(false);
@@ -67,7 +72,7 @@ export function useManuscriptEditor(bookId: number) {
   // 清空手稿确认弹窗
   const [clearOpen, setClearOpen] = useState(false);
   // 单章删除确认弹窗
-  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   // 联想功能首屏引导（仅首次进入展示一次，localStorage 记忆）
   const [showSuggestHint, setShowSuggestHint] = useState(false);
 
@@ -124,16 +129,22 @@ export function useManuscriptEditor(bookId: number) {
   const save = useCallback(async (contentOverride?: string) => {
     if (!activeId || !active) return;
     const content = contentOverride ?? latestContentRef.current ?? draftContent;
-    // 纯AI章节经用户编辑后，来源升级为「AI后手工修改」
     const patch: Partial<Pick<ManuscriptChapter, 'title' | 'content' | 'index' | 'source'>> = {
       content,
       title: title || active.title || '未命名章节',
     };
     if (active.source === 'ai') patch.source = 'ai_edited';
     await updateChapter(activeId, patch);
+    if (active.serverChapterId) {
+      try {
+        await createChapterContent(active.serverChapterId, { content });
+      } catch {
+        // 后端版本创建失败不影响本地保存
+      }
+    }
     setDirty(false);
     setSavedAt(Date.now());
-  }, [activeId, active, title, updateChapter]);
+  }, [activeId, active, title, updateChapter, draftContent]);
 
   // 自动保存（停笔 1s）：合并为单一稳定定时器，仅在 dirty 时触发一次写库，避免长文逐字反复 setTimeout。
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -335,6 +346,10 @@ export function useManuscriptEditor(bookId: number) {
     addChapter,
     removeChapter,
     clearProject,
+    setServerChapterId,
+    getServerChapterId,
+    syncChapterToServer,
+    getOrCreateDefaultVolume,
     // 回调
     dismissSuggestHint,
     save,
@@ -351,6 +366,7 @@ export function useManuscriptEditor(bookId: number) {
     diffState,
     acceptDiff,
     rejectDiff,
+    commitContent,
     streamingActive: false,
     streamingStalled: false,
   };

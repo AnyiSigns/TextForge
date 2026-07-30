@@ -8,20 +8,29 @@ import {
   deleteManuscriptChapter,
   deleteManuscriptByBook,
 } from '@/lib/storage/indexedDB';
-
-import { uid } from '@/lib/utils/id';
+import { syncManager } from '@/lib/storage/syncManager';
 
 interface ManuscriptStore {
   chapters: ManuscriptChapter[];
   loadedProject: number | null;
   load: (bookId: number) => Promise<void>;
   addChapter: (bookId: number, title?: string) => Promise<ManuscriptChapter>;
-  updateChapter: (id: string, patch: Partial<Pick<ManuscriptChapter, 'title' | 'content' | 'index'>>) => Promise<void>;
-  removeChapter: (id: string) => Promise<void>;
+  updateChapter: (id: number, patch: Partial<Pick<ManuscriptChapter, 'title' | 'content' | 'index'>>) => Promise<void>;
+  removeChapter: (id: number) => Promise<void>;
   importFromStep: (bookId: number, title: string, content: string, linkedStepId?: string, source?: 'ai' | 'ai_edited' | 'manual' | 'imported') => Promise<ManuscriptChapter>;
   clearProject: (bookId: number) => Promise<void>;
   byProject: (bookId: number) => ManuscriptChapter[];
+  setServerChapterId: (localId: number, serverId: number) => Promise<void>;
+  getServerChapterId: (localId: number) => number | undefined;
+  syncChapterToServer: (localId: number, volumeId: number) => Promise<number | null>;
+  getOrCreateDefaultVolume: (bookId: number) => Promise<number>;
+  getVersionMeta: () => { lastSyncAt: string; version?: number };
+  setVersionMeta: (meta: { lastSyncAt: string; version?: number }) => void;
 }
+
+const nextId = (list: ManuscriptChapter[]) => list.reduce((max, c) => Math.max(max, c.id), 0) + 1;
+
+let manuscriptVersionMeta: { lastSyncAt: string; version?: number } = { lastSyncAt: new Date(0).toISOString(), version: 0 };
 
 export const useManuscriptStore = create<ManuscriptStore>((set, get) => ({
   chapters: [],
@@ -34,7 +43,6 @@ export const useManuscriptStore = create<ManuscriptStore>((set, get) => ({
 
   addChapter: async (bookId, title) => {
     const list = get().chapters.filter((c) => c.bookId === bookId);
-    // 默认标题基于实时列表长度，并对重名做去重（避免并发/双调用产生同名"第 N 章"）
     let finalTitle = title || `第 ${list.length + 1} 章`;
     if (!title) {
       const existing = new Set(list.map((c) => c.title));
@@ -43,7 +51,7 @@ export const useManuscriptStore = create<ManuscriptStore>((set, get) => ({
       finalTitle = `第 ${n} 章`;
     }
     const chapter: ManuscriptChapter = {
-      id: uid('ms'),
+      id: nextId(list),
       bookId,
       index: list.length,
       title: finalTitle,
@@ -72,7 +80,7 @@ export const useManuscriptStore = create<ManuscriptStore>((set, get) => ({
   importFromStep: async (bookId, title, content, linkedStepId, source = 'imported') => {
     const list = get().chapters.filter((c) => c.bookId === bookId);
     const chapter: ManuscriptChapter = {
-      id: uid('ms'),
+      id: nextId(list),
       bookId,
       index: list.length,
       title: title || `导入章节 ${list.length + 1}`,
@@ -92,4 +100,58 @@ export const useManuscriptStore = create<ManuscriptStore>((set, get) => ({
   },
 
   byProject: (bookId) => get().chapters.filter((c) => c.bookId === bookId),
+
+  setServerChapterId: async (localId, serverId) => {
+    const prev = get().chapters.find((c) => c.id === localId);
+    if (!prev) return;
+    const next = { ...prev, serverChapterId: serverId };
+    await putManuscriptChapter(next);
+    set((s) => ({ chapters: s.chapters.map((c) => (c.id === localId ? next : c)) }));
+  },
+
+  getServerChapterId: (localId) => get().chapters.find((c) => c.id === localId)?.serverChapterId,
+
+  syncChapterToServer: async (localId, volumeId) => {
+    const chapter = get().chapters.find((c) => c.id === localId);
+    if (!chapter) return null;
+    try {
+      const { createChapter } = await import('@/features/projects/api/chapters');
+      const created = await createChapter(volumeId, { title: chapter.title, summary: '' });
+      await get().setServerChapterId(localId, created.id);
+      return created.id;
+    } catch {
+      return null;
+    }
+  },
+
+  getOrCreateDefaultVolume: async (bookId: number) => {
+    const { fetchBookVolumes } = await import('@/features/projects/api/projects');
+    const { createVolume } = await import('@/features/projects/api/volumes');
+    const volumes = await fetchBookVolumes(bookId);
+    if (volumes.length > 0) return volumes[0].id;
+    const created = await createVolume(bookId, { title: '手稿卷', summary: '手稿自动创建' });
+    return created.id;
+  },
+
+  getVersionMeta: () => manuscriptVersionMeta,
+
+  setVersionMeta: (meta) => {
+    manuscriptVersionMeta = meta;
+  },
 }));
+
+syncManager.register({
+  name: 'manuscript',
+  applyUpdates: (updates, version) => {
+    useManuscriptStore.setState((s) => {
+      const map = new Map((updates as ManuscriptChapter[]).map((u) => [u.id, u]));
+      const chapters = s.chapters.map((c) => map.get(c.id) || c);
+      return { chapters };
+    });
+    if (version !== undefined) {
+      manuscriptVersionMeta = { ...manuscriptVersionMeta, lastSyncAt: new Date().toISOString(), version };
+    }
+  },
+  getMeta: () => useManuscriptStore.getState().getVersionMeta(),
+  setMeta: (meta) => useManuscriptStore.getState().setVersionMeta(meta),
+});

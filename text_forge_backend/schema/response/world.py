@@ -1,3 +1,5 @@
+from datetime import datetime
+from datetime import datetime
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -10,8 +12,8 @@ class LocationResponse(BaseModel):
     description: Optional[str] = None
     parent_id: Optional[int] = Field(default=None, alias="parentId")
     attributes: Optional[Dict[str, Any]] = None
-    created_at: Optional[str] = Field(default=None, alias="createdAt")
-    updated_at: Optional[str] = Field(default=None, alias="updatedAt")
+    created_at: Optional[datetime] = Field(default=None, alias="createdAt")
+    updated_at: Optional[datetime] = Field(default=None, alias="updatedAt")
 
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)
 
@@ -26,8 +28,8 @@ class TimelineEventResponse(BaseModel):
     event_type: str = Field(alias="eventType")
     related_character_ids: Optional[List[int]] = Field(default=[], alias="relatedCharacterIds")
     related_location_id: Optional[int] = Field(default=None, alias="relatedLocationId")
-    created_at: Optional[str] = Field(default=None, alias="createdAt")
-    updated_at: Optional[str] = Field(default=None, alias="updatedAt")
+    created_at: Optional[datetime] = Field(default=None, alias="createdAt")
+    updated_at: Optional[datetime] = Field(default=None, alias="updatedAt")
 
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)
 
@@ -43,8 +45,8 @@ class ForeshadowingResponse(BaseModel):
     related_event_id: Optional[int] = Field(default=None, alias="relatedEventId")
     reveal_type: Optional[str] = Field(default=None, alias="revealType")
     notes: Optional[str] = None
-    created_at: Optional[str] = Field(default=None, alias="createdAt")
-    updated_at: Optional[str] = Field(default=None, alias="updatedAt")
+    created_at: Optional[datetime] = Field(default=None, alias="createdAt")
+    updated_at: Optional[datetime] = Field(default=None, alias="updatedAt")
 
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)
 
@@ -61,7 +63,7 @@ class PlotThreadResponse(BaseModel):
     start_chapter_id: Optional[int] = Field(default=None, alias="startChapterId")
     end_chapter_id: Optional[int] = Field(default=None, alias="endChapterId")
     progress_note: Optional[str] = Field(default=None, alias="progressNote")
-    created_at: Optional[str] = Field(default=None, alias="createdAt")
-    updated_at: Optional[str] = Field(default=None, alias="updatedAt")
+    created_at: Optional[datetime] = Field(default=None, alias="createdAt")
+    updated_at: Optional[datetime] = Field(default=None, alias="updatedAt")
 
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)

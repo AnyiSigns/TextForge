@@ -1,5 +1,4 @@
 from agents.graphs.chat_graph import (
-    chat_graph,
     main_graph,
     router_graph,
     audit_graph,
@@ -8,8 +7,10 @@ from agents.graphs.chat_graph import (
     compression_graph,
 )
 from agents.graphs.registry import graph_register
+from utils.logger import get_logger
 
-graph_register.register_builder("chat", chat_graph)
+logger = get_logger(__name__)
+
 graph_register.register_builder("main_graph", main_graph)
 graph_register.register_builder("router", router_graph)
 graph_register.register_builder("audit_graph", audit_graph)
@@ -24,4 +25,4 @@ async def compiled_all(checkpointer):
         raw_graph = builder
         compiled_graph = raw_graph.compile(checkpointer=checkpointer)
         graph_register.register_compiled(name, compiled_graph)
-        print(f"已编译图{name}")
+        logger.info(f"已编译图{name}")

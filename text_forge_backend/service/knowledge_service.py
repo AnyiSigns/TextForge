@@ -27,7 +27,7 @@ class KnowledgeService:
             except Exception as exc:
                 logger.warning(f"知识库检索 embedding 失败: {exc}")
 
-        if embedding is None:
+        if embedding is None or not embedding:
             return []
 
         vector_repo = VectorRepository(self.session)

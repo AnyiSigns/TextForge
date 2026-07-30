@@ -6,7 +6,11 @@ from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_community.chat_models import ChatZhipuAI, ChatMoonshot, ChatTongyi
+from langchain_community.chat_models import (
+    ChatZhipuAI,
+    QianfanChatEndpoint,
+)
+from langchain_moonshot import ChatMoonshot
 
 
 class _EmbeddingStub:
@@ -20,18 +24,18 @@ class ModelWrapper:
         "deepseek": ChatDeepSeek,
         "ollama": ChatOllama,
         "openai": ChatOpenAI,
+        "gemini": ChatGoogleGenerativeAI,
         "anthropic": ChatAnthropic,
-        "google": ChatGoogleGenerativeAI,
-        "glm": ChatZhipuAI,
-        "kimi": ChatMoonshot,
-        "wenxin": ChatTongyi,
+        "zhipu": ChatZhipuAI,
+        "moonshot": ChatMoonshot,
+        "qianfan": QianfanChatEndpoint,
     }
 
     EMBEDDING_MAP: Dict[str, Any] = {
         "dashscope": "_create_dashscope_embedding",
         "cohere": "_create_cohere_embedding",
         "huggingface": "_create_huggingface_embedding",
-        "qianfan": "_create_qianfan_embedding",
+        "baidu": "_create_qianfan_embedding",
     }
 
     VISION_MAP: Dict[str, Any] = {
@@ -109,7 +113,9 @@ class ModelWrapper:
         try:
             from langchain_huggingface import HuggingFaceEndpointEmbeddings
 
-            kwargs = {"model": config.get("model_id") or "intfloat/multilingual-e5-large"}
+            kwargs = {
+                "model": config.get("model_id") or "intfloat/multilingual-e5-large"
+            }
             if config.get("api_key"):
                 kwargs["huggingfacehub_api_token"] = config.get("api_key")
             return HuggingFaceEndpointEmbeddings(**kwargs)
@@ -117,7 +123,7 @@ class ModelWrapper:
             raise RuntimeError(f"初始化 huggingface embedding 失败: {e}")
 
     @staticmethod
-    def _create_qianfan_embedding(config: Dict[str, Any]):
+    def _create_baidu_embedding(config: Dict[str, Any]):
         try:
             from langchain_community.embeddings import QianfanEmbeddingsEndpoint
 
@@ -128,23 +134,29 @@ class ModelWrapper:
                 kwargs["endpoint"] = config.get("base_url")
             return QianfanEmbeddingsEndpoint(**kwargs)
         except Exception as e:
-            raise RuntimeError(f"初始化 qianfan embedding 失败: {e}")
+            raise RuntimeError(f"初始化百度千帆 embedding 失败: {e}")
 
     @staticmethod
     def _create_openai_vision(config: Dict[str, Any]):
         try:
             from openai import OpenAI
 
-            return OpenAI(api_key=config.get("api_key"), base_url=config.get("base_url"))
+            return OpenAI(
+                api_key=config.get("api_key"), base_url=config.get("base_url")
+            )
         except Exception as e:
             raise RuntimeError(f"初始化 openai vision 失败: {e}")
 
     @staticmethod
     def _create_stability_vision(config: Dict[str, Any]):
         try:
-            from langchain_community.llms.stability_ai_image_gen import StabilityAIImageGeneration
+            from langchain_community.llms.stability_ai_image_gen import (
+                StabilityAIImageGeneration,
+            )
 
-            kwargs = {"model": config.get("model_id") or "stable-diffusion-xl-1024-v1-0"}
+            kwargs = {
+                "model": config.get("model_id") or "stable-diffusion-xl-1024-v1-0"
+            }
             if config.get("api_key"):
                 kwargs["stability_ai_api_key"] = config.get("api_key")
             return StabilityAIImageGeneration(**kwargs)
@@ -157,7 +169,8 @@ class ModelWrapper:
             from langchain_replicate import Replicate
 
             kwargs = {
-                "model": config.get("model_id") or "stability-ai/stable-diffusion:db21e45d3f7023abc2a46ee38a23973f6dce16bb082a930b0c49861f96d1e5bf",
+                "model": config.get("model_id")
+                or "stability-ai/stable-diffusion:db21e45d3f7023abc2a46ee38a23973f6dce16bb082a930b0c49861f96d1e5bf",
                 "input": {},
             }
             if config.get("api_key"):
@@ -178,7 +191,11 @@ class ModelWrapper:
                 base_url: str = "https://modelslab.com/api/v6/images/text2img"
 
                 def _call(self, prompt: str, **kwargs):
-                    payload = {"key": self.api_key, "prompt": prompt, "model_id": self.model_id}
+                    payload = {
+                        "key": self.api_key,
+                        "prompt": prompt,
+                        "model_id": self.model_id,
+                    }
                     resp = requests.post(self.base_url, json=payload)
                     return resp.json().get("output") or ""
 
@@ -189,7 +206,9 @@ class ModelWrapper:
             return ModelsLab(
                 api_key=config.get("api_key", ""),
                 model_id=config.get("model_id", "midjourney"),
-                base_url=config.get("base_url", "https://modelslab.com/api/v6/images/text2img"),
+                base_url=config.get(
+                    "base_url", "https://modelslab.com/api/v6/images/text2img"
+                ),
             )
         except Exception as e:
             raise RuntimeError(f"初始化 modelslab vision 失败: {e}")
@@ -214,7 +233,7 @@ class ModelWrapper:
         }
         base = {k: v for k, v in base.items() if v is not None}
 
-        if provider == "google":
+        if provider == "gemini":
             params = {**base, "google_api_key": config.get("api_key")}
             return {k: v for k, v in params.items() if v is not None}
 

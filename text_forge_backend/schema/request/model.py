@@ -13,40 +13,16 @@ class BaseModelBasicRequest(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
-class MainConfRequest(BaseModelBasicRequest):
-    pass
-
-
-class AuditConfigRequest(BaseModelBasicRequest):
-    pass
-
-
-class RouterRequest(BaseModelBasicRequest):
-    pass
-
-
-class ToolRequest(BaseModelBasicRequest):
-    pass
-
-
-class VsionRequest(BaseModelBasicRequest):
-    pass
-
-
-class EembeddingRequest(BaseModelBasicRequest):
-    pass
-
-
 class SearchConfigRequest(BaseModel):
     provider: Optional[str] = "bocha"
     api_key: Optional[str] = None
 
 
 class ModelRequest(BaseModel):
-    main_config: Optional[MainConfRequest] = None
-    audit_config: Optional[AuditConfigRequest] = None
-    router_config: Optional[RouterRequest] = None
-    tool_config: Optional[ToolRequest] = None
-    vision_config: Optional[VsionRequest] = None
-    embedding_config: Optional[EembeddingRequest] = None
+    main_config: Optional[BaseModelBasicRequest] = None
+    audit_config: Optional[BaseModelBasicRequest] = None
+    router_config: Optional[BaseModelBasicRequest] = None
+    tool_config: Optional[BaseModelBasicRequest] = None
+    vision_config: Optional[BaseModelBasicRequest] = None
+    embedding_config: Optional[BaseModelBasicRequest] = None
     search_config: Optional[SearchConfigRequest] = None

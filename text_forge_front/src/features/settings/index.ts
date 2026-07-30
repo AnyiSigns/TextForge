@@ -6,6 +6,9 @@ export { EmbedModelManager } from './ui/EmbedModelManager';
 export { ModelEditDialog } from './ui/ModelEditDialog';
 export { ModelsSettings } from './ui/ModelsSettings';
 
+// ---- Hooks ----
+export { useSettingsForm } from './hooks/useSettingsForm';
+
 // ---- Stores ----
 export { useSettingsStore } from './stores/settingsStore';
 export { useModelStore } from './stores/modelStore';

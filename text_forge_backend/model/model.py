@@ -1,3 +1,4 @@
+from typing import Optional
 from sqlalchemy import ForeignKey, Integer, String, Text, Boolean
 from sqlalchemy.dialects.postgresql import JSONB
 from model.base import Base

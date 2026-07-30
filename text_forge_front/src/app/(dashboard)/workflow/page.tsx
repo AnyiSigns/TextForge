@@ -3,17 +3,15 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Workflow as WorkflowIcon, Trash2, Pencil, LayoutGrid, List, Search } from 'lucide-react';
+import { Plus, Workflow as WorkflowIcon } from 'lucide-react';
 import { listWorkflows, deleteWorkflow, type Workflow } from '@/features/workflow';
 import { PageHeader } from '@/shared/components';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { EmptyState } from '@/shared/components';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
+import { WorkflowList } from '@/features/workflow';
 
-type ViewMode = 'grid' | 'list';
+type ViewMode = 'list' | 'grid';
 
 export default function WorkflowPage() {
   const router = useRouter();
@@ -51,24 +49,24 @@ export default function WorkflowPage() {
   return (
     <div className="page-shell">
       <div className="flex items-center justify-between">
-        <PageHeader icon={WorkflowIcon} title="创作流程" description="把写作拆成多个步骤，自由组合成你的创作流程（云端服务未连接时使用本地演示数据）" />
+        <PageHeader icon={WorkflowIcon} title="创作流程" description="把写作拆成多个步骤，自由组合成你的创作流程" />
         <div className="flex items-center gap-2">
           <div className="flex rounded-md border border-border/40 overflow-hidden">
             <Button
               variant={viewMode === 'list' ? 'default' : 'ghost'}
               size="sm"
-              className="h-8 w-8 p-0"
+              className="h-8 px-3 text-xs"
               onClick={() => setViewMode('list')}
             >
-              <List className="w-4 h-4" />
+              <span className="text-xs">列表</span>
             </Button>
             <Button
               variant={viewMode === 'grid' ? 'default' : 'ghost'}
               size="sm"
-              className="h-8 w-8 p-0"
+              className="h-8 px-3 text-xs"
               onClick={() => setViewMode('grid')}
             >
-              <LayoutGrid className="w-4 h-4" />
+              <span className="text-xs">卡片</span>
             </Button>
           </div>
           <Button onClick={() => router.push('/workflow/new')}>
@@ -79,75 +77,20 @@ export default function WorkflowPage() {
 
       <div className="flex flex-wrap items-center gap-3 mt-4">
         <div className="relative max-w-sm flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             placeholder="搜索流程名称..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-9"
+            className="pl-3"
           />
         </div>
       </div>
 
-      {list.length === 0 ? (
-        <Card className="glass-card mt-4"><CardContent><EmptyState icon={WorkflowIcon} title="还没有创作流程" description="创建你的第一个步骤组合" /></CardContent></Card>
-      ) : filtered.length === 0 ? (
-        <Card className="glass-card mt-4"><CardContent><EmptyState icon={WorkflowIcon} title="没有匹配的流程" description="试试别的关键词" /></CardContent></Card>
-      ) : (
-        <>
-          {viewMode === 'list' ? (
-            <div className="space-y-2 stagger mt-4">
-              {filtered.map((wf) => (
-                <div key={wf.id} className="flex items-center gap-2 p-2 border border-border/40 rounded-lg bg-background/30 hover:bg-accent/20 transition-colors">
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate flex items-center gap-1.5">
-                      {wf.name}
-                      {wf.builtin && <Badge variant="secondary" className="text-[10px]">内置</Badge>}
-                    </p>
-                    <p className="text-xs text-muted-foreground truncate">{wf.description || `共 ${(wf.nodes ?? []).length} 个步骤`}</p>
-                  </div>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary shrink-0">{(wf.nodes ?? []).length} 步骤</span>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => router.push(`/workflow/${wf.id}`)}>
-                      <Pencil className="w-4 h-4 mr-1.5" /> 编辑
-                    </Button>
-                    <Button size="sm" variant="ghost" className="h-7 px-2 text-muted-foreground hover:text-destructive" onClick={() => handleDelete(wf.id)}>
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="grid sm:grid-cols-2 gap-4 stagger mt-4">
-              {filtered.map((wf) => (
-                <Card key={wf.id} className="glass-card hover:shadow-elegant-hover transition-shadow">
-                  <CardContent className="p-5 space-y-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="font-medium truncate flex items-center gap-1.5">
-                          {wf.name}
-                          {wf.builtin && <Badge variant="secondary" className="text-[10px]">内置</Badge>}
-                        </p>
-                         <p className="text-xs text-muted-foreground truncate">{wf.description || `共 ${(wf.nodes ?? []).length} 个步骤`}</p>
-                      </div>
-                       <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary shrink-0">{(wf.nodes ?? []).length} 步骤</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button size="sm" variant="outline" className="flex-1" onClick={() => router.push(`/workflow/${wf.id}`)}>
-                        <Pencil className="w-4 h-4 mr-1.5" /> 编辑
-                      </Button>
-                      <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-destructive" onClick={() => handleDelete(wf.id)}>
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </>
-      )}
+      <WorkflowList
+        workflows={filtered}
+        viewMode={viewMode}
+        onDelete={handleDelete}
+      />
     </div>
   );
 }

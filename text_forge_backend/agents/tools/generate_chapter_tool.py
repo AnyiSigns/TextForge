@@ -68,6 +68,7 @@ def build_generate_chapter_tool(session_factory, model_config: Optional[dict] = 
         instruction: str = "",
         instruction_hint: Optional[str] = None,
     ) -> dict:
+        """Generate chapter content based on the provided instruction and context."""
         session = await session_factory()
         from model.book import (
             Book,
@@ -77,7 +78,7 @@ def build_generate_chapter_tool(session_factory, model_config: Optional[dict] = 
             Character,
             CreativeSetting,
         )
-        from repository.character_repo import CharacterRepository
+        from repository.project_repo import CharacterRepository
         from repository.outline_repo import OutlineRepository
         from repository.world_repo import WorldRepository
 

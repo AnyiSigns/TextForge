@@ -4,6 +4,9 @@ from email.mime.multipart import MIMEMultipart
 
 from pydantic import EmailStr
 from config.settings import settings
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class EmailService:
@@ -33,7 +36,7 @@ class EmailService:
             )
             return True
         except Exception as e:
-            print(f"邮件发送失败：{e}")
+            logger.error(f"邮件发送失败：{e}")
             return False
 
 

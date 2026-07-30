@@ -35,9 +35,10 @@ class ModelFactory:
         model_id = embedding_config.get("model_id", "")
         known_dims = {
             "dashscope": 1024,
+            "alibabacloud": 1024,
             "cohere": 1024,
             "huggingface": 1024,
-            "qianfan": 768,
+            "baidu": 768,
         }
         if "text-embedding-v4" in model_id:
             return 1024

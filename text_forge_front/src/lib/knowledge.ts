@@ -30,36 +30,15 @@ export interface KbDocMeta {
   content?: string; // 仅个人库本地存储时携带，用于预览；公共库不返回正文
 }
 
-// 公共库演示语料（后端就绪后由 /api/knowledge/public 返回真实数据）
-const PUBLIC_DEMO: { id: string; name: string; content: string }[] = [
-  {
-    id: 'pub-1',
-    name: '古典诗词格律参考.md',
-    content:
-      '平仄是古典诗词的声调规则。五言绝句常用仄起或平起首句不入韵式。\n押韵须依《平水韵》或新韵，一韵到底，不可换韵。\n对仗要求上下句词性相对、结构相同，常见于颔联与颈联。',
-  },
-  {
-    id: 'pub-2',
-    name: '世界神话体系综述.md',
-    content:
-      '创世神话多含"混沌—分离—秩序"三阶段，如北欧尤克特拉希尔连接九界。\n英雄旅程原型：启程、启蒙、回归，见于各民族史诗。\n神祇体系常按职能分化：天空、海洋、冥界、丰收，彼此制衡。',
-  },
-];
-
-// ---------- 后端契约调用（仅公共库走后端） ----------
-
-async function backendPublicSearch(q: string): Promise<RagChunk[] | null> {
-  try {
-    const token = useAuthStore.getState().accessToken;
-    const res = await fetch(`${API_URL}/api/knowledge/search?scope=public&q=${encodeURIComponent(q)}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return (data.chunks as RagChunk[]) ?? null;
-  } catch {
-    return null;
-  }
+// 公共库后端搜索（失败直接抛错，不再回退演示语料）
+async function backendPublicSearch(q: string): Promise<RagChunk[]> {
+  const token = useAuthStore.getState().accessToken;
+  const res = await fetch(`${API_URL}/api/knowledge/search?scope=public&q=${encodeURIComponent(q)}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error(`公共库检索失败：${res.status}`);
+  const data = await res.json();
+  return (data.chunks as RagChunk[]) ?? [];
 }
 
 // ---------- 统一 RAG 客户端 ----------
@@ -76,18 +55,7 @@ export const ragClient = {
     filter?: { docIds?: string[]; authorIds?: string[]; sample?: string },
   ): Promise<RagChunk[]> {
     if (scope === 'public') {
-      const remote = await backendPublicSearch(q);
-      if (remote) return remote;
-      const docs = PUBLIC_DEMO;
-      const ql = q.toLowerCase();
-      const chunks: RagChunk[] = [];
-      for (const d of docs) {
-        for (const p of d.content.split(/\n+/).map((s) => s.trim()).filter(Boolean)) {
-          const hit = ql.split(/\s+/).filter(Boolean).reduce((a, w) => a + (p.toLowerCase().includes(w) ? 1 : 0), 0);
-          if (hit > 0) chunks.push({ docId: d.id, docName: d.name, text: p, score: hit });
-        }
-      }
-      return chunks.sort((a, b) => b.score - a.score).slice(0, limit);
+      return backendPublicSearch(q);
     }
     // 个人库：本地向量检索
     const query = filter?.sample ?? q;
@@ -104,32 +72,25 @@ export const ragClient = {
       scope: 'personal', uploaderId: userId, uploaderName: userName, content,
     };
     await putKbDoc(rec);
-    // 本地建向量索引（异步，不阻塞上传返回）
     indexDocument(rec).catch(() => {});
-    try {
-      const token = useAuthStore.getState().accessToken;
-      // 注意：multipart/form-data 不能手动设置 Content-Type——浏览器需自动生成
-      // 带 boundary 的边界串，手动设置会丢失 boundary 导致后端 400。
-      await fetch(`${API_URL}/api/knowledge/upload`, {
-        method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: file,
-      });
-    } catch { /* 后端未就绪，本地已存并建索引 */ }
+    const token = useAuthStore.getState().accessToken;
+    await fetch(`${API_URL}/api/knowledge/upload`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: file,
+    });
     return rec;
   },
 
   async listPersonal(): Promise<KbDocMeta[]> {
-    try {
-      const token = useAuthStore.getState().accessToken;
-      const res = await fetch(`${API_URL}/api/knowledge`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
-      if (res.ok) {
-        const data = await res.json();
-        if (!data?.mocked && Array.isArray(data.documents) && data.documents.length) {
-          return data.documents as KbDocMeta[];
-        }
+    const token = useAuthStore.getState().accessToken;
+    const res = await fetch(`${API_URL}/api/knowledge`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.documents)) {
+        return data.documents as KbDocMeta[];
       }
-    } catch { /* 回退本地 */ }
+    }
     return (await getAllKbDocs()).filter((d) => d.scope === 'personal');
   },
 
@@ -147,51 +108,35 @@ export const ragClient = {
     } catch { /* 已本地删 */ }
   },
 
-  // 公共库：列表（后端优先，回退演示）
+  // 公共库：列表（后端优先，不再回退演示）
   async listPublic(): Promise<KbDocMeta[]> {
-    try {
-      const res = await fetch(`${API_URL}/api/knowledge/public`);
-      if (res.ok) {
-        const data = await res.json();
-        if (!data?.mocked && Array.isArray(data.documents) && data.documents.length) {
-          return data.documents as KbDocMeta[];
-        }
+    const res = await fetch(`${API_URL}/api/knowledge/public`);
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.documents)) {
+        return data.documents as KbDocMeta[];
       }
-    } catch { /* 回退演示 */ }
-    const me = useAuthStore.getState().user;
-    return PUBLIC_DEMO.map((d, i) => ({
-      id: d.id,
-      name: d.name,
-      status: 'indexed' as const,
-      createdAt: '',
-      scope: 'public' as const,
-      uploaderId: i === 1 ? me?.id : `demo-author-${i}`,
-      uploaderName: i === 1 ? me?.username ?? '我' : `示例作者${i}`,
-    }));
+    }
+    return [];
   },
 
-  // 公共库文档内容（查看/下载）：后端契约，回退演示语料
+  // 公共库文档内容（查看/下载）：后端契约
   async getPublicContent(id: string): Promise<string | null> {
-    try {
-      const res = await fetch(`${API_URL}/api/knowledge/public/${id}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (typeof data.content === 'string') return data.content;
-      }
-    } catch { /* 回退演示 */ }
-    return PUBLIC_DEMO.find((d) => d.id === id)?.content ?? null;
+    const res = await fetch(`${API_URL}/api/knowledge/public/${id}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (typeof data.content === 'string') return data.content;
+    }
+    return null;
   },
 
   async downloadPublic(id: string, name: string): Promise<void> {
-    try {
-      const res = await fetch(`${API_URL}/api/knowledge/public/${id}/download`);
-      if (res.ok) {
-        const blob = await res.blob();
-        downloadBlob(blob, name);
-        return;
-      }
-    } catch { /* 回退本地演示语料 */ }
-    const content = PUBLIC_DEMO.find((d) => d.id === id)?.content ?? '';
-    downloadBlob(new Blob([content], { type: 'text/markdown' }), name);
+    const res = await fetch(`${API_URL}/api/knowledge/public/${id}/download`);
+    if (res.ok) {
+      const blob = await res.blob();
+      downloadBlob(blob, name);
+      return;
+    }
+    throw new Error('下载失败');
   },
 };

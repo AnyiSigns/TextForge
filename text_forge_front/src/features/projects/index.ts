@@ -20,6 +20,7 @@ export { ProjectCharactersTab } from './ui/ProjectCharactersTab';
 export { ProjectExport } from './ui/ProjectExport';
 export { ProjectGuide } from './ui/ProjectGuide';
 export { ProjectStudio } from './ui/ProjectStudio';
+export { ProjectToolbar } from './ui/ProjectToolbar';
 export { StepCard } from './ui/StepCard';
 export { MainTextTargetDialog } from './ui/MainTextTargetDialog';
 export { WorkflowGraph } from './ui/WorkflowGraph';
@@ -126,6 +127,9 @@ export { useCreativeSettingStore, creativeSettingToContextLine, creativeSettingD
 
 // ---- 类型 ----
 export type { ProcessTab } from './ui/ProcessNav';
+
+// ---- 常量 ----
+export { PROJECT_TABS } from './PROJECT_TABS';
 
 // ---- 共享工具 ----
 // export { STATUS_MAP } from './utils/status';

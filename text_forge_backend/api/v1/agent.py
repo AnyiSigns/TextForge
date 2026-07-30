@@ -58,7 +58,7 @@ async def _release_book_lock(book_id: int, user_id: int):
 @router.post("/start")
 async def start_agent_session(
     user_id: Annotated[int, Depends(get_current)],
-    book_id: Annotated[Optional[int], Query(None)] = None,
+    book_id: Optional[int] = Query(default=None),
     session: Annotated[AsyncSession, Depends(db_manager.get_db)] = None,
 ):
     if book_id is not None:
@@ -66,9 +66,6 @@ async def start_agent_session(
         result = await session.execute(stmt)
         if not result.scalar_one_or_none():
             raise HTTPException(status_code=404, detail="书籍不存在或无权访问")
-        locked = await _acquire_book_lock(book_id, user_id)
-        if not locked:
-            raise HTTPException(status_code=429, detail="该书籍正在进行 Agent 任务，请稍后再试")
     thread_id = str(uuid.uuid4())
     conversation = Conversation(
         user_id=user_id,
@@ -107,16 +104,16 @@ async def respond_to_agent(
         )
         session.add(user_msg)
         await session.commit()
-        model_conf = {}
+        model_config = {}
         try:
             from repository.model_repo import ModelConfRepository
-            model_conf_row = await ModelConfRepository(session).query_user_model(user_id)
-            if model_conf_row:
-                model_conf = {
-                    "main_config": model_conf_row.main_config or {},
-                    "tool_config": model_conf_row.tool_config or {},
-                    "search_config": model_conf_row.search_config or {},
-                    "embedding_config": model_conf_row.embedding_config or {},
+            model_config_row = await ModelConfRepository(session).query_user_model(user_id)
+            if model_config_row:
+                model_config = {
+                    "main_config": model_config_row.main_config or {},
+                    "tool_config": model_config_row.tool_config or {},
+                    "search_config": model_config_row.search_config or {},
+                    "embedding_config": model_config_row.embedding_config or {},
                 }
         except Exception:
             pass
@@ -124,7 +121,7 @@ async def respond_to_agent(
             "messages": [{"type": "human", "content": message}],
             "user_id": user_id,
             "active_book_id": book_id,
-            "model_config": model_conf,
+            "model_config": model_config,
             "step_outputs": {},
             "previous_chapter_summary": None,
             "previous_chapter_content": None,
@@ -139,7 +136,7 @@ async def respond_to_agent(
                 state["cross_chapter_context"] = prev_ctx.get("cross_chapter_context", {})
             except Exception as exc:
                 logger.warning(f"查询上一章上下文失败: {exc}")
-        graph = build_user_agent_graph(db_manager.get_db, model_config=model_conf)
+        graph = build_user_agent_graph(db_manager.get_db, model_config=model_config)
         try:
             result = await graph.ainvoke(state)
         except Exception as exc:
@@ -196,16 +193,16 @@ async def stream_agent(
         )
         session.add(user_msg)
         await session.commit()
-        model_conf = {}
+        model_config = {}
         try:
             from repository.model_repo import ModelConfRepository
-            model_conf_row = await ModelConfRepository(session).query_user_model(user_id)
-            if model_conf_row:
-                model_conf = {
-                    "main_config": model_conf_row.main_config or {},
-                    "tool_config": model_conf_row.tool_config or {},
-                    "search_config": model_conf_row.search_config or {},
-                    "embedding_config": model_conf_row.embedding_config or {},
+            model_config_row = await ModelConfRepository(session).query_user_model(user_id)
+            if model_config_row:
+                model_config = {
+                    "main_config": model_config_row.main_config or {},
+                    "tool_config": model_config_row.tool_config or {},
+                    "search_config": model_config_row.search_config or {},
+                    "embedding_config": model_config_row.embedding_config or {},
                 }
         except Exception:
             pass
@@ -213,7 +210,7 @@ async def stream_agent(
             "messages": [{"type": "human", "content": message}],
             "user_id": user_id,
             "active_book_id": book_id,
-            "model_config": model_conf,
+            "model_config": model_config,
             "step_outputs": {},
             "previous_chapter_summary": None,
             "previous_chapter_content": None,
@@ -228,7 +225,7 @@ async def stream_agent(
                 state["cross_chapter_context"] = prev_ctx.get("cross_chapter_context", {})
             except Exception as exc:
                 logger.warning(f"查询上一章上下文失败: {exc}")
-        graph = build_user_agent_graph(db_manager.get_db, model_config=model_conf)
+        graph = build_user_agent_graph(db_manager.get_db, model_config=model_config)
 
         async def event_generator():
             try:
@@ -276,7 +273,7 @@ async def stream_agent(
                             await session.commit()
                         try:
                             from agents.tools.feedback_tools import _build_feedback_tools
-                            suggestion_tools = _build_feedback_tools(db_manager.get_db, model_config=model_conf)
+                            suggestion_tools = _build_feedback_tools(db_manager.get_db, model_config=model_config)
                             suggestions = await suggestion_tools[1](user_id=user_id, book_id=book_id)
                             if suggestions:
                                 yield f"data: {json.dumps({'type': 'suggestions', 'items': suggestions}, ensure_ascii=False)}\n\n"

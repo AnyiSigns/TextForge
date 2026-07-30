@@ -2,7 +2,7 @@ from typing import Annotated, List
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from core.auth import get_current
 from service.character import CharacterService, character_db
-from text_forge_backend.schema.response.book import (
+from schema.response.book import (
     CharacterResponse,
     ListCharactersResponse,
 )

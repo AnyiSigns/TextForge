@@ -15,6 +15,7 @@ class WorldRepository:
         return result.scalars().all()
 
     async def create_location(self, book_id: int, data: dict) -> Location:
+        data.pop("book_id", None)
         location = Location(book_id=book_id, **data)
         self.session.add(location)
         await self.session.flush()
@@ -42,6 +43,7 @@ class WorldRepository:
         return result.scalars().all()
 
     async def create_timeline_event(self, book_id: int, data: dict) -> TimelineEvent:
+        data.pop("book_id", None)
         event = TimelineEvent(book_id=book_id, **data)
         self.session.add(event)
         await self.session.flush()
@@ -72,6 +74,7 @@ class WorldRepository:
         return result.scalars().all()
 
     async def create_foreshadowing(self, book_id: int, data: dict) -> Foreshadowing:
+        data.pop("book_id", None)
         item = Foreshadowing(book_id=book_id, **data)
         self.session.add(item)
         await self.session.flush()
@@ -99,6 +102,7 @@ class WorldRepository:
         return result.scalars().all()
 
     async def create_plot_thread(self, book_id: int, data: dict) -> PlotThread:
+        data.pop("book_id", None)
         item = PlotThread(book_id=book_id, **data)
         self.session.add(item)
         await self.session.flush()

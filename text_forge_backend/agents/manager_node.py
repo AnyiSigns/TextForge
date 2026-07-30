@@ -1,14 +1,15 @@
-import json
 from typing import Dict, List, Literal
 
 from agents.state import ParentState, ToolState, MainState, AuditState
-from langgraph.types import StreamWriter
 from langgraph.graph import END
 from repository.context_config_repo import BookContextConfigRepository
 from infrastructure.database import db_manager
 from agents.tool_node import tool_node
 from agents.main_node import main_node
 from agents.audit_node import audit_node
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 CONTEXT_FIELD_MAP = {
@@ -61,7 +62,7 @@ async def manager_node(state: ParentState):
         deps = [e["from"] for e in edges if e.get("to") == node_id]
         missing = [d for d in deps if d not in outputs]
         if missing:
-            print(
+            logger.warning(
                 f"节点 {node_id} 依赖未满足: 缺 {missing}，现有 outputs keys: {list(outputs.keys())}"
             )
             continue
@@ -73,12 +74,12 @@ async def manager_node(state: ParentState):
     if not next_node:
         remaining = [n["id"] for n in nodes if n["id"] not in executed_set]
         if remaining:
-            print(f"剩余节点{remaining}无法调度")
+            logger.warning(f"剩余节点{remaining}无法调度")
         else:
-            print("所有节点执行完毕")
+            logger.info("所有节点执行完毕")
         return {"next_step_id": "__END__"}
 
-    print(f"待调度:{next_node['label']}({next_node['id']})")
+    logger.info(f"待调度:{next_node['label']}({next_node['id']})")
 
     outgoing = [
         e["from"] for e in state.get("edges", []) if e.get("to") == next_node["id"]
@@ -97,7 +98,7 @@ async def manager_node(state: ParentState):
             break
 
     if len(upstream_text) > 8000:
-        print(
+        logger.info(
             f"[压缩] 节点 {upstream_id} 输出 {len(upstream_text)} 字符，超过 8000 阈值，路由到压缩节点"
         )
         return {
@@ -122,7 +123,7 @@ async def manager_node(state: ParentState):
     else:
         target_executor = executor
 
-    print(f"[Manager] 代码路由决策 -> {target_executor}")
+    logger.info(f"[Manager] 代码路由决策 -> {target_executor}")
 
     return {
         "next_step_id": next_node["id"],
@@ -290,7 +291,7 @@ async def route_after_manager(
         return END
 
     if next_id == "__compress__":
-        print("[路由] 压缩任务 -> call_compression")
+        logger.info("[路由] 压缩任务 -> call_compression")
         return "call_compression"
 
     target_executor = state.get("metadata", {}).get("target_executor", "main")
@@ -301,5 +302,5 @@ async def route_after_manager(
         "tool": "call_tool",
     }
     target_node = executor_to_node.get(target_executor, "call_main")
-    print(f"[路由] {target_executor} -> {target_node}")
+    logger.info(f"[路由] {target_executor} -> {target_node}")
     return target_node

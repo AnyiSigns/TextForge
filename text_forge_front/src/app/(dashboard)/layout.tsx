@@ -17,6 +17,7 @@ import { syncManager } from '@/lib/storage/syncManager';
 import { useAuthStore } from '@/lib/stores/authStore';
 import { useNetworkStatus } from '@/lib/hooks/useNetworkStatus';
 import { useSettingsStore } from '@/features/settings';
+import { AgentSidebar } from '@/features/user-agent';
 
 export default function DashboardLayout({
   children,
@@ -115,10 +116,12 @@ export default function DashboardLayout({
                 <Footer />
               </motion.div>
             </main>
-            <Toaster position="top-right" richColors closeButton className="z-[99999]" />
+            {/* Agent 侧边栏 - 右侧全局挂载 */}
+            <AgentSidebar />
           </div>
         </BackgroundProvider>
       </AppearanceProvider>
+      <Toaster position="top-right" richColors closeButton className="z-[99999]" />
       <GlobalShortcuts />
       <GlobalSearch />
       <ConflictDialog />
