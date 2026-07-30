@@ -8,6 +8,7 @@
 // 同步实体等），当前前端源码零引用，但属于与后端约定的活跃契约，保留不删，
 // 待后端就绪时直接接入，切勿轻易移除或标 @deprecated。
 
+export * from './agent';
 export * from './common';
 export * from './model';
 export * from './project';
@@ -22,3 +23,5 @@ export * from './chat';
 export * from './volume';
 export * from './chapter';
 export * from './chapterContent';
+export * from './world';
+export * from './memory';

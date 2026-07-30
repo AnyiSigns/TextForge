@@ -6,29 +6,10 @@ from infrastructure.database import db_manager
 from schema.request.knowledge import KnowledgeSearchRequest
 from schema.response.knowledge import KnowledgeSearchResponse, KnowledgeChunk
 from service.knowledge_service import KnowledgeService
-from repository.model_repo import ModelConfRepository
+from service.model_service import ModelService
 from model.document import Document, Chunk
 
 router = APIRouter(prefix="/knowledge", tags=["知识库"])
-
-
-async def _get_model_config(user_id: int, session: AsyncSession) -> dict:
-    try:
-        repo = ModelConfRepository(session)
-        instance = await repo.query_user_model(user_id)
-        if instance:
-            return {
-                "user_id": instance.user_id,
-                "main_config": instance.main_config or {},
-                "audit_config": instance.audit_config or {},
-                "router_config": instance.router_config or {},
-                "tool_config": instance.tool_config or {},
-                "vision_config": instance.vision_config or {},
-                "embedding_config": instance.embedding_config or {},
-            }
-    except Exception:
-        pass
-    return {}
 
 
 @router.get("/search", response_model=KnowledgeSearchResponse)
@@ -42,7 +23,7 @@ async def search_public_knowledge(
     if scope != "public":
         return KnowledgeSearchResponse(chunks=[])
 
-    model_config = await _get_model_config(user_id, session)
+    model_config = await ModelService.get_user_model_config(session, user_id)
     service = KnowledgeService(session)
     items = await service.search_public(query=q, top_k=top_k, model_config=model_config)
 
@@ -72,7 +53,7 @@ async def upload_public_document(
     if ext not in ("txt", "md", "markdown", "json", "csv"):
         raise HTTPException(status_code=400, detail="暂不支持该文件类型")
 
-    model_config = await _get_model_config(user_id, session)
+    model_config = await ModelService.get_user_model_config(session, user_id)
     service = KnowledgeService(session)
     result = await service.upload_public(file, emb_config=model_config.get("embedding_config") if model_config else None)
     return result

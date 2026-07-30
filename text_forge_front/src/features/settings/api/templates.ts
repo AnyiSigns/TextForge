@@ -25,7 +25,9 @@ export const MODEL_TEMPLATES: ModelTemplate[] = [
   { key: 'gemini', vendor: 'Gemini', adapter: 'gemini', category: 'llm', deployment: 'cloud', defaultModelId: 'gemini-pro', defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1', needsApiKey: true },
   { key: 'zhipu', vendor: '智谱 GLM', adapter: 'zhipu', category: 'llm', deployment: 'cloud', defaultModelId: 'glm-4', defaultBaseUrl: 'https://open.bigmodel.cn/api/paas/v4', needsApiKey: true },
   { key: 'moonshot', vendor: 'Moonshot (Kimi)', adapter: 'moonshot', category: 'llm', deployment: 'cloud', defaultModelId: 'moonshot-v1-8k', defaultBaseUrl: 'https://api.moonshot.cn/v1', needsApiKey: true },
-  { key: 'qianfan', vendor: '百度文心', adapter: 'qianfan', category: 'llm', deployment: 'cloud', defaultModelId: 'ERNIE-4.0', defaultBaseUrl: 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat', needsApiKey: true },
+   { key: 'qianfan', vendor: '百度文心', adapter: 'qianfan', category: 'llm', deployment: 'cloud', defaultModelId: 'ERNIE-4.0', defaultBaseUrl: 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat', needsApiKey: true },
+   { key: 'baidu', vendor: '百度 (Baidu)', adapter: 'baidu', category: 'llm', deployment: 'cloud', defaultModelId: 'ernie-4.0', defaultBaseUrl: 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat', needsApiKey: true },
+   { key: 'huggingface', vendor: 'Hugging Face', adapter: 'huggingface', category: 'llm', deployment: 'cloud', defaultModelId: '', defaultBaseUrl: 'https://api-inference.huggingface.co', needsApiKey: true },
    // ---------- 视觉模型 (vision) ----------
    { key: 'kling', vendor: 'Kling (快手)', adapter: 'kling', category: 'vision', deployment: 'cloud', defaultModelId: 'kling-v1', defaultBaseUrl: 'https://api.klingai.com/v1', needsApiKey: true },
    { key: 'runway', vendor: 'Runway', adapter: 'runway', category: 'vision', deployment: 'cloud', defaultModelId: 'gen-3', defaultBaseUrl: 'https://api.runwayml.com/v1', needsApiKey: true },

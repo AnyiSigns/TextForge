@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/shared/components';
 import { GenerationForm } from '@/shared/components';
-import { submitVideo, fetchVideoTasks, describeGenError, type MediaTask, type VideoRequest } from '@/lib/api/generation';
+import { submitVideo, fetchVideoTasks, describeGenError, type MediaTask, type VideoRequest } from '@/features/projects/api/media';
 import { listOutlines } from '@/features/projects';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';

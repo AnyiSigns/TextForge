@@ -24,4 +24,7 @@ class GraphRegister:
             raise RuntimeError(f"图{name}未编译")
         return graph
 
+    def get_all_builders(self) -> Dict[str, StateGraph]:
+        return dict(self._builders)
+
 graph_register=GraphRegister()

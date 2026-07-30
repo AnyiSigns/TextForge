@@ -10,12 +10,32 @@ logger = get_logger(__name__)
 
 
 class KnowledgeService:
+    """知识库服务层。
+
+    提供公共知识库检索、文档上传与列表查询。
+    """
+
     def __init__(self, session: AsyncSession):
+        """初始化 KnowledgeService。
+
+        Args:
+            session: SQLAlchemy 异步会话。
+        """
         self.session = session
 
     async def search_public(
         self, query: str, top_k: int = 3, model_config: dict | None = None
     ) -> List[dict]:
+        """公共知识库语义检索。
+
+        Args:
+            query: 检索查询文本。
+            top_k: 返回结果数。
+            model_config: 模型配置，用于生成 embedding。
+
+        Returns:
+            检索结果列表，每个元素包含 content、distance 等字段。
+        """
         if not query.strip():
             return []
 
@@ -39,21 +59,52 @@ class KnowledgeService:
         return items
 
     async def upload_public(self, file, emb_config: dict | None = None):
+        """上传公共知识库文档。
+
+        Args:
+            file: 上传文件对象。
+            emb_config: embedding 配置。
+
+        Returns:
+            上传处理结果。
+        """
         from repository.upload_repo import process_upload
 
         return await process_upload(self.session, file, emb_config=emb_config)
 
     async def list_public(self, page: int = 1, page_size: int = 20):
+        """分页查询公共知识库文档列表。
+
+        Args:
+            page: 页码，从 1 开始。
+            page_size: 每页数量。
+
+        Returns:
+            文档实例列表。
+        """
         stmt = select(Document).where(Document.scope == "public").order_by(Document.created_at.desc()).limit(page_size).offset((page - 1) * page_size)
         result = await self.session.execute(stmt)
         return result.scalars().all()
 
     async def get_public(self, doc_id: int):
+        """获取单个公共知识库文档。
+
+        Args:
+            doc_id: 文档 ID。
+
+        Returns:
+            Document 实例，不存在返回 None。
+        """
         stmt = select(Document).where(Document.id == doc_id, Document.scope == "public")
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
     async def delete_public(self, doc_id: int):
+        """删除公共知识库文档。
+
+        Args:
+            doc_id: 文档 ID。
+        """
         stmt = sqla_delete(Document).where(Document.id == doc_id, Document.scope == "public")
         await self.session.execute(stmt)
         await self.session.flush()

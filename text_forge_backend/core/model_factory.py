@@ -5,6 +5,11 @@ from langchain_core.language_models import BaseChatModel
 
 
 class ModelFactory:
+    """模型工厂。
+
+    根据用户模型配置统一创建 main/audit/router/tool/embedding/vision 模型实例。
+    """
+
     DETAILED = {
         ("main", "main_config"),
         ("router", "router_config"),
@@ -13,6 +18,11 @@ class ModelFactory:
     }
 
     def __init__(self, user_config: dict):
+        """初始化 ModelFactory。
+
+        Args:
+            user_config: 用户模型配置字典，通常来自 ModelService.get_user_model_config。
+        """
         self.user_config = user_config
         self._cache: Dict[str, BaseChatModel] = {}
 
@@ -30,6 +40,11 @@ class ModelFactory:
         self.search_config = user_config.get("search_config") or {}
 
     def get_embedding_dimension(self) -> int:
+        """获取 embedding 维度。
+
+        Returns:
+             embedding 向量维度。
+        """
         embedding_config = self.user_config.get("embedding_config") or {}
         adapter = embedding_config.get("adapter", "")
         model_id = embedding_config.get("model_id", "")
@@ -49,6 +64,14 @@ class ModelFactory:
         return known_dims.get(adapter, 1536)
 
     def _get_create_model(self, config: Dict[str, Any]) -> BaseChatModel:
+        """创建或从缓存获取模型实例。
+
+        Args:
+            config: 模型配置字典。
+
+        Returns:
+            BaseChatModel 实例。
+        """
         cache_key = (
             f"{config.get("adapter")}:{config.get("model_id")}:{config.get("base_url")}"
         )

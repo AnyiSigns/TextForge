@@ -12,7 +12,7 @@ import { loadOutline, saveOutline, type OutlineVolume } from '@/lib/storage/back
 import { downloadImagesZip } from '@/lib/storage/imageExport';
 import { useProjectStore } from '@/features/projects';
 import { GenerationForm } from '@/shared/components';
-import { submitImage } from '@/lib/api/generation';
+import { submitImage } from '@/features/projects/api/media';
 import { toast } from 'sonner';
 
 // 角色「生成立绘 / 素材管理」面板：卡片与列表行共用，避免两处重复实现。

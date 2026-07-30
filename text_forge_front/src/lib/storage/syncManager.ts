@@ -1,7 +1,7 @@
 // src/lib/storage/syncManager.ts
 // 统一前后端一致性管理器：乐观锁 + 增量同步 + 冲突处理
 import { flushSyncQueue } from './syncQueue';
-import { getSyncUpdates } from '@/lib/api/client';
+import { getSyncUpdates } from '@/shared/lib/apiClient';
 
 type SyncMeta = {
   lastSyncAt: string;

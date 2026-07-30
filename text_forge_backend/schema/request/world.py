@@ -3,6 +3,8 @@ from pydantic import BaseModel, Field, ConfigDict
 
 
 class LocationRequest(BaseModel):
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
     book_id: int = Field(alias="bookId")
     name: str
     type: str
@@ -10,10 +12,10 @@ class LocationRequest(BaseModel):
     parent_id: Optional[int] = Field(default=None, alias="parentId")
     attributes: Optional[Dict[str, Any]] = None
 
-    model_config = ConfigDict(populate_by_name=True)
-
 
 class TimelineEventRequest(BaseModel):
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
     book_id: int = Field(alias="bookId")
     name: str
     description: Optional[str] = None
@@ -23,10 +25,10 @@ class TimelineEventRequest(BaseModel):
     related_character_ids: Optional[List[int]] = Field(default=[], alias="relatedCharacterIds")
     related_location_id: Optional[int] = Field(default=None, alias="relatedLocationId")
 
-    model_config = ConfigDict(populate_by_name=True)
-
 
 class ForeshadowingRequest(BaseModel):
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
     book_id: int = Field(alias="bookId")
     description: str
     status: str
@@ -37,10 +39,10 @@ class ForeshadowingRequest(BaseModel):
     reveal_type: Optional[str] = Field(default=None, alias="revealType")
     notes: Optional[str] = None
 
-    model_config = ConfigDict(populate_by_name=True)
-
 
 class PlotThreadRequest(BaseModel):
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
     book_id: int = Field(alias="bookId")
     name: str
     description: Optional[str] = None
@@ -51,5 +53,3 @@ class PlotThreadRequest(BaseModel):
     start_chapter_id: Optional[int] = Field(default=None, alias="startChapterId")
     end_chapter_id: Optional[int] = Field(default=None, alias="endChapterId")
     progress_note: Optional[str] = Field(default=None, alias="progressNote")
-
-    model_config = ConfigDict(populate_by_name=True)

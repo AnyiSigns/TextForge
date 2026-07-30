@@ -12,10 +12,27 @@ from core.model_factory import ModelFactory
 
 
 async def compute_md5(content: bytes) -> str:
+    """计算字节内容的 MD5。
+
+    Args:
+        content: 原始字节内容。
+
+    Returns:
+        MD5 十六进制字符串。
+    """
     return hashlib.md5(content).hexdigest()
 
 
 async def find_document_by_md5(session: AsyncSession, md5: str):
+    """根据 MD5 查询公共文档。
+
+    Args:
+        session: SQLAlchemy 异步会话。
+        md5: 文件 MD5。
+
+    Returns:
+        Document 实例，不存在返回 None。
+    """
     stmt = (
         __import__("sqlalchemy")
         .select(Document)
@@ -26,6 +43,17 @@ async def find_document_by_md5(session: AsyncSession, md5: str):
 
 
 async def create_document(session: AsyncSession, file: UploadFile, md5: str, content: bytes) -> Document:
+    """创建文档记录。
+
+    Args:
+        session: SQLAlchemy 异步会话。
+        file: 上传文件。
+        md5: 文件 MD5。
+        content: 文件内容。
+
+    Returns:
+        新创建的 Document 实例。
+    """
     ext = os.path.splitext(file.filename or "")[1].lower()
     doc = Document(
         file_name=file.filename or f"upload_{uuid.uuid4().hex[:8]}{ext}",
@@ -39,10 +67,22 @@ async def create_document(session: AsyncSession, file: UploadFile, md5: str, con
     )
     session.add(doc)
     await session.flush()
+    await session.refresh(doc)
     return doc
 
 
 async def create_chunks(session: AsyncSession, doc_id: int, chunks: List[str], embedder) -> List[Chunk]:
+    """批量创建 Chunk 并生成 embedding。
+
+    Args:
+        session: SQLAlchemy 异步会话。
+        doc_id: 文档 ID。
+        chunks: 文本块列表。
+        embedder: embedding 模型实例。
+
+    Returns:
+        新创建的 Chunk 实例列表。
+    """
     records = []
     for idx, text in enumerate(chunks):
         embedding = None
@@ -60,10 +100,21 @@ async def create_chunks(session: AsyncSession, doc_id: int, chunks: List[str], e
             )
         )
     session.add_all(records)
+    await session.flush()
     return records
 
 
 async def process_upload(session: AsyncSession, file: UploadFile, emb_config: dict | None = None):
+    """处理文档上传全流程。
+
+    Args:
+        session: SQLAlchemy 异步会话。
+        file: 上传文件。
+        emb_config: embedding 配置。
+
+    Returns:
+        上传结果字典，包含 document_id、file_name、status、chunks。
+    """
     content = await file.read()
     if not content:
         raise ValueError("文件内容为空")

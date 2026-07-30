@@ -6,7 +6,7 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# ===================== 前端 (text_forge_front) =====================
+# ===================== 前端（text_forge_front） =====================
 node_modules/
 .next/
 /out/
@@ -14,8 +14,12 @@ coverage/
 storybook-static/
 *.tsbuildinfo
 next-env.d.ts
+.env.local
+.env.development
+.env.production
+.husky/
 
-# ===================== 后端 (text_forge_backend) =====================
+# ===================== 后端（text_forge_backend） =====================
 __pycache__/
 *.py[cod]
 *.egg-info/
@@ -27,6 +31,10 @@ logs/
 *.sqlite3
 *.db
 text_forge_backend/.next/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+playwright-mcp/
 
 # ===================== 测试 =====================
 text_forge_backend/test/

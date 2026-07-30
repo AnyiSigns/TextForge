@@ -7,11 +7,28 @@ from typing import List, Dict, Any
 
 
 class WritingSessionRepository(BaseRepository[WritingSession]):
+    """写作会话仓储。"""
+
     def __init__(self, session: AsyncSession):
+        """初始化 WritingSessionRepository。
+
+        Args:
+            session: SQLAlchemy 异步会话。
+        """
         self.session = session
         super().__init__(WritingSession, session)
 
     async def list_by_user_book(self, user_id: int, book_id: int, chapter_id: int | None = None):
+        """查询用户书籍下的写作会话列表。
+
+        Args:
+            user_id: 用户 ID。
+            book_id: 书籍 ID。
+            chapter_id: 章节 ID，可选。
+
+        Returns:
+            写作会话实例列表。
+        """
         stmt = select(WritingSession).where(
             WritingSession.user_id == user_id,
             WritingSession.book_id == book_id,
@@ -23,6 +40,16 @@ class WritingSessionRepository(BaseRepository[WritingSession]):
         return result.scalars().all()
 
     async def get_statistics(self, user_id: int, book_id: int, chapter_id: int | None = None):
+        """获取写作统计信息。
+
+        Args:
+            user_id: 用户 ID。
+            book_id: 书籍 ID。
+            chapter_id: 章节 ID，可选。
+
+        Returns:
+            统计信息字典。
+        """
         stmt = select(
             func.count(WritingSession.id).label("session_count"),
             func.coalesce(func.sum(WritingSession.words_written), 0).label("total_words"),
@@ -48,6 +75,16 @@ class WritingSessionRepository(BaseRepository[WritingSession]):
         return dict(row)
 
     async def get_writing_trend(self, user_id: int, book_id: int, days: int = 30) -> List[Dict[str, Any]]:
+        """获取写作趋势。
+
+        Args:
+            user_id: 用户 ID。
+            book_id: 书籍 ID。
+            days: 统计天数。
+
+        Returns:
+            趋势数据列表。
+        """
         cutoff = datetime.now() - timedelta(days=days)
         stmt = (
             select(
@@ -77,6 +114,15 @@ class WritingSessionRepository(BaseRepository[WritingSession]):
         ]
 
     async def get_character_frequency(self, user_id: int, book_id: int) -> List[Dict[str, Any]]:
+        """获取角色出现频率。
+
+        Args:
+            user_id: 用户 ID。
+            book_id: 书籍 ID。
+
+        Returns:
+            频率数据列表。
+        """
         stmt = select(WritingSession).where(
             WritingSession.user_id == user_id,
             WritingSession.book_id == book_id,
@@ -94,6 +140,15 @@ class WritingSessionRepository(BaseRepository[WritingSession]):
         return sorted(frequency.values(), key=lambda x: x["total_words"], reverse=True)
 
     async def get_plot_progress(self, user_id: int, book_id: int) -> Dict[str, Any]:
+        """获取情节进度。
+
+        Args:
+            user_id: 用户 ID。
+            book_id: 书籍 ID。
+
+        Returns:
+            进度信息字典。
+        """
         from model.book import Chapter, Volume
         vol_stmt = select(Volume.id).where(Volume.book_id == book_id)
         vol_result = await self.session.execute(vol_stmt)

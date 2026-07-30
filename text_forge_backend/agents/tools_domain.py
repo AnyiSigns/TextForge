@@ -17,10 +17,10 @@ logger = get_logger(__name__)
 
 def _build_lookup_tools(session_factory):
     @tool
-    async def lookup_characters(book_id: int, names: Optional[List[str]] = None) -> List[dict]:
+    async def lookup_characters(user_id: int, book_id: int, names: Optional[List[str]] = None) -> List[dict]:
         """lookup_characters tool."""
         session = await session_factory()
-        characters = await CharacterRepository(session).book_character_detail(user_id=0, book_id=book_id)
+        characters = await CharacterRepository(session).book_character_detail(user_id=user_id, book_id=book_id)
         if names:
             characters = [c for c in characters if c.name in names]
         return [
@@ -228,7 +228,8 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
             doc_stmt = sa_select(Document.id, Document.file_name).where(Document.user_id == user_id, Document.scope == "personal")
             doc_result = await session.execute(doc_stmt)
             doc_rows = doc_result.all()
-            doc_ids = [str(row.id) for row in doc_rows]
+            doc_id_map = {str(row.id): row.file_name for row in doc_rows}
+            doc_ids = list(doc_id_map.keys())
             if not doc_ids:
                 return []
             items = await vector_repo.search_external_books(
@@ -238,14 +239,13 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
             )
             return [
                 {
-                    "title": row.file_name,
+                    "title": doc_id_map.get(str(item.get("doc_id")), ""),
                     "snippet": item.get("content", ""),
                     "url": "",
                     "score": 1 - float(item.get("distance", 0) or 0),
                 }
                 for item in items
-                for row in doc_rows
-                if str(row.id) == str(item.get("doc_id"))
+                if str(item.get("doc_id")) in doc_id_map
             ]
         except Exception as exc:
             logger.warning(f"personal_rag_search 失败: {exc}")
@@ -358,7 +358,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
         return {"book_id": book_id, "entities": entities}
 
     @tool
-    async def batch_create_entities(book_id: int, characters: Optional[List[dict]] = None, locations: Optional[List[dict]] = None, timeline_events: Optional[List[dict]] = None) -> dict:
+    async def batch_create_entities(user_id: int, book_id: int, characters: Optional[List[dict]] = None, locations: Optional[List[dict]] = None, timeline_events: Optional[List[dict]] = None) -> dict:
         """batch_create_entities tool."""
         session = await session_factory()
         repo = WorldRepository(session)
@@ -366,7 +366,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
         try:
             for item in (characters or []):
                 from model.book import Character
-                instance = Character(book_id=book_id, **item)
+                instance = Character(user_id=user_id, book_id=book_id, **item)
                 session.add(instance)
                 created["characters"].append(item)
             for item in (locations or []):

@@ -13,7 +13,7 @@ class BookRepository(BaseRepository[Book]):
         field_map = {"genre": Book.genre}
         parameter = []
         for key, value in kwargs.items():
-            if value is not None:
+            if value is not None and key in field_map:
                 parameter.append(field_map[key] == value)
         stmt = select(Book).where(Book.user_id == user_id, *parameter)
         result = await self.session.execute(stmt)
@@ -48,6 +48,8 @@ class CreativeSettingRepository(BaseRepository[CreativeSetting]):
     async def add_setting(self, book_id: int, setting: dict):
         data = {k: v for k, v in setting.items() if k != "book_id"}
         instance = await self.add(book_id=book_id, **data)
+        await self.session.commit()
+        await self.session.refresh(instance)
         return instance
 
     async def save_setting(self, book_id: int, setting: dict):
@@ -55,7 +57,11 @@ class CreativeSettingRepository(BaseRepository[CreativeSetting]):
         if not instance:
             instance = await self.add_setting(book_id, setting)
             return instance
-        instance = await self.update(book_id, **setting)
+        for key, value in setting.items():
+            if value is not None:
+                setattr(instance, key, value)
+        await self.session.commit()
+        await self.session.refresh(instance)
         return instance
 
     async def get_setting(self, book_id: int):

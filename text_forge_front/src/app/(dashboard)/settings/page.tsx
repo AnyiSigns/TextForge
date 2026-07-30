@@ -4,8 +4,8 @@
 import { useState } from 'react';
 import { ProcessNav } from '@/features/projects';
 import { PageHeader } from '@/shared/components';
-import { ModelsSettings } from '@/features/settings';
-import { SlidersHorizontal, User, Palette, Sparkles, Boxes } from 'lucide-react';
+import { ModelsSettings, MemorySettings } from '@/features/settings';
+import { SlidersHorizontal, User, Palette, Sparkles, Boxes, Brain } from 'lucide-react';
 import { ProfileSection } from './sections/ProfileSection';
 import { AppearanceSection } from './sections/AppearanceSection';
 import { AiPrefSection } from './sections/AiPrefSection';
@@ -24,6 +24,7 @@ export default function SettingsPage() {
           { value: 'appearance', label: '外观', icon: Palette },
           { value: 'ai', label: 'AI 偏好', icon: Sparkles },
           { value: 'models', label: '模型', icon: Boxes },
+          { value: 'memories', label: 'Agent 记忆', icon: Brain },
           { value: 'advanced', label: '高级选项', icon: SlidersHorizontal },
         ]}
         value={activeTab}
@@ -33,6 +34,7 @@ export default function SettingsPage() {
         {activeTab === 'appearance' && <AppearanceSection />}
         {activeTab === 'ai' && <AiPrefSection />}
         {activeTab === 'models' && <ModelsSettings />}
+        {activeTab === 'memories' && <MemorySettings />}
         {activeTab === 'advanced' && <AdvancedSection />}
       </ProcessNav>
     </div>

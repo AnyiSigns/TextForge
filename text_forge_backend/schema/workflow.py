@@ -1,10 +1,10 @@
 from typing import List, Optional, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class RagFilter(BaseModel):
-    model_config = {}
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     doc_ids: Optional[List[str]] = Field(default=None, alias="docIds")
     author_ids: Optional[List[str]] = Field(default=None, alias="authorIds")
@@ -12,7 +12,7 @@ class RagFilter(BaseModel):
 
 
 class WorkflowNode(BaseModel):
-    model_config = {}
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: str
     label: str
@@ -25,14 +25,14 @@ class WorkflowNode(BaseModel):
 
 
 class WorkflowEdge(BaseModel):
-    model_config = {}
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     from_: str = Field(alias="from")
     to: str
 
 
 class Workflow(BaseModel):
-    model_config = {}
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: str
     name: str

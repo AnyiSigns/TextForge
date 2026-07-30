@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { handleDevApi } from '@/mocks';
 
 const REFRESH_COOKIE = 'tf_rt';
 
@@ -132,11 +131,6 @@ export async function proxy(request: NextRequest) {
   if (pathname.startsWith('/hf/')) {
     const r = await proxyModelFile(request, pathname);
     if (r) return r;
-  }
-
-  // 开发期 mock：后端未就绪时，让前端本地跑通登录与各列表页
-  if (process.env.NODE_ENV !== 'production' && pathname.startsWith('/api/')) {
-    return handleDevApi(request);
   }
 
   if (isAuthExempt(pathname)) {

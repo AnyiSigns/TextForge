@@ -9,7 +9,7 @@ import { useCharacterStore } from '@/features/characters';
 import { Search, Users, BookOpen, ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useHotkeys } from 'react-hotkeys-hook';
-import apiClient from '@/lib/api/client';
+import apiClient from '@/shared/lib/apiClient';
 import { logger } from '@/lib/logger';
 import type { Book } from '@/types';
 

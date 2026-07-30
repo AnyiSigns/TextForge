@@ -1,8 +1,10 @@
-// src/lib/api/generation.ts
-import apiClient from '@/shared/lib/apiClient';
-import type { GenerationContext, MediaTask, MediaKind, ImageRequest, VideoRequest } from '@/types';
+// src/features/projects/api/media.ts
+// 媒体生成 API（图像/视频）。
 
-export type { MediaKind, MediaTask, GenerationContext, ImageRequest, VideoRequest };
+import apiClient from '@/shared/lib/apiClient';
+import type { MediaKind, MediaTask, ImageRequest, VideoRequest, GenerationContext } from '@/types';
+
+export type { MediaKind, MediaTask, ImageRequest, VideoRequest, GenerationContext };
 
 interface MediaTaskResponse {
   task?: Partial<MediaTask>;
@@ -45,7 +47,6 @@ export async function fetchImageResults(bookId?: string): Promise<MediaTask[]> {
   return list.map((t) => ({ ...t, kind: 'image' as const }) as MediaTask);
 }
 
-// 把生成提交的错误归类为可读提示：网络不可达 → 提示本地模式/服务未连接
 export function describeGenError(error: unknown): string {
   const err = error as { code?: string; message?: string };
   if (err?.code === 'ECONNABORTED' || err?.code === 'ERR_NETWORK' || /Failed to fetch|NetworkError|Load failed/i.test(err?.message || '')) {

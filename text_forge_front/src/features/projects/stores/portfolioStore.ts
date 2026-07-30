@@ -2,7 +2,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-import type { MediaTask } from '@/lib/api/generation';
+import type { MediaTask } from '@/features/projects/api/media';
 import { syncManager } from '@/lib/storage/syncManager';
 import { createIdbStorage } from '@/lib/storage/zustandIdb';
 

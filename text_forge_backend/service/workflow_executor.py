@@ -19,46 +19,41 @@ logger = get_logger(__name__)
 
 
 class WorkflowExecutor:
+    """工作流执行器。
+
+    负责加载工作流定义、拓扑排序、执行图并产出 SSE 事件流。
+    """
+
     def __init__(self, session: AsyncSession):
+        """初始化 WorkflowExecutor。
+
+        Args:
+            session: SQLAlchemy 异步会话。
+        """
         self.session = session
         self.parent_graph = None
 
     async def _get_parent_graph(self):
+        """懒加载 parent 图。"""
         if self.parent_graph is None:
             from agents.graphs.registry import graph_register
 
             self.parent_graph = graph_register.get_compiled("parent")
         return self.parent_graph
 
-    async def _get_user_model_config(self, user_id: int):
-        repo = ModelConfRepository(self.session)
-        instance = await repo.query_user_model(user_id)
-        if not instance:
-            instance = ModelConfig(user_id=user_id)
-        return {
-            "user_id": instance.user_id,
-            "main_config": instance.main_config or {},
-            "audit_config": instance.audit_config or {},
-            "router_config": instance.router_config or {},
-            "tool_config": instance.tool_config or {},
-            "vision_config": instance.vision_config or {},
-            "embedding_config": instance.embedding_config or {},
-        }
-
-    async def _load_context(self, book_id: int) -> dict:
-        """一次性加载项目上下文到扁平字段"""
-        async with db_manager.with_db() as session:
-            repo = StructuredRepository(session)
-            return {
-                "input_summary": "",
-                "input_worldview": "",
-                "input_brief_summary": "",
-                "input_characters": "",
-                "input_recent_chapters": "",
-                "input_outline": "",
-            }
-
     def _topological_store(self, nodes: list[dict], edges: list[dict]):
+        """拓扑排序工作流节点。
+
+        Args:
+            nodes: 节点列表。
+            edges: 边列表。
+
+        Returns:
+            排序后的节点列表。
+
+        Raises:
+            ValueError: 存在循环依赖时抛出。
+        """
         in_degree = {n["id"]: 0 for n in nodes}
         graph = {n["id"]: [] for n in nodes}
         for e in edges:
@@ -79,6 +74,14 @@ class WorkflowExecutor:
         return sorted_nodes
 
     def _count_words(self, text: str) -> int:
+        """统计文本词数。
+
+        Args:
+            text: 输入文本。
+
+        Returns:
+            词数。
+        """
         if not text:
             return 0
         try:
@@ -90,6 +93,17 @@ class WorkflowExecutor:
     async def run(
         self, workflow_id: str, user_id: int, book_id: int, thread_id: str
     ) -> AsyncGenerator[str, None]:
+        """执行工作流并产出 SSE 事件流。
+
+        Args:
+            workflow_id: 工作流 ID。
+            user_id: 用户 ID。
+            book_id: 书籍 ID。
+            thread_id: 线程 ID。
+
+        Yields:
+            SSE 事件字符串。
+        """
         workflow_repo = WorkflowRepository(self.session)
         workflow = await workflow_repo.get_workflow_id(workflow_id, user_id)
         if not workflow:
@@ -98,14 +112,14 @@ class WorkflowExecutor:
         book = await book_repo.get(book_id)
         if not book or book.user_id != user_id:
             raise ValueError("书籍不存在")
-        model_config = await self._get_user_model_config(user_id)
+        model_config = await ModelService.get_user_model_config(self.session, user_id)
         nodes = workflow.nodes or []
         edges = workflow.edges or []
 
         sorted_nodes = self._topological_store(nodes, edges)
         total_nodes = len(sorted_nodes)
 
-        context_data = await self._load_context(book_id)
+        context_data = {}
 
         initial_state: ParentState = {
             "book_id": book_id,
@@ -314,6 +328,13 @@ class WorkflowExecutor:
             return
 
     async def _auto_summarize(self, session, book_id, outputs_map):
+        """自动摘要缺失的章节。
+
+        Args:
+            session: SQLAlchemy 异步会话。
+            book_id: 书籍 ID。
+            outputs_map: 工作流输出映射。
+        """
         outlines = await OutlineRepository(session).list_outlines(book_id=book_id)
         if not outlines:
             return
@@ -344,7 +365,7 @@ class WorkflowExecutor:
         if not first_output:
             return
         try:
-            model_config = await self._get_user_model_config(outlines[0].book_id)
+            model_config = await ModelService.get_user_model_config(session, outlines[0].book_id)
             llm = ModelFactory(model_config)
             prompt = (
                 "请用2-3句话概括以下章节内容，保留关键情节和核心信息，语言简洁。\n\n章节标题："

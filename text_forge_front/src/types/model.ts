@@ -35,6 +35,7 @@ export interface ModelConfig {
   extra?: Record<string, string | number>;
   auxiliary?: AuxiliaryModel[];
   modalities?: ModelModality[];
+  search_config?: { api_key: string; provider: string } | null;
   createdAt: string;
   role?: ModelRole;
 }

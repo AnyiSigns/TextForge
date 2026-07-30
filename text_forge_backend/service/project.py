@@ -1,27 +1,47 @@
 from typing import Annotated
-from sqlalchemy import select
-from infrastructure.database import db_manager
+
 from fastapi import Depends
-from sqlalchemy.ext.asyncio import AsyncSession
+from infrastructure.database import db_manager
+from model.book import Book
 from repository.project_repo import (
     BookRepository,
     CharacterRepository,
     CreativeSettingRepository,
 )
-from model.book import Book
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
 class BookService:
+    """书籍相关业务逻辑服务。
+
+    提供书籍 CRUD、角色列表、创意设定等核心功能。
+    """
+
     def __init__(self, session: AsyncSession):
+        """初始化 BookService。
+
+        Args:
+            session: SQLAlchemy 异步会话。
+        """
         self.session = session
         self.book_repo = BookRepository(session)
         self.character_repo = CharacterRepository(session)
         self.creative_setting_repo = CreativeSettingRepository(session)
 
     async def query_user_books(self, user_id: int, **kwargs):
+        """查询用户书籍列表。
+
+        Args:
+            user_id: 用户 ID。
+            **kwargs: 可选过滤条件，当前支持 genre。
+
+        Returns:
+            书籍列表，查询失败返回空列表。
+        """
         try:
             result = await self.book_repo.by_user_parameter_book(user_id, **kwargs)
             if not result:
@@ -32,6 +52,16 @@ class BookService:
             return []
 
     async def create_book(self, **kwargs):
+        """创建新书籍。
+
+        会检查当前用户下是否存在同名书籍，存在则抛出 ValueError。
+
+        Args:
+            **kwargs: 书籍字段，需包含 user_id 与 title。
+
+        Returns:
+            新创建的 Book 实例，失败返回 None。
+        """
         try:
             user_id = kwargs.get("user_id")
             title = kwargs.get("title")
@@ -41,6 +71,8 @@ class BookService:
                 if result.scalar_one_or_none():
                     raise ValueError("书名已存在")
             instance = await self.book_repo.add(**kwargs)
+            await self.session.commit()
+            await self.session.refresh(instance)
             return instance
         except ValueError:
             raise
@@ -49,6 +81,15 @@ class BookService:
             return None
 
     async def book_characters(self, user_id: int, book_id: int):
+        """获取书籍角色列表。
+
+        Args:
+            user_id: 用户 ID。
+            book_id: 书籍 ID。
+
+        Returns:
+            (角色列表, None) 或 (None, 错误信息)。
+        """
         try:
             result = await self.character_repo.book_character_detail(user_id, book_id)
             return result, None
@@ -57,6 +98,15 @@ class BookService:
             return None, "获取角色列表失败"
 
     async def book_info(self, user_id: int, book_id: int):
+        """获取书籍基本信息。
+
+        Args:
+            user_id: 用户 ID。
+            book_id: 书籍 ID。
+
+        Returns:
+            (书籍实例, None) 或 (None, 错误信息)。
+        """
         try:
             result = await self.book_repo.by_user_book(user_id, book_id)
             return result, None
@@ -65,6 +115,15 @@ class BookService:
             return None, "获取书籍失败"
 
     async def book_detail(self, user_id: int, book_id: int):
+        """获取书籍详情，包含基础信息与角色列表。
+
+        Args:
+            user_id: 用户 ID。
+            book_id: 书籍 ID。
+
+        Returns:
+            包含 book 与 characters 的字典，失败返回空字典。
+        """
         try:
             book_data, _ = await self.book_info(user_id, book_id)
             character_data, _ = await self.book_characters(user_id, book_id)
@@ -77,13 +136,36 @@ class BookService:
             logger.error("获取书籍详情失败", exc_info=True)
             return {}
 
-    async def update_book(self, book_id: int, **kwargs):
-        instance = await self.book_repo.update_book(book_id, **kwargs)
-        if not instance:
+    async def update_book(self, user_id: int, book_id: int, **kwargs):
+        """更新书籍信息，需校验所有权。
+
+        Args:
+            user_id: 用户 ID。
+            book_id: 书籍 ID。
+            **kwargs: 要更新的字段。
+
+        Returns:
+            更新后的 Book 实例，不存在或无权访问返回 None。
+        """
+        instance = await self.book_repo.get(book_id)
+        if not instance or instance.user_id != user_id:
             return None
-        return instance
+        try:
+            return await self.book_repo.update_book(book_id, **kwargs)
+        except Exception:
+            logger.error("书籍更新失败", exc_info=True)
+            return None
 
     async def delete_book(self, user_id: int, book_id: int):
+        """删除书籍，需校验所有权。
+
+        Args:
+            user_id: 用户 ID。
+            book_id: 书籍 ID。
+
+        Returns:
+            删除成功返回 True，否则返回 False。
+        """
         instance = await self.book_repo.get(book_id)
         if instance.user_id != user_id:
             return False
@@ -95,6 +177,16 @@ class BookService:
             return False
 
     async def save_creative_setting(self, book_id: int, _user_id: int, setting):
+        """保存或更新书籍创意设定。
+
+        Args:
+            book_id: 书籍 ID。
+            _user_id: 用户 ID（当前未使用，预留）。
+            setting: 设定字典。
+
+        Returns:
+            保存成功返回 True，否则返回 False。
+        """
         try:
             instance = await self.creative_setting_repo.save_setting(book_id, setting)
             if instance.book_id != book_id:
@@ -106,4 +198,5 @@ class BookService:
 
 
 async def book_db(db: Annotated[AsyncSession, Depends(db_manager.get_db)]):
+    """FastAPI 依赖注入：提供 BookService 实例。"""
     return BookService(db)

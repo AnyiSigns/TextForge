@@ -21,7 +21,7 @@ graph_register.register_builder("compression_graph", compression_graph)
 
 async def compiled_all(checkpointer):
     """编译所有图"""
-    for name, builder in graph_register._builders.items():
+    for name, builder in graph_register.get_all_builders().items():
         raw_graph = builder
         compiled_graph = raw_graph.compile(checkpointer=checkpointer)
         graph_register.register_compiled(name, compiled_graph)

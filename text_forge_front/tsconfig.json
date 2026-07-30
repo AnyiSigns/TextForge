@@ -47,18 +47,6 @@
       "@/lib/config/*": [
         "./src/shared/config/*"
       ],
-      "@/lib/api/client": [
-        "./src/shared/lib/apiClient"
-      ],
-      "@/lib/api/authFetch": [
-        "./src/shared/lib/authFetch"
-      ],
-      "@/lib/api/sse": [
-        "./src/shared/lib/sse"
-      ],
-      "@/lib/api/errorCodes": [
-        "./src/shared/lib/errorCodes"
-      ]
     }
   },
   "include": [

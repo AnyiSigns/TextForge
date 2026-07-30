@@ -1,26 +1,26 @@
-// src/components/projects/ProjectStudio.tsx
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import {
   submitImage, submitVideo, fetchProjectPortfolio, type MediaTask, type GenerationContext, type ImageRequest, type VideoRequest,
-} from '@/lib/api/generation';
+} from '@/features/projects/api/media';
 import { useCreativeSettingStore, creativeSettingToContextLine, creativeSettingDimensionsToContext } from '@/features/projects';
 import { useCharacterStore } from '@/features/characters';
 import { usePortfolioStore } from '@/features/projects';
 import { useShallow } from 'zustand/react/shallow';
 import { toast } from 'sonner';
-import { Image as ImageIcon, Clapperboard, ChevronDown } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { uid } from '@/lib/utils/id';
 import { characterRoleLabel } from '@/shared/lib/agentRoles';
 import { CharacterMaterialPanel } from './CharacterMaterialPanel';
 import { ChapterAnimationPanel } from './ChapterAnimationPanel';
 import { PortfolioGrid } from './PortfolioGrid';
+import { BadgeState } from './BadgeState';
+import { ProjectStudioHeader } from './ProjectStudioHeader';
+import { PortfolioSection } from './PortfolioSection';
 import type { Character } from '@/types';
 
-type StudioMode = 'character' | 'chapter';
+export type StudioMode = 'character' | 'chapter';
 
 export function ProjectStudio({ bookId, steps, mode, selectedCharIds, projectTitle }: { bookId: number; steps: { id: string; agent: string; content: string }[]; mode: StudioMode; selectedCharIds?: number[]; projectTitle?: string }) {
   const [isExpanded, setIsExpanded] = useState(mode === 'character');
@@ -48,7 +48,6 @@ export function ProjectStudio({ bookId, steps, mode, selectedCharIds, projectTit
      };
    }, [steps, characters, selectedCharIds]);
 
-  // A3: 全量正文折叠为 outline 时截断上限，避免长文爆 token（章节源已在 buildContext 内单独 slice(3000)）
   const outline = useMemo(
     () => steps.map((s) => s.content).filter(Boolean).join('\n\n').slice(0, 6000),
     [steps],
@@ -96,13 +95,6 @@ export function ProjectStudio({ bookId, steps, mode, selectedCharIds, projectTit
     };
   }, [bookId, characters, outline, creativeSetting, chapterMap, projectTitle, charNameById]);
 
-  const upsertOptimistic = useCallback((task: MediaTask) => {
-    const updateInPortfolio = usePortfolioStore.getState().updateInPortfolio;
-    const exists = usePortfolioStore.getState().portfolio.some((t) => t.id === task.id);
-    if (exists) updateInPortfolio(task.id, task);
-    else usePortfolioStore.getState().addToPortfolio(task);
-  }, []);
-
   const reloadPortfolio = useCallback(async () => {
     try {
       const remote = await fetchProjectPortfolio(String(bookId));
@@ -125,9 +117,9 @@ export function ProjectStudio({ bookId, steps, mode, selectedCharIds, projectTit
     return () => { clearTimeout(t); clearInterval(interval); };
   }, [reloadPortfolio, isExpanded, hasRunningTasks]);
 
-  const makeOptimistic = (kind: MediaTask['kind'], p: ImageRequest | VideoRequest): MediaTask => {
+  const handleMedia = async (kind: MediaTask['kind'], p: ImageRequest | VideoRequest) => {
     const ctx = p.context as GenerationContext | undefined;
-    return {
+    const optimistic: MediaTask = {
        id: uid('opt'),
        prompt: p.prompt,
        status: 'pending',
@@ -139,33 +131,18 @@ export function ProjectStudio({ bookId, steps, mode, selectedCharIds, projectTit
        character_ids: (p as VideoRequest).character_ids,
        createdAt: new Date().toISOString(),
     };
-  };
-
-  const handleImage = async (p: ImageRequest) => {
-    const optimistic = makeOptimistic('image', p);
-    upsertOptimistic(optimistic);
+    const updateInPortfolio = usePortfolioStore.getState().updateInPortfolio;
+    const exists = usePortfolioStore.getState().portfolio.some((t) => t.id === optimistic.id);
+    if (exists) updateInPortfolio(optimistic.id, optimistic);
+    else usePortfolioStore.getState().addToPortfolio(optimistic);
     try {
-      const task = await submitImage(p);
-      if (task) upsertOptimistic({ ...optimistic, ...task });
-      toast.success('图片任务已提交');
+      const task = kind === 'image' ? await submitImage(p) : await submitVideo(p);
+      if (task) { updateInPortfolio(optimistic.id, { ...optimistic, ...task }); toast.success(kind === 'image' ? '图片任务已提交' : '视频任务已提交'); }
     } catch (e) {
-      upsertOptimistic({ ...optimistic, status: 'failed' });
+      updateInPortfolio(optimistic.id, { ...optimistic, status: 'failed' });
       toast.error('提交失败', { description: e instanceof Error ? e.message : '未知错误' });
     }
-  };
-
-  const handleVideo = async (p: VideoRequest) => {
-    const optimistic = makeOptimistic('video', p);
-    upsertOptimistic(optimistic);
-    try {
-      const task = await submitVideo(p);
-      if (task) upsertOptimistic({ ...optimistic, ...task });
-      toast.success('视频任务已提交');
-    } catch (e) {
-      upsertOptimistic({ ...optimistic, status: 'failed' });
-      toast.error('提交失败', { description: e instanceof Error ? e.message : '未知错误' });
-    }
-    setTimeout(reloadPortfolio, 800);
+    if (kind === 'video') setTimeout(reloadPortfolio, 800);
   };
 
   const visiblePortfolio = useMemo(
@@ -183,23 +160,13 @@ export function ProjectStudio({ bookId, steps, mode, selectedCharIds, projectTit
 
   return (
     <Card className="glass-card mt-6">
-      <CardHeader className="cursor-pointer select-none" onClick={() => setIsExpanded((v) => !v)}>
-        <CardTitle className="flex items-center justify-between">
-          <span className="flex items-center gap-2">
-            {mode === 'character' ? <ImageIcon className="w-4 h-4 text-primary" /> : <Clapperboard className="w-4 h-4 text-primary" />}
-            {mode === 'character' ? '角色素材（可选）' : '章节动画（可选）'}
-            {hasRunningTasks && (
-              <BadgeState taskCount={taskCount} />
-            )}
-          </span>
-          <ChevronDown className={cn('w-4 h-4 text-muted-foreground transition-transform', isExpanded && 'rotate-180')} />
-        </CardTitle>
-        <p className="text-xs text-muted-foreground mt-1">
-          {mode === 'character'
-            ? '为角色生成立绘形象；已锁定的参考图会保持多图一致。也可到顶部「AI 绘画」页做更精细的生成。'
-            : '把章节片段做成 AI 动画视频；生成时会带入该章出场角色的立绘与介绍，保证角色样貌连贯。'}
-        </p>
-      </CardHeader>
+      <ProjectStudioHeader
+        mode={mode}
+        isExpanded={isExpanded}
+        onToggle={() => setIsExpanded((v) => !v)}
+        taskCount={taskCount}
+        hasRunningTasks={hasRunningTasks}
+      />
       {isExpanded && (
         <CardContent>
           {mode === 'character' ? (
@@ -207,7 +174,7 @@ export function ProjectStudio({ bookId, steps, mode, selectedCharIds, projectTit
               characters={characters}
               projectId={bookId}
               buildContext={buildContext}
-              onImage={handleImage}
+              onImage={(p) => handleMedia('image', p)}
             />
           ) : (
             <ChapterAnimationPanel
@@ -217,33 +184,20 @@ export function ProjectStudio({ bookId, steps, mode, selectedCharIds, projectTit
               trailerChars={trailerChars}
               buildContext={buildContext}
               charRefsForChapter={charRefsForChapter}
-               onTrailerToggle={(id: number) =>
+              onTrailerToggle={(id: number) =>
                 setTrailerChars((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))}
-              onVideo={handleVideo}
+              onVideo={(p) => handleMedia('video', p)}
             />
           )}
 
-          <div className="space-y-3 mt-5">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">作品集</p>
-            <PortfolioGrid
-              items={visiblePortfolio}
-              mode={mode}
-              chapterMap={chapterMap}
-              onSetAvatar={setAvatar}
-            />
-          </div>
+          <PortfolioSection
+            visiblePortfolio={visiblePortfolio}
+            mode={mode}
+            chapterMap={chapterMap}
+            onSetAvatar={setAvatar}
+          />
         </CardContent>
       )}
     </Card>
-  );
-}
-
-function BadgeState({ taskCount }: { taskCount: number }) {
-  return (
-    <span className="relative flex h-2 w-2">
-      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-      <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
-      <span className="ml-1.5 text-xs">{taskCount} 任务进行中</span>
-    </span>
   );
 }

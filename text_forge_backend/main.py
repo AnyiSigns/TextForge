@@ -20,6 +20,11 @@ async def lifespan(_application: FastAPI):
         await seed_builtin_workflows(session)
     await graph_pool_manager.init()
     await compiled_all(checkpointer=graph_pool_manager.checkpoint)
+    try:
+        await redis_client.ping()
+        logger.info("Redis 连接正常")
+    except Exception as exc:
+        logger.error(f"Redis 连接失败: {exc}")
     logger.info("应用已启动")
     yield
     logger.info("应用关闭中...")
@@ -35,9 +40,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+if settings.ENV == "production":
+    allow_origins = [origin.strip() for origin in settings.ALLOWED_ORIGINS.split(",") if origin.strip()]
+else:
+    allow_origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
+
 app.add_middleware(
     CORSMiddleware,  # type: ignore
-    allow_origins=["*"],
+    allow_origins=allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

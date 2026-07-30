@@ -12,6 +12,9 @@ redis_client = redis.Redis(
     port=settings.REDIS_PORT,
     db=settings.REDIS_DB,
     decode_responses=True,
+    max_connections=20,
+    retry_on_timeout=True,
+    socket_keepalive=True,
 )
 
 
@@ -22,6 +25,18 @@ async def cached_rag_search(
     top_k: int = 3,
     ttl: int = 3600,
 ) -> Optional[List[Dict[str, Any]]]:
+    """RAG 检索缓存读取。
+
+    Args:
+        query: 查询文本。
+        query_embedding: 查询向量。
+        rag_filter: 过滤条件。
+        top_k: 返回结果数。
+        ttl: 缓存过期时间（秒）。
+
+    Returns:
+        缓存结果列表，未命中返回 None。
+    """
     filter_key = json.dumps(rag_filter, sort_keys=True, ensure_ascii=False)
     cache_key = f"rag:{hashlib.md5((query + filter_key).encode()).hexdigest()}"
     try:
@@ -39,6 +54,14 @@ async def set_rag_cache(
     results: List[Dict[str, Any]],
     ttl: int = 3600,
 ):
+    """写入 RAG 检索缓存。
+
+    Args:
+        query: 查询文本。
+        rag_filter: 过滤条件。
+        results: 检索结果。
+        ttl: 缓存过期时间（秒）。
+    """
     filter_key = json.dumps(rag_filter, sort_keys=True, ensure_ascii=False)
     cache_key = f"rag:{hashlib.md5((query + filter_key).encode()).hexdigest()}"
     try:
@@ -48,6 +71,11 @@ async def set_rag_cache(
 
 
 async def delete_rag_cache(pattern: str = "rag:*"):
+    """删除 RAG 缓存。
+
+    Args:
+        pattern: Redis key 匹配模式。
+    """
     try:
         keys = []
         async for key in redis_client.scan_iter(pattern):

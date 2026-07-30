@@ -1,3 +1,60 @@
+export interface Location {
+  id: number
+  bookId: number
+  name: string
+  type: string
+  description?: string
+  parentId?: number
+  attributes: Record<string, unknown>
+  createdAt: string
+  updatedAt: string
+}
+
+export interface TimelineEvent {
+  id: number
+  bookId: number
+  name: string
+  description?: string
+  sortOrder: number
+  chapterId?: number
+  eventType: string
+  relatedCharacterIds: number[]
+  relatedLocationId?: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Foreshadowing {
+  id: number
+  bookId: number
+  description: string
+  status: 'planted' | 'hinted' | 'revealed' | 'paid_off'
+  plantedAtChapterId?: number
+  resolvedAtChapterId?: number
+  relatedCharacterIds: number[]
+  relatedEventId?: number
+  revealType?: string
+  notes?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PlotThread {
+  id: number
+  bookId: number
+  name: string
+  description?: string
+  status: string
+  parentThreadId?: number
+  type: string
+  relatedCharacterIds: number[]
+  startChapterId?: number
+  endChapterId?: number
+  progressNote?: string
+  createdAt: string
+  updatedAt: string
+}
+
 export interface AgentRuleSet {
   id: number
   bookId: number

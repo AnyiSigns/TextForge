@@ -5,29 +5,28 @@ from logging.handlers import RotatingFileHandler
 from config.settings import settings
 
 def setup_logger():
-    """全局日志配置"""
-    log_level=getattr(logging,settings.LOG_LEVEL,logging.INFO)
-    log_date_format=settings.LOG_DATE_FORMAT
-    log_format=settings.LOG_FORMAT
-    log_file_path=settings.LOG_FILE_PATH
+    """全局日志配置。
 
-    # 配置根日志记录器
-    root_logger=logging.getLogger()
+    根据 settings 配置控制台与文件日志 handler，
+    已初始化时自动跳过，避免重复配置。
+    """
+    root_logger = logging.getLogger()
+    if root_logger.handlers:
+        return
+    log_level = getattr(logging, settings.LOG_LEVEL, logging.INFO)
+    log_date_format = settings.LOG_DATE_FORMAT
+    log_format = settings.LOG_FORMAT
+    log_file_path = settings.LOG_FILE_PATH
+
     root_logger.setLevel(log_level)
 
-    # 如果根日志记录器已存在处理程序，则清除它们
-    if root_logger.handlers:
-        root_logger.handlers.clear()
+    formatter = logging.Formatter(log_format, datefmt=log_date_format)
 
-    #创建格式化器
-    formatter=logging.Formatter(log_format,datefmt=log_date_format)
-
-    console_handler = logging.StreamHandler(sys.stdout)  # sys.stdout标准输出
+    console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(log_level)
     console_handler.setFormatter(formatter)
-    root_logger.addHandler(console_handler)  # 将控制台处理器添加到根日志器
+    root_logger.addHandler(console_handler)
 
-    # 创建文件处理器,RotatingFileHandler(旋转文件处理器),1024*1024*10,10M,5个备份
     if log_file_path:
         if not os.path.exists(log_file_path):
             os.makedirs(os.path.dirname(log_file_path), exist_ok=True)
@@ -39,18 +38,21 @@ def setup_logger():
         )
         file_handler.setLevel(log_level)
         file_handler.setFormatter(formatter)
-        root_logger.addHandler(file_handler)  # 将文件处理器添加到根日志器
+        root_logger.addHandler(file_handler)
 
-    # 降噪
     logging.getLogger("uvicorn").setLevel(logging.WARNING)
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 setup_logger()
 
+
 def get_logger(name: str = __name__) -> logging.Logger:
-    """
-    获取日志器,传入__name__即可
-    :param name: 日志器名称
-    :return:日志器
+    """获取日志器，传入 __name__ 即可。
+
+    Args:
+        name: 日志器名称。
+
+    Returns:
+        logging.Logger 实例。
     """
     return logging.getLogger(name)

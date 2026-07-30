@@ -3,14 +3,16 @@ from pydantic import BaseModel, Field, ConfigDict
 
 
 class BookRequest(BaseModel):
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
     title: str
     description: Optional[str] = None
     genre: Optional[str] = None
 
 
 class UpdateBookRequest(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-    
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
     workflow_id: Optional[str] = Field(default=None, alias="workflowId")
     title: Optional[str] = None
     description: Optional[str] = None
@@ -19,20 +21,28 @@ class UpdateBookRequest(BaseModel):
 
 
 class VolumeRequest(BaseModel):
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
     title: str
     summary: Optional[str] = None
 
 
 class ChapterRequest(BaseModel):
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
     title: str
     summary: Optional[str] = None
 
 
 class ChapterContentRequest(BaseModel):
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
     content: str
 
 
 class SectionsRequest(BaseModel):
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
     id: int
     title: str
     content: str
@@ -40,6 +50,8 @@ class SectionsRequest(BaseModel):
 
 
 class CreativeSettingRequest(BaseModel):
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
     tone: Optional[str] = None
     worldview: Optional[str] = None
     writing_taboos: Optional[str] = Field(default=None, alias="writingTaboos")

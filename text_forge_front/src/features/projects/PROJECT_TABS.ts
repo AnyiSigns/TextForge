@@ -1,4 +1,4 @@
-import { FileText, ListTree, FileCog, Users, ImageIcon, Clapperboard, BookOpen, Settings2, BarChart, Shield } from 'lucide-react';
+import { FileText, ListTree, FileCog, Users, ImageIcon, Clapperboard, BookOpen, Settings2, BarChart, Shield, Globe } from 'lucide-react';
 import type { ProcessTab } from './ui/ProcessNav';
 
 export const PROJECT_TABS: ProcessTab[] = [
@@ -11,5 +11,6 @@ export const PROJECT_TABS: ProcessTab[] = [
   { value: 'material', label: '角色素材', icon: ImageIcon },
   { value: 'animation', label: '章节动画', icon: Clapperboard },
   { value: 'stats', label: '统计', icon: BarChart },
+  { value: 'world-building', label: '世界构建', icon: Globe },
   { value: 'agent-rules', label: 'Agent 规则', icon: Shield },
 ];

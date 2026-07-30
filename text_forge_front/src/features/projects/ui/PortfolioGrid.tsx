@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
 import { isSafeMediaUrl } from '@/lib/utils/url';
 import { chapterLabel } from '@/lib/utils/chapter';
 import { useCharacterStore } from '@/features/characters';
-import type { MediaTask } from '@/lib/api/generation';
+import type { MediaTask } from '@/features/projects/api/media';
 
 interface PortfolioGridProps {
   items: MediaTask[];

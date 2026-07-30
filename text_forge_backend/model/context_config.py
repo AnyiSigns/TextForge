@@ -2,6 +2,7 @@ from datetime import datetime
 from sqlalchemy import ForeignKey, Integer, DateTime, func, ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
+from typing import list
 from model.base import Base
 
 
@@ -14,19 +15,19 @@ class BookContextConfig(Base):
         primary_key=True,
         nullable=False,
     )
-    character_ids: Mapped[int] = mapped_column(
+    character_ids: Mapped[list[int]] = mapped_column(
         PG_ARRAY(Integer), nullable=False, default=[]
     )
-    chapter_content_ids: Mapped[int] = mapped_column(
+    chapter_content_ids: Mapped[list[int]] = mapped_column(
         PG_ARRAY(Integer), nullable=False, default=[]
     )
-    chapter_summary_ids: Mapped[int] = mapped_column(
+    chapter_summary_ids: Mapped[list[int]] = mapped_column(
         PG_ARRAY(Integer), nullable=False, default=[]
     )
-    volume_ids: Mapped[int] = mapped_column(
+    volume_ids: Mapped[list[int]] = mapped_column(
         PG_ARRAY(Integer), nullable=False, default=[]
     )
-    outline_node_ids: Mapped[int] = mapped_column(
+    outline_node_ids: Mapped[list[int]] = mapped_column(
         PG_ARRAY(Integer), nullable=False, default=[]
     )
     created_at: Mapped[datetime] = mapped_column(

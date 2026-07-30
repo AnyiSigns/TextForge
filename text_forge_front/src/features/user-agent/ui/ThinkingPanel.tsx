@@ -11,6 +11,9 @@ import {
   XCircle,
   Terminal,
   MessageSquare,
+  BookOpen,
+  Users,
+  Sparkles,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -24,6 +27,7 @@ import {
  } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { AgentPhase, ToolCallLog, Plan } from '@/features/user-agent/types/agent';
+import type { CrossChapterContext } from '@/types';
 import { PlanCard } from './PlanCard';
 import { ToolCallCard } from './ToolCallCard';
 
@@ -31,6 +35,7 @@ interface ThinkingPanelProps {
   phase: string | null;
   currentToolCalls?: ToolCallLog[];
   currentPlan?: Plan;
+  crossChapterContext?: CrossChapterContext;
   progress?: {
     currentStep: number;
     totalSteps: number;
@@ -48,6 +53,7 @@ export function ThinkingPanel({
   phase,
   currentToolCalls = [],
   currentPlan,
+  crossChapterContext,
   progress,
   onCancel,
   onPlanApprove,
@@ -118,6 +124,52 @@ export function ThinkingPanel({
       </CardHeader>
       
       <CardContent className="space-y-3 pt-0">
+        {crossChapterContext && (
+          <div className="space-y-2 rounded-xl border border-border/40 bg-background/50 p-3">
+            <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              <BookOpen className="h-3.5 w-3.5" />
+              跨章上下文预览
+            </div>
+            {crossChapterContext.previousChapterSummary && (
+              <div className="space-y-1">
+                <p className="text-[10px] text-muted-foreground">上一章摘要</p>
+                <p className="text-xs leading-relaxed">{crossChapterContext.previousChapterSummary}</p>
+              </div>
+            )}
+            {crossChapterContext.characterStateChanges.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-[10px] text-muted-foreground">角色状态变化</p>
+                <div className="space-y-0.5">
+                  {crossChapterContext.characterStateChanges.map((change, i) => (
+                    <div key={i} className="flex items-center gap-2 text-xs">
+                      <Users className="h-3 w-3 text-muted-foreground shrink-0" />
+                      <span className="font-medium">{change.characterName}</span>
+                      <span className="text-muted-foreground">{change.field}</span>
+                      <span className="text-muted-foreground/60">{change.from} → {change.to}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {crossChapterContext.foreshadowingProgress.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-[10px] text-muted-foreground">伏笔进度</p>
+                <div className="space-y-0.5">
+                  {crossChapterContext.foreshadowingProgress.map((entry) => (
+                    <div key={entry.id} className="flex items-center gap-2 text-xs">
+                      <Sparkles className="h-3 w-3 text-muted-foreground shrink-0" />
+                      <span className="truncate">{entry.description}</span>
+                      <Badge variant="outline" className="ml-auto text-[9px]">
+                        {entry.status === 'setup' ? '已设' : entry.status === 'developing' ? '发展中' : '已收'}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        
         {progress && (
           <div className="space-y-1">
             <div className="flex items-center justify-between text-[10px] text-muted-foreground">

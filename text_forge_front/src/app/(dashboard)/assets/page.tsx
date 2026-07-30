@@ -12,7 +12,7 @@ import {
   describeGenError,
   type MediaTask,
   type ImageRequest,
-} from '@/lib/api/generation';
+} from '@/features/projects/api/media';
 import { toast } from 'sonner';
 import { Image as ImageIcon, Link as LinkIcon, Loader2 } from 'lucide-react';
 import Image from 'next/image';

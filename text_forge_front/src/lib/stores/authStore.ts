@@ -2,7 +2,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { setRefreshCookie, clearRefreshCookie } from '@/lib/auth/cookie';
-import apiClient from '@/lib/api/client';
+import apiClient from '@/shared/lib/apiClient';
 import { API_URL } from '@/lib/config/env';
 import { useSettingsStore } from '@/features/settings';
 export interface User {

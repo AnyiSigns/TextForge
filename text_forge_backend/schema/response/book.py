@@ -60,7 +60,7 @@ class ChapterContentDiffResponse(BaseModel):
     from_created_at: Optional[str] = Field(default=None, alias="fromCreatedAt")
     to_created_at: Optional[str] = Field(default=None, alias="toCreatedAt")
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class CharacterResponse(BaseModel):

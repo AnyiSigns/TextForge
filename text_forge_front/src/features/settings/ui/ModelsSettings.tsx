@@ -1,4 +1,3 @@
-// src/components/settings/ModelsSettings.tsx
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -6,16 +5,17 @@ import { useModelStore } from '../stores/modelStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { EmbedModelManager } from './EmbedModelManager';
 import { ModelEditDialog } from './ModelEditDialog';
+import { SearchConfigSection } from './SearchConfigSection';
+import { VisionModelSection } from './VisionModelSection';
+import { EmbeddingModelSection } from './EmbeddingModelSection';
+import { TextRoleModelsGrid } from './TextRoleModelsGrid';
 import type { AdapterType, ModelRole, RoleModelConfig } from '@/types';
 import {
   Card, CardContent, CardHeader, CardTitle,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
 import { Plus, Pencil, Trash2, Check, AlertCircle, Loader2 } from 'lucide-react';
-import apiClient from '@/lib/api/client';
+import apiClient from '@/shared/lib/apiClient';
 import { toast } from 'sonner';
 import { enqueueSync } from '@/lib/storage/syncQueue';
 
@@ -31,16 +31,15 @@ const EMPTY_ROLE: RoleModelConfig = {
   createdAt: new Date().toISOString(),
 };
 
-type RoleStatus = Record<string, RoleModelConfig | null>;
-
 export function ModelsSettings() {
   const textRoleModels = useModelStore((s) => s.textRoleModels);
   const setTextRoleModel = useModelStore((s) => s.setTextRoleModel);
+  const searchConfig = useModelStore((s) => s.searchConfig);
+  const setSearchConfig = useModelStore((s) => s.setSearchConfig);
   const setEmbedTierId = useSettingsStore((s) => s.setEmbedTierId);
 
   const [visionConfig, setVisionConfig] = useState<RoleModelConfig | null>(null);
   const [embeddingPublicConfig, setEmbeddingPublicConfig] = useState<RoleModelConfig | null>(null);
-  const [searchConfig, setSearchConfig] = useState<{ api_key: string; provider: string } | null>(null);
 
   const [open, setOpen] = useState(false);
   const [editRole, setEditRole] = useState<ModelRole | null>(null);
@@ -53,26 +52,11 @@ export function ModelsSettings() {
   const fetchConfig = useCallback(async () => {
     try {
       const { data } = await apiClient.get('/api/user/models/config');
-      const body = data as {
-        main_config?: RoleModelConfig;
-        audit_config?: RoleModelConfig | null;
-        router_config?: RoleModelConfig | null;
-        tool_config?: RoleModelConfig | null;
-        vision_config?: RoleModelConfig | null;
-        embedding_config?: RoleModelConfig | null;
-        search_config?: { api_key: string; provider: string } | null;
-      } | undefined;
+      const body = data as any;
       if (!body) return;
 
-      const roles: RoleStatus = {
-        main: body.main_config ?? null,
-        audit: body.audit_config ?? null,
-        router: body.router_config ?? null,
-        tool: body.tool_config ?? null,
-      };
-
       for (const role of TEXT_ROLES) {
-        const cfg = roles[role];
+        const cfg = body[`${role}_config`] ?? null;
         if (cfg) setTextRoleModel(role, cfg);
       }
 
@@ -84,7 +68,7 @@ export function ModelsSettings() {
     } finally {
       setLoading(false);
     }
-  }, [setTextRoleModel]);
+  }, [setTextRoleModel, setSearchConfig]);
 
   useEffect(() => { fetchConfig(); }, [fetchConfig]);
 
@@ -126,7 +110,7 @@ export function ModelsSettings() {
     setOpen(true);
   };
 
-  const buildPayload = (): Record<string, RoleModelConfig | null | { api_key: string; provider: string } | null> => {
+  const buildPayload = () => {
     const store = useModelStore.getState();
     return {
       main_config: store.textRoleModels.main,
@@ -165,6 +149,7 @@ export function ModelsSettings() {
   };
 
   const handleDelete = async () => {
+    const roleKey = editRole === 'audit' ? 'audit_config' : editRole === 'router' ? 'router_config' : editRole === 'tool' ? 'tool_config' : null;
     try {
       if (editRole) {
         if (editRole === 'main') {
@@ -173,7 +158,7 @@ export function ModelsSettings() {
         }
         setTextRoleModel(editRole, null);
         const payload = buildPayload();
-        payload[editRole === 'audit' ? 'audit_config' : editRole === 'router' ? 'router_config' : 'tool_config'] = null;
+        payload[roleKey!] = null;
         await apiClient.post('/api/user/models/config', payload);
       } else if (editVision) {
         setVisionConfig(null);
@@ -184,10 +169,9 @@ export function ModelsSettings() {
       }
       toast.success('已删除');
     } catch {
-      const key = editRole === 'audit' ? 'audit_config' : editRole === 'router' ? 'router_config' : editRole === 'tool' ? 'tool_config' : null;
-      if (key) {
+      if (roleKey) {
         enqueueSync('models', async () => {
-          await apiClient.post('/api/user/models/config', { ...buildPayload(), [key]: null });
+          await apiClient.post('/api/user/models/config', { ...buildPayload(), [roleKey]: null });
         });
       }
       toast.error('删除失败，将稍后重试');
@@ -234,158 +218,65 @@ export function ModelsSettings() {
       <CardContent className="space-y-4">
         <p className="text-xs text-muted-foreground">设置将自动保存，生成时系统自动选用。</p>
 
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">文本生成（最少 1 个主模型）</p>
-            <Button size="sm" variant="ghost" className="h-7 px-2 text-muted-foreground" onClick={() => openDialog('text', 'main')}>
-              <Plus className="w-3.5 h-3.5 mr-1" /> 添加模型
-            </Button>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {TEXT_ROLES.map((role) => {
-              const m = textRoleModels[role];
-              const isMain = role === 'main';
-              const display = m && m.modelId ? m : null;
-              return (
-                <div key={role} className="rounded-xl border border-border/40 bg-background/40 p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-muted-foreground">{label(role)}</span>
-                    {isMain && <Badge variant="secondary" className="text-[10px]">必须</Badge>}
-                  </div>
-                  {display ? (
-                    <div className="space-y-1.5">
-                      <p className="text-sm font-medium truncate">{display.name || label(role)}</p>
-                      <p className="text-xs text-muted-foreground truncate">{display.modelId}</p>
-                      <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => testConnection(display)}>
-                          {testStatus[display.id] === 'success' ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : testStatus[display.id] === 'error' ? <AlertCircle className="w-3.5 h-3.5 text-destructive" /> : <AlertCircle className="w-3.5 h-3.5" />}
-                        </Button>
-                        <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => openDialog('text', role)}>
-                          <Pencil className="w-3.5 h-3.5" />
-                        </Button>
-                        {(() => {
-                          const key = role === 'audit' ? 'audit_config' : role === 'router' ? 'router_config' : role === 'tool' ? 'tool_config' : 'main_config';
-                          return (
-                            <Button variant="ghost" size="sm" className="h-7 px-2 text-muted-foreground hover:text-destructive" onClick={() => {
-                              setTextRoleModel(role, null);
-                              const payload = buildPayload();
-                              payload[key] = null;
-                              apiClient.post('/api/user/models/config', payload).catch(() => {
-                                enqueueSync('models', async () => {
-                                  await apiClient.post('/api/user/models/config', { ...buildPayload(), [key]: null });
-                                });
-                              });
-                              toast.success('已删除');
-                            }}>
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </Button>
-                          );
-                        })()}
-                      </div>
-                    </div>
-                  ) : (
-                    <Button variant="outline" size="sm" className="w-full mt-1" onClick={() => openDialog('text', role)}>
-                      <Plus className="w-3.5 h-3.5 mr-1" /> {isMain ? '选择模型' : '添加'}
-                    </Button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <TextRoleModelsGrid
+          textRoleModels={textRoleModels}
+          testStatus={testStatus}
+          onEdit={(role) => openDialog('text', role)}
+          onDelete={(role, key) => {
+          setTextRoleModel(role, null);
+          const payload = buildPayload();
+          (payload as Record<string, unknown>)[key] = null;
+          apiClient.post('/api/user/models/config', payload).catch(() => {
+            enqueueSync('models', async () => {
+              await apiClient.post('/api/user/models/config', { ...buildPayload(), [key]: null });
+            });
+          });
+          toast.success('已删除');
+        }}
+          onTest={testConnection}
+          onAdd={(role) => openDialog('text', role)}
+        />
 
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">视觉模型（图片/视频）</p>
-          </div>
-          {visionConfig && visionConfig.modelId ? (
-            <div className="rounded-xl border border-border/40 bg-background/40 p-3 space-y-2">
-              <p className="text-sm font-medium truncate">{visionConfig.name}</p>
-              <p className="text-xs text-muted-foreground truncate">{visionConfig.modelId}</p>
-              <div className="flex items-center gap-1">
-                <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => testConnection(visionConfig)}>
-                  {testStatus[visionConfig.id] === 'success' ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : testStatus[visionConfig.id] === 'error' ? <AlertCircle className="w-3.5 h-3.5 text-destructive" /> : <AlertCircle className="w-3.5 h-3.5" />}
-                </Button>
-                <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => openDialog('vision', null)}>
-                  <Pencil className="w-3.5 h-3.5" />
-                </Button>
-                <Button variant="ghost" size="sm" className="h-7 px-2 text-muted-foreground hover:text-destructive" onClick={() => {
-                  setVisionConfig(null);
-                  apiClient.post('/api/user/models/config', { ...buildPayload(), vision_config: null }).catch(() => {
-                    enqueueSync('models', async () => {
-                      await apiClient.post('/api/user/models/config', { ...buildPayload(), vision_config: null });
-                    });
-                  });
-                  toast.success('已删除');
-                }}>
-                  <Trash2 className="w-3.5 h-3.5" />
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <Button variant="outline" size="sm" onClick={() => openDialog('vision', null)}>
-              <Plus className="w-3.5 h-3.5 mr-1" /> 添加图片/视频模型
-            </Button>
-          )}
-        </div>
+        <VisionModelSection
+          visionConfig={visionConfig}
+          testStatus={testStatus}
+          onEdit={() => openDialog('vision', null)}
+          onDelete={() => {
+            setVisionConfig(null);
+            apiClient.post('/api/user/models/config', { ...buildPayload(), vision_config: null }).catch(() => {
+              enqueueSync('models', async () => {
+                await apiClient.post('/api/user/models/config', { ...buildPayload(), vision_config: null });
+              });
+            });
+            toast.success('已删除');
+          }}
+          onTest={testConnection}
+          onAdd={() => openDialog('vision', null)}
+        />
 
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">公共文档库检索模型</p>
-          </div>
-          {embeddingPublicConfig && embeddingPublicConfig.modelId ? (
-            <div className="rounded-xl border border-border/40 bg-background/40 p-3 space-y-2">
-              <p className="text-sm font-medium truncate">{embeddingPublicConfig.name}</p>
-              <p className="text-xs text-muted-foreground truncate">{embeddingPublicConfig.modelId}</p>
-              <div className="flex items-center gap-1">
-                <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => testConnection(embeddingPublicConfig)}>
-                  {testStatus[embeddingPublicConfig.id] === 'success' ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : testStatus[embeddingPublicConfig.id] === 'error' ? <AlertCircle className="w-3.5 h-3.5 text-destructive" /> : <AlertCircle className="w-3.5 h-3.5" />}
-                </Button>
-                <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => openDialog('embedding', null)}>
-                  <Pencil className="w-3.5 h-3.5" />
-                </Button>
-                <Button variant="ghost" size="sm" className="h-7 px-2 text-muted-foreground hover:text-destructive" onClick={() => {
-                  setEmbeddingPublicConfig(null);
-                  apiClient.post('/api/user/models/config', { ...buildPayload(), embedding_config: null }).catch(() => {
-                    enqueueSync('models', async () => {
-                      await apiClient.post('/api/user/models/config', { ...buildPayload(), embedding_config: null });
-                    });
-                  });
-                  toast.success('已删除');
-                }}>
-                  <Trash2 className="w-3.5 h-3.5" />
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <Button variant="outline" size="sm" onClick={() => openDialog('embedding', null)}>
-              <Plus className="w-3.5 h-3.5 mr-1" /> 添加云端检索模型
-            </Button>
-          )}
-        </div>
+        <EmbeddingModelSection
+          embeddingPublicConfig={embeddingPublicConfig}
+          testStatus={testStatus}
+          onEdit={() => openDialog('embedding', null)}
+          onDelete={() => {
+            setEmbeddingPublicConfig(null);
+            apiClient.post('/api/user/models/config', { ...buildPayload(), embedding_config: null }).catch(() => {
+              enqueueSync('models', async () => {
+                await apiClient.post('/api/user/models/config', { ...buildPayload(), embedding_config: null });
+              });
+            });
+            toast.success('已删除');
+          }}
+          onTest={testConnection}
+          onAdd={() => openDialog('embedding', null)}
+        />
 
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Web 搜索配置（博查）</p>
-          </div>
-          <div className="rounded-xl border border-border/40 bg-background/40 p-3 space-y-2">
-            <p className="text-xs text-muted-foreground">博查 Search API 用于 Agent 联网搜索工具（web_search）。</p>
-            <div className="space-y-1.5">
-              <Label htmlFor="search-api-key" className="text-xs">博查 API Key</Label>
-              <Input
-                id="search-api-key"
-                type="password"
-                value={searchConfig?.api_key ?? ''}
-                onChange={(e) => setSearchConfig(prev => prev ? { ...prev, api_key: e.target.value } : { api_key: e.target.value, provider: 'bocha' })}
-                placeholder="sk-xxx"
-                className="h-8 text-xs"
-              />
-            </div>
-            {searchConfig?.api_key && (
-              <p className="text-[10px] text-muted-foreground">Provider: bocha</p>
-            )}
-          </div>
-        </div>
+        <SearchConfigSection
+          searchConfig={searchConfig}
+          onChange={(apiKey) => {
+            setSearchConfig(apiKey ? { api_key: apiKey, provider: 'bocha' } : null);
+          }}
+        />
 
         <div className="space-y-2">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">个人文档检索模型（本机下载）</p>
@@ -405,8 +296,4 @@ export function ModelsSettings() {
       </CardContent>
     </Card>
   );
-}
-
-function label(role: ModelRole): string {
-  return { main: '主模型', audit: '轻量模型', router: '路由模型（自动选模型）', tool: '工具模型' }[role];
 }

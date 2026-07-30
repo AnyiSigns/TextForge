@@ -1,24 +1,25 @@
-from typing import Annotated, List as TypingList
-from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
-from sqlalchemy import select
+from typing import Annotated
+
 from core.auth import get_current
-from service.project import BookService, book_db
-from schema.response.book import (
-    ListCharactersResponse,
-    BookResponse,
-    BookDetailResponse,
-)
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
+from infrastructure.database import db_manager
+from model.book import Book, Chapter, Outline, Volume
+from repository.context_config_repo import BookContextConfigRepository
 from schema.request.book import (
-    CreativeSettingRequest,
     BookRequest,
+    CreativeSettingRequest,
     UpdateBookRequest,
 )
-from service.volume_service import VolumeService, volume_db
+from schema.response.book import (
+    BookDetailResponse,
+    BookResponse,
+    ListCharactersResponse,
+)
 from service.chapter_service import ChapterService, chapter_db
+from service.project import BookService, book_db
+from service.volume_service import VolumeService, volume_db
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from infrastructure.database import db_manager
-from model.book import Book, Volume, Chapter, Outline
-from repository.context_config_repo import BookContextConfigRepository
 
 router = APIRouter(prefix="/books", tags=["Book"])
 
@@ -73,6 +74,7 @@ async def update_book(
     book_service: Annotated[BookService, Depends(book_db)],
 ):
     instance = await book_service.update_book(
+        user_id,
         id,
         workflow_id=request.workflow_id,
         title=request.title,
@@ -81,8 +83,6 @@ async def update_book(
     )
     if not instance:
         raise HTTPException(status_code=404, detail="书籍不存在")
-    if instance.user_id != user_id:
-        raise HTTPException(status_code=401, detail="用户不匹配")
     return BookResponse.model_validate(instance)
 
 

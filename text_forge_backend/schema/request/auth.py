@@ -1,8 +1,10 @@
 from typing import Optional
-from pydantic import BaseModel, Field, EmailStr, field_validator, AliasChoices
+from pydantic import BaseModel, Field, EmailStr, field_validator, AliasChoices, ConfigDict
 
 
 class EmailRequest(BaseModel):
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
     email: EmailStr = Field(..., description="邮箱地址")
 
 
@@ -10,8 +12,13 @@ class VerifyEmailRequest(EmailRequest):
     code: str = Field(..., min_length=1, description="验证码")
 
 
-class RfreshRequest(BaseModel):
+class RefreshRequest(BaseModel):
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
     refresh_token: str
+
+
+RfreshRequest = RefreshRequest  # deprecated alias
 
 
 class UserLogin(EmailRequest):

@@ -6,32 +6,13 @@ from infrastructure.database import db_manager
 from schema.request.memory import AgentMemoryRequest, AgentMemoryUpdateRequest
 from schema.response.memory import AgentMemoryResponse
 from service.agent_memory_service import AgentMemoryService
-from repository.model_repo import ModelConfRepository
+from service.model_service import ModelService
 
 router = APIRouter(prefix="/agent-memories", tags=["Agent Memory"])
 
 
 def agent_memory_db(session: AsyncSession = Depends(db_manager.get_db)) -> AgentMemoryService:
     return AgentMemoryService(session)
-
-
-async def _get_model_config(user_id: int, session: AsyncSession) -> dict:
-    try:
-        repo = ModelConfRepository(session)
-        instance = await repo.query_user_model(user_id)
-        if instance:
-            return {
-                "user_id": instance.user_id,
-                "main_config": instance.main_config or {},
-                "audit_config": instance.audit_config or {},
-                "router_config": instance.router_config or {},
-                "tool_config": instance.tool_config or {},
-                "vision_config": instance.vision_config or {},
-                "embedding_config": instance.embedding_config or {},
-            }
-    except Exception:
-        pass
-    return {}
 
 
 @router.get("/", response_model=List[AgentMemoryResponse])
@@ -99,5 +80,5 @@ async def search_memories(
     session: AsyncSession = Depends(db_manager.get_db),
     service: AgentMemoryService = Depends(agent_memory_db),
 ):
-    model_config = await _get_model_config(user_id, session)
+    model_config = await ModelService.get_user_model_config(session, user_id)
     return await service.search_memories(user_id=user_id, mode=mode, query=q, book_id=book_id, memory_type=memory_type, top_k=top_k, model_config=model_config)

@@ -7,7 +7,7 @@ vi.mock('@/lib/auth/cookie', () => ({
   clearRefreshCookie: vi.fn(),
 }));
 
-vi.mock('@/lib/api/client', () => ({
+vi.mock('@/shared/lib/apiClient', () => ({
   default: {
     post: vi.fn().mockResolvedValue({}),
   },
@@ -110,7 +110,7 @@ describe('11.1 单元测试 - authStore', () => {
       useAuthStore.getState().setAuth(user, 'token', 'my-refresh-token');
       await useAuthStore.getState().logout();
 
-      const apiClient = (await import('@/lib/api/client')).default;
+      const apiClient = (await import('@/shared/lib/apiClient')).default;
       expect(apiClient.post).toHaveBeenCalledWith('/api/auth/logout', { refresh_token: 'my-refresh-token' });
     });
   });

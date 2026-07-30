@@ -2,7 +2,7 @@
 // 轻量"未同步队列"：本地已写入但 push 后端失败的任务入队，
 // 网络恢复或下次打开时自动重试（个人工具，冲突时前端优先）。
 
-import type { ApiError } from '@/lib/api/client';
+import type { ApiError } from '@/shared/lib/apiClient';
 
 export type { ApiError };
 

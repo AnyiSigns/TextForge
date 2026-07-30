@@ -9,7 +9,14 @@ logger = get_logger(__name__)
 
 
 class VectorRepository:
+    """向量检索仓储。"""
+
     def __init__(self, session: AsyncSession):
+        """初始化 VectorRepository。
+
+        Args:
+            session: SQLAlchemy 异步会话。
+        """
         self.session = session
 
     async def search_external_books(
@@ -19,6 +26,17 @@ class VectorRepository:
         top_k: int = 3,
         use_cache: bool = True,
     ) -> List[Dict[str, Any]]:
+        """向量检索公开知识库。
+
+        Args:
+            query_embedding: 查询向量。
+            rag_filter: 过滤条件，支持 doc_ids、author_ids、sample、query。
+            top_k: 返回结果数。
+            use_cache: 是否使用 Redis 缓存。
+
+        Returns:
+            检索结果列表，每个元素包含 doc_id、doc_title、doc_author、content、distance。
+        """
         query_text = rag_filter.get("query", "")
         cache_hit = None
         if use_cache and query_text:

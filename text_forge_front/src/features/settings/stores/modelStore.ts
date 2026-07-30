@@ -17,6 +17,7 @@ function defaultTextRoleModels(): Record<ModelRole, RoleModelConfig | null> {
 interface ModelStore {
   models: ModelConfig[];
   textRoleModels: Record<ModelRole, RoleModelConfig | null>;
+  searchConfig: { api_key: string; provider: string } | null;
   hasHydrated: boolean;
   setHasHydrated: (v: boolean) => void;
 
@@ -31,6 +32,9 @@ interface ModelStore {
   getTextRoleModel: (role: ModelRole) => RoleModelConfig | null;
   getMainModel: () => RoleModelConfig | null;
 
+  setSearchConfig: (config: { api_key: string; provider: string } | null) => void;
+  getSearchConfig: () => { api_key: string; provider: string } | null;
+
   getVersionMeta: () => { lastSyncAt: string; version?: number };
   setVersionMeta: (meta: { lastSyncAt: string; version?: number }) => void;
 }
@@ -42,6 +46,7 @@ export const useModelStore = create<ModelStore>()(
     (set, get) => ({
       models: [],
       textRoleModels: defaultTextRoleModels(),
+      searchConfig: null,
       hasHydrated: false,
       setHasHydrated: (v) => set({ hasHydrated: v }),
 
@@ -77,6 +82,9 @@ export const useModelStore = create<ModelStore>()(
       },
       getTextRoleModel: (role) => get().textRoleModels[role],
       getMainModel: () => get().textRoleModels.main,
+
+      setSearchConfig: (config) => set({ searchConfig: config }),
+      getSearchConfig: () => get().searchConfig,
     }),
     {
       name: 'novel-models',
@@ -86,6 +94,7 @@ export const useModelStore = create<ModelStore>()(
         textRoleModels: Object.fromEntries(
           Object.entries(s.textRoleModels).map(([k, v]) => [k, v ? { ...v, apiKey: v.apiKey ?? '' } : null])
         ) as Record<ModelRole, RoleModelConfig | null>,
+        searchConfig: s.searchConfig,
       }),
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);

@@ -27,7 +27,7 @@ async def query_model_conf(
 ):
     instance = await user_serve.query_user_model(user_id)
     if not instance:
-        return {}
+        return ModelResponse()
     try:
         return ModelResponse.model_validate(instance)
     except Exception as e:

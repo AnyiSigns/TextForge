@@ -10,6 +10,11 @@ def get_abs_path(path: str) -> str:
 
 
 class Settings(BaseSettings):
+    """应用配置。
+
+    从环境变量或 .env 文件加载，覆盖默认值。
+    """
+
     # 日志
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -39,12 +44,14 @@ class Settings(BaseSettings):
     EMAIL_USE_TSL: bool = True
     EMAIL_TIME_OUT: int = 30
 
-    CAPTCHA_TIME: int = 300  # 验证码有效期
-
     # redis config
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
     REDIS_DB: int = 0
+
+    # env
+    ENV: str = "development"
+    ALLOWED_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
 
     STATIC_URL: str = get_abs_path("/static")
 

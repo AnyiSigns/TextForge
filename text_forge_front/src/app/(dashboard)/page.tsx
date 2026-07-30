@@ -6,7 +6,7 @@ import { useAuthStore } from '@/lib/stores/authStore';
 import { useBookStore } from '@/features/projects';
 import { useCharacterStore } from '@/features/characters';
 import { getManuscriptChapters } from '@/lib/storage/indexedDB';
-import { fetchVideoTasks, type MediaTask } from '@/lib/api/generation';
+import { fetchVideoTasks, type MediaTask } from '@/features/projects/api/media';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { BookOpen, LayoutDashboard, Target, Users, BarChart3 } from 'lucide-react';
 import { toast } from 'sonner';

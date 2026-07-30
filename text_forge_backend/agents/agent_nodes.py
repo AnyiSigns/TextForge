@@ -12,12 +12,29 @@ AGENT_SYSTEM_PROMPT = """你是 TextForge Agent，一位专业的 AI 文学创�
 
 
 def _truncate(text: str, max_chars: int = 8000) -> str:
+    """截断过长文本，保留首尾各一半。
+
+    Args:
+        text: 输入文本。
+        max_chars: 最大字符数。
+
+    Returns:
+        截断后的文本。
+    """
     if len(text) <= max_chars:
         return text
     return text[: max_chars // 2] + "\n...[截断]...\n" + text[-max_chars // 2 :]
 
 
 def _compress_context(state: UserAgentState) -> UserAgentState:
+    """压缩上下文，保留最近 20 条消息，旧消息合并为摘要。
+
+    Args:
+        state: Agent 状态。
+
+    Returns:
+        压缩后的 Agent 状态。
+    """
     messages = state.get("messages", [])
     if len(messages) <= 20:
         return state
@@ -33,6 +50,14 @@ def _compress_context(state: UserAgentState) -> UserAgentState:
 
 
 async def agent_call(state: UserAgentState) -> Dict[str, Any]:
+    """Agent 主调用节点。
+
+    Args:
+        state: Agent 状态。
+
+    Returns:
+        包含 messages 的更新状态。
+    """
     state = _compress_context(state)
     llm = ModelFactory(state["model_config"])
     system_prompt = AGENT_SYSTEM_PROMPT
@@ -49,6 +74,14 @@ async def agent_call(state: UserAgentState) -> Dict[str, Any]:
 
 
 def agent_router(state: UserAgentState) -> str:
+    """Agent 路由函数。
+
+    Args:
+        state: Agent 状态。
+
+    Returns:
+        下一节点名称或 END。
+    """
     last = state["messages"][-1]
     if hasattr(last, "tool_calls") and last.tool_calls:
         return "tool_calls"

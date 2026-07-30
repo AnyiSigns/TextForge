@@ -1,4 +1,6 @@
-from typing import Dict, List, Literal
+from typing import Dict, List
+
+
 
 from agents.state import ParentState, ToolState, MainState, AuditState
 from langgraph.graph import END
@@ -23,6 +25,15 @@ CONTEXT_FIELD_MAP = {
 
 
 def _build_context_payload(state: ParentState, fields: list[str]):
+    """构建上下文载荷。
+
+    Args:
+        state: 父图状态。
+        fields: 需要的上下文字段列表。
+
+    Returns:
+        上下文载荷字典。
+    """
     payload = {"model_config": state["model_config"]}
     for f in fields:
         if f in CONTEXT_FIELD_MAP:
@@ -31,6 +42,7 @@ def _build_context_payload(state: ParentState, fields: list[str]):
 
 
 def _to_serializable(value):
+    """将值转换为可 JSON 序列化的格式。"""
     if isinstance(value, (str, int, float, bool, type(None))):
         return value
     if isinstance(value, dict):
@@ -41,6 +53,14 @@ def _to_serializable(value):
 
 
 async def _load_context_pool(book_id: int) -> Dict[str, List[int]]:
+    """加载书籍上下文池。
+
+    Args:
+        book_id: 书籍 ID。
+
+    Returns:
+        上下文字段映射字典。
+    """
     if not book_id:
         return {}
     async with db_manager.with_db() as session:
@@ -49,6 +69,14 @@ async def _load_context_pool(book_id: int) -> Dict[str, List[int]]:
 
 
 async def manager_node(state: ParentState):
+    """Manager 节点，负责工作流调度决策。
+
+    Args:
+        state: 父图状态。
+
+    Returns:
+        调度结果，包含 next_step_id 与 metadata。
+    """
     nodes = state["workflow_nodes"]
     edges = state.get("edges", [])
     outputs = state.get("step_outputs", {})
@@ -139,6 +167,14 @@ async def manager_node(state: ParentState):
 
 
 async def call_tool(state: ParentState) -> dict:
+    """调用工具执行节点。
+
+    Args:
+        state: 父图状态。
+
+    Returns:
+        工具执行结果。
+    """
     from agents.state import ToolState
     from agents.graphs.registry import graph_register
 
@@ -183,6 +219,14 @@ async def call_tool(state: ParentState) -> dict:
 
 
 async def call_main(state: ParentState) -> dict:
+    """调用主模型执行节点。
+
+    Args:
+        state: 父图状态。
+
+    Returns:
+        主模型执行结果。
+    """
     from agents.state import MainState
     from agents.graphs.registry import graph_register
 
@@ -214,6 +258,14 @@ async def call_main(state: ParentState) -> dict:
 
 
 async def call_compression(state: ParentState) -> dict:
+    """调用压缩节点。
+
+    Args:
+        state: 父图状态。
+
+    Returns:
+        压缩结果。
+    """
     from agents.state import AuditState
     from agents.graphs.registry import graph_register
 
@@ -248,6 +300,14 @@ async def call_compression(state: ParentState) -> dict:
 
 
 async def call_audit(state: ParentState) -> dict:
+    """调用审核节点。
+
+    Args:
+        state: 父图状态。
+
+    Returns:
+        审核结果。
+    """
     from agents.state import AuditState
     from agents.graphs.registry import graph_register
 
@@ -285,7 +345,15 @@ async def call_audit(state: ParentState) -> dict:
 
 async def route_after_manager(
     state: ParentState,
-) -> Literal["call_tool", "call_main", "call_compression", "call_audit", END]:
+):
+    """Manager 节点后的路由函数。
+
+    Args:
+        state: 父图状态。
+
+    Returns:
+        下一节点名称或 END。
+    """
     next_id = state.get("next_step_id")
     if next_id == "__END__":
         return END

@@ -28,7 +28,9 @@ export type AdapterType =
   | 'bge' // 本地嵌入
   | 'cohere'
   | 'jina'
-  | 'custom';
+  | 'custom'
+  | 'baidu'
+  | 'huggingface';
 
 // Auxiliary model: a secondary llm role used by a primary text model
 export interface AuxiliaryModel {

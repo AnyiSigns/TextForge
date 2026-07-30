@@ -1,7 +1,7 @@
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
-from config.redis_config import redis_client as redis
+from infrastructure.redis import redis_client
 from schema.request.auth import (
     EmailRequest,
     VerifyEmailRequest,
@@ -55,7 +55,7 @@ async def refresh_at(
     user_token = await user_serve.token_repo.get_by_user_and_jti(rt_jti, user.id)
     if not user_token:
         raise HTTPException(status_code=401, detail="用户/令牌不存在")
-    if not redis.sismember(f"refresh_token_{user_id}", request.refresh_token):
+    if not redis_client.sismember(f"refresh_token_{user_id}", request.refresh_token):
         raise HTTPException(status_code=401, detail="令牌不存在")
     at_jti = str(uuid.uuid4())
     access_token = create_token(
@@ -101,7 +101,7 @@ async def verify_email(
 ):
     verified = await verifacation.verify_code(request.email, request.code)
     if verified:
-        await user_serve.user_repo.updata_verified(request.email, True)
+        await user_serve.user_repo.update_verified(request.email, True)
         return {"message": "ok"}
     raise HTTPException(status_code=400, detail="验证码无效或已过期")
 

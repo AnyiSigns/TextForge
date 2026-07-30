@@ -1,13 +1,10 @@
 // src/features/manuscript/ui/ManuscriptEditor.tsx
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { useState, useRef } from 'react';
 import { useManuscriptEditor } from '@/features/manuscript';
-import { cn } from '@/lib/utils';
 import { EditorToolbar } from './EditorToolbar';
 import { EditorArea } from './EditorArea';
-import { ChapterTree } from './ChapterTree';
 import { SuggestHint } from './SuggestHint';
 import { ChapterHoverPreview } from './ChapterHoverPreview';
 import { ConfirmationBlocks } from './ConfirmationBlocks';
@@ -18,12 +15,13 @@ import { ImportBookDialog } from './ImportBookDialog';
 import { DiffSlider } from './DiffSlider';
 import { AI_ACTION_LABEL } from '@/lib/aiTextTransform';
 import { useManuscriptStore } from '@/features/manuscript';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
 import { SelectionToolbar } from '@/features/user-agent';
 import { executeTextOperation } from '@/features/user-agent/api/agentApi';
 import { toast } from 'sonner';
+import { ManuscriptChapterTree } from './ManuscriptChapterTree';
 
 export function ManuscriptEditor({ projectId }: { projectId: string }) {
   const {
@@ -122,56 +120,44 @@ export function ManuscriptEditor({ projectId }: { projectId: string }) {
 
   return (
     <div className="relative grid grid-rows-[auto_1fr] lg:grid-rows-none lg:grid-cols-[260px_1fr] gap-4 h-[calc(100vh-260px)] lg:h-[calc(100dvh-260px)] min-h-0">
-      {/* 章节树 */}
-      <AnimatePresence>
-        {!focusMode && (
-          <motion.div
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: 'auto', opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="flex flex-col min-h-0 gap-2 overflow-hidden"
-          >
-            <ChapterTree
-              chapters={chapters}
-              activeId={activeId}
-              setActiveId={setActiveId}
-              dragIndex={dragIndex}
-              dragOverIndex={dragOverIndex}
-              onDragStart={setDragIndex}
-              onDragOver={(e, i) => { e.preventDefault(); setDragOverIndex(i); }}
-              onDrop={(e, targetIndex) => {
-                e.preventDefault();
-                if (dragIndex === null || dragIndex === targetIndex) { setDragIndex(null); setDragOverIndex(null); return; }
-                const next = [...chapters];
-                const [moved] = next.splice(dragIndex, 1);
-                next.splice(targetIndex, 0, moved);
-                next.forEach((c, i) => {
-                  void useManuscriptStore.getState().updateChapter(c.id, { index: i + 1 });
-                });
-                setDragIndex(null);
-                setDragOverIndex(null);
-              }}
-              onDragEnd={() => { setDragIndex(null); setDragOverIndex(null); }}
-              onChapterHover={(preview) => setHoverPreview(preview)}
-              onChapterLeave={() => { if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current); setHoverPreview(null); }}
-              hoverTimerRef={hoverTimerRef}
-              clearBlocked={clearBlocked}
-              setClearBlocked={setClearBlocked}
-              deleteBlocked={deleteBlocked}
-              setDeleteBlocked={setDeleteBlocked}
-              pendingDeleteId={pendingDeleteId}
-              setPendingDeleteId={setPendingDeleteId}
-              addChapter={addChapter}
-              getOrCreateDefaultVolume={getOrCreateDefaultVolume}
-              syncChapterToServer={syncChapterToServer}
-              bookId={projectId}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       <ChapterHoverPreview preview={hoverPreview} />
+
+      <ManuscriptChapterTree
+        chapters={chapters}
+        activeId={activeId}
+        setActiveId={setActiveId}
+        dragIndex={dragIndex}
+        dragOverIndex={dragOverIndex}
+        onDragStart={setDragIndex}
+        onDragOver={(e, i) => { e.preventDefault(); setDragOverIndex(i); }}
+        onDrop={(e, targetIndex) => {
+          e.preventDefault();
+          if (dragIndex === null || dragIndex === targetIndex) { setDragIndex(null); setDragOverIndex(null); return; }
+          const next = [...chapters];
+          const [moved] = next.splice(dragIndex, 1);
+          next.splice(targetIndex, 0, moved);
+          next.forEach((c, i) => {
+            void useManuscriptStore.getState().updateChapter(c.id, { index: i + 1 });
+          });
+          setDragIndex(null);
+          setDragOverIndex(null);
+        }}
+        onDragEnd={() => { setDragIndex(null); setDragOverIndex(null); }}
+        onChapterHover={(preview) => setHoverPreview(preview)}
+        onChapterLeave={() => { if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current); setHoverPreview(null); }}
+        hoverTimerRef={hoverTimerRef}
+        clearBlocked={clearBlocked}
+        setClearBlocked={setClearBlocked}
+        deleteBlocked={deleteBlocked}
+        setDeleteBlocked={setDeleteBlocked}
+        pendingDeleteId={pendingDeleteId}
+        setPendingDeleteId={setPendingDeleteId}
+        addChapter={addChapter}
+        getOrCreateDefaultVolume={getOrCreateDefaultVolume}
+        syncChapterToServer={syncChapterToServer}
+        bookId={projectId}
+        focusMode={focusMode}
+      />
 
       {/* 编辑器 */}
       <motion.div
@@ -254,7 +240,6 @@ export function ManuscriptEditor({ projectId }: { projectId: string }) {
         onExportTxt={doExportBookTxt}
         onExportMarkdown={handleExportBook}
       />
-
       <ImportBookDialog
         open={!!bookChapters}
         onOpenChange={(o) => { if (!o) setBookChapters(null); }}
@@ -262,7 +247,6 @@ export function ManuscriptEditor({ projectId }: { projectId: string }) {
         chapterCount={bookChapters?.length ?? 0}
         onConfirm={confirmBookImport}
       />
-
       <ConfirmationBlocks
         chapters={chapters}
         bookName={bookName}
@@ -278,7 +262,6 @@ export function ManuscriptEditor({ projectId }: { projectId: string }) {
         setActiveId={setActiveId}
         projectId={projectId}
       />
-
       {active?.serverChapterId && (
         <VersionHistory
           chapterId={active.serverChapterId}

@@ -8,7 +8,7 @@ from infrastructure.database import db_manager
 from repository.user_repo import UserRepository, UserTokenRepository
 from config.settings import settings
 from utils.logger import get_logger
-from config.redis_config import redis_client as r
+from infrastructure.redis import redis_client
 import json
 import uuid
 
@@ -20,6 +20,18 @@ async def get_current(
     credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
     db: Annotated[AsyncSession, Depends(db_manager.get_db)],
 ):
+    """FastAPI 依赖：从 JWT 提取当前用户 ID。
+
+    Args:
+        credentials: HTTP Bearer 凭证。
+        db: SQLAlchemy 异步会话。
+
+    Returns:
+        当前用户 ID。
+
+    Raises:
+        HTTPException: 令牌缺失、无效或过期时抛出 401。
+    """
     if credentials is None:
         logger.error("令牌不在请求头中", exc_info=True)
         raise HTTPException(

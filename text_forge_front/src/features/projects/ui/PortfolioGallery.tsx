@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/shared/components';
 import { EmptyState } from '@/shared/components';
-import { fetchProjectPortfolio, type MediaTask } from '@/lib/api/generation';
+import { fetchProjectPortfolio, type MediaTask } from '@/features/projects/api/media';
 import { Image as ImageIcon, Clapperboard, Link as LinkIcon, Loader2, Play } from 'lucide-react';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';

@@ -9,7 +9,7 @@ vi.mock('@/lib/auth/cookie', () => ({
   clearRefreshCookie: vi.fn(),
 }));
 
-vi.mock('@/lib/api/client', () => ({
+vi.mock('@/shared/lib/apiClient', () => ({
   default: {
     post: vi.fn().mockResolvedValue({}),
   },
@@ -18,7 +18,7 @@ vi.mock('@/lib/api/client', () => ({
 
 describe('11.2 集成测试 - API 客户端集成', () => {
   it('getSyncUpdates 返回正确结构', async () => {
-    const { getSyncUpdates } = await import('@/lib/api/client');
+    const { getSyncUpdates } = await import('@/shared/lib/apiClient');
     
     const result = await getSyncUpdates('projects', '2024-01-01');
     expect(result).toHaveProperty('updates');

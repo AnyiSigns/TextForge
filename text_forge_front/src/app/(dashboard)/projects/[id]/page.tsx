@@ -14,7 +14,7 @@ import { WorkbenchTab } from './WorkbenchTab';
 import { ProjectContextConfigTab } from '@/features/projects';
 import { ProjectDialogs } from './ProjectDialogs';
 import { StatsTab } from '@/features/projects/ui/StatsTab';
-import { AgentRulesSettings } from '@/features/world/ui/AgentRulesSettings';
+import { AgentRulesSettings, WorldSettings } from '@/features/world';
 import { PageHeader } from '@/shared/components';
 import { Spinner } from '@/shared/components';
 import { ErrorBoundary } from '@/shared/components/ErrorBoundary';
@@ -81,6 +81,7 @@ export default function ProjectWorkbench() {
           {activeTab === 'material' && <ProjectStudio bookId={Number(projectId)} projectTitle={bookTitle} steps={steps} mode="character" selectedCharIds={selectedCharIds} />}
           {activeTab === 'animation' && <ProjectStudio bookId={Number(projectId)} projectTitle={bookTitle} steps={steps} mode="chapter" selectedCharIds={selectedCharIds} />}
           {activeTab === 'stats' && <StatsTab bookId={Number(projectId)} />}
+          {activeTab === 'world-building' && <WorldSettings bookId={Number(projectId)} />}
           {activeTab === 'agent-rules' && <AgentRulesSettings bookId={Number(projectId)} />}
         </ErrorBoundary>
       </ProcessNav>

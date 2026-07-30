@@ -9,4 +9,6 @@ export { ProjectPicker, NO_PROJECT } from './ProjectPicker';
 export { Spinner, EmptyState, Skeleton, SkeletonGrid } from './states';
 export { VirtualList } from './VirtualList';
 export { ErrorBoundary } from './ErrorBoundary';
+export { AsyncErrorBoundary } from './AsyncErrorBoundary';
+export { LoadingState } from './LoadingState';
 export { MonitoringInit } from './MonitoringInit';

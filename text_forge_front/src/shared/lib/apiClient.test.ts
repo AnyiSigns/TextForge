@@ -17,7 +17,7 @@ vi.mock('@/lib/stores/authStore', () => ({
 describe('11.1 单元测试 - apiClient', () => {
   describe('ApiError 类', () => {
     it('创建 ApiError 实例', async () => {
-      const { ApiError } = await import('@/lib/api/client');
+      const { ApiError } = await import('@/shared/lib/apiClient');
       const error = new ApiError('错误消息', 401, 'TOKEN_EXPIRED');
       
       expect(error.message).toBe('错误消息');
@@ -29,7 +29,7 @@ describe('11.1 单元测试 - apiClient', () => {
 
   describe('generateIdempotencyKey', () => {
     it('生成唯一的 idempotency key', async () => {
-      const { generateIdempotencyKey } = await import('@/lib/api/client');
+      const { generateIdempotencyKey } = await import('@/shared/lib/apiClient');
       
       const key1 = generateIdempotencyKey();
       const key2 = generateIdempotencyKey();

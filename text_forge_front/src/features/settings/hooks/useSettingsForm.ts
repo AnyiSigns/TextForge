@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react';
 import { useAuthStore } from '@/lib/stores/authStore';
 import { toast } from 'sonner';
-import apiClient from '@/lib/api/client';
+import apiClient from '@/shared/lib/apiClient';
 
 export function useSettingsForm() {
   const { user, updateUser } = useAuthStore();
