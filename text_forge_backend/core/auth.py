@@ -1,16 +1,10 @@
-from datetime import datetime
 from typing import Annotated
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
-from core.security import create_token, verify_token
+from core.security import verify_token
 from shared.database import db_manager
-from domains.auth.repository import UserRepository, UserTokenRepository
-from config.settings import settings
 from config.logging import get_logger
-from shared.redis import redis_client
-import json
-import uuid
 
 logger = get_logger(__name__)
 security = HTTPBearer()  # HTTPBearer实例，用于从HTTP请求头中提取JWT令牌

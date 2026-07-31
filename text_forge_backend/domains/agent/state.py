@@ -1,12 +1,7 @@
 import operator
 from typing import Any, Dict, List, Optional, TypedDict, Annotated
 from langgraph.graph import add_messages
-
-
-def _merge_dicts(a: dict, b: dict) -> dict:
-    result = a.copy()
-    result.update(b)
-    return result
+from shared.utils import merge_dicts as _merge_dicts
 
 
 class GraphState(TypedDict):
@@ -26,6 +21,8 @@ class ToolState(TypedDict):
     workflow_node: Dict[str, Any]
     model_config: dict
     tool_result: str
+    context_pool: Dict[str, List[int]]
+    context_fields: List[str]
 
 
 class MainState(TypedDict):
@@ -38,6 +35,8 @@ class MainState(TypedDict):
     input_brief_summary: str
     input_recent_chapters: str
     input_outline: str
+    context_pool: Dict[str, List[int]]
+    context_fields: List[str]
 
 
 class AuditState(TypedDict):
@@ -50,6 +49,8 @@ class AuditState(TypedDict):
     input_brief_summary: str
     input_recent_chapters: str
     input_outline: str
+    context_pool: Dict[str, List[int]]
+    context_fields: List[str]
 
 
 class ParentState(TypedDict):

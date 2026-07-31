@@ -16,9 +16,9 @@ BUILTIN_WORKFLOWS = [
             {"id": "audit", "type": "audit", "label": "校对", "executor": "audit", "config": {}},
         ],
         "edges": [
-            {"source": "main", "target": "audit"},
+            {"from": "main", "to": "audit"},
         ],
-    },
+        },
     {
         "id": "builtin-serious-literature",
         "user_id": None,
@@ -32,9 +32,9 @@ BUILTIN_WORKFLOWS = [
             {"id": "compression", "type": "compression", "label": "压缩", "executor": "auto", "config": {}},
         ],
         "edges": [
-            {"source": "tool", "target": "main"},
-            {"source": "main", "target": "audit"},
-            {"source": "audit", "target": "compression"},
+            {"from": "tool", "to": "main"},
+            {"from": "main", "to": "audit"},
+            {"from": "audit", "to": "compression"},
         ],
     },
     {
@@ -48,7 +48,7 @@ BUILTIN_WORKFLOWS = [
             {"id": "main", "type": "main", "label": "写手", "executor": "main", "config": {}},
         ],
         "edges": [
-            {"source": "tool", "target": "main"},
+            {"from": "tool", "to": "main"},
         ],
     },
 ]

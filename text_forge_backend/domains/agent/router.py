@@ -1,7 +1,6 @@
 import json
 import uuid
 from typing import Annotated
-
 from .agent_state import UserAgentState
 from .graphs.agent_graph import build_user_agent_graph
 from core.auth import get_current
@@ -20,22 +19,26 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/agent", tags=["Agent"])
 
 
-async def _get_conversation(session: AsyncSession, thread_id: str, user_id: int) -> Conversation | None:
-    stmt = select(Conversation).where(Conversation.thread_id == thread_id, Conversation.user_id == user_id)
+async def _get_conversation(
+    session: AsyncSession, thread_id: str, user_id: int
+) -> Conversation | None:
+    stmt = select(Conversation).where(
+        Conversation.thread_id == thread_id, Conversation.user_id == user_id
+    )
     result = await session.execute(stmt)
     return result.scalar_one_or_none()
 
 
-async def _acquire_book_lock(book_id: int, user_id: int) -> bool:
+async def _acquire_book_lock(book_id: int, user_id: int) -> tuple[bool, str]:
     if not book_id:
-        return True
+        return (True, "")
     try:
         key = f"agent:book_lock:{user_id}:{book_id}:{uuid.uuid4().hex}"
         result = await redis_client.set(key, "1", ex=3600, nx=True)
-        return result is True
+        return (result is True, key)
     except Exception as exc:
         logger.error(f"获取书籍锁失败: {exc}")
-        return False
+        return (False, "")
 
 
 async def _release_book_lock(book_id: int, user_id: int, lock_key: str | None = None):
@@ -103,6 +106,7 @@ async def _prepare_agent_state(
     if book_id:
         try:
             from .tools.generate_chapter_tool import _get_previous_chapter_context
+
             prev_ctx = await _get_previous_chapter_context(session, book_id, 0)
             state["previous_chapter_summary"] = prev_ctx.get("previous_chapter_summary")
             state["previous_chapter_content"] = prev_ctx.get("previous_chapter_content")
@@ -147,9 +151,12 @@ async def respond_to_agent(
     model_config = {}
     try:
         from domains.model.service import ModelService
+
         model_config = await ModelService.get_user_model_config(session, user_id)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning(f"获取模型配置失败: {exc}")
+    if not model_config or not model_config.get("main_config"):
+        raise HTTPException(status_code=400, detail="用户模型配置未设置")
     lock_key = None
     locked = False
     book_id = None
@@ -159,10 +166,11 @@ async def respond_to_agent(
         )
         book_id = conversation.book_id or 0
         if book_id:
-            lock_key = f"agent:book_lock:{user_id}:{book_id}:{uuid.uuid4().hex}"
-            locked = await _acquire_book_lock(book_id, user_id)
+            locked, lock_key = await _acquire_book_lock(book_id, user_id)
             if not locked:
-                raise HTTPException(status_code=503, detail="该书籍正在进行 Agent 任务，请稍后再试")
+                raise HTTPException(
+                    status_code=503, detail="该书籍正在进行 Agent 任务，请稍后再试"
+                )
         graph = build_user_agent_graph(db_manager.get_db, model_config=model_config)
         try:
             result = await graph.ainvoke(state)
@@ -194,9 +202,12 @@ async def stream_agent(
     model_config = {}
     try:
         from domains.model.service import ModelService
+
         model_config = await ModelService.get_user_model_config(session, user_id)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning(f"获取模型配置失败: {exc}")
+    if not model_config or not model_config.get("main_config"):
+        raise HTTPException(status_code=400, detail="用户模型配置未设置")
     lock_key = None
     locked = False
     book_id = None
@@ -206,10 +217,11 @@ async def stream_agent(
         )
         book_id = conversation.book_id or 0
         if book_id:
-            lock_key = f"agent:book_lock:{user_id}:{book_id}:{uuid.uuid4().hex}"
-            locked = await _acquire_book_lock(book_id, user_id)
+            locked, lock_key = await _acquire_book_lock(book_id, user_id)
             if not locked:
-                raise HTTPException(status_code=503, detail="该书籍正在进行 Agent 任务，请稍后再试")
+                raise HTTPException(
+                    status_code=503, detail="该书籍正在进行 Agent 任务，请稍后再试"
+                )
         graph = build_user_agent_graph(db_manager.get_db, model_config=model_config)
 
         async def cleanup():
@@ -243,7 +255,11 @@ async def stream_agent(
                         yield f"data: {json.dumps({'type': 'tool_end'}, ensure_ascii=False)}\n\n"
                     elif event_type == "on_chain_end":
                         output = event.get("data", {}).get("output", {})
-                        messages = output.get("messages", []) if isinstance(output, dict) else []
+                        messages = (
+                            output.get("messages", [])
+                            if isinstance(output, dict)
+                            else []
+                        )
                         reply = ""
                         for msg in reversed(messages):
                             content = getattr(msg, "content", None)
@@ -264,8 +280,13 @@ async def stream_agent(
                             from .tools.feedback_tools import (
                                 _build_feedback_tools,
                             )
-                            suggestion_tools = _build_feedback_tools(db_manager.get_db, model_config=model_config)
-                            suggestions = await suggestion_tools[1](user_id=user_id, book_id=book_id)
+
+                            suggestion_tools = _build_feedback_tools(
+                                db_manager.get_db, model_config=model_config
+                            )
+                            suggestions = await suggestion_tools["proactive_suggestions"](
+                                user_id=user_id, book_id=book_id
+                            )
                             if suggestions:
                                 yield f"data: {json.dumps({'type': 'suggestions', 'items': suggestions}, ensure_ascii=False)}\n\n"
                         except Exception as exc:

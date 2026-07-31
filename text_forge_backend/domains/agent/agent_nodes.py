@@ -1,11 +1,10 @@
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 from .agent_state import UserAgentState
-from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
+from langchain_core.messages import SystemMessage
+from langchain_core.tools import BaseTool
 from core.model_factory import ModelFactory
-from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph import END
 import json
-
 
 AGENT_SYSTEM_PROMPT = """你是 TextForge Agent，一位专业的 AI 文学创作助手。
 你可以调用工具辅助创作，也可以通过 generate_chapter 发起章节生成任务。"""
@@ -45,7 +44,10 @@ def _compress_context(state: UserAgentState) -> UserAgentState:
         summary_parts.append(f"{role}: {_truncate(content, 400)}")
     compressed = "\n".join(summary_parts)
     state["messages"] = messages[-20:]
-    state["step_outputs"] = {**state.get("step_outputs", {}), "compressed_context": compressed}
+    state["step_outputs"] = {
+        **state.get("step_outputs", {}),
+        "compressed_context": compressed,
+    }
     return state
 
 
@@ -64,13 +66,27 @@ async def agent_call(state: UserAgentState) -> Dict[str, Any]:
     if state.get("previous_chapter_summary"):
         system_prompt += f"\n\n上一章摘要：{state['previous_chapter_summary']}"
     if state.get("previous_chapter_content"):
-        system_prompt += f"\n\n上一章正文（已截断）：{_truncate(state['previous_chapter_content'])}"
+        system_prompt += (
+            f"\n\n上一章正文（已截断）：{_truncate(state['previous_chapter_content'])}"
+        )
     cross_ctx = state.get("cross_chapter_context", {})
     if cross_ctx:
-        system_prompt += f"\n\n跨章节上下文：{json.dumps(cross_ctx, ensure_ascii=False)}"
-    bound_llm = llm.main.bind_tools([])
+        system_prompt += (
+            f"\n\n跨章节上下文：{json.dumps(cross_ctx, ensure_ascii=False)}"
+        )
+    tools = _resolve_agent_tools(state)
+    bound_llm = llm.main.bind_tools(tools) if tools else llm.main
     result = await bound_llm.ainvoke([SystemMessage(system_prompt)] + state["messages"])
     return {"messages": [result]}
+
+
+def _resolve_agent_tools(state: UserAgentState) -> List[BaseTool]:
+    model_config = state.get("model_config") or {}
+    if not model_config:
+        return []
+    from .tools_domain import _build_agent_tools as _domain_build_tools
+    from shared.database import db_manager
+    return _domain_build_tools(db_manager.session_factory, model_config=model_config)
 
 
 def agent_router(state: UserAgentState) -> str:

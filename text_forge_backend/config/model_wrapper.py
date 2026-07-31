@@ -35,7 +35,7 @@ class ModelWrapper:
         "dashscope": "_create_dashscope_embedding",
         "cohere": "_create_cohere_embedding",
         "huggingface": "_create_huggingface_embedding",
-        "baidu": "_create_qianfan_embedding",
+        "baidu": "_create_baidu_embedding",
     }
 
     VISION_MAP: Dict[str, Any] = {

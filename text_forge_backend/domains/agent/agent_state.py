@@ -1,11 +1,6 @@
-from typing import Any, Dict, List, Optional, TypedDict, Annotated
+from typing import Optional, TypedDict, Annotated
 from langgraph.graph import add_messages
-
-
-def _merge_dicts(a: dict, b: dict) -> dict:
-    result = a.copy()
-    result.update(b)
-    return result
+from shared.utils import merge_dicts as _merge_dicts
 
 
 class UserAgentState(TypedDict):
