@@ -1,6 +1,6 @@
 from typing import Any, Dict
 from config.model_wrapper import ModelWrapper
-from models.model import ModelConfig
+from model.model import ModelConfig
 from langchain_core.language_models import BaseChatModel
 
 
@@ -33,9 +33,7 @@ class ModelFactory:
             model = self._get_create_model(config)
             setattr(self, attr_name, model)
 
-        self.embedding = ModelWrapper.get_embedding(
-            user_config.get("embedding_config") or {}
-        )
+        self.embedding = ModelWrapper.get_embedding(user_config.get("embedding_config") or {})
 
         self.vision = ModelWrapper.get_vision(user_config.get("vision_config") or {})
 

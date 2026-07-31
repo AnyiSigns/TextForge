@@ -1,8 +1,8 @@
 from typing import Annotated
 
 from fastapi import Depends
-from shared.database import db_manager
-from models.book import Book
+from infrastructure.database import db_manager
+from model.book import Book
 from repository.project_repo import (
     BookRepository,
     CharacterRepository,
@@ -10,7 +10,7 @@ from repository.project_repo import (
 )
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from config.logging import get_logger
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 

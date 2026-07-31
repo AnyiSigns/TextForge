@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from repository.base_repo import BaseRepository
 from sqlalchemy.ext.asyncio import AsyncSession
-from models.book import Volume
+from model.book import Volume
 
 
 class VolumeRepository(BaseRepository[Volume]):
@@ -25,11 +25,7 @@ class VolumeRepository(BaseRepository[Volume]):
         Returns:
             卷实例列表。
         """
-        stmt = (
-            select(Volume)
-            .where(Volume.book_id == book_id)
-            .order_by(Volume.sort_order, Volume.id)
-        )
+        stmt = select(Volume).where(Volume.book_id == book_id).order_by(Volume.sort_order, Volume.id)
         result = await self.session.execute(stmt)
         return result.scalars().all()
 

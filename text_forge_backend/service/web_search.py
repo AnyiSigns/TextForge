@@ -1,8 +1,8 @@
 from typing import List, Dict, Any, Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from models.web_search_cache import WebSearchCache
-from config.logging import get_logger
+from model.web_search_cache import WebSearchCache
+from utils.logger import get_logger
 import hashlib
 
 logger = get_logger(__name__)
@@ -22,9 +22,7 @@ class WebSearchService:
         """
         self.session = session
 
-    async def search(
-        self, query: str, api_key: str, top_k: int = 5, use_cache: bool = True
-    ) -> List[dict]:
+    async def search(self, query: str, api_key: str, top_k: int = 5, use_cache: bool = True) -> List[dict]:
         """执行网页搜索，优先返回缓存结果。
 
         Args:
@@ -61,7 +59,6 @@ class WebSearchService:
             搜索结果列表，失败返回错误信息列表。
         """
         import httpx
-
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 res = await client.get(

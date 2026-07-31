@@ -2,7 +2,7 @@ from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from repository.agent_memory_repo import AgentMemoryRepository
 from core.model_factory import ModelFactory
-from utils.logging import get_logger
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 

@@ -1,6 +1,6 @@
 import random
 from config.settings import settings
-from shared.redis import redis_client
+from infrastructure.redis import redis_client
 
 
 class VerificationService:

@@ -1,7 +1,7 @@
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from repository.world_repo import WorldRepository
-from config.logging import get_logger
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -34,9 +34,7 @@ class WorldService:
     async def delete_timeline_event(self, event_id: int, book_id: int):
         await self.repo.delete_timeline_event(event_id, book_id)
 
-    async def list_foreshadowings(
-        self, book_id: int, status: Optional[str] = None
-    ) -> List[dict]:
+    async def list_foreshadowings(self, book_id: int, status: Optional[str] = None) -> List[dict]:
         return await self.repo.list_foreshadowings(book_id, status=status)
 
     async def create_foreshadowing(self, book_id: int, data: dict):

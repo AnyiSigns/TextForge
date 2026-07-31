@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from repository.writing_session_repo import WritingSessionRepository
-from config.logging import get_logger
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -21,13 +21,7 @@ class WritingSessionService:
         """
         self.repo = WritingSessionRepository(session)
 
-    async def create_session(
-        self,
-        user_id: int,
-        book_id: int,
-        chapter_id: Optional[int] = None,
-        character_ids: Optional[list] = None,
-    ) -> dict:
+    async def create_session(self, user_id: int, book_id: int, chapter_id: Optional[int] = None, character_ids: Optional[list] = None) -> dict:
         """创建写作会话。
 
         Args:
@@ -54,9 +48,7 @@ class WritingSessionService:
         await self.repo.session.refresh(instance)
         return self._to_dict(instance)
 
-    async def end_session(
-        self, user_id: int, session_id: int, words_written: int, duration_seconds: int
-    ) -> Optional[dict]:
+    async def end_session(self, user_id: int, session_id: int, words_written: int, duration_seconds: int) -> Optional[dict]:
         """结束写作会话。
 
         Args:
@@ -93,9 +85,7 @@ class WritingSessionService:
             return None
         return self._to_dict(instance)
 
-    async def list_sessions(
-        self, user_id: int, book_id: int, chapter_id: Optional[int] = None
-    ) -> List[dict]:
+    async def list_sessions(self, user_id: int, book_id: int, chapter_id: Optional[int] = None) -> List[dict]:
         """查询用户写作会话列表。
 
         Args:
@@ -106,9 +96,7 @@ class WritingSessionService:
         Returns:
             会话字典列表。
         """
-        items = await self.repo.list_by_user_book(
-            user_id=user_id, book_id=book_id, chapter_id=chapter_id
-        )
+        items = await self.repo.list_by_user_book(user_id=user_id, book_id=book_id, chapter_id=chapter_id)
         return [self._to_dict(item) for item in items]
 
     async def delete_session(self, user_id: int, session_id: int) -> bool:
@@ -127,9 +115,7 @@ class WritingSessionService:
         await self.repo.delete(session_id)
         return True
 
-    async def get_statistics(
-        self, user_id: int, book_id: int, chapter_id: Optional[int] = None
-    ) -> dict:
+    async def get_statistics(self, user_id: int, book_id: int, chapter_id: Optional[int] = None) -> dict:
         """获取写作统计信息。
 
         Args:
@@ -140,13 +126,9 @@ class WritingSessionService:
         Returns:
             统计信息字典。
         """
-        return await self.repo.get_statistics(
-            user_id=user_id, book_id=book_id, chapter_id=chapter_id
-        )
+        return await self.repo.get_statistics(user_id=user_id, book_id=book_id, chapter_id=chapter_id)
 
-    async def get_writing_trend(
-        self, user_id: int, book_id: int, days: int = 30
-    ) -> List[dict]:
+    async def get_writing_trend(self, user_id: int, book_id: int, days: int = 30) -> List[dict]:
         """获取写作趋势。
 
         Args:
@@ -157,9 +139,7 @@ class WritingSessionService:
         Returns:
             趋势数据列表。
         """
-        return await self.repo.get_writing_trend(
-            user_id=user_id, book_id=book_id, days=days
-        )
+        return await self.repo.get_writing_trend(user_id=user_id, book_id=book_id, days=days)
 
     async def get_character_frequency(self, user_id: int, book_id: int) -> List[dict]:
         """获取角色出现频率。
@@ -195,8 +175,6 @@ class WritingSessionService:
             "character_ids": session.character_ids or [],
             "words_written": session.words_written,
             "duration_seconds": session.duration_seconds,
-            "started_at": (
-                session.started_at.isoformat() if session.started_at else None
-            ),
+            "started_at": session.started_at.isoformat() if session.started_at else None,
             "ended_at": session.ended_at.isoformat() if session.ended_at else None,
         }

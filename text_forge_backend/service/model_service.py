@@ -2,7 +2,7 @@ from typing import Annotated
 from infrastructure.database import db_manager
 from fastapi import Depends
 
-from utils.logging import get_logger
+from utils.logger import get_logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from repository.model_repo import ModelConfRepository
 

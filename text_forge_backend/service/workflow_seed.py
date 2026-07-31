@@ -1,6 +1,6 @@
 from sqlalchemy import select
-from models.model import Workflow
-from config.logging import get_logger
+from model.model import Workflow
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -12,20 +12,8 @@ BUILTIN_WORKFLOWS = [
         "description": "适合快节奏网文，短句+高频冲突",
         "builtin": True,
         "nodes": [
-            {
-                "id": "main",
-                "type": "main",
-                "label": "写手",
-                "executor": "main",
-                "config": {},
-            },
-            {
-                "id": "audit",
-                "type": "audit",
-                "label": "校对",
-                "executor": "audit",
-                "config": {},
-            },
+            {"id": "main", "type": "main", "label": "写手", "executor": "main", "config": {}},
+            {"id": "audit", "type": "audit", "label": "校对", "executor": "audit", "config": {}},
         ],
         "edges": [
             {"source": "main", "target": "audit"},
@@ -38,34 +26,10 @@ BUILTIN_WORKFLOWS = [
         "description": "适合严肃文学，细节丰富，策划→写手→校对→压缩",
         "builtin": True,
         "nodes": [
-            {
-                "id": "tool",
-                "type": "tool",
-                "label": "策划",
-                "executor": "tool",
-                "config": {},
-            },
-            {
-                "id": "main",
-                "type": "main",
-                "label": "写手",
-                "executor": "main",
-                "config": {},
-            },
-            {
-                "id": "audit",
-                "type": "audit",
-                "label": "校对",
-                "executor": "audit",
-                "config": {},
-            },
-            {
-                "id": "compression",
-                "type": "compression",
-                "label": "压缩",
-                "executor": "auto",
-                "config": {},
-            },
+            {"id": "tool", "type": "tool", "label": "策划", "executor": "tool", "config": {}},
+            {"id": "main", "type": "main", "label": "写手", "executor": "main", "config": {}},
+            {"id": "audit", "type": "audit", "label": "校对", "executor": "audit", "config": {}},
+            {"id": "compression", "type": "compression", "label": "压缩", "executor": "auto", "config": {}},
         ],
         "edges": [
             {"source": "tool", "target": "main"},
@@ -80,20 +44,8 @@ BUILTIN_WORKFLOWS = [
         "description": "适合轻小说，对话为主，策划→写手",
         "builtin": True,
         "nodes": [
-            {
-                "id": "tool",
-                "type": "tool",
-                "label": "策划",
-                "executor": "tool",
-                "config": {},
-            },
-            {
-                "id": "main",
-                "type": "main",
-                "label": "写手",
-                "executor": "main",
-                "config": {},
-            },
+            {"id": "tool", "type": "tool", "label": "策划", "executor": "tool", "config": {}},
+            {"id": "main", "type": "main", "label": "写手", "executor": "main", "config": {}},
         ],
         "edges": [
             {"source": "tool", "target": "main"},
@@ -104,14 +56,7 @@ BUILTIN_WORKFLOWS = [
 
 async def seed_builtin_workflows(session):
     try:
-        existing_ids = {
-            row[0]
-            for row in (
-                await session.execute(
-                    select(Workflow.id).where(Workflow.builtin == True)
-                )
-            ).all()
-        }
+        existing_ids = {row[0] for row in (await session.execute(select(Workflow.id).where(Workflow.builtin == True))).all()}
         for item in BUILTIN_WORKFLOWS:
             if item["id"] in existing_ids:
                 continue

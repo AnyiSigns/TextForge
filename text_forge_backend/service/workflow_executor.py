@@ -1,19 +1,19 @@
 import json
 import time
 from typing import AsyncGenerator
-from shared.database import db_manager
+from infrastructure.database import db_manager
 from repository.model_repo import ModelConfRepository
-from domains.agent.state import ParentState
+from agents.state import ParentState
 from repository.project_repo import (
     BookRepository,
 )
 from repository.workflow import WorkflowRepository
 from repository.outline_repo import OutlineRepository
 from repository.structured_repo import StructuredRepository
-from config.logging import get_logger
+from utils.logger import get_logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from collections import deque
-from models.model import ModelConfig
+from model.model import ModelConfig
 
 logger = get_logger(__name__)
 
@@ -36,7 +36,7 @@ class WorkflowExecutor:
     async def _get_parent_graph(self):
         """懒加载 parent 图。"""
         if self.parent_graph is None:
-            from domains.agent.graphs.registry import graph_register
+            from agents.graphs.registry import graph_register
 
             self.parent_graph = graph_register.get_compiled("parent")
         return self.parent_graph
@@ -86,7 +86,6 @@ class WorkflowExecutor:
             return 0
         try:
             import re
-
             return len(re.findall(r"\S+", text))
         except Exception:
             return len(text)
@@ -174,9 +173,7 @@ class WorkflowExecutor:
                     eta = 0.0
                     if executed_count > 0:
                         elapsed = time.time() - start_time
-                        eta = (elapsed / executed_count) * (
-                            total_nodes - executed_count
-                        )
+                        eta = (elapsed / executed_count) * (total_nodes - executed_count)
                     progress_payload = {
                         "step": current_display_label,
                         "n": n,
@@ -294,9 +291,7 @@ class WorkflowExecutor:
                     eta = 0.0
                     if executed_count > 0:
                         elapsed = time.time() - start_time
-                        eta = (elapsed / executed_count) * (
-                            total_nodes - executed_count
-                        )
+                        eta = (elapsed / executed_count) * (total_nodes - executed_count)
                     progress_payload = {
                         "step": display_label,
                         "n": n,
@@ -370,9 +365,7 @@ class WorkflowExecutor:
         if not first_output:
             return
         try:
-            model_config = await ModelService.get_user_model_config(
-                session, outlines[0].book_id
-            )
+            model_config = await ModelService.get_user_model_config(session, outlines[0].book_id)
             llm = ModelFactory(model_config)
             prompt = (
                 "请用2-3句话概括以下章节内容，保留关键情节和核心信息，语言简洁。\n\n章节标题："

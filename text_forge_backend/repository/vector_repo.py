@@ -1,9 +1,9 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Dict, Any
-from models.document import Document, Chunk
-from shared.redis import cached_rag_search, set_rag_cache
-from config.logging import get_logger
+from model.document import Document, Chunk
+from infrastructure.redis import cached_rag_search, set_rag_cache
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 

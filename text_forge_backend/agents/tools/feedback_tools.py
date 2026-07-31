@@ -1,0 +1,147 @@
+from typing import Optional, List, Dict, Any
+from langchain_core.tools import tool
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from core.model_factory import ModelFactory
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+
+def _build_feedback_tools(session_factory, model_config: Optional[dict] = None):
+    @tool
+    async def analyze_feedback_patterns(user_id: int, book_id: Optional[int] = None, days: int = 30) -> dict:
+        """analyze_feedback_patterns tool."""
+        session = await session_factory()
+        from model.agent_memory import AgentMemory
+        from datetime import datetime, timedelta
+        cutoff = datetime.now() - timedelta(days=days)
+        stmt = select(AgentMemory).where(
+            AgentMemory.user_id == user_id,
+            AgentMemory.source == "user_feedback",
+            AgentMemory.created_at >= cutoff,
+        )
+        if book_id is not None:
+            stmt = stmt.where(AgentMemory.book_id == book_id)
+        result = await session.execute(stmt)
+        memories = result.scalars().all()
+        feedback_items = []
+        for m in memories:
+            try:
+                meta = m.meta or {}
+                feedback_items.append({
+                    "memory_id": m.id,
+                    "content": m.content,
+                    "memory_type": m.memory_type,
+                    "book_id": m.book_id,
+                    "chapter_id": m.related_chapter_id,
+                    "created_at": m.created_at.isoformat() if m.created_at else None,
+                    "sentiment": meta.get("sentiment"),
+                    "feedback_type": meta.get("feedback_type"),
+                })
+            except Exception:
+                continue
+        patterns = {}
+        positive = sum(1 for item in feedback_items if item.get("sentiment") == "positive")
+        negative = sum(1 for item in feedback_items if item.get("sentiment") == "negative")
+        patterns["total_feedback"] = len(feedback_items)
+        patterns["positive"] = positive
+        patterns["negative"] = negative
+        patterns["ratio"] = f"{positive}:{negative}" if feedback_items else "0:0"
+        chapters = {}
+        for item in feedback_items:
+            cid = item.get("chapter_id")
+            if not cid:
+                continue
+            chapters.setdefault(cid, {"count": 0, "negative": 0})
+            chapters[cid]["count"] += 1
+            if item.get("sentiment") == "negative":
+                chapters[cid]["negative"] += 1
+        problem_chapters = [{"chapter_id": cid, "feedback_count": data["count"], "negative_count": data["negative"]} for cid, data in chapters.items() if data["negative"] > data["count"] / 2]
+        patterns["problem_chapters"] = sorted(problem_chapters, key=lambda x: x["negative_count"], reverse=True)[:10]
+        suggestions = []
+        if negative > positive * 2:
+            suggestions.append("负面反馈显著多于正面，建议检查文风设定和人物一致性")
+        if problem_chapters:
+            worst = problem_chapters[0]
+            suggestions.append(f"第 {worst['chapter_id']} 章负面反馈最多，建议优先优化")
+        patterns["suggestions"] = suggestions
+        return {"book_id": book_id, "patterns": patterns, "sample_feedback": feedback_items[:10]}
+
+    @tool
+    async def get_proactive_suggestions(user_id: int, book_id: int) -> List[dict]:
+        """get_proactive_suggestions tool."""
+        session = await session_factory()
+        from model.book import Chapter, Foreshadowing, PlotThread, Volume
+        suggestions = []
+        try:
+            vol_stmt = select(Volume.id).where(Volume.book_id == book_id)
+            vol_result = await session.execute(vol_stmt)
+            vol_ids = [row[0] for row in vol_result.all()]
+            if vol_ids:
+                chapter_stmt = select(Chapter).where(Chapter.volume_id.in_(vol_ids))
+                chapter_result = await session.execute(chapter_stmt)
+                chapters = chapter_result.scalars().all()
+                no_summary = [c for c in chapters if not (c.summary or "").strip()]
+                if no_summary:
+                    suggestions.append({
+                        "type": "summary_missing",
+                        "severity": "medium",
+                        "message": f"{len(no_summary)} 个章节缺少摘要",
+                        "chapter_ids": [c.id for c in no_summary[:5]],
+                    })
+            foreshadowing_stmt = select(Foreshadowing).where(
+                Foreshadowing.book_id == book_id,
+                Foreshadowing.status == "planted",
+                Foreshadowing.planted_at_chapter_id.isnot(None),
+            )
+            foreshadowing_result = await session.execute(foreshadowing_stmt)
+            planted = foreshadowing_result.scalars().all()
+            if planted:
+                suggestions.append({
+                    "type": "foreshadowing_due",
+                    "severity": "low",
+                    "message": f"{len(planted)} 个伏笔已埋下，建议安排回收",
+                    "count": len(planted),
+                })
+            thread_stmt = select(PlotThread).where(
+                PlotThread.book_id == book_id,
+                PlotThread.status == "active",
+            )
+            thread_result = await session.execute(thread_stmt)
+            threads = thread_result.scalars().all()
+            stalled = [t for t in threads if not (t.progress_note or "").strip()]
+            if stalled:
+                suggestions.append({
+                    "type": "plot_thread_stalled",
+                    "severity": "medium",
+                    "message": f"{len(stalled)} 个情节脉络缺少进展记录",
+                    "thread_ids": [t.id for t in stalled[:5]],
+                })
+            chapter_stmt = select(Chapter).where(Chapter.volume_id.in_(vol_ids))
+            chapter_result = await session.execute(chapter_stmt)
+            chapters = chapter_result.scalars().all()
+            if chapters:
+                lengths = [len((c.summary or "").strip()) for c in chapters]
+                avg_len = sum(lengths) / len(lengths) if lengths else 0
+                short = [c.id for c, length in zip(chapters, lengths) if length < avg_len * 0.3 and length < 50]
+                long = [c.id for c, length in zip(chapters, lengths) if length > avg_len * 2]
+                if short:
+                    suggestions.append({
+                        "type": "pacing_imbalance",
+                        "severity": "medium",
+                        "message": f"{len(short)} 个章节摘要显著偏短，节奏可能过快",
+                        "chapter_ids": short[:5],
+                    })
+                if long:
+                    suggestions.append({
+                        "type": "pacing_imbalance",
+                        "severity": "low",
+                        "message": f"{len(long)} 个章节摘要偏长，节奏可能过慢",
+                        "chapter_ids": long[:5],
+                    })
+        except Exception as exc:
+            logger.warning(f"get_proactive_suggestions 失败: {exc}")
+        return suggestions
+
+    return [analyze_feedback_patterns, get_proactive_suggestions]

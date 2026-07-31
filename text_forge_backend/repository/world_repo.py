@@ -2,7 +2,7 @@ from typing import List, Optional
 from sqlalchemy import select, update, delete as sqla_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.book import Location, TimelineEvent, Foreshadowing, PlotThread
+from model.book import Location, TimelineEvent, Foreshadowing, PlotThread
 
 
 class WorldRepository:
@@ -49,9 +49,7 @@ class WorldRepository:
         await self.session.refresh(location)
         return location
 
-    async def update_location(
-        self, location_id: int, book_id: int, data: dict
-    ) -> Optional[Location]:
+    async def update_location(self, location_id: int, book_id: int, data: dict) -> Optional[Location]:
         """更新地点。
 
         Args:
@@ -62,9 +60,7 @@ class WorldRepository:
         Returns:
             更新后的地点实例，不存在返回 None。
         """
-        stmt = select(Location).where(
-            Location.id == location_id, Location.book_id == book_id
-        )
+        stmt = select(Location).where(Location.id == location_id, Location.book_id == book_id)
         result = await self.session.execute(stmt)
         instance = result.scalar_one_or_none()
         if instance:
@@ -81,9 +77,7 @@ class WorldRepository:
             location_id: 地点 ID。
             book_id: 书籍 ID。
         """
-        stmt = sqla_delete(Location).where(
-            Location.id == location_id, Location.book_id == book_id
-        )
+        stmt = sqla_delete(Location).where(Location.id == location_id, Location.book_id == book_id)
         await self.session.execute(stmt)
         await self.session.flush()
 
@@ -96,11 +90,7 @@ class WorldRepository:
         Returns:
             时间线事件实例列表。
         """
-        stmt = (
-            select(TimelineEvent)
-            .where(TimelineEvent.book_id == book_id)
-            .order_by(TimelineEvent.sort_order, TimelineEvent.id)
-        )
+        stmt = select(TimelineEvent).where(TimelineEvent.book_id == book_id).order_by(TimelineEvent.sort_order, TimelineEvent.id)
         result = await self.session.execute(stmt)
         return result.scalars().all()
 
@@ -121,9 +111,7 @@ class WorldRepository:
         await self.session.refresh(event)
         return event
 
-    async def update_timeline_event(
-        self, event_id: int, book_id: int, data: dict
-    ) -> Optional[TimelineEvent]:
+    async def update_timeline_event(self, event_id: int, book_id: int, data: dict) -> Optional[TimelineEvent]:
         """更新时间线事件。
 
         Args:
@@ -134,9 +122,7 @@ class WorldRepository:
         Returns:
             更新后的事件实例，不存在返回 None。
         """
-        stmt = select(TimelineEvent).where(
-            TimelineEvent.id == event_id, TimelineEvent.book_id == book_id
-        )
+        stmt = select(TimelineEvent).where(TimelineEvent.id == event_id, TimelineEvent.book_id == book_id)
         result = await self.session.execute(stmt)
         instance = result.scalar_one_or_none()
         if instance:
@@ -153,15 +139,11 @@ class WorldRepository:
             event_id: 事件 ID。
             book_id: 书籍 ID。
         """
-        stmt = sqla_delete(TimelineEvent).where(
-            TimelineEvent.id == event_id, TimelineEvent.book_id == book_id
-        )
+        stmt = sqla_delete(TimelineEvent).where(TimelineEvent.id == event_id, TimelineEvent.book_id == book_id)
         await self.session.execute(stmt)
         await self.session.flush()
 
-    async def list_foreshadowings(
-        self, book_id: int, status: Optional[str] = None
-    ) -> List[Foreshadowing]:
+    async def list_foreshadowings(self, book_id: int, status: Optional[str] = None) -> List[Foreshadowing]:
         """查询伏笔列表。
 
         Args:
@@ -195,9 +177,7 @@ class WorldRepository:
         await self.session.refresh(item)
         return item
 
-    async def update_foreshadowing(
-        self, item_id: int, book_id: int, data: dict
-    ) -> Optional[Foreshadowing]:
+    async def update_foreshadowing(self, item_id: int, book_id: int, data: dict) -> Optional[Foreshadowing]:
         """更新伏笔。
 
         Args:
@@ -208,9 +188,7 @@ class WorldRepository:
         Returns:
             更新后的伏笔实例，不存在返回 None。
         """
-        stmt = select(Foreshadowing).where(
-            Foreshadowing.id == item_id, Foreshadowing.book_id == book_id
-        )
+        stmt = select(Foreshadowing).where(Foreshadowing.id == item_id, Foreshadowing.book_id == book_id)
         result = await self.session.execute(stmt)
         instance = result.scalar_one_or_none()
         if instance:
@@ -227,9 +205,7 @@ class WorldRepository:
             item_id: 伏笔 ID。
             book_id: 书籍 ID。
         """
-        stmt = sqla_delete(Foreshadowing).where(
-            Foreshadowing.id == item_id, Foreshadowing.book_id == book_id
-        )
+        stmt = sqla_delete(Foreshadowing).where(Foreshadowing.id == item_id, Foreshadowing.book_id == book_id)
         await self.session.execute(stmt)
         await self.session.flush()
 
@@ -242,11 +218,7 @@ class WorldRepository:
         Returns:
             情节脉络实例列表。
         """
-        stmt = (
-            select(PlotThread)
-            .where(PlotThread.book_id == book_id)
-            .order_by(PlotThread.id)
-        )
+        stmt = select(PlotThread).where(PlotThread.book_id == book_id).order_by(PlotThread.id)
         result = await self.session.execute(stmt)
         return result.scalars().all()
 
@@ -267,9 +239,7 @@ class WorldRepository:
         await self.session.refresh(item)
         return item
 
-    async def update_plot_thread(
-        self, item_id: int, book_id: int, data: dict
-    ) -> Optional[PlotThread]:
+    async def update_plot_thread(self, item_id: int, book_id: int, data: dict) -> Optional[PlotThread]:
         """更新情节脉络。
 
         Args:
@@ -280,9 +250,7 @@ class WorldRepository:
         Returns:
             更新后的情节脉络实例，不存在返回 None。
         """
-        stmt = select(PlotThread).where(
-            PlotThread.id == item_id, PlotThread.book_id == book_id
-        )
+        stmt = select(PlotThread).where(PlotThread.id == item_id, PlotThread.book_id == book_id)
         result = await self.session.execute(stmt)
         instance = result.scalar_one_or_none()
         if instance:
@@ -299,8 +267,6 @@ class WorldRepository:
             item_id: 情节脉络 ID。
             book_id: 书籍 ID。
         """
-        stmt = sqla_delete(PlotThread).where(
-            PlotThread.id == item_id, PlotThread.book_id == book_id
-        )
+        stmt = sqla_delete(PlotThread).where(PlotThread.id == item_id, PlotThread.book_id == book_id)
         await self.session.execute(stmt)
         await self.session.flush()

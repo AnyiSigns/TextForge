@@ -4,11 +4,11 @@ from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.security import create_token, verify_token
-from shared.database import db_manager
-from domains.auth.repository import UserRepository, UserTokenRepository
+from infrastructure.database import db_manager
+from repository.user_repo import UserRepository, UserTokenRepository
 from config.settings import settings
-from config.logging import get_logger
-from shared.redis import redis_client
+from utils.logger import get_logger
+from infrastructure.redis import redis_client
 import json
 import uuid
 

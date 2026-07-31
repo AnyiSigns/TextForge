@@ -3,7 +3,7 @@ from io import BytesIO
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from model.book import Book, Volume, Chapter, ChapterContent, Character, Outline
-from utils.logging import get_logger
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
