@@ -49,4 +49,3 @@ class VerificationService:
 
 
 verification = VerificationService()
-verifacation = verification  # deprecated alias

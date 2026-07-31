@@ -7,6 +7,7 @@ logger = get_logger(__name__)
 
 
 class GraphPoolManager:
+    """管理 LangGraph PostgreSQL 检查点连接池及其初始化/关闭生命周期。"""
     def __init__(self):
         self.graph_pool=AsyncConnectionPool(
             conninfo=settings.POSTGRES_GRAPH_URL,

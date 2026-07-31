@@ -1,7 +1,5 @@
 from typing import List, Optional
-from sqlalchemy import select, delete as sqla_delete, or_, func
-from sqlalchemy.orm import Mapped
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import select, delete as sqla_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import literal_column
 

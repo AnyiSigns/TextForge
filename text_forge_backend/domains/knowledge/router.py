@@ -1,35 +1,31 @@
-from typing import Annotated, List
-from fastapi import APIRouter, Depends, Query, File, UploadFile, HTTPException
+from typing import Annotated, Optional
+from fastapi import APIRouter, Depends, Query, File, UploadFile, HTTPException, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.auth import get_current
 from shared.database import db_manager
 from schema.request.knowledge import KnowledgeSearchRequest
 from schema.response.knowledge import KnowledgeSearchResponse, KnowledgeChunk
 from .service import KnowledgeService
-from domains.model.service import ModelService
-from models.document import Document, Chunk
 
 router = APIRouter(prefix="/knowledge", tags=["知识库"])
 
 
-@router.get("/search", response_model=KnowledgeSearchResponse)
+@router.post("/search", response_model=KnowledgeSearchResponse)
 async def search_public_knowledge(
     user_id: Annotated[int, Depends(get_current)],
-    q: str = Query(..., description="检索关键词"),
-    scope: str = Query("public", description="检索范围，目前仅支持 public"),
-    top_k: int = Query(3, ge=1, le=20, description="返回条数"),
+    body: KnowledgeSearchRequest,
     session: AsyncSession = Depends(db_manager.get_db),
 ):
-    if scope != "public":
-        return KnowledgeSearchResponse(chunks=[])
+    if body.scope != "public":
+        raise HTTPException(status_code=400, detail="仅支持公开知识库搜索")
 
-    model_config = await ModelService.get_user_model_config(session, user_id)
+    model_config = body.model_config_data
     service = KnowledgeService(session)
-    items = await service.search_public(query=q, top_k=top_k, model_config=model_config)
+    items = await service.search_public(query=body.query, top_k=body.top_k or 3, model_config=model_config)
 
     chunks = [
         KnowledgeChunk(
-            doc_id=str(item.get("doc_id", "")),
+            doc_id=int(item.get("doc_id", 0) or 0),
             doc_name=item.get("doc_title", "") or "",
             text=item.get("content", "") or "",
             score=float(item.get("distance", 0) or 0),
@@ -44,8 +40,10 @@ async def search_public_knowledge(
 async def upload_public_document(
     user_id: Annotated[int, Depends(get_current)],
     file: UploadFile = File(...),
+    model_config_json: Annotated[Optional[str], Form()] = None,
     session: AsyncSession = Depends(db_manager.get_db),
 ):
+    import json
     if not file.filename:
         raise HTTPException(status_code=400, detail="文件名不能为空")
 
@@ -53,7 +51,7 @@ async def upload_public_document(
     if ext not in ("txt", "md", "markdown", "json", "csv"):
         raise HTTPException(status_code=400, detail="暂不支持该文件类型")
 
-    model_config = await ModelService.get_user_model_config(session, user_id)
+    model_config = json.loads(model_config_json) if model_config_json else None
     service = KnowledgeService(session)
     result = await service.upload_public(file, emb_config=model_config.get("embedding_config") if model_config else None)
     return result

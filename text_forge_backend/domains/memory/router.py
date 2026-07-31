@@ -1,12 +1,11 @@
-from typing import Annotated, List, Optional
+from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.auth import get_current
 from shared.database import db_manager
-from schema.request.memory import AgentMemoryRequest, AgentMemoryUpdateRequest
+from schema.request.memory import AgentMemoryRequest, AgentMemoryUpdateRequest, AgentMemorySearchRequest
 from schema.response.memory import AgentMemoryResponse
 from .service import AgentMemoryService
-from domains.model.service import ModelService
 
 router = APIRouter(prefix="/agent-memories", tags=["Agent Memory"])
 
@@ -69,16 +68,18 @@ async def delete_memory(
     return {"ok": True}
 
 
-@router.get("/search", response_model=List[AgentMemoryResponse])
+@router.post("/search", response_model=List[AgentMemoryResponse])
 async def search_memories(
     user_id=Depends(get_current),
-    q: str = Query(...),
-    mode: str = Query("fulltext"),
-    book_id: Optional[int] = Query(default=None),
-    memory_type: Optional[str] = Query(default=None),
-    top_k: int = Query(5, ge=1, le=20),
-    session: AsyncSession = Depends(db_manager.get_db),
+    body: AgentMemorySearchRequest = ...,
     service: AgentMemoryService = Depends(agent_memory_db),
 ):
-    model_config = await ModelService.get_user_model_config(session, user_id)
-    return await service.search_memories(user_id=user_id, mode=mode, query=q, book_id=book_id, memory_type=memory_type, top_k=top_k, model_config=model_config)
+    return await service.search_memories(
+        user_id=user_id,
+        mode=body.mode or "fulltext",
+        query=body.q,
+        book_id=body.book_id,
+        memory_type=body.memory_type,
+        top_k=body.top_k or 5,
+        model_config=body.model_config_data,
+    )

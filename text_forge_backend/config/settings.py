@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     EMAIL_FROM: str = "anyiSigns@yeah.net"
     EMAIL_START_TLS: bool = False
     EMAIL_USE_TSL: bool = True
-    EMAIL_TIME_OUT: int = 30
+    EMAIL_TIME_OUT: int = 30  # 邮件发送超时时间，30秒
     CAPTCHA_TIME: int = 300
 
     # redis config

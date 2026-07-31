@@ -1,6 +1,6 @@
 from typing import Optional, List
 from langchain_core.tools import tool
-from ..agent_memory_service import AgentMemoryService
+from domains.memory.service import AgentMemoryService
 from shared.database import db_manager
 
 

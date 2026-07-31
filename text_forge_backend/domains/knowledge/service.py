@@ -1,10 +1,10 @@
-from typing import List, Dict, Any
+from typing import List
 from sqlalchemy import select, delete as sqla_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from .repository import VectorRepository
 from core.model_factory import ModelFactory
 from config.logging import get_logger
-from models.document import Document, Chunk
+from models.document import Document
 
 logger = get_logger(__name__)
 

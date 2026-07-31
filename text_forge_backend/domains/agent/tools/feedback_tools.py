@@ -1,8 +1,6 @@
-from typing import Optional, List, Dict, Any
+from typing import Optional, List
 from langchain_core.tools import tool
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from core.model_factory import ModelFactory
 from config.logging import get_logger
 
 logger = get_logger(__name__)

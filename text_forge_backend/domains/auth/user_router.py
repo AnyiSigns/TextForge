@@ -8,7 +8,7 @@ from schema.request.user import (
     ProfileRequest,
 )
 from schema.response.user import ProfileResponse
-from .verification import verifacation
+from .verification import verification
 import os
 import uuid
 
@@ -29,7 +29,7 @@ async def user_profile(
     if is_email_changed:
         if not request.code:
             raise HTTPException(status_code=400, detail="改邮箱需提供验证码")
-        verified = await verifacation.verify_code(user.email, request.code)
+        verified = await verification.verify_code(user.email, request.code)
         if not verified:
             raise HTTPException(status_code=400, detail="验证码无效或已过期")
 

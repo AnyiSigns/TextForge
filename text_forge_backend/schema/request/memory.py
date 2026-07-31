@@ -24,3 +24,14 @@ class AgentMemoryUpdateRequest(BaseModel):
     meta: Optional[dict] = Field(default=None)
 
     model_config = ConfigDict(populate_by_name=True)
+
+
+class AgentMemorySearchRequest(BaseModel):
+    q: str = Field(alias="q")
+    mode: Optional[str] = Field(default="fulltext")
+    book_id: Optional[int] = Field(default=None, alias="bookId")
+    memory_type: Optional[str] = Field(default=None, alias="memoryType")
+    top_k: Optional[int] = Field(default=5, ge=1, le=20, alias="topK")
+    model_config_data: Optional[dict] = Field(default=None, alias="modelConfig")
+
+    model_config = ConfigDict(populate_by_name=True)

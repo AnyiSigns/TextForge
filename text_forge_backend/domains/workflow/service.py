@@ -35,10 +35,10 @@ class WorkflowService:
             logger.error("获取流水线详情失败", exc_info=True)
             raise HTTPException(status_code=500, detail="获取流水线详情异常")
 
-    async def put_workflow(self, workflow_id: str, user_id: int, updata: dict):
+    async def put_workflow(self, workflow_id: str, user_id: int, update_data: dict):
         try:
             instance = await self.workflow_repo.put_workflow(
-                workflow_id, user_id, updata
+                workflow_id, user_id, update_data
             )
             if not instance:
                 raise HTTPException(status_code=404, detail="资源未找到")

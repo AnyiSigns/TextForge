@@ -5,69 +5,25 @@ from langchain_core.tools import BaseTool
 from core.model_factory import ModelFactory
 from langgraph.graph import END
 import json
+from shared.utils import truncate_text
 
 AGENT_SYSTEM_PROMPT = """你是 TextForge Agent，一位专业的 AI 文学创作助手。
-你可以调用工具辅助创作，也可以通过 generate_chapter 发起章节生成任务。"""
-
-
-def _truncate(text: str, max_chars: int = 8000) -> str:
-    """截断过长文本，保留首尾各一半。
-
-    Args:
-        text: 输入文本。
-        max_chars: 最大字符数。
-
-    Returns:
-        截断后的文本。
-    """
-    if len(text) <= max_chars:
-        return text
-    return text[: max_chars // 2] + "\n...[截断]...\n" + text[-max_chars // 2 :]
-
-
-def _compress_context(state: UserAgentState) -> UserAgentState:
-    """压缩上下文，保留最近 20 条消息，旧消息合并为摘要。
-
-    Args:
-        state: Agent 状态。
-
-    Returns:
-        压缩后的 Agent 状态。
-    """
-    messages = state.get("messages", [])
-    if len(messages) <= 20:
-        return state
-    summary_parts = []
-    for msg in messages[:-20]:
-        role = getattr(msg, "type", type(msg).__name__)
-        content = getattr(msg, "content", "") or ""
-        summary_parts.append(f"{role}: {_truncate(content, 400)}")
-    compressed = "\n".join(summary_parts)
-    state["messages"] = messages[-20:]
-    state["step_outputs"] = {
-        **state.get("step_outputs", {}),
-        "compressed_context": compressed,
-    }
-    return state
+你可以通过调用 execute_workflow_node 执行工作流节点来生成内容，也可以使用其他工具进行人物管理、大纲编排、RAG 检索等操作。"""
 
 
 async def agent_call(state: UserAgentState) -> Dict[str, Any]:
-    """Agent 主调用节点。
-
-    Args:
-        state: Agent 状态。
-
-    Returns:
-        包含 messages 的更新状态。
-    """
-    state = _compress_context(state)
     llm = ModelFactory(state["model_config"])
     system_prompt = AGENT_SYSTEM_PROMPT
+
+    compressed = state.get("compressed_context")
+    if compressed:
+        system_prompt += f"\n\n历史对话压缩摘要：{truncate_text(compressed)}"
+
     if state.get("previous_chapter_summary"):
         system_prompt += f"\n\n上一章摘要：{state['previous_chapter_summary']}"
     if state.get("previous_chapter_content"):
         system_prompt += (
-            f"\n\n上一章正文（已截断）：{_truncate(state['previous_chapter_content'])}"
+            f"\n\n上一章正文（已截断）：{truncate_text(state['previous_chapter_content'])}"
         )
     cross_ctx = state.get("cross_chapter_context", {})
     if cross_ctx:

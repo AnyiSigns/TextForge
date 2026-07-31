@@ -1,7 +1,6 @@
-from typing import List, Optional
+from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
 
-from schema.workflow import Workflow, WorkflowEdge, WorkflowNode, RagFilter
 
 
 class WorkflowRunRequest(BaseModel):
@@ -9,6 +8,7 @@ class WorkflowRunRequest(BaseModel):
 
     book_id: int
     thread_id: str
+    model_config_data: Optional[dict] = Field(default=None, alias="modelConfig")
 
 
 class WorkflowNodeSummary(BaseModel):

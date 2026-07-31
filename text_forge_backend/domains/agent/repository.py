@@ -1,5 +1,5 @@
 from typing import List, Optional
-from sqlalchemy import select, delete as sqla_delete, or_, func
+from sqlalchemy import select, delete as sqla_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import literal_column
 from models.agent_memory import AgentMemory

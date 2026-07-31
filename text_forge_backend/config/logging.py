@@ -34,7 +34,7 @@ def setup_logger():
         file_handler = RotatingFileHandler(
             log_file_path,
             maxBytes=1024 * 1024 * 10,
-            backupCount=5,
+            backupCount=5,  # 保留5个备份日志文件
             encoding='utf-8'
         )
         file_handler.setLevel(log_level)

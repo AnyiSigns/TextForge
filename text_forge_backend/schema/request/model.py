@@ -3,7 +3,6 @@ from typing import Optional
 
 
 class BaseModelBasicRequest(BaseModel):
-    id: str
     name: str
     adapter: str
     base_url: str = Field(alias="baseUrl")

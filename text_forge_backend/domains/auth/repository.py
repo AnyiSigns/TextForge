@@ -1,5 +1,3 @@
-from ast import stmt
-from datetime import datetime, timedelta
 from typing import Optional
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -75,21 +73,6 @@ class UserRepository(BaseRepository[User]):
         await self.session.commit()
         await self.session.refresh(user)
         return True
-
-    async def updata_verified(self, email: str, status: bool):
-        """更新用户邮箱验证状态（旧拼写别名）。
-
-        .. deprecated::
-            请使用 update_verified。
-
-        Args:
-            email: 邮箱地址。
-            status: 验证状态。
-
-        Returns:
-            始终返回 True。
-        """
-        return await self.update_verified(email, status)
 
     async def create_user(
         self,

@@ -1,6 +1,7 @@
 from core.exceptions import AppException
 from fastapi import Depends
 from shared.database import db_manager
+from typing import Optional
 from .outline_repository import OutlineRepository
 from .repository import BookRepository
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -133,7 +134,7 @@ class OutlineService:
             logger.error("删除大纲失败", exc_info=True)
             raise AppException(status_code=500, detail="删除大纲失败", error_code="DELETE_OUTLINE_FAILED")
 
-    async def auto_summarize_if_needed(self, outline_id: int, book_id: int, user_id: int, data: dict):
+    async def auto_summarize_if_needed(self, outline_id: int, book_id: int, user_id: int, data: dict, model_config: Optional[dict] = None):
         """若章节缺少摘要，自动调用模型生成摘要并回写。
 
         Args:
@@ -141,11 +142,14 @@ class OutlineService:
             book_id: 书籍 ID。
             user_id: 用户 ID。
             data: 大纲数据。
+
+        注意:
+            此方法直接修改传入的 data 字典/列表（在其中章节添加 summary 字段），
+            不会返回副本。调用方需注意副作用。
         """
         try:
             from core.model_factory import ModelFactory
             from langchain_core.messages import HumanMessage, SystemMessage
-            from domains.model.repository import ModelConfRepository
 
             book = await self.book_repo.get(book_id)
             if not book:
@@ -164,19 +168,9 @@ class OutlineService:
             if not target:
                 return
 
-            model_conf = await ModelConfRepository(self.session).query_user_model(user_id)
-            if not model_conf:
+            if not model_config:
                 return
-
-            cfg = {
-                "user_id": model_conf.user_id,
-                "main_config": model_conf.main_config or {},
-                "audit_config": model_conf.audit_config or {},
-                "router_config": model_conf.router_config or {},
-                "tool_config": model_conf.tool_config or {},
-                "vision_config": model_conf.vision_config or {},
-                "embedding_config": model_conf.embedding_config or {},
-            }
+            cfg = model_config
             llm = ModelFactory(cfg)
             prompt = (
                 "请用2-3句话概括以下章节内容，保留关键情节和核心信息，语言简洁。\n\n章节标题："

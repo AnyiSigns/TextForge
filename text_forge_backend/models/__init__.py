@@ -2,7 +2,6 @@ from .base import Base
 from .book import Book, CreativeSetting, Volume, Chapter, ChapterContent, Character, Outline, Location, TimelineEvent, Foreshadowing, PlotThread
 from .conversation import Conversation, Message
 from .document import Document, Chunk
-from .model_config import ModelConfig
 from .workflow import Workflow
 from .user import User, UserToken
 from .agent_memory import AgentMemory
@@ -27,7 +26,6 @@ __all__ = [
     "Message",
     "Document",
     "Chunk",
-    "ModelConfig",
     "Workflow",
     "User",
     "UserToken",

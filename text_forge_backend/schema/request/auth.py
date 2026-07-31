@@ -1,5 +1,4 @@
-from typing import Optional
-from pydantic import BaseModel, Field, EmailStr, field_validator, AliasChoices, ConfigDict
+from pydantic import BaseModel, Field, EmailStr, ConfigDict
 
 
 class EmailRequest(BaseModel):
@@ -16,9 +15,6 @@ class RefreshRequest(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     refresh_token: str
-
-
-RfreshRequest = RefreshRequest  # deprecated alias
 
 
 class UserLogin(EmailRequest):

@@ -94,7 +94,8 @@ def _build_lookup_tools(session_factory):
                     try:
                         if int(event.chapter_id) <= int(before_chapter):
                             filtered.append(event)
-                    except Exception:
+                    except Exception as exc:
+                        logger.warning(f"过滤 timeline 事件 chapter_id 转换失败: {exc}")
                         pass
                 events = filtered
             if query:
@@ -671,7 +672,11 @@ def build_tool_node(session_factory, model_config: Optional[dict] = None):
     from langgraph.prebuilt import ToolNode
     from .tools.generate_chapter_tool import build_generate_chapter_tool
     from .tools.feedback_tools import _build_feedback_tools
+    from .tools.workflow_tools import build_workflow_tool
+    from .tools.card_tools import build_propose_cards_tool
     tools = _build_agent_tools(session_factory, model_config=model_config)
     tools.append(build_generate_chapter_tool(session_factory, model_config=model_config))
+    tools.append(build_workflow_tool(session_factory, model_config=model_config))
+    tools.append(build_propose_cards_tool(session_factory, model_config=model_config))
     tools.extend(_build_feedback_tools(session_factory, model_config=model_config))
     return ToolNode(tools)

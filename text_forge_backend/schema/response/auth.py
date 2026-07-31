@@ -1,6 +1,5 @@
 from datetime import datetime
 from typing import Optional
-from click import File
 from pydantic import BaseModel, Field, EmailStr
 from pydantic.config import ConfigDict
 

@@ -1,6 +1,5 @@
-from typing import Annotated, List, Optional
+from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, HTTPException
-from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.auth import get_current
 from shared.database import db_manager

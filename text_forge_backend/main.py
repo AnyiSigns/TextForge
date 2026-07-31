@@ -19,11 +19,12 @@ from domains.memory.router import router as memory_router
 from domains.workflow.router import router as workflow_router
 from domains.workflow.seed import seed_builtin_workflows
 from domains.knowledge.router import router as knowledge_router
-from domains.model.router import router as model_router
 from domains.system.health_router import router as health_router
 from domains.system.sync_router import router as sync_router
 from domains.world.router import router as world_router
 from domains.writing_session.router import router as writing_session_router
+from domains.lock.router import router as lock_router
+from domains.cards.router import router as cards_router
 from shared.database import db_manager
 from shared.graph_store import graph_pool_manager
 from shared.redis import redis_client
@@ -54,7 +55,7 @@ async def lifespan(_application: FastAPI):
 
 app = FastAPI(
     title="Text Forge",
-    description="A simple example of a FastAPI application",
+    description="AI-powered creative writing platform",
     version="0.1.0",
     lifespan=lifespan,
 )
@@ -96,8 +97,9 @@ app.include_router(agent_router, prefix="/api")
 app.include_router(memory_router, prefix="/api")
 app.include_router(workflow_router, prefix="/api")
 app.include_router(knowledge_router, prefix="/api")
-app.include_router(model_router, prefix="/api")
 app.include_router(world_router, prefix="/api")
 app.include_router(writing_session_router, prefix="/api")
 app.include_router(health_router, prefix="/api")
 app.include_router(sync_router, prefix="/api")
+app.include_router(lock_router, prefix="/api")
+app.include_router(cards_router, prefix="/api")

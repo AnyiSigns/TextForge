@@ -44,9 +44,6 @@ class User(Base):
     characters: Mapped[List["Character"]] = relationship(
         back_populates="user", cascade="all,delete-orphan"
     )
-    model_configs: Mapped["ModelConfig"] = relationship(
-        cascade="all,delete-orphan", back_populates="users"
-    )
     workflows: Mapped[List["Workflow"]] = relationship(
         back_populates="users", cascade="all,delete-orphan"
     )

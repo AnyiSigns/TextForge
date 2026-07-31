@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from config.settings import settings
@@ -12,7 +12,7 @@ from .repository import (
 from core.security import encode_pwd, verify_pwd
 from core.security import create_token
 from shared.redis import redis_client
-from .verification import verifacation
+from .verification import verification
 
 logger = get_logger(__name__)
 
@@ -146,7 +146,7 @@ class UserAuthService:
         Raises:
             HTTPException: 验证码无效或用户不存在时抛出。
         """
-        verified = await verifacation.verify_code(email, code)
+        verified = await verification.verify_code(email, code)
         if not verified:
             raise HTTPException(status_code=400, detail="验证码无效或已过期")
         user = await self.user_repo.query_user_email(email)

@@ -1,11 +1,10 @@
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.security import HTTPAuthorizationCredentials
 from shared.redis import redis_client
 from schema.request.auth import (
     EmailRequest,
     VerifyEmailRequest,
-    RfreshRequest,
+    RefreshRequest,
     UserRequest,
     UserLogin,
 )
@@ -17,7 +16,7 @@ from schema.response.auth import (
 from .service import user_db_serve, UserAuthService
 from config.logging import get_logger
 from core.security import verify_token
-from .verification import verifacation
+from .verification import verification
 from .email import email_service
 import uuid
 from core.security import create_token
@@ -29,7 +28,7 @@ router = APIRouter(prefix="/auth", tags=["认证"])
 
 @router.post("/logout")
 async def logout(
-    request: RfreshRequest,
+    request: RefreshRequest,
     user_serve: Annotated[UserAuthService, Depends(user_db_serve)],
 ):
     payload = verify_token(request.refresh_token)
@@ -42,7 +41,7 @@ async def logout(
 
 @router.post("/refresh", response_model=RefreshResponse)
 async def refresh_at(
-    request: RfreshRequest,
+    request: RefreshRequest,
     user_serve: Annotated[UserAuthService, Depends(user_db_serve)],
 ):
     payload = verify_token(request.refresh_token)
@@ -69,8 +68,8 @@ async def refresh_at(
 @router.post("/resend-verify")
 async def resend_verify(request: EmailRequest):
     """发送邮件"""
-    code = verifacation.generate_code()
-    await verifacation.save_code(request.email, code)
+    code = verification.generate_code()
+    await verification.save_code(request.email, code)
     await email_service.send_verification_email(request.email, code)
     return {"message": "验证邮件成功发送"}
 
@@ -88,8 +87,8 @@ async def register(
         raise HTTPException(
             status_code=400, detail={"message": msg, "email": user.email}
         )
-    code = verifacation.generate_code()
-    await verifacation.save_code(user.email, code)
+    code = verification.generate_code()
+    await verification.save_code(user.email, code)
     await email_service.send_verification_email(user.email, code)
     return {"message": "邮件已发送", "email": user.email}
 
@@ -99,7 +98,7 @@ async def verify_email(
     request: VerifyEmailRequest,
     user_serve: Annotated[UserAuthService, Depends(user_db_serve)],
 ):
-    verified = await verifacation.verify_code(request.email, request.code)
+    verified = await verification.verify_code(request.email, request.code)
     if verified:
         await user_serve.user_repo.update_verified(request.email, True)
         return {"message": "ok"}

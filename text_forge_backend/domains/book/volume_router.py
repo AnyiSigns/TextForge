@@ -1,5 +1,5 @@
 from typing import Annotated
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Path
 from core.auth import get_current
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession

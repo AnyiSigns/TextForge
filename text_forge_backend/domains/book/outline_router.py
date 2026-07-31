@@ -24,7 +24,9 @@ async def list_outlines(
     book_id: Annotated[int, Path],
     user_id: Annotated[int, Depends(get_current)],
     outline_service: Annotated[OutlineService, Depends(outline_db)],
+    session: Annotated[AsyncSession, Depends(db_manager.get_db)],
 ):
+    await _assert_book_owner(book_id, user_id, session)
     items = await outline_service.list_outlines(book_id)
     return ListOutlinesResponse(outlines=items)
 

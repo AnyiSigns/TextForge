@@ -1,21 +1,14 @@
 import json
 import time
 from typing import AsyncGenerator
-from shared.database import db_manager
-from domains.model.repository import ModelConfRepository
 from domains.agent.state import ParentState
 from domains.book.repository import (
     BookRepository,
 )
 from .repository import WorkflowRepository
-from domains.book.outline_repository import OutlineRepository
-from domains.book.structured_repository import StructuredRepository
 from config.logging import get_logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from collections import deque
-from models.workflow import Workflow
-from core.model_factory import ModelFactory
-from domains.model.service import ModelService
 
 logger = get_logger(__name__)
 
@@ -93,7 +86,7 @@ class WorkflowExecutor:
             return len(text)
 
     async def run(
-        self, workflow_id: str, user_id: int, book_id: int, thread_id: str
+        self, workflow_id: str, user_id: int, book_id: int, thread_id: str, model_config: dict
     ) -> AsyncGenerator[str, None]:
         """执行工作流并产出 SSE 事件流。
 
@@ -114,7 +107,6 @@ class WorkflowExecutor:
         book = await book_repo.get(book_id)
         if not book or book.user_id != user_id:
             raise ValueError("书籍不存在")
-        model_config = await ModelService.get_user_model_config(self.session, user_id)
         nodes = workflow.nodes or []
         edges = workflow.edges or []
 
@@ -144,7 +136,7 @@ class WorkflowExecutor:
         current_display_label = None
         executed_count = 0
         total_words = 0
-        start_time = time.time()
+        start_time = time.monotonic()
         try:
             outputs_map: dict = {}
             async for event in parent_graph.astream_events(
@@ -174,7 +166,7 @@ class WorkflowExecutor:
                     n = executed_count + 1
                     eta = 0.0
                     if executed_count > 0:
-                        elapsed = time.time() - start_time
+                        elapsed = time.monotonic() - start_time
                         eta = (elapsed / executed_count) * (total_nodes - executed_count)
                     progress_payload = {
                         "step": current_display_label,
@@ -292,7 +284,7 @@ class WorkflowExecutor:
                     n = executed_count
                     eta = 0.0
                     if executed_count > 0:
-                        elapsed = time.time() - start_time
+                        elapsed = time.monotonic() - start_time
                         eta = (elapsed / executed_count) * (total_nodes - executed_count)
                     progress_payload = {
                         "step": display_label,
@@ -328,58 +320,3 @@ class WorkflowExecutor:
             logger.error("工作流异常", exc_info=True)
             yield f"event:error\ndata:{json.dumps({'error': str(e)})}\n\n"
             return
-
-    async def _auto_summarize(self, session, book_id, outputs_map):
-        """自动摘要缺失的章节。
-
-        Args:
-            session: SQLAlchemy 异步会话。
-            book_id: 书籍 ID。
-            outputs_map: 工作流输出映射。
-        """
-        outlines = await OutlineRepository(session).list_outlines(book_id=book_id)
-        if not outlines:
-            return
-        content = outlines[0].content or "[]"
-        try:
-            volumes = json.loads(content) if isinstance(content, str) else content
-        except Exception:
-            volumes = []
-        if not isinstance(volumes, list):
-            volumes = []
-        all_chapters = [
-            ch
-            for vol in volumes
-            if isinstance(vol, dict)
-            for ch in (vol.get("chapters") or [])
-        ]
-        target = next(
-            (
-                ch
-                for ch in all_chapters
-                if ch.get("summary") is None and ch.get("content")
-            ),
-            None,
-        )
-        if not target:
-            return
-        first_output = next((str(v) for v in outputs_map.values() if v), "")
-        if not first_output:
-            return
-        try:
-            model_config = await ModelService.get_user_model_config(session, outlines[0].book_id)
-            llm = ModelFactory(model_config)
-            prompt = (
-                "请用2-3句话概括以下章节内容，保留关键情节和核心信息，语言简洁。\n\n章节标题："
-                + str(target.get("title", ""))
-                + "\n正文:"
-                + first_output
-            )
-            messages = [SystemMessage("你是章节摘要助手"), HumanMessage(prompt)]
-            res = await llm.main.ainvoke(messages)
-            target["summary"] = res.content.strip()
-            await OutlineRepository(session).update_outline(
-                outlines[0].id, data=volumes
-            )
-        except Exception:
-            pass

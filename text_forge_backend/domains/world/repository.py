@@ -1,5 +1,5 @@
 from typing import List, Optional
-from sqlalchemy import select, update, delete as sqla_delete
+from sqlalchemy import select, delete as sqla_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.book import Location, TimelineEvent, Foreshadowing, PlotThread

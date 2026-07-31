@@ -19,6 +19,7 @@ class _EmbeddingStub:
 
 
 class ModelWrapper:
+    """统一封装多Provider的 LLM/Embedding/Vision 实例创建工厂。"""
     PROVIDER_MAP: Dict[str, Type[BaseChatModel]] = {
         "dashscope": ChatQwen,
         "deepseek": ChatDeepSeek,

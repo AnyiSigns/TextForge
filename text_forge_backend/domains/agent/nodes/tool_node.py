@@ -63,12 +63,12 @@ def _format_tool_result(result: Dict[str, Any]) -> str:
                 "volumes": "卷信息",
             }.get(table_name, table_name)
             parts.append(f"## {display_name}（共 {len(records)} 条）")
-            for rec in records[:10]:
+            for rec in records[:10]:  # 限制展示前10条记录以控制上下文长度
                 lines = _format_record(rec, table_name)
                 if lines:
                     parts.append(lines)
-            if len(records) > 10:
-                parts.append(f"... 还有 {len(records) - 10} 条")
+            if len(records) > 10:  # 超过10条记录时显示省略提示
+                parts.append(f"... 还有 {len(records) - 10} 条")  # 10为最大展示记录数
 
     rag = result.get("rag", [])
     if rag:

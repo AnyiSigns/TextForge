@@ -68,27 +68,27 @@ class WorkflowRepository(BaseRepository[Workflow]):
         await self.session.refresh(instance)
         return instance
 
-    async def put_workflow(self, workflow_id: str, user_id: int, updata: dict):
+    async def put_workflow(self, workflow_id: str, user_id: int, update_data: dict):
         """更新工作流，不存在则创建。
 
         Args:
             workflow_id: 工作流 ID。
             user_id: 用户 ID。
-            updata: 更新字段字典。
+            update_data: 更新字段字典。
 
         Returns:
             工作流实例，ID 不一致时返回 None。
         """
         instance = await self.get_workflow_id(workflow_id, user_id)
         if instance:
-            for key, value in updata.items():
+            for key, value in update_data.items():
                 if key in ("id", "user_id"):
                     continue
                 setattr(instance, key, value)
             await self.session.commit()
             await self.session.refresh(instance)
         if not instance:
-            instance = await self.create_workflow(user_id=user_id, data=updata)
+            instance = await self.create_workflow(user_id=user_id, data=update_data)
         if instance.id != workflow_id:
             return None
         return instance

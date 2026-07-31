@@ -1,4 +1,4 @@
-from sqlalchemy import select, desc
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Dict, List, Any, Optional
 

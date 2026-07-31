@@ -134,7 +134,6 @@ class ExportService:
 
     async def _build_epub(self, book, chapters, characters, outline):
         from ebooklib import epub
-        from ebooklib.utils import debug
 
         epub_book = epub.EpubBook()
         epub_book.set_identifier(str(book.id))

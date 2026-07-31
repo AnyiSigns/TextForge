@@ -1,4 +1,4 @@
-from sqlalchemy import select, update, func
+from sqlalchemy import select, func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from models.context_config import BookContextConfig

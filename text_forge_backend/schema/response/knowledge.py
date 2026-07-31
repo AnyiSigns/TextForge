@@ -3,7 +3,7 @@ from pydantic import BaseModel
 
 
 class KnowledgeChunk(BaseModel):
-    doc_id: str
+    doc_id: int
     doc_name: str
     text: str
     score: float

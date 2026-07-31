@@ -66,6 +66,7 @@ async def run_workflow(
             user_id=user_id,
             book_id=request.book_id,
             thread_id=request.thread_id,
+            model_config=request.model_config_data or {},
         ),
         media_type="text/event-stream",
     )

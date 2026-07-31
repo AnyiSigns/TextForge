@@ -43,6 +43,7 @@ class CreativeSetting(Base):
     worldview: Mapped[str] = mapped_column(Text, nullable=True)
     writing_taboos: Mapped[str] = mapped_column(Text, nullable=True)
     custom_dimensions: Mapped[dict] = mapped_column(JSONB, default={})
+    locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     book: Mapped["Book"] = relationship(back_populates="creative_setting")
 
@@ -101,6 +102,7 @@ class Character(Base):
     role_type: Mapped[str] = mapped_column(String(128), nullable=True)
     status: Mapped[str] = mapped_column(String(255), nullable=True)
     relationship_chain: Mapped[list] = mapped_column(JSONB, default=[])
+    locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -138,6 +140,7 @@ class Location(Base):
     description: Mapped[str] = mapped_column(Text, nullable=True)
     parent_id: Mapped[int] = mapped_column(ForeignKey("locations.id", ondelete="SET NULL"), nullable=True)
     attributes: Mapped[dict] = mapped_column(JSONB, default={})
+    locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -158,6 +161,7 @@ class TimelineEvent(Base):
     event_type: Mapped[str] = mapped_column(String(50), nullable=False)
     related_character_ids: Mapped[list] = mapped_column(JSONB, default=[])
     related_location_id: Mapped[int] = mapped_column(ForeignKey("locations.id", ondelete="SET NULL"), nullable=True)
+    locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -177,6 +181,7 @@ class Foreshadowing(Base):
     related_event_id: Mapped[int] = mapped_column(ForeignKey("timeline_events.id", ondelete="SET NULL"), nullable=True)
     reveal_type: Mapped[str] = mapped_column(String(50), nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=True)
+    locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -197,6 +202,7 @@ class PlotThread(Base):
     start_chapter_id: Mapped[int] = mapped_column(ForeignKey("chapters.id", ondelete="SET NULL"), nullable=True)
     end_chapter_id: Mapped[int] = mapped_column(ForeignKey("chapters.id", ondelete="SET NULL"), nullable=True)
     progress_note: Mapped[str] = mapped_column(Text, nullable=True)
+    locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 

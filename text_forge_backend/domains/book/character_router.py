@@ -1,4 +1,4 @@
-from typing import Annotated, List
+from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from core.auth import get_current
 from .character_service import CharacterService, character_db
@@ -7,7 +7,10 @@ from schema.response.book import (
     ListCharactersResponse,
 )
 from schema.request.character import CharacterRequest, CharacterUpdateRequest
+from config.logging import get_logger
 import os
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/characters", tags=["角色"])
 
@@ -111,6 +114,7 @@ async def delete_character_avatar(
             file_path = os.path.join(save_dir, os.path.basename(old_avatar))
             if os.path.exists(file_path):
                 os.remove(file_path)
-        except OSError:
+        except OSError as exc:
+            logger.warning(f"删除旧头像文件失败: {exc}")
             pass
     return {}

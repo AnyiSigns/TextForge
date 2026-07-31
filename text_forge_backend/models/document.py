@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import List
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, func, null
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, func
 from models.base import Base
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from pgvector.sqlalchemy import Vector
