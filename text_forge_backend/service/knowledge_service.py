@@ -3,7 +3,7 @@ from sqlalchemy import select, delete as sqla_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from repository.vector_repo import VectorRepository
 from core.model_factory import ModelFactory
-from utils.logger import get_logger
+from utils.logging import get_logger
 from model.document import Document, Chunk
 
 logger = get_logger(__name__)

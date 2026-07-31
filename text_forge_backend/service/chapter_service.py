@@ -3,7 +3,7 @@ from fastapi import Depends
 from infrastructure.database import db_manager
 from repository.chapter_repo import ChapterRepository
 from sqlalchemy.ext.asyncio import AsyncSession
-from utils.logger import get_logger
+from utils.logging import get_logger
 
 logger = get_logger(__name__)
 

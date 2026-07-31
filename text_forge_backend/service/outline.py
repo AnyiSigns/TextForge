@@ -4,7 +4,7 @@ from infrastructure.database import db_manager
 from repository.outline_repo import OutlineRepository
 from repository.project_repo import BookRepository
 from sqlalchemy.ext.asyncio import AsyncSession
-from utils.logger import get_logger
+from utils.logging import get_logger
 
 logger = get_logger(__name__)
 

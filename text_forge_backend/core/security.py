@@ -3,7 +3,7 @@ from typing import Any, Optional
 from passlib.context import CryptContext
 from jose import jwt, ExpiredSignatureError, JWTError
 from config.settings import settings
-from utils.logger import get_logger
+from config.logging import get_logger
 
 logger = get_logger(__name__)
 

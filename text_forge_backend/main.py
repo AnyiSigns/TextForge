@@ -1,14 +1,24 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
-from agents.graphs.graph_lifecycle import compiled_all
-from utils import get_logger
-from infrastructure.database import db_manager
-from infrastructure.graph_store import graph_pool_manager
-from api.router import router
-from service.workflow_seed import seed_builtin_workflows
+from config.settings import settings
+from domains.agent.graphs.graph_lifecycle import compiled_all
+from utils.logging import get_logger
+from shared.database import db_manager
+from shared.graph_store import graph_pool_manager
+from shared.redis import redis_client
+from domains.workflow.seed import seed_builtin_workflows
+from domains.auth.router import router as auth_router
+from domains.user.router import router as user_router
+from domains.book.router import router as book_router
+from domains.agent.router import router as agent_router
+from domains.memory.router import router as memory_router
+from domains.workflow.router import router as workflow_router
+from domains.knowledge.router import router as knowledge_router
+from domains.export.router import router as export_router
+from domains.sync.router import router as sync_router
+from domains.writing_session.router import router as writing_session_router
 
-# 日志初始化
 logger = get_logger(__name__)
 
 
@@ -41,7 +51,11 @@ app = FastAPI(
 )
 
 if settings.ENV == "production":
-    allow_origins = [origin.strip() for origin in settings.ALLOWED_ORIGINS.split(",") if origin.strip()]
+    allow_origins = [
+        origin.strip()
+        for origin in settings.ALLOWED_ORIGINS.split(",")
+        if origin.strip()
+    ]
 else:
     allow_origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
@@ -59,4 +73,16 @@ def read_root():
     return {"Hello": "World"}
 
 
-app.include_router(router)
+api_router = APIRouter(prefix="/api")
+api_router.include_router(auth_router)
+api_router.include_router(user_router)
+api_router.include_router(book_router)
+api_router.include_router(agent_router)
+api_router.include_router(memory_router)
+api_router.include_router(workflow_router)
+api_router.include_router(knowledge_router)
+api_router.include_router(export_router)
+api_router.include_router(sync_router)
+api_router.include_router(writing_session_router)
+
+app.include_router(api_router)

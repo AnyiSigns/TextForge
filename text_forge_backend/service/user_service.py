@@ -3,15 +3,15 @@ from datetime import datetime, timezone
 from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from config.settings import settings
-from infrastructure.database import db_manager
-from utils.logger import get_logger
+from shared.database import db_manager
+from config.logging import get_logger
 from repository.user_repo import (
     UserTokenRepository,
     UserRepository,
 )
 from core.security import encode_pwd, verify_pwd
 from core.security import create_token
-from infrastructure.redis import redis_client
+from shared.redis import redis_client
 from service.verification_service import verifacation
 
 logger = get_logger(__name__)

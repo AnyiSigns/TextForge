@@ -4,7 +4,7 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from repository.project_repo import CharacterRepository
 from model.book import Character
-from utils.logger import get_logger
+from utils.logging import get_logger
 
 logger = get_logger(__name__)
 
