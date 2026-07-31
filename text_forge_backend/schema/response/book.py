@@ -98,5 +98,3 @@ class CreativeSettingResponse(BaseModel):
     custom_dimensions: Optional[dict] = Field(default=None, alias="customDimensions")
 
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)
-
-

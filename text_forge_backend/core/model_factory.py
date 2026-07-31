@@ -1,6 +1,6 @@
 from typing import Any, Dict
 from config.model_wrapper import ModelWrapper
-from model.model import ModelConfig
+from models.model_config import ModelConfig
 from langchain_core.language_models import BaseChatModel
 
 

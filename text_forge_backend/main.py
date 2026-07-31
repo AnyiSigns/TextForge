@@ -1,16 +1,35 @@
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from agents.graphs.graph_lifecycle import compiled_all
-from utils import get_logger
-from infrastructure.database import db_manager
-from infrastructure.graph_store import graph_pool_manager
-from api.router import router
-from service.workflow_seed import seed_builtin_workflows
-from infrastructure.redis import redis_client
-from config.settings import settings
 
-# 日志初始化
+from config.logging import get_logger
+from config.settings import settings
+from domains.agent.graphs.graph_lifecycle import compiled_all
+from domains.auth.router import router as auth_router
+from domains.auth.user_router import router as user_router
+from domains.book.router import router as book_router
+from domains.book.volume_router import router as volume_router
+from domains.book.chapter_router import router as chapter_router
+from domains.book.chapter_content_router import router as chapter_content_router
+from domains.book.character_router import router as character_router
+from domains.book.outline_router import router as outline_router
+from domains.book.creative_settings_router import router as creative_settings_router
+from domains.book.export_router import router as export_router
+from domains.agent.router import router as agent_router
+from domains.memory.router import router as memory_router
+from domains.workflow.router import router as workflow_router
+from domains.workflow.seed import seed_builtin_workflows
+from domains.knowledge.router import router as knowledge_router
+from domains.model.router import router as model_router
+from domains.system.health_router import router as health_router
+from domains.system.sync_router import router as sync_router
+from domains.world.router import router as world_router
+from domains.writing_session.router import router as writing_session_router
+from shared.database import db_manager
+from shared.graph_store import graph_pool_manager
+from shared.redis import redis_client
+
 logger = get_logger(__name__)
 
 
@@ -65,4 +84,22 @@ def read_root():
     return {"Hello": "World"}
 
 
-app.include_router(router)
+app.include_router(auth_router, prefix="/api")
+app.include_router(user_router, prefix="/api")
+app.include_router(book_router, prefix="/api")
+app.include_router(volume_router, prefix="/api")
+app.include_router(chapter_router, prefix="/api")
+app.include_router(chapter_content_router, prefix="/api")
+app.include_router(character_router, prefix="/api")
+app.include_router(outline_router, prefix="/api")
+app.include_router(creative_settings_router, prefix="/api")
+app.include_router(export_router, prefix="/api")
+app.include_router(agent_router, prefix="/api")
+app.include_router(memory_router, prefix="/api")
+app.include_router(workflow_router, prefix="/api")
+app.include_router(knowledge_router, prefix="/api")
+app.include_router(model_router, prefix="/api")
+app.include_router(world_router, prefix="/api")
+app.include_router(writing_session_router, prefix="/api")
+app.include_router(health_router, prefix="/api")
+app.include_router(sync_router, prefix="/api")
