@@ -60,9 +60,9 @@ docs/api.md
 
 # ===================== 文档 =====================
 *.md
+review.txt
 
 # ===================== 配置/锁文件（非源码） =====================
-package-lock.json
 pnpm-lock.yaml
 yarn.lock
 

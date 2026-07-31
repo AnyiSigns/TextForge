@@ -1,10 +1,7 @@
 from typing import List, Optional
 from sqlalchemy import select, delete as sqla_delete, or_, func
-from sqlalchemy.orm import Mapped
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import literal_column
-
 from models.agent_memory import AgentMemory
 
 
@@ -48,7 +45,12 @@ class AgentMemoryRepository:
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def list_by_user(self, user_id: int, book_id: Optional[int] = None, memory_type: Optional[str] = None) -> List[AgentMemory]:
+    async def list_by_user(
+        self,
+        user_id: int,
+        book_id: Optional[int] = None,
+        memory_type: Optional[str] = None,
+    ) -> List[AgentMemory]:
         """查询用户记忆列表。
 
         Args:
@@ -100,7 +102,13 @@ class AgentMemoryRepository:
         await self.session.execute(stmt)
         await self.session.flush()
 
-    async def search_fulltext(self, user_id: int, query: str, book_id: Optional[int] = None, memory_type: Optional[str] = None) -> List[AgentMemory]:
+    async def search_fulltext(
+        self,
+        user_id: int,
+        query: str,
+        book_id: Optional[int] = None,
+        memory_type: Optional[str] = None,
+    ) -> List[AgentMemory]:
         """全文检索记忆。
 
         Args:
@@ -125,7 +133,14 @@ class AgentMemoryRepository:
         result = await self.session.execute(stmt)
         return result.scalars().all()
 
-    async def search_semantic(self, user_id: int, query_embedding: List[float], book_id: Optional[int] = None, memory_type: Optional[str] = None, top_k: int = 5):
+    async def search_semantic(
+        self,
+        user_id: int,
+        query_embedding: List[float],
+        book_id: Optional[int] = None,
+        memory_type: Optional[str] = None,
+        top_k: int = 5,
+    ):
         """语义检索记忆。
 
         Args:
@@ -139,7 +154,11 @@ class AgentMemoryRepository:
             (AgentMemory, distance) 元组列表。
         """
         from pgvector.sqlalchemy import Vector
-        stmt = select(AgentMemory, AgentMemory.embedding.cosine_distance(query_embedding).label("distance"))
+
+        stmt = select(
+            AgentMemory,
+            AgentMemory.embedding.cosine_distance(query_embedding).label("distance"),
+        )
         stmt = stmt.where(AgentMemory.user_id == user_id)
         if book_id is not None:
             stmt = stmt.where(AgentMemory.book_id == book_id)

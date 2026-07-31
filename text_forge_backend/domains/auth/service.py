@@ -97,7 +97,7 @@ class UserAuthService:
             )
 
             rt_jti = str(uuid.uuid4())
-            expired_rt = datetime.now(timezone.utc) + settings.JWT_EXPIRE_TIME
+            expired_rt = datetime.now() + settings.JWT_EXPIRE_TIME
             refresh_token = create_token(
                 {"sub": str(user.id), "user_name": user.user_name, "jti": rt_jti},
                 settings.JWT_EXPIRE_TIME,

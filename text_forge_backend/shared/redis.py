@@ -2,7 +2,6 @@ import hashlib
 import json
 import logging
 from typing import Any
-
 import redis.asyncio as redis
 from config.settings import settings
 
@@ -66,7 +65,9 @@ async def set_rag_cache(
     filter_key = json.dumps(rag_filter, sort_keys=True, ensure_ascii=False)
     cache_key = f"rag:{hashlib.md5((query + filter_key).encode()).hexdigest()}"
     try:
-        await redis_client.setex(cache_key, ttl, json.dumps(results, ensure_ascii=False))
+        await redis_client.setex(
+            cache_key, ttl, json.dumps(results, ensure_ascii=False)
+        )
     except Exception as exc:
         logger.warning(f"Redis 写入缓存失败: {exc}")
 

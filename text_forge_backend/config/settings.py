@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     EMAIL_START_TLS: bool = False
     EMAIL_USE_TSL: bool = True
     EMAIL_TIME_OUT: int = 30
+    CAPTCHA_TIME: int = 300
 
     # redis config
     REDIS_HOST: str = "localhost"

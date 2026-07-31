@@ -1,8 +1,6 @@
 from contextlib import asynccontextmanager
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
 from config.logging import get_logger
 from config.settings import settings
 from domains.agent.graphs.graph_lifecycle import compiled_all
