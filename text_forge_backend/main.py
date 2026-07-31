@@ -7,6 +7,8 @@ from infrastructure.database import db_manager
 from infrastructure.graph_store import graph_pool_manager
 from api.router import router
 from service.workflow_seed import seed_builtin_workflows
+from infrastructure.redis import redis_client
+from config.settings import settings
 
 # 日志初始化
 logger = get_logger(__name__)
@@ -41,7 +43,11 @@ app = FastAPI(
 )
 
 if settings.ENV == "production":
-    allow_origins = [origin.strip() for origin in settings.ALLOWED_ORIGINS.split(",") if origin.strip()]
+    allow_origins = [
+        origin.strip()
+        for origin in settings.ALLOWED_ORIGINS.split(",")
+        if origin.strip()
+    ]
 else:
     allow_origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
 

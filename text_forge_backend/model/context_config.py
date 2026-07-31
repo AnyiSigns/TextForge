@@ -2,7 +2,6 @@ from datetime import datetime
 from sqlalchemy import ForeignKey, Integer, DateTime, func, ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
-from typing import list
 from model.base import Base
 
 
