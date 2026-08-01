@@ -86,13 +86,67 @@ export interface PlanStep {
   approved: boolean
 }
 
+export type SSEEventType =
+  | 'token'
+  | 'tool_start'
+  | 'tool_end'
+  | 'plan_ready'
+  | 'progress'
+  | 'suggestions'
+  | 'end'
+  | 'error'
+  | 'agent_think'
+  | 'agent_think_end'
+  | 'node_start'
+  | 'node_stream'
+  | 'node_end'
+  | 'propose_cards'
+  | 'review_card'
+  | 'compress_done'
+  | 'review_resolved'
+  | 'lock_violation'
+
 export interface SSEEvent {
-  type: string // 'token' | 'tool_start' | 'tool_end' | 'plan_ready' | 'progress' | 'suggestions' | 'end'
+  type: SSEEventType
   data: any
-  // 可选：用于关联的 ID
   threadId?: string
-  parentId?: string // 用于工具调用的父 ID
-  sequence?: number // 用于保证顺序
+  parentId?: string
+  sequence?: number
+}
+
+export interface ReviewCard {
+  threadId: string
+  severity: 'critical' | 'medium' | 'minor'
+  nodeLabel: string
+  issues: Array<{
+    id: string
+    severity: 'critical' | 'medium' | 'minor'
+    title: string
+    description: string
+    suggestion: string
+  }>
+  overallAssessment: string
+  outputPreview: string
+}
+
+export interface CardProposal {
+  threadId: string
+  cardTypes: string[]
+  reason: string
+  cards: Array<{
+    id: string
+    type: string
+    title: string
+    summary: string
+  }>
+}
+
+export interface NodeOutput {
+  nodeId: string
+  label: string
+  chunks: Array<{ index: number; token: string }>
+  completed: boolean
+  outputPreview?: string
 }
 
 // 工作流执行时的工具类型（与后端保持一致）

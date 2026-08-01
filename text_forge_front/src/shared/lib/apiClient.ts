@@ -1,7 +1,7 @@
 // src/lib/api/client.ts
 import axios, { type AxiosRequestConfig } from 'axios';
 import axiosRetry from 'axios-retry';
-import { useAuthStore } from '@/lib/stores/authStore';
+import { useSessionStore } from '@/shared/stores/sessionStore';
 import type { SyncResponse } from '@/types';
 import { API_URL } from '@/shared/config/env';
 import { type ErrorCode } from './errorCodes';
@@ -18,7 +18,7 @@ function notifySessionExpired() {
     import('sonner').then(({ toast }) => {
       toast.error('登录已过期', { description: '请重新登录以继续使用', duration: 4000 });
     });
-    useAuthStore.getState().logout();
+    useSessionStore.getState().logout();
     setTimeout(() => {
       window.location.href = '/login';
     }, 800);
@@ -74,7 +74,7 @@ apiClient.interceptors.response.use(
       originalRequest._retry = true;
       try {
         await refreshAccessToken();
-        const newToken = useAuthStore.getState().accessToken;
+        const newToken = useSessionStore.getState().accessToken;
         if (newToken) {
           originalRequest.headers = originalRequest.headers || {};
           originalRequest.headers.Authorization = `Bearer ${newToken}`;
@@ -101,7 +101,7 @@ export function generateIdempotencyKey(): string {
 const IDEMPOTENT_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'] as const;
 
 apiClient.interceptors.request.use((config) => {
-  const token = useAuthStore.getState().accessToken;
+  const token = useSessionStore.getState().accessToken;
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -127,7 +127,7 @@ let refreshPromise: Promise<void> | null = null;
 
 async function refreshAccessToken(): Promise<void> {
   if (refreshPromise) return refreshPromise;
-  let refreshToken = useAuthStore.getState().refreshToken;
+  let refreshToken = useSessionStore.getState().refreshToken;
   if (!refreshToken) {
     const match = document.cookie.match(new RegExp('(^| )tf_rt=([^;]+)'));
     if (match) {
@@ -141,7 +141,7 @@ async function refreshAccessToken(): Promise<void> {
   refreshPromise = axios.post(`${API_URL}/api/auth/refresh`, { refresh_token: refreshToken }, { withCredentials: true })
     .then((res) => {
       const newToken = res.data.access_token;
-      useAuthStore.getState().setAccessToken(newToken);
+      useSessionStore.getState().setAccessToken(newToken);
     })
     .catch((error) => {
       return Promise.reject(error);

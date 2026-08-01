@@ -42,8 +42,9 @@ export default function RegisterPage() {
       });
 
       if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || '注册失败');
+        const error = await res.json().catch(() => ({}));
+        const detail: string = error.detail || '';
+        throw new Error(detail || '注册失败');
       }
 
       toast.success('注册成功', { description: '验证邮件已发送到你的邮箱' });

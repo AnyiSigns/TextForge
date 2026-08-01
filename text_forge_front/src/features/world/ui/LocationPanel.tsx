@@ -1,6 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useWorldStore } from '@/features/world/stores/worldStore';
-import { fetchLocations, createLocation, updateLocation, deleteLocation } from '@/features/world/api/locations';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -26,7 +25,7 @@ interface LocationPanelProps {
 
 export function LocationPanel({ bookId }: LocationPanelProps) {
   const locations = useWorldStore((s) => s.locations);
-  const setLocations = useWorldStore((s) => s.setLocations);
+  const load = useWorldStore((s) => s.load);
   const addLocation = useWorldStore((s) => s.addLocation);
   const updateLocationStore = useWorldStore((s) => s.updateLocation);
   const removeLocation = useWorldStore((s) => s.removeLocation);
@@ -42,11 +41,14 @@ export function LocationPanel({ bookId }: LocationPanelProps) {
     attributes: {},
   });
 
+  useEffect(() => {
+    load(bookId).catch(() => {});
+  }, [bookId, load]);
+
   const loadLocations = async () => {
     setLoading(true);
     try {
-      const data = await fetchLocations(bookId);
-      setLocations(data);
+      await load(bookId);
     } catch {
       toast.error('加载地点失败');
     } finally {
@@ -56,8 +58,7 @@ export function LocationPanel({ bookId }: LocationPanelProps) {
 
   const handleCreate = async () => {
     try {
-      const created = await createLocation(bookId, form);
-      addLocation(created);
+      await addLocation(bookId, form);
       setDialogOpen(false);
       setForm({ name: '', type: 'city', description: '', parentId: undefined, attributes: {} });
       toast.success('地点已创建');
@@ -69,8 +70,7 @@ export function LocationPanel({ bookId }: LocationPanelProps) {
   const handleUpdate = async () => {
     if (editingId === null) return;
     try {
-      await updateLocation(editingId, form);
-      updateLocationStore(editingId, form);
+      await updateLocationStore(editingId, form);
       setEditingId(null);
       setDialogOpen(false);
       toast.success('地点已更新');
@@ -81,8 +81,7 @@ export function LocationPanel({ bookId }: LocationPanelProps) {
 
   const handleDelete = async (id: number) => {
     try {
-      await deleteLocation(id, bookId);
-      removeLocation(id);
+      await removeLocation(id, bookId);
       toast.success('地点已删除');
     } catch {
       toast.error('删除地点失败');

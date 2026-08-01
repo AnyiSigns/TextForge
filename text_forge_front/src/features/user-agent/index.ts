@@ -11,9 +11,6 @@ export { ThinkingPanel } from './ui/ThinkingPanel'
 export { SidebarHandle } from './ui/SidebarHandle'
 export { PlanCard } from './ui/PlanCard'
 export { ToolCallCard } from './ui/ToolCallCard'
-export { QuestionCard } from './ui/QuestionCard'
-export { ReflectCard } from './ui/ReflectCard'
-export { SuggestionBubble } from './ui/SuggestionBubble'
 export { SelectionToolbar } from './ui/SelectionToolbar'
 
 // ---- UI 组件 (M2-M3: 待实现) ----

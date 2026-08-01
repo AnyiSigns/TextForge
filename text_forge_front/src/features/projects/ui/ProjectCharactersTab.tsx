@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { EmptyState, Spinner } from '@/shared/components';
 import { CHARACTER_ROLE_LABELS, characterRoleLabel } from '@/shared/lib/agentRoles';
-import { Plus, Search, Users, UserPlus, Sparkles, List, LayoutGrid } from 'lucide-react';
+import { Plus, Search, Users, UserPlus, List, LayoutGrid } from 'lucide-react';
 import { Character, CharacterRole } from '@/types';
 import { useProjectCharactersTab } from '@/features/projects';
 import { CharacterCard, type CharacterCardActions } from './CharacterCard';
@@ -55,7 +55,7 @@ export function ProjectCharactersTab({ projectId }: { projectId: number }) {
     relTarget, setRelTarget, relDraft, openRelations, addRelation, updateRelation, removeRelation, applyRelations,
     charNameById, statusTarget, setStatusTarget, statusDraft, setStatusDraft, openStatus, applyStatus,
     detailChar, setDetailChar, detailRole, setDetailRole, saveDetailRole, saveCurrentProfile, saveDescription, saveAliases, toggleReferenceImage, exportImages,
-    avatarInputRefs, handleAvatarChange, isSeedingChars, handleSeedChars, handleDelete, studioTarget, setStudioTarget,
+    avatarInputRefs, handleAvatarChange, handleDelete, studioTarget, setStudioTarget,
   } = useProjectCharactersTab(projectId);
 
   if (isLoading) {
@@ -86,10 +86,6 @@ export function ProjectCharactersTab({ projectId }: { projectId: number }) {
       </div>
 
       <div className="flex items-center gap-2">
-        <Button size="sm" variant="outline" onClick={handleSeedChars} disabled={isSeedingChars}>
-          <Sparkles className="w-4 h-4 mr-1.5" />
-          {isSeedingChars ? '生成中…' : 'AI 补充角色'}
-        </Button>
         <div className="flex rounded-md border border-border/40 overflow-hidden shrink-0">
           <Button
             variant={viewMode === 'list' ? 'default' : 'ghost'}
@@ -110,7 +106,6 @@ export function ProjectCharactersTab({ projectId }: { projectId: number }) {
             <LayoutGrid className="w-4 h-4" />
           </Button>
         </div>
-        <span className="text-xs text-muted-foreground">基于当前世界观和已有角色，智能补充新角色（不会修改已有角色）</span>
       </div>
 
       {filtered.length === 0 ? (

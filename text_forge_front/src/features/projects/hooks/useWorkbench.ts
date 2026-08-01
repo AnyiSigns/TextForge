@@ -16,17 +16,13 @@ import { API_URL } from '@/lib/config/env';
 import { loadOutline, type OutlineVolume } from '@/lib/storage/backup';
 import { makeBuildContext, makeSummarizePlot, makeDepositCharacterProfiles } from './workbenchContext';
 import { makeGeneration } from './workbenchGenerate';
-import { makeSeedActions } from './workbenchSeed';
 import { onInsertStep } from '@/lib/events/projectEvents';
 import { transformText } from '@/lib/aiTextTransform';
+import { executeTextOperation, type TextOperationType } from '@/features/user-agent';
 
 export function useWorkbench(bookId: number) {
   const bookIdStr = String(bookId);
   const [isGraphOpen, setIsGraphOpen] = useState(true);
-  const [seedPrompt, setSeedPrompt] = useState('');
-  const [isSeeding, setIsSeeding] = useState(false);
-  const [seeded, setSeeded] = useState(false);
-  const [seedOpen, setSeedOpen] = useState(false);
   const [steps, setSteps] = useState<Step[]>([]);
   const [currentAgent, setCurrentAgent] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -206,17 +202,9 @@ export function useWorkbench(bookId: number) {
   const handleAiAction = async (action: 'expand' | 'rewrite' | 'summarize', text: string, stepId: string) => {
     let out = transformText(action, text);
     try {
-      const API_URL = (await import('@/lib/config/env')).API_URL;
-      const res = await fetch(`${API_URL}/api/ai/transform`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, text }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data?.output) out = data.output;
-      }
-    } catch { /* 回退本地变换 */ }
+      const result = await executeTextOperation(text, action as unknown as TextOperationType);
+      if (result.success && result.result) out = result.result;
+    } catch { /* 后端未就绪时回退本地变换 */ }
     const targetContent = steps.find((s) => s.id === stepId)?.content ?? '';
     setAiDialog({ open: true, result: out, stepId, targetContent });
   };
@@ -264,19 +252,7 @@ export function useWorkbench(bookId: number) {
     setCurrentAgent,
     setIsStreaming,
     setPlotSummary,
-  });
-
-  const { handleSendToManuscript, handleWriteFirstChapter, handleSeed } = makeSeedActions({
-    bookId,
-    activeWorkflow,
-    seedPrompt,
-    isSeeding,
-    setSeedOpen,
-    setSeeded,
-    setIsSeeding,
-    setSteps,
-    setEditingMap,
-  });
+     });
 
   const totalWords = steps.reduce((acc, s) => acc + (s.content?.length || 0), 0);
   const completedWords = steps.reduce((acc, s) => acc + (s.status === 'completed' ? s.content?.length || 0 : 0), 0);
@@ -288,9 +264,6 @@ export function useWorkbench(bookId: number) {
     isLoading,
     showPreviewNote,
     setShowPreviewNote,
-    seeded,
-    seedOpen,
-    setSeedOpen,
     isGraphOpen,
     setIsGraphOpen,
     isStreaming,
@@ -306,7 +279,6 @@ export function useWorkbench(bookId: number) {
     handleConfirm,
     handleSkip,
     handleCancel,
-    handleSendToManuscript,
     currentAgent,
     handleGenerate,
     aiDialog,
@@ -325,11 +297,6 @@ export function useWorkbench(bookId: number) {
     outlineVolumes,
     setOutlineVolumes,
     scrollRef,
-    seedPrompt,
-    setSeedPrompt,
-    isSeeding,
-    handleSeed,
-    handleWriteFirstChapter,
     bookTitle,
     totalWords,
     completedWords,

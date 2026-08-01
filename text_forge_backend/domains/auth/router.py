@@ -113,6 +113,7 @@ async def user_login(
         email=request.email, pwd=request.password
     )
     if msg:
-        raise HTTPException(status_code=401, detail=msg)
+        status_code = 403 if "邮箱未验证" in msg else 401
+        raise HTTPException(status_code=status_code, detail=msg)
     user = UserResponse.model_validate(user)
     return TokenRes(access_token=access_token, refresh_token=refresh_token, user=user)  # type: ignore

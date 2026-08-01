@@ -7,7 +7,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Eye, Trash2, Download, FileText, FileJson, FileType, Pencil } from 'lucide-react';
 import { Book } from '@/types';
 import { useCharacterStore } from '@/features/characters';
-import { usePortfolioStore } from '@/features/projects';
 import { useManuscriptStore } from '@/features/manuscript';
 import { useShallow } from 'zustand/react/shallow';
 import { toast } from 'sonner';
@@ -23,7 +22,6 @@ interface Props {
 
 export function ProjectCard({ book, onDelete }: Props) {
   const characters = useCharacterStore(useShallow((s) => s.characters.filter((c) => c.bookId === book.id)));
-  const portfolio = usePortfolioStore(useShallow((s) => s.portfolio.filter((t) => t.project_id === String(book.id))));
   const chapters = useManuscriptStore(useShallow((s) => s.chapters.filter((c) => c.bookId === book.id)));
   const totalWordGoal = book.totalWordGoal ?? 0;
   const currentWords = chapters.reduce((acc, c) => acc + (c.content?.length || 0), 0);
@@ -43,7 +41,7 @@ export function ProjectCard({ book, onDelete }: Props) {
           <div className="text-xs text-muted-foreground space-y-1 mb-2">
             <p>创建: {new Date(book.createdAt).toLocaleDateString()}</p>
             <p>更新: {new Date(book.updatedAt).toLocaleDateString()}</p>
-            <p>角色: {characters.length} | 素材: {portfolio.length}</p>
+            <p>角色: {characters.length}</p>
           </div>
           {totalWordGoal > 0 && (
             <div className="space-y-1">

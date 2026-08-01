@@ -1,7 +1,7 @@
 // src/components/layout/Sidebar.tsx
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -21,28 +21,38 @@ import {
   ChevronsLeft,
   PenLine
 } from 'lucide-react';
-import { useAuthStore } from '@/lib/stores/authStore';
+import { useSessionStore } from '@/shared/stores/sessionStore';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { BackendBadge } from './BackendBadge';
 
-const menuItems = [
-  { icon: LayoutDashboard, label: '仪表盘', href: '/' },
-  { icon: BookOpen, label: '项目管理', href: '/projects' },
-  { icon: PenLine, label: '手稿', href: '/manuscript' },
-  { icon: Users, label: '角色模拟', href: '/characters' },
-  { icon: Image, label: '图片工坊', href: '/assets' },
-  { icon: Video, label: '视频工坊', href: '/tasks' },
-  { icon: Database, label: '知识库', href: '/knowledge' },
-  { icon: Workflow, label: '创作流程', href: '/workflow' },
-  { icon: Settings, label: '设置', href: '/settings' },
+const menuGroups = [
+  {
+    label: '创作区',
+    items: [
+      { icon: LayoutDashboard, label: '仪表盘', href: '/' },
+      { icon: BookOpen, label: '项目管理', href: '/projects' },
+      { icon: PenLine, label: '手稿', href: '/manuscript' },
+      { icon: Users, label: '角色模拟', href: '/characters' },
+      { icon: Image, label: '图片工坊', href: '/assets' },
+      { icon: Database, label: '知识库', href: '/knowledge' },
+    ],
+  },
+  {
+    label: '工具区',
+    items: [
+      { icon: Workflow, label: '创作流程', href: '/workflow' },
+      { icon: Video, label: '视频工坊', href: '/tasks' },
+      { icon: Settings, label: '设置', href: '/settings' },
+    ],
+  },
 ];
 
 // 桌面端侧边栏
 function DesktopSidebar() {
   const pathname = usePathname();
-  const { user, logout } = useAuthStore();
+  const { user, logout } = useSessionStore();
 
   const avatarUrl = user?.avatar
     ? user.avatar.startsWith('http')
@@ -95,29 +105,39 @@ function DesktopSidebar() {
       </div>
 
       <nav className="flex-1 w-full space-y-0.5 px-2">
-        {menuItems.map((item) => {
-          const isActive = pathname === item.href || pathname?.startsWith(item.href + '/');
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              title={collapsed ? item.label : undefined}
-              className={cn(
-                "nav-item-elegant",
-                collapsed && "justify-center px-0",
-                isActive ? "active" : "text-muted-foreground"
-              )}
-            >
-              <item.icon className="w-[18px] h-[18px] shrink-0" strokeWidth={1.8} />
-              <span className={cn(
-                "text-[13px] whitespace-nowrap transition-all duration-300 overflow-hidden",
-                collapsed ? "w-0 opacity-0" : "w-auto opacity-100"
-              )}>
-                {item.label}
-              </span>
-            </Link>
-          );
-        })}
+        {menuGroups.map((group) => (
+          <React.Fragment key={group.label}>
+            <div className={cn(
+              "text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground/50 px-3 pt-4 pb-1",
+              collapsed && "hidden"
+            )}>
+              {group.label}
+            </div>
+            {group.items.map((item) => {
+              const isActive = pathname === item.href || pathname?.startsWith(item.href + '/');
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  title={collapsed ? item.label : undefined}
+                  className={cn(
+                    "nav-item-elegant",
+                    collapsed && "justify-center px-0",
+                    isActive ? "active" : "text-muted-foreground"
+                  )}
+                >
+                  <item.icon className="w-[18px] h-[18px] shrink-0" strokeWidth={1.8} />
+                  <span className={cn(
+                    "text-[13px] whitespace-nowrap transition-all duration-300 overflow-hidden",
+                    collapsed ? "w-0 opacity-0" : "w-auto opacity-100"
+                  )}>
+                    {item.label}
+                  </span>
+                </Link>
+              );
+            })}
+          </React.Fragment>
+        ))}
       </nav>
 
       <div className="w-full px-2 border-t border-sidebar-border/60 pt-4 mt-2">
@@ -166,7 +186,7 @@ function DesktopSidebar() {
 function MobileSidebar() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
-  const { user, logout } = useAuthStore();
+  const { user, logout } = useSessionStore();
 
   const avatarUrl = user?.avatar
     ? user.avatar.startsWith('http')
@@ -199,23 +219,30 @@ function MobileSidebar() {
           </div>
 
           <nav className="flex-1 space-y-0.5">
-            {menuItems.map((item) => {
-              const isActive = pathname === item.href || pathname?.startsWith(item.href + '/');
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setOpen(false)}
-                  className={cn(
-                    "nav-item-elegant",
-                    isActive ? "active" : "text-muted-foreground"
-                  )}
-                >
-                  <item.icon className="w-[18px] h-[18px] shrink-0" strokeWidth={1.8} />
-                  <span className="text-[13px] font-medium">{item.label}</span>
-                </Link>
-              );
-            })}
+            {menuGroups.map((group) => (
+              <React.Fragment key={group.label}>
+                <div className="text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground/50 px-3 pt-4 pb-1">
+                  {group.label}
+                </div>
+                {group.items.map((item) => {
+                  const isActive = pathname === item.href || pathname?.startsWith(item.href + '/');
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setOpen(false)}
+                      className={cn(
+                        "nav-item-elegant",
+                        isActive ? "active" : "text-muted-foreground"
+                      )}
+                    >
+                      <item.icon className="w-[18px] h-[18px] shrink-0" strokeWidth={1.8} />
+                      <span className="text-[13px] font-medium">{item.label}</span>
+                    </Link>
+                  );
+                })}
+              </React.Fragment>
+            ))}
           </nav>
 
           <div className="border-t border-sidebar-border/60 pt-4 mt-2">

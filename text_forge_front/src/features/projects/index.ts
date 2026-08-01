@@ -12,8 +12,6 @@ export { CharacterStatusSheet } from './ui/CharacterStatusSheet';
 export { InspirationBoard } from './ui/InspirationBoard';
 export { OutlinePanel } from './ui/OutlinePanel';
 
-export { PortfolioGallery } from './ui/PortfolioGallery';
-export { PortfolioGrid } from './ui/PortfolioGrid';
 export { ProcessNav } from './ui/ProcessNav';
 export { ProjectCard } from './ui/ProjectCard';
 export { ProjectCharactersTab } from './ui/ProjectCharactersTab';
@@ -37,7 +35,6 @@ export {
   makeDepositCharacterProfiles,
 } from './hooks/workbenchContext';
 export { makeGeneration } from './hooks/workbenchGenerate';
-export { makeSeedActions } from './hooks/workbenchSeed';
 
 // ---- API ----
 export {
@@ -122,7 +119,6 @@ export type {
 
 // ---- Stores ----
 export { useBookStore, useProjectStore } from './stores/bookStore';
-export { usePortfolioStore } from './stores/portfolioStore';
 export { useCreativeSettingStore, creativeSettingToContextLine, creativeSettingDimensionsToContext } from './stores/creativeSettingStore';
 
 // ---- 类型 ----
@@ -130,6 +126,3 @@ export type { ProcessTab } from './ui/ProcessNav';
 
 // ---- 常量 ----
 export { PROJECT_TABS } from './PROJECT_TABS';
-
-// ---- 共享工具 ----
-// export { STATUS_MAP } from './utils/status';

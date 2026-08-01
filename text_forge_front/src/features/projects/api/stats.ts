@@ -15,11 +15,19 @@ export interface CharacterFrequency {
   count: number;
 }
 
-export interface PlotProgress {
-  outline_node_id: number;
+export interface ChapterProgressDetail {
+  chapter_id: number;
   title: string;
-  completed: boolean;
-  progress: number;
+  has_summary: boolean;
+  session_count: number;
+  total_words: number;
+}
+
+export interface PlotProgress {
+  total_chapters: number;
+  chapters_with_content: number;
+  completion_rate: number;
+  chapter_details: ChapterProgressDetail[];
 }
 
 export interface StatisticsSummary {
@@ -51,9 +59,9 @@ export async function fetchCharacterFrequency(bookId: number): Promise<Character
   return data.frequency ?? [];
 }
 
-export async function fetchPlotProgress(bookId: number): Promise<PlotProgress[]> {
-  const { data } = await apiClient.get<{ progress: PlotProgress[] }>('/api/writing-sessions/statistics/plot-progress', {
+export async function fetchPlotProgress(bookId: number): Promise<PlotProgress> {
+  const { data } = await apiClient.get<{ progress: PlotProgress }>('/api/writing-sessions/statistics/plot-progress', {
     params: { book_id: String(bookId) },
   });
-  return data.progress ?? [];
+  return data.progress as PlotProgress;
 }

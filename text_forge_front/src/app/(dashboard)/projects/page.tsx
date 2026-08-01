@@ -6,13 +6,12 @@ import { ProjectCard } from '@/features/projects';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, Search, FolderKanban, LayoutGrid, List, Loader2, Sparkles, Pin, PinOff, Trash2 } from 'lucide-react';
+import { Plus, Search, FolderKanban, LayoutGrid, List, Pin, PinOff, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Book } from '@/types';
 import { PageHeader } from '@/shared/components';
 import { Spinner, EmptyState } from '@/shared/components';
 import { useBookStore } from '@/features/projects';
-import { generateSeed } from '@/lib/seed/generate';
 import { ProjectRow } from './ProjectRow';
 
 type ViewMode = 'grid' | 'list';
@@ -26,19 +25,16 @@ function useProjectsPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [isLoading, setIsLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [seedPrompt, setSeedPrompt] = useState('');
-  const [isSeeding, setIsSeeding] = useState(false);
   useEffect(() => { load().catch((e) => toast.error('加载遇到了问题', { description: e instanceof Error ? e.message : '未知错误' })).finally(() => setIsLoading(false)); }, [load]);
   const handleDelete = async (id: number) => { if (!confirm('确定要删除这本书吗？')) return; try { await removeProject(id); toast.success('已删除'); } catch (e) { toast.error('删除出错了', { description: e instanceof Error ? e.message : '未知错误' }); } };
   const handleBatchDelete = async () => { const count = selectedIds.size; if (!count || !confirm(`确定要删除选中的 ${count} 本书吗？`)) return; try { await Promise.all(Array.from(selectedIds).map(id => removeProject(id))); setSelectedIds(new Set()); toast.success(`已删除 ${count} 本书`); } catch (e) { toast.error('删除出错了', { description: e instanceof Error ? e.message : '未知错误' }); } };
-  const handleSeedFromEmpty = async () => { if (!seedPrompt.trim() || isSeeding) return; setIsSeeding(true); const prompt = seedPrompt.trim(); try { const book = await useBookStore.getState().addBook({ title: prompt.slice(0, 30), description: prompt, genre: '' }); await generateSeed(book.id, prompt); toast.success('已创建书籍并生成设定，去书籍里继续完善'); setSeedPrompt(''); } catch (e) { toast.error('开局出错了', { description: e instanceof Error ? e.message : '未知错误' }); } finally { setIsSeeding(false); } };
   const sorted = useMemo(() => [...books].sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned)), [books]);
   const filtered = useMemo(() => sorted.filter(p => { const term = searchTerm.trim().toLowerCase(); return !term || p.title.toLowerCase().includes(term) || (p.description ?? '').toLowerCase().includes(term); }), [sorted, searchTerm]);
-  return { books, isLoading, selectedIds, setSelectedIds, searchTerm, setSearchTerm, viewMode, setViewMode, seedPrompt, setSeedPrompt, isSeeding, handleDelete, handleBatchDelete, handleSeedFromEmpty, filtered, togglePin };
+  return { books, isLoading, selectedIds, setSelectedIds, searchTerm, setSearchTerm, viewMode, setViewMode, handleDelete, handleBatchDelete, filtered, togglePin };
 }
 
 export default function ProjectsPage() {
-  const { books, isLoading, selectedIds, setSelectedIds, searchTerm, setSearchTerm, viewMode, setViewMode, seedPrompt, setSeedPrompt, isSeeding, handleDelete, handleBatchDelete, handleSeedFromEmpty, filtered, togglePin } = useProjectsPage();
+  const { books, isLoading, selectedIds, setSelectedIds, searchTerm, setSearchTerm, viewMode, setViewMode, handleDelete, handleBatchDelete, filtered, togglePin } = useProjectsPage();
   if (isLoading) return <Spinner label="正在加载项目..." />;
   return (
     <div className="page-shell">
@@ -62,15 +58,7 @@ export default function ProjectsPage() {
         <Input placeholder="搜索项目名..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9" />
       </div>
       {books.length === 0 ? (
-        <div className="my-4 space-y-4">
-          <div className="glass-card border-primary/40 rounded-xl"><div className="p-5 space-y-3">
-            <div className="flex items-center gap-2 text-sm font-medium"><Sparkles className="w-4 h-4 text-primary" /> 一句话开局</div>
-            <p className="text-xs text-muted-foreground">输入一句话（如「一艘拾荒船打捞星海记忆的科幻故事」），自动创建书籍并生成世界观、角色与大纲。</p>
-            <div className="flex gap-2">
-              <Input value={seedPrompt} onChange={(e) => setSeedPrompt(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleSeedFromEmpty(); }} placeholder="用一句话描述你想写的小说…" className="flex-1" />
-              <Button size="sm" onClick={handleSeedFromEmpty} disabled={isSeeding || !seedPrompt.trim()}>{isSeeding ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Sparkles className="w-4 h-4 mr-1.5" />}{isSeeding ? '生成中…' : '开局'}</Button>
-            </div>
-          </div></div>
+        <div className="my-4">
           <EmptyState icon={FolderKanban} title="或手动开始" description="从空白项目起步，自己一步步搭建设定、角色与大纲。" action={<Button asChild size="sm"><Link href="/projects/new"><Plus className="w-4 h-4 mr-2" /> 新建项目</Link></Button>} />
         </div>
       ) : filtered.length === 0 ? (

@@ -6,25 +6,22 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/shared/components';
 import { GenerationForm } from '@/shared/components';
-import {
-  submitImage,
-  fetchImageResults,
-  describeGenError,
-  type MediaTask,
-  type ImageRequest,
-} from '@/features/projects/api/media';
+import { type MediaTask, type ImageRequest } from '@/types';
 import { toast } from 'sonner';
 import { Image as ImageIcon, Link as LinkIcon, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
 import { EmptyState } from '@/shared/components';
 import { ProcessNav } from '@/features/projects';
-import { PortfolioGallery } from '@/features/projects';
 import { Images, LayoutGrid, Download } from 'lucide-react';
 import { downloadSingleImage, downloadImagesZip } from '@/lib/storage/imageExport';
 import { useCharacterStore } from '@/features/characters';
 import { useCreativeSettingStore, creativeSettingToContextLine } from '@/features/projects';
 import type { GenerationContext } from '@/types';
+
+const fetchImageResults = async (..._args: unknown[]): Promise<MediaTask[]> => [];
+const submitImage = async (..._args: unknown[]): Promise<MediaTask | undefined> => undefined;
+const describeGenError = (e: unknown): string => (e instanceof Error ? e.message : '未知错误');
 
 export default function AssetsPage() {
   const searchParams = useSearchParams();
@@ -238,7 +235,7 @@ export default function AssetsPage() {
             </Card>
           </div>
         )}
-        {tab === 'all' && <PortfolioGallery />}
+        {tab === 'all' && null}
       </ProcessNav>
     </div>
   );

@@ -1,12 +1,12 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { useAuthStore } from '@/lib/stores/authStore';
+import { useSessionStore } from '@/shared/stores/sessionStore';
 import { toast } from 'sonner';
 import apiClient from '@/shared/lib/apiClient';
 
 export function useSettingsForm() {
-  const { user, updateUser } = useAuthStore();
+  const { user, updateUser } = useSessionStore();
   const [username, setUsername] = useState(user?.username || '');
   const [email, setEmail] = useState(user?.email || '');
   const [oldPassword, setOldPassword] = useState('');

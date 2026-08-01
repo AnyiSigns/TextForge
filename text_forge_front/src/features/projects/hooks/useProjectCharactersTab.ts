@@ -10,7 +10,6 @@ import { useCharacterStore } from '@/features/characters';
 import { useProjectCharacters } from '@/features/projects';
 import { uploadAvatar } from '@/features/characters';
 import { makeRelationId, pruneRelations } from '@/features/characters/lib/characterRefs';
-import { generatePart } from '@/lib/seed/generate';
 
 export function useProjectCharactersTab(bookId: number) {
   const { projectChars, allCharacters: characters, sync: syncFromBackend } = useProjectCharacters(bookId);
@@ -49,23 +48,7 @@ export function useProjectCharactersTab(bookId: number) {
     syncFromBackend()
       .catch((e: unknown) => toast.error('加载失败', { description: e instanceof Error ? e.message : '未知错误' }))
       .finally(() => setIsLoading(false));
-  }, [syncFromBackend]);
-
-  // 中途单补角色：按当前项目设定生成新角色，增量合并（不覆盖用户已有角色）
-  const [isSeedingChars, setIsSeedingChars] = useState(false);
-  const handleSeedChars = async () => {
-    if (isSeedingChars) return;
-    setIsSeedingChars(true);
-    try {
-      const res = await generatePart(bookId, 'characters', { prompt: '为本书补充若干贴合世界观的新角色' });
-      const n = res.characters?.length ?? 0;
-      toast.success(`已补充 ${n} 个角色（可手动微调）`);
-    } catch (e) {
-      toast.error('补充角色失败', { description: e instanceof Error ? e.message : '未知错误' });
-    } finally {
-      setIsSeedingChars(false);
-    }
-  };
+   }, [syncFromBackend]);
 
   const handleDelete = async (id: number) => {
     if (!confirm('确定要删除这个角色吗？')) return;
@@ -286,11 +269,9 @@ export function useProjectCharactersTab(bookId: number) {
     saveAliases,
     toggleReferenceImage,
     exportImages,
-    // 头像 / 种子 / 删除 / studio
+    // 头像 / 删除 / studio
     avatarInputRefs,
     handleAvatarChange,
-    isSeedingChars,
-    handleSeedChars,
     handleDelete,
     studioTarget,
     setStudioTarget,

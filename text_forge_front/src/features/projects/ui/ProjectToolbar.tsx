@@ -1,6 +1,6 @@
 'use client';
 
-import { Wand2, CheckCircle2, PenLine, Sparkles, Settings2, Info } from 'lucide-react';
+import { Wand2, CheckCircle2, PenLine, Settings2, Info } from 'lucide-react';
 import { useWorkbench } from '@/features/projects';
 import { PageHeader } from '@/shared/components';
 import { Button } from '@/components/ui/button';
@@ -19,7 +19,6 @@ export function ProjectToolbar({ projectId, onNavigateToManuscript, onNavigateTo
     showPreviewNote, isPreviewMode, setShowPreviewNote,
     workflows, activeWorkflowId, handleBindWorkflow, activeWorkflow,
     editingMap, savedAt, projectChars, creativeSetting, outlineReady, steps,
-    setSeedOpen,
   } = wb;
 
   return (
@@ -68,9 +67,6 @@ export function ProjectToolbar({ projectId, onNavigateToManuscript, onNavigateTo
               : '内容会实时保存'}
         </span>
         <div className="flex items-center gap-2 ml-auto">
-          <Button variant="outline" size="sm" onClick={() => setSeedOpen(true)}>
-            <Sparkles className="w-4 h-4 mr-1.5" /> 一句话开局
-          </Button>
           <Button variant="outline" size="sm" onClick={onNavigateToManuscript}>
             <PenLine className="w-4 h-4 mr-1.5" /> 自己写一章
           </Button>

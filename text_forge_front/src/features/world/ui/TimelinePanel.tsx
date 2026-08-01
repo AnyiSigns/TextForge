@@ -1,6 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useWorldStore } from '@/features/world/stores/worldStore';
-import { fetchTimelineEvents, createTimelineEvent, updateTimelineEvent, deleteTimelineEvent } from '@/features/world/api/timeline';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -24,7 +23,7 @@ interface TimelinePanelProps {
 
 export function TimelinePanel({ bookId }: TimelinePanelProps) {
   const events = useWorldStore((s) => s.timelineEvents);
-  const setEvents = useWorldStore((s) => s.setTimelineEvents);
+  const load = useWorldStore((s) => s.load);
   const addEvent = useWorldStore((s) => s.addTimelineEvent);
   const updateEventStore = useWorldStore((s) => s.updateTimelineEvent);
   const removeEvent = useWorldStore((s) => s.removeTimelineEvent);
@@ -40,11 +39,14 @@ export function TimelinePanel({ bookId }: TimelinePanelProps) {
     relatedCharacterIds: [],
   });
 
+  useEffect(() => {
+    load(bookId).catch(() => {});
+  }, [bookId, load]);
+
   const loadEvents = async () => {
     setLoading(true);
     try {
-      const data = await fetchTimelineEvents(bookId);
-      setEvents(data);
+      await load(bookId);
     } catch {
       toast.error('加载时间线事件失败');
     } finally {
@@ -54,8 +56,7 @@ export function TimelinePanel({ bookId }: TimelinePanelProps) {
 
   const handleCreate = async () => {
     try {
-      const created = await createTimelineEvent(bookId, form);
-      addEvent(created);
+      await addEvent(bookId, form);
       setDialogOpen(false);
       setForm({ name: '', description: '', sortOrder: 0, eventType: 'major', relatedCharacterIds: [] });
       toast.success('事件已创建');
@@ -67,8 +68,7 @@ export function TimelinePanel({ bookId }: TimelinePanelProps) {
   const handleUpdate = async () => {
     if (editingId === null) return;
     try {
-      await updateTimelineEvent(editingId, form);
-      updateEventStore(editingId, form);
+      await updateEventStore(editingId, form);
       setEditingId(null);
       setDialogOpen(false);
       toast.success('事件已更新');
@@ -79,8 +79,7 @@ export function TimelinePanel({ bookId }: TimelinePanelProps) {
 
   const handleDelete = async (id: number) => {
     try {
-      await deleteTimelineEvent(id, bookId);
-      removeEvent(id);
+      await removeEvent(id, bookId);
       toast.success('事件已删除');
     } catch {
       toast.error('删除事件失败');

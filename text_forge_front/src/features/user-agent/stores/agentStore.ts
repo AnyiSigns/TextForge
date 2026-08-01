@@ -4,14 +4,17 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { 
-  AgentMessage, 
-  AgentPhase, 
-  ToolCallLog, 
-  Plan, 
-  AgentThread, 
-  SSEEvent,
-  AgentConfig
-} from '../types/agent'
+   AgentMessage, 
+   AgentPhase, 
+   ToolCallLog, 
+   Plan, 
+   AgentThread, 
+   SSEEvent,
+   AgentConfig,
+   ReviewCard,
+   CardProposal,
+   NodeOutput
+ } from '../types/agent'
 
 interface AgentState {
   // 线程管理
@@ -52,6 +55,21 @@ interface AgentState {
     action: string
     target?: string
   }>
+
+  // 审核卡片（review_card 事件）
+  pendingReview: ReviewCard | null
+
+  // 卡片提案（propose_cards 事件）
+  pendingCards: CardProposal | null
+
+  // 节点输出（node_stream 逐 token 追加）
+  nodeOutputs: Record<string, NodeOutput>
+
+  // 思考步骤（agent_think 流式追加）
+  thinkingSteps: Array<{ token: string }>
+
+  // 当前活跃节点
+  activeNode: { nodeId: string; label: string } | null
   
   // Actions
   // 线程管理
@@ -91,6 +109,23 @@ interface AgentState {
   
   // 建议管理
   setSuggestions: (suggestions: Array<{ id: string; text: string; action: string; target?: string }>) => void
+
+  // 审核卡片管理
+  setPendingReview: (review: ReviewCard | null) => void
+
+  // 卡片提案管理
+  setPendingCards: (cards: CardProposal | null) => void
+
+  // 节点输出管理
+  setNodeOutput: (nodeId: string, output: NodeOutput) => void
+  clearNodeOutputs: () => void
+
+  // 思考步骤管理
+  appendThinkingStep: (token: string) => void
+  clearThinkingSteps: () => void
+
+  // 活跃节点管理
+  setActiveNode: (node: { nodeId: string; label: string } | null) => void
   
   // SSE 事件处理
   handleSSEEvent: (event: SSEEvent) => void
@@ -124,8 +159,13 @@ export const useAgentStore = create<AgentState>()(
       isLoading: false,
       error: null,
       config: DEFAULT_CONFIG,
-      selectedText: null,
-      suggestions: [],
+       selectedText: null,
+       suggestions: [],
+       pendingReview: null,
+       pendingCards: null,
+       nodeOutputs: {},
+       thinkingSteps: [],
+       activeNode: null,
       
       // 线程管理
       createThread: (title?: string) => {
@@ -440,6 +480,38 @@ export const useAgentStore = create<AgentState>()(
       setSuggestions: (suggestions) => {
         set({ suggestions })
       },
+
+      setPendingReview: (review) => {
+        set({ pendingReview: review })
+      },
+
+      setPendingCards: (cards) => {
+        set({ pendingCards: cards })
+      },
+
+      setNodeOutput: (nodeId, output) => {
+        set(state => ({
+          nodeOutputs: { ...state.nodeOutputs, [nodeId]: output }
+        }))
+      },
+
+      clearNodeOutputs: () => {
+        set({ nodeOutputs: {} })
+      },
+
+      appendThinkingStep: (token) => {
+        set(state => ({
+          thinkingSteps: [...state.thinkingSteps, { token }]
+        }))
+      },
+
+      clearThinkingSteps: () => {
+        set({ thinkingSteps: [] })
+      },
+
+      setActiveNode: (node) => {
+        set({ activeNode: node })
+      },
       
       // SSE 事件处理
       handleSSEEvent: (event: SSEEvent) => {
@@ -592,6 +664,106 @@ export const useAgentStore = create<AgentState>()(
             }
             break
             
+           case 'agent_think':
+            if (event.data && typeof event.data === 'object' && event.data.token) {
+              get().appendThinkingStep(event.data.token)
+            }
+            break
+
+          case 'agent_think_end':
+            break
+
+          case 'node_start':
+            if (event.data && typeof event.data === 'object') {
+              const { node_id, label } = event.data as { node_id: string; label: string }
+              get().setActiveNode({ nodeId: node_id, label })
+              get().setNodeOutput(node_id, {
+                nodeId: node_id,
+                label,
+                chunks: [],
+                completed: false
+              })
+            }
+            break
+
+          case 'node_stream':
+            if (event.data && typeof event.data === 'object') {
+              const { node_id, token, index } = event.data as { node_id: string; token: string; index: number }
+              const current = get().nodeOutputs[node_id]
+              if (current) {
+                const updated = { ...current, chunks: [...current.chunks, { index, token }] }
+                get().setNodeOutput(node_id, updated)
+              }
+            }
+            break
+
+          case 'node_end':
+            if (event.data && typeof event.data === 'object') {
+              const { node_id, output_preview } = event.data as { node_id: string; output_preview?: string }
+              const current = get().nodeOutputs[node_id]
+              if (current) {
+                get().setNodeOutput(node_id, {
+                  ...current,
+                  completed: true,
+                  outputPreview: output_preview
+                })
+              }
+            }
+            break
+
+          case 'propose_cards':
+            if (event.data && typeof event.data === 'object') {
+              const cardData = event.data as {
+                card_types: string[]
+                reason: string
+                cards: Array<{ id: string; type: string; title: string; summary: string }>
+              }
+              get().setPendingCards({
+                threadId: state.currentThreadId || '',
+                cardTypes: cardData.card_types,
+                reason: cardData.reason,
+                cards: cardData.cards
+              })
+            }
+            break
+
+          case 'review_card':
+            if (event.data && typeof event.data === 'object') {
+              const reviewData = event.data as ReviewCard & Record<string, unknown>
+              get().setPendingReview({
+                threadId: state.currentThreadId || '',
+                severity: reviewData.severity || 'medium',
+                nodeLabel: reviewData.nodeLabel || '',
+                issues: reviewData.issues || [],
+                overallAssessment: reviewData.overallAssessment || '',
+                outputPreview: reviewData.outputPreview || ''
+              })
+            }
+            break
+
+          case 'review_resolved':
+            get().setPendingReview(null)
+            break
+
+          case 'lock_violation':
+            if (event.data && typeof event.data === 'object') {
+              const lockData = event.data as { entity_type?: string; entity_id?: string }
+              const label = {
+                book: '书籍',
+                chapter: '章节',
+                character: '角色'
+              }[lockData.entity_type || ''] || lockData.entity_type || '实体'
+              console.warn(`[Lock] ${label} ${lockData.entity_id || ''} 已被锁定`)
+            }
+            break
+
+          case 'compress_done':
+            if (event.data && typeof event.data === 'object') {
+              const cd = event.data as { summary?: string; removed_count?: number }
+              console.log(`[Compress] 上下文已压缩，移除 ${cd.removed_count || 0} 条消息`)
+            }
+            break
+
           case 'end':
             // 对话结束，重置加载状态
             get().setLoading(false)
@@ -606,7 +778,6 @@ export const useAgentStore = create<AgentState>()(
       // 重置状态
       reset: (keepThreads = false) => {
         if (keepThreads) {
-          // 只保留线程，清除其他所有状态
           set({
             messages: {},
             toolCalls: {},
@@ -616,10 +787,14 @@ export const useAgentStore = create<AgentState>()(
             isLoading: false,
             error: null,
             selectedText: null,
-            suggestions: []
+            suggestions: [],
+            pendingReview: null,
+            pendingCards: null,
+            nodeOutputs: {},
+            thinkingSteps: [],
+            activeNode: null
           })
         } else {
-          // 完全重置到初始状态（除了一些持久化想保留的）
           set({
             threads: [],
             currentThreadId: null,
@@ -632,7 +807,12 @@ export const useAgentStore = create<AgentState>()(
             error: null,
             config: DEFAULT_CONFIG,
             selectedText: null,
-            suggestions: []
+            suggestions: [],
+            pendingReview: null,
+            pendingCards: null,
+            nodeOutputs: {},
+            thinkingSteps: [],
+            activeNode: null
           })
         }
       }

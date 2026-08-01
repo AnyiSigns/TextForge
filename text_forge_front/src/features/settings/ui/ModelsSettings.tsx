@@ -17,7 +17,6 @@ import { Button } from '@/components/ui/button';
 import { Plus, Pencil, Trash2, Check, AlertCircle, Loader2 } from 'lucide-react';
 import apiClient from '@/shared/lib/apiClient';
 import { toast } from 'sonner';
-import { enqueueSync } from '@/lib/storage/syncQueue';
 
 const TEXT_ROLES: ModelRole[] = ['main', 'audit', 'router', 'tool'];
 
@@ -51,18 +50,14 @@ export function ModelsSettings() {
 
   const fetchConfig = useCallback(async () => {
     try {
-      const { data } = await apiClient.get('/api/user/models/config');
-      const body = data as any;
-      if (!body) return;
-
-      for (const role of TEXT_ROLES) {
-        const cfg = body[`${role}_config`] ?? null;
-        if (cfg) setTextRoleModel(role, cfg);
+      const store = useModelStore.getState();
+      if (store.textRoleModels.main) {
+        for (const role of TEXT_ROLES) {
+          const cfg = store.textRoleModels[role];
+          if (cfg) setTextRoleModel(role, cfg);
+        }
       }
-
-      if (body.vision_config) setVisionConfig(body.vision_config);
-      if (body.embedding_config) setEmbeddingPublicConfig(body.embedding_config);
-      if (body.search_config?.api_key) setSearchConfig(body.search_config);
+      if (store.searchConfig?.api_key) setSearchConfig(store.searchConfig);
     } catch {
       toast.error('模型配置加载失败');
     } finally {
@@ -110,19 +105,6 @@ export function ModelsSettings() {
     setOpen(true);
   };
 
-  const buildPayload = () => {
-    const store = useModelStore.getState();
-    return {
-      main_config: store.textRoleModels.main,
-      audit_config: store.textRoleModels.audit,
-      router_config: store.textRoleModels.router,
-      tool_config: store.textRoleModels.tool,
-      vision_config: visionConfig,
-      embedding_config: embeddingPublicConfig,
-      search_config: searchConfig,
-    };
-  };
-
   const handleSave = async (model: RoleModelConfig) => {
     try {
       if (editRole) {
@@ -133,23 +115,17 @@ export function ModelsSettings() {
         setEmbeddingPublicConfig(model);
       }
 
-      const payload = buildPayload();
-      await apiClient.post('/api/user/models/config', payload);
       toast.success('已保存');
       setOpen(false);
       setEditRole(null);
       setEditVision(false);
       setEditEmbedding(false);
     } catch {
-      enqueueSync('models', async () => {
-        await apiClient.post('/api/user/models/config', buildPayload());
-      });
       toast.error('保存失败，将稍后重试');
     }
   };
 
   const handleDelete = async () => {
-    const roleKey = editRole === 'audit' ? 'audit_config' : editRole === 'router' ? 'router_config' : editRole === 'tool' ? 'tool_config' : null;
     try {
       if (editRole) {
         if (editRole === 'main') {
@@ -157,23 +133,13 @@ export function ModelsSettings() {
           return;
         }
         setTextRoleModel(editRole, null);
-        const payload = buildPayload();
-        payload[roleKey!] = null;
-        await apiClient.post('/api/user/models/config', payload);
       } else if (editVision) {
         setVisionConfig(null);
-        await apiClient.post('/api/user/models/config', { ...buildPayload(), vision_config: null });
       } else if (editEmbedding) {
         setEmbeddingPublicConfig(null);
-        await apiClient.post('/api/user/models/config', { ...buildPayload(), embedding_config: null });
       }
       toast.success('已删除');
     } catch {
-      if (roleKey) {
-        enqueueSync('models', async () => {
-          await apiClient.post('/api/user/models/config', { ...buildPayload(), [roleKey]: null });
-        });
-      }
       toast.error('删除失败，将稍后重试');
     }
     setOpen(false);
@@ -224,13 +190,6 @@ export function ModelsSettings() {
           onEdit={(role) => openDialog('text', role)}
           onDelete={(role, key) => {
           setTextRoleModel(role, null);
-          const payload = buildPayload();
-          (payload as Record<string, unknown>)[key] = null;
-          apiClient.post('/api/user/models/config', payload).catch(() => {
-            enqueueSync('models', async () => {
-              await apiClient.post('/api/user/models/config', { ...buildPayload(), [key]: null });
-            });
-          });
           toast.success('已删除');
         }}
           onTest={testConnection}
@@ -243,11 +202,6 @@ export function ModelsSettings() {
           onEdit={() => openDialog('vision', null)}
           onDelete={() => {
             setVisionConfig(null);
-            apiClient.post('/api/user/models/config', { ...buildPayload(), vision_config: null }).catch(() => {
-              enqueueSync('models', async () => {
-                await apiClient.post('/api/user/models/config', { ...buildPayload(), vision_config: null });
-              });
-            });
             toast.success('已删除');
           }}
           onTest={testConnection}
@@ -260,11 +214,6 @@ export function ModelsSettings() {
           onEdit={() => openDialog('embedding', null)}
           onDelete={() => {
             setEmbeddingPublicConfig(null);
-            apiClient.post('/api/user/models/config', { ...buildPayload(), embedding_config: null }).catch(() => {
-              enqueueSync('models', async () => {
-                await apiClient.post('/api/user/models/config', { ...buildPayload(), embedding_config: null });
-              });
-            });
             toast.success('已删除');
           }}
           onTest={testConnection}

@@ -44,6 +44,8 @@ class CreativeSetting(Base):
     writing_taboos: Mapped[str] = mapped_column(Text, nullable=True)
     custom_dimensions: Mapped[dict] = mapped_column(JSONB, default={})
     locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
     book: Mapped["Book"] = relationship(back_populates="creative_setting")
 

@@ -4,7 +4,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useAuthStore } from '@/lib/stores/authStore';
+import { useSessionStore } from '@/shared/stores/sessionStore';
 import { syncAllStores } from '@/lib/storage/sync';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,7 +16,7 @@ import { API_URL } from '@/lib/config/env';
 
 export default function LoginForm() {
   const router = useRouter();
-  const { setAuth } = useAuthStore();
+  const { setAuth } = useSessionStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -50,13 +50,16 @@ export default function LoginForm() {
       });
 
       if (!res.ok) {
-        const error = await res.json();
-        if (res.status === 403 && error.code === 'EMAIL_NOT_VERIFIED') {
+        const error = await res.json().catch(() => ({}));
+        const detail: string = error.detail || '';
+
+        if (res.status === 403 && detail.includes('邮箱未验证')) {
           toast.error('邮箱未验证', { description: '请先验证邮箱后再登录' });
           router.push(`/verify-email?email=${encodeURIComponent(email)}`);
           return;
         }
-        throw new Error(error.message || '登录失败');
+
+        throw new Error(detail || '登录失败');
       }
 
       const data = await res.json();

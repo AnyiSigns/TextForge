@@ -38,7 +38,7 @@ function VerifyEmailContent() {
         });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
-          throw new Error(data.message || '验证失败');
+          throw new Error(data.detail || '验证失败');
         }
         setStatus('success');
         setMessage('邮箱验证成功！');
@@ -64,7 +64,7 @@ function VerifyEmailContent() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.message || '发送失败');
+          throw new Error(data.detail || '发送失败');
       }
       toast.success('验证邮件已重新发送');
     } catch (error: unknown) {

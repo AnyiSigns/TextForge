@@ -3,7 +3,7 @@
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import { Message } from '@/types';
-import { useAuthStore } from '@/lib/stores/authStore';
+import { useSessionStore } from '@/shared/stores/sessionStore';
 
 interface Props {
   message: Message;
@@ -39,7 +39,7 @@ function formatTime(ts: string): string {
 
 export function ChatMessage({ message: msg, characterName, characterAvatar, isLoading, prevTimestamp, bubbleOpacity = 0.85 }: Props) {
   const isUser = msg.role === 'user';
-  const user = useAuthStore((s) => s.user);
+  const user = useSessionStore((s) => s.user);
   const userInitial = (user?.username || '我').slice(0, 2);
   const userAvatarUrl = user?.avatar
     ? user.avatar.startsWith('http')

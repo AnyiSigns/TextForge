@@ -1,7 +1,7 @@
 // src/app/(dashboard)/layout.tsx
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Sidebar } from '@/shared/layout';
 import { BackgroundProvider } from '@/shared/layout';
@@ -13,8 +13,10 @@ import { ConflictDialog } from '@/shared/components';
 import { Footer } from '@/shared/layout';
 import { Spinner } from '@/shared/components';
 import { motion } from 'framer-motion';
+import { Bot } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { syncManager } from '@/lib/storage/syncManager';
-import { useAuthStore } from '@/lib/stores/authStore';
+import { useSessionStore } from '@/shared/stores/sessionStore';
 import { useNetworkStatus } from '@/lib/hooks/useNetworkStatus';
 import { useSettingsStore } from '@/features/settings';
 import { AgentSidebar } from '@/features/user-agent';
@@ -24,7 +26,7 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { accessToken, hasHydrated, setHasHydrated, restoreFromCookie } = useAuthStore();
+  const { accessToken, hasHydrated, setHasHydrated, restoreFromCookie } = useSessionStore();
   const isLoggedIn = !!accessToken;
   const router = useRouter();
   useNetworkStatus({
@@ -33,6 +35,18 @@ export default function DashboardLayout({
   });
   const contentScale = useSettingsStore((s) => s.contentScale);
   const fontFamily = useSettingsStore((s) => s.fontFamily);
+
+  // Agent 侧边栏的展开状态，lift 到布局层以驱动悬浮 toggle
+  const [agentOpen, setAgentOpen] = useState(false);
+  useEffect(() => {
+    const saved = localStorage.getItem('agentSidebarOpen');
+    if (saved !== null) {
+      setAgentOpen(saved === 'true');
+    }
+  }, []);
+  useEffect(() => {
+    localStorage.setItem('agentSidebarOpen', String(agentOpen));
+  }, [agentOpen]);
 
   useEffect(() => {
     void syncManager.syncAll();
@@ -85,7 +99,7 @@ export default function DashboardLayout({
   // NODE_ENV 可能是 'production'，会导致兜底永不执行、永久白屏。
   useEffect(() => {
     const t = setTimeout(() => {
-      if (!useAuthStore.getState().hasHydrated) setHasHydrated(true);
+      if (!useSessionStore.getState().hasHydrated) setHasHydrated(true);
     }, 1000);
     return () => clearTimeout(t);
   }, [setHasHydrated]);
@@ -105,7 +119,7 @@ export default function DashboardLayout({
         <BackgroundProvider>
           <div className="group/sidebar-layout flex h-screen overflow-hidden">
             <Sidebar />
-            <main className="dash-main flex-1 overflow-hidden md:ml-[16rem] transition-all duration-300 md:[html.sidebar-collapsed_&]:ml-[92px]">
+             <main className="dash-main flex-1 overflow-hidden md:ml-[16rem] transition-all duration-300 md:[html.sidebar-collapsed_&]:ml-[92px]">
               <motion.div
                 className="h-full min-h-full flex flex-col"
                 initial={{ opacity: 0, y: 8 }}
@@ -116,8 +130,30 @@ export default function DashboardLayout({
                 <Footer />
               </motion.div>
             </main>
-            {/* Agent 侧边栏 - 右侧全局挂载 */}
-            <AgentSidebar />
+            {/* Agent 侧边栏 - 浮动叠加面板，由悬浮 toggle 控制，
+                采用 fixed 定位不占据文档流，主内容区不会因展开/收起而位移 */}
+            <AgentSidebar
+              isOpen={agentOpen}
+              onToggle={() => setAgentOpen((o) => !o)}
+              onClose={() => setAgentOpen(false)}
+            />
+            {/* 浮动 toggle 按钮 - 固定在右下角，面板打开时位于面板左缘的缝隙处 */}
+            <button
+              type="button"
+              onClick={() => setAgentOpen((o) => !o)}
+              className={cn(
+                'fixed bottom-6 z-40 flex h-12 w-12 items-center justify-center rounded-full',
+                'bg-primary text-primary-foreground shadow-lg hover:bg-primary/90',
+                'transition-all duration-200 hover:scale-105',
+                'agent-toggle-btn',
+                agentOpen
+                  ? 'right-[calc(var(--agent-sidebar-width,380px)+1.5rem)]'
+                  : 'right-6'
+              )}
+              aria-label={agentOpen ? '关闭 Agent 助手' : '打开 Agent 助手'}
+            >
+              <Bot className="h-5 w-5" />
+            </button>
           </div>
         </BackgroundProvider>
       </AppearanceProvider>

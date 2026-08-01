@@ -7,12 +7,10 @@ import { StepCard } from '@/features/projects';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
-  Users,
-  Layers,
-  Check,
-  Sparkles,
-  Info,
-  Wand2,
+   Users,
+   Layers,
+   Check,
+   Wand2,
   PenLine,
   Pause,
   Play,
@@ -44,8 +42,6 @@ export function WorkbenchTab({
   const {
     creativeSetting,
     projectChars,
-    seeded,
-    setSeedOpen,
     isGraphOpen,
     setIsGraphOpen,
     isStreaming,
@@ -234,34 +230,9 @@ export function WorkbenchTab({
         workflowName={activeWorkflow?.name}
       />
 
-      {seeded && (steps.length > 0 || creativeSetting?.worldview || projectChars.length > 0) && (
-        <div className="my-4 flex items-start gap-2 rounded-lg bg-primary/10 border border-primary/30 p-2.5 text-xs text-primary/90">
-          <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-          <span>
-            你的世界观、角色和大纲已生成，可以直接编辑。建议<strong>先修改一两处</strong>
-            （如世界观或主角名），让它更像你的作品，再生成正文。
-          </span>
-        </div>
-      )}
-
-      {/* 首次进入空态引导：一句话开局 + 手动引导 */}
+      {/* 首次进入空态引导：手动引导 */}
       {steps.length === 0 && (
-        <div className="my-4 space-y-4">
-          <Card className="glass-card border-primary/40">
-            <CardContent className="pt-4 space-y-3">
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <Sparkles className="w-4 h-4 text-primary" />
-                一句话开局
-              </div>
-              <p className="text-xs text-muted-foreground">
-                输入一句话（如「一艘拾荒船打捞星海记忆的科幻故事」），自动生成世界观、角色与大纲，再进入写作流程生成正文。
-              </p>
-              <Button size="sm" onClick={() => setSeedOpen(true)}>
-                <Sparkles className="w-4 h-4 mr-1.5" /> 一句话开局
-              </Button>
-            </CardContent>
-          </Card>
-
+        <div className="my-4">
           <EmptyState
             icon={Wand2}
             title="或手动开始"

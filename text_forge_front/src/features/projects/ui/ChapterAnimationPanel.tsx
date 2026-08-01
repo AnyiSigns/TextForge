@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 import { chapterLabel } from '@/lib/utils/chapter';
 import { toast } from 'sonner';
 import type { Character } from '@/types';
-import type { VideoRequest } from '@/features/projects/api/media';
+import type { VideoRequest } from '@/types';
 import type { GenerationContext } from '@/types';
 
 interface ChapterAnimationPanelProps {

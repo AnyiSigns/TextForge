@@ -4,8 +4,8 @@ vi.mock('@/lib/config/env', () => ({
   API_URL: 'http://localhost:8000',
 }));
 
-vi.mock('@/lib/stores/authStore', () => ({
-  useAuthStore: {
+vi.mock('@/shared/stores/sessionStore', () => ({
+  useSessionStore: {
     getState: () => ({
       accessToken: null,
       setAccessToken: vi.fn(),

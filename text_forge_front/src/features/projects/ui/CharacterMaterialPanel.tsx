@@ -4,7 +4,7 @@
 import { Button } from '@/components/ui/button';
 import { Image as ImageIcon } from 'lucide-react';
 import type { Character } from '@/types';
-import type { ImageRequest } from '@/features/projects/api/media';
+import type { ImageRequest } from '@/types';
 import type { GenerationContext } from '@/types';
 
 interface CharacterMaterialPanelProps {

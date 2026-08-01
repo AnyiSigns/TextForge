@@ -13,17 +13,7 @@ import {
    AgentConfig
  } from '../types/agent'
 
-// Agent API 基础路径
 const AGENT_API_BASE = '/api/agent'
-
-/**
- * 启动一个新的 Agent 会话
- * @param threadId 线程 ID（如果为 null 则创建新线程）
- * @param initialMessage 初始用户消息
- * @param config 可选的 Agent 配置
- * @returns Promise 包含事件流的响应
- */
-const API_BASE = ''
 
 export const startSession = async (
   threadId: string | null,
@@ -74,22 +64,29 @@ export const respondAgent = async (
 }
 
 /**
- * 获取 Agent 响应的事件流（SSE）
- * @param threadId 线程 ID
- * @returns 异步迭代器，产出 SSE 事件
+ * 获取 Agent 响应的事件流（SSE），POST 方式
+ * 后端 data: {json} 格式，type 字段在 JSON body 中
  */
 export const streamAgent = async (
-   threadId: string
+   threadId: string,
+   message: string,
+   modelConfigData?: Record<string, unknown>
  ): Promise<AsyncIterable<SSEEvent>> => {
    try {
      const response = await fetch(
-       `${API_BASE}${AGENT_API_BASE}/stream/${threadId}`,
+       `${AGENT_API_BASE}/stream/${threadId}`,
        {
-         method: 'GET',
+         method: 'POST',
          headers: {
+           'Content-Type': 'application/json',
            'Accept': 'text/event-stream',
            'Cache-Control': 'no-cache'
-         }
+         },
+         body: JSON.stringify({
+           thread_id: threadId,
+           message,
+           modelConfig: modelConfigData ?? {}
+         })
        }
      )
      
@@ -133,9 +130,10 @@ export const streamAgent = async (
                      
                      try {
                        const parsedData = JSON.parse(data)
+                       const eventType = (parsedData.type || currentEventType) as SSEEvent['type']
                        return { 
                          value: { 
-                           type: currentEventType as SSEEvent['type'],
+                           type: eventType,
                            data: parsedData 
                          }, 
                          done: false 
@@ -173,6 +171,40 @@ export const streamAgent = async (
      }
    }
  }
+
+/**
+ * Resume agent stream after review action
+ */
+export const resumeAgentStream = async (
+  threadId: string,
+  modelConfigData?: Record<string, unknown>
+): Promise<AsyncIterable<SSEEvent>> => {
+  return streamAgent(threadId, '', modelConfigData)
+}
+
+/**
+ * Submit review action (retry / accept / edit)
+ */
+export const reviewAction = async (
+  threadId: string,
+  action: 'retry' | 'accept' | 'edit',
+  editedContent?: string
+): Promise<{ success: boolean; error?: string }> => {
+  try {
+    await apiClient.post(`${AGENT_API_BASE}/review-action`, {
+      thread_id: threadId,
+      action,
+      edited_content: editedContent ?? null
+    })
+    return { success: true }
+  } catch (error) {
+    console.error('Failed to submit review action:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : '未知错误'
+    }
+  }
+}
 
 /**
  * 执行文本操作（润色、扩展等）
@@ -293,6 +325,8 @@ export const agentApi = {
   startSession,
   respondAgent,
   streamAgent,
+  resumeAgentStream,
+  reviewAction,
   executeTextOperation,
   listThreads,
   getThreadMessages,

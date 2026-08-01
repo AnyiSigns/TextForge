@@ -1,6 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useWorldStore } from '@/features/world/stores/worldStore';
-import { fetchPlotThreads, createPlotThread, updatePlotThread, deletePlotThread } from '@/features/world/api/plotThreads';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -32,7 +31,7 @@ interface PlotThreadPanelProps {
 
 export function PlotThreadPanel({ bookId }: PlotThreadPanelProps) {
   const threads = useWorldStore((s) => s.plotThreads);
-  const setThreads = useWorldStore((s) => s.setPlotThreads);
+  const load = useWorldStore((s) => s.load);
   const addThread = useWorldStore((s) => s.addPlotThread);
   const updateThreadStore = useWorldStore((s) => s.updatePlotThread);
   const removeThread = useWorldStore((s) => s.removePlotThread);
@@ -48,11 +47,14 @@ export function PlotThreadPanel({ bookId }: PlotThreadPanelProps) {
     relatedCharacterIds: [],
   });
 
+  useEffect(() => {
+    load(bookId).catch(() => {});
+  }, [bookId, load]);
+
   const loadThreads = async () => {
     setLoading(true);
     try {
-      const data = await fetchPlotThreads(bookId);
-      setThreads(data);
+      await load(bookId);
     } catch {
       toast.error('加载情节脉络失败');
     } finally {
@@ -62,8 +64,7 @@ export function PlotThreadPanel({ bookId }: PlotThreadPanelProps) {
 
   const handleCreate = async () => {
     try {
-      const created = await createPlotThread(bookId, form);
-      addThread(created);
+      await addThread(bookId, form);
       setDialogOpen(false);
       setForm({ name: '', description: '', status: 'active', type: 'main', relatedCharacterIds: [] });
       toast.success('情节脉络已创建');
@@ -75,8 +76,7 @@ export function PlotThreadPanel({ bookId }: PlotThreadPanelProps) {
   const handleUpdate = async () => {
     if (editingId === null) return;
     try {
-      await updatePlotThread(editingId, form);
-      updateThreadStore(editingId, form);
+      await updateThreadStore(editingId, form);
       setEditingId(null);
       setDialogOpen(false);
       toast.success('情节脉络已更新');
@@ -87,8 +87,7 @@ export function PlotThreadPanel({ bookId }: PlotThreadPanelProps) {
 
   const handleDelete = async (id: number) => {
     try {
-      await deletePlotThread(id, bookId);
-      removeThread(id);
+      await removeThread(id, bookId);
       toast.success('情节脉络已删除');
     } catch {
       toast.error('删除情节脉络失败');

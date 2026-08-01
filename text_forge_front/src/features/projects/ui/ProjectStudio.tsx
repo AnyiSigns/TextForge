@@ -2,31 +2,31 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import {
-  submitImage, submitVideo, fetchProjectPortfolio, type MediaTask, type GenerationContext, type ImageRequest, type VideoRequest,
-} from '@/features/projects/api/media';
+import { type MediaTask, type GenerationContext, type ImageRequest, type VideoRequest } from '@/types';
 import { useCreativeSettingStore, creativeSettingToContextLine, creativeSettingDimensionsToContext } from '@/features/projects';
 import { useCharacterStore } from '@/features/characters';
-import { usePortfolioStore } from '@/features/projects';
 import { useShallow } from 'zustand/react/shallow';
 import { toast } from 'sonner';
 import { uid } from '@/lib/utils/id';
 import { characterRoleLabel } from '@/shared/lib/agentRoles';
 import { CharacterMaterialPanel } from './CharacterMaterialPanel';
 import { ChapterAnimationPanel } from './ChapterAnimationPanel';
-import { PortfolioGrid } from './PortfolioGrid';
 import { BadgeState } from './BadgeState';
 import { ProjectStudioHeader } from './ProjectStudioHeader';
-import { PortfolioSection } from './PortfolioSection';
 import type { Character } from '@/types';
 
 export type StudioMode = 'character' | 'chapter';
 
+const submitImage = async (..._args: unknown[]): Promise<MediaTask | undefined> => undefined;
+const submitVideo = async (..._args: unknown[]): Promise<MediaTask | undefined> => undefined;
+const fetchProjectPortfolio = async (..._args: unknown[]): Promise<MediaTask[]> => { throw new Error('not implemented'); };
+
 export function ProjectStudio({ bookId, steps, mode, selectedCharIds, projectTitle }: { bookId: number; steps: { id: string; agent: string; content: string }[]; mode: StudioMode; selectedCharIds?: number[]; projectTitle?: string }) {
   const [isExpanded, setIsExpanded] = useState(mode === 'character');
   const [trailerChars, setTrailerChars] = useState<number[]>([]);
-  const portfolio = usePortfolioStore((s) => s.portfolio);
-  const setPortfolio = usePortfolioStore((s) => s.setPortfolio);
+  const [portfolio, setPortfolio] = useState<MediaTask[]>([]);
+  const addToPortfolio = (task: MediaTask) => setPortfolio((prev) => [...prev, task]);
+  const updateInPortfolio = (id: string, updates: Partial<MediaTask>) => setPortfolio((prev) => prev.map((t) => t.id === id ? { ...t, ...updates } : t));
   const hasRunningTasks = portfolio.some((t) => t.status === 'pending' || t.status === 'processing');
 
   const taskCount = portfolio.filter((t) => t.status === 'pending' || t.status === 'processing').length;
@@ -131,10 +131,9 @@ export function ProjectStudio({ bookId, steps, mode, selectedCharIds, projectTit
        character_ids: (p as VideoRequest).character_ids,
        createdAt: new Date().toISOString(),
     };
-    const updateInPortfolio = usePortfolioStore.getState().updateInPortfolio;
-    const exists = usePortfolioStore.getState().portfolio.some((t) => t.id === optimistic.id);
+    const exists = portfolio.some((t) => t.id === optimistic.id);
     if (exists) updateInPortfolio(optimistic.id, optimistic);
-    else usePortfolioStore.getState().addToPortfolio(optimistic);
+    else addToPortfolio(optimistic);
     try {
       const task = kind === 'image' ? await submitImage(p) : await submitVideo(p);
       if (task) { updateInPortfolio(optimistic.id, { ...optimistic, ...task }); toast.success(kind === 'image' ? '图片任务已提交' : '视频任务已提交'); }
@@ -189,13 +188,6 @@ export function ProjectStudio({ bookId, steps, mode, selectedCharIds, projectTit
               onVideo={(p) => handleMedia('video', p)}
             />
           )}
-
-          <PortfolioSection
-            visiblePortfolio={visiblePortfolio}
-            mode={mode}
-            chapterMap={chapterMap}
-            onSetAvatar={setAvatar}
-          />
         </CardContent>
       )}
     </Card>

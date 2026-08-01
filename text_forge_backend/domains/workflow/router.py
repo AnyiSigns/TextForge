@@ -6,7 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.database import db_manager
 from .service import WorkflowService, workflow_db
 from schema.response.workflow import ListWorkflowsResponse, WorkflowDetailResponse
-from schema.request.workflow import Workflow, WorkflowRunRequest
+from schema.request.workflow import WorkflowRunRequest
+from schema.workflow import Workflow
 from .executor import WorkflowExecutor
 
 router = APIRouter(prefix="/workflows", tags=["Workflow"])

@@ -9,18 +9,21 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/shared/components';
 import { GenerationForm } from '@/shared/components';
-import { submitVideo, fetchVideoTasks, describeGenError, type MediaTask, type VideoRequest } from '@/features/projects/api/media';
+import { type MediaTask, type VideoRequest } from '@/types';
 import { listOutlines } from '@/features/projects';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { EmptyState } from '@/shared/components';
 import { ProcessNav } from '@/features/projects';
-import { PortfolioGallery } from '@/features/projects';
 import { useCharacterStore } from '@/features/characters';
 import { useCreativeSettingStore, creativeSettingToContextLine } from '@/features/projects';
 import type { GenerationContext } from '@/types';
 import { Video, Clapperboard, Film, Link as LinkIcon, LayoutGrid, BookOpen, Download } from 'lucide-react';
 import { downloadSingleImage, downloadImagesZip } from '@/lib/storage/imageExport';
+
+const submitVideo = async (..._args: unknown[]): Promise<MediaTask | undefined> => undefined;
+const fetchVideoTasks = async (): Promise<MediaTask[]> => [];
+const describeGenError = (e: unknown): string => (e instanceof Error ? e.message : '未知错误');
 
 export default function TasksPage() {
   const searchParams = useSearchParams();
@@ -219,7 +222,7 @@ export default function TasksPage() {
             </Card>
           </div>
         )}
-        {tab === 'all' && <PortfolioGallery />}
+        {tab === 'all' && null}
       </ProcessNav>
     </div>
   );

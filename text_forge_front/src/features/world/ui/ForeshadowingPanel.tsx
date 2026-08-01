@@ -1,6 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useWorldStore } from '@/features/world/stores/worldStore';
-import { fetchForeshadowings, createForeshadowing, updateForeshadowing, deleteForeshadowing } from '@/features/world/api/foreshadowing';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -31,7 +30,7 @@ interface ForeshadowingPanelProps {
 
 export function ForeshadowingPanel({ bookId }: ForeshadowingPanelProps) {
   const foreshadowings = useWorldStore((s) => s.foreshadowings);
-  const setForeshadowings = useWorldStore((s) => s.setForeshadowings);
+  const load = useWorldStore((s) => s.load);
   const addForeshadowing = useWorldStore((s) => s.addForeshadowing);
   const updateForeshadowingStore = useWorldStore((s) => s.updateForeshadowing);
   const removeForeshadowing = useWorldStore((s) => s.removeForeshadowing);
@@ -46,11 +45,14 @@ export function ForeshadowingPanel({ bookId }: ForeshadowingPanelProps) {
     relatedCharacterIds: [],
   });
 
+  useEffect(() => {
+    load(bookId).catch(() => {});
+  }, [bookId, load]);
+
   const loadForeshadowings = async () => {
     setLoading(true);
     try {
-      const data = await fetchForeshadowings(bookId);
-      setForeshadowings(data);
+      await load(bookId);
     } catch {
       toast.error('加载伏笔失败');
     } finally {
@@ -60,8 +62,7 @@ export function ForeshadowingPanel({ bookId }: ForeshadowingPanelProps) {
 
   const handleCreate = async () => {
     try {
-      const created = await createForeshadowing(bookId, form);
-      addForeshadowing(created);
+      await addForeshadowing(bookId, form);
       setDialogOpen(false);
       setForm({ description: '', status: 'planted', revealType: 'direct', relatedCharacterIds: [] });
       toast.success('伏笔已创建');
@@ -73,8 +74,7 @@ export function ForeshadowingPanel({ bookId }: ForeshadowingPanelProps) {
   const handleUpdate = async () => {
     if (editingId === null) return;
     try {
-      await updateForeshadowing(editingId, form);
-      updateForeshadowingStore(editingId, form);
+      await updateForeshadowingStore(editingId, form);
       setEditingId(null);
       setDialogOpen(false);
       toast.success('伏笔已更新');
@@ -85,8 +85,7 @@ export function ForeshadowingPanel({ bookId }: ForeshadowingPanelProps) {
 
   const handleDelete = async (id: number) => {
     try {
-      await deleteForeshadowing(id, bookId);
-      removeForeshadowing(id);
+      await removeForeshadowing(id, bookId);
       toast.success('伏笔已删除');
     } catch {
       toast.error('删除伏笔失败');

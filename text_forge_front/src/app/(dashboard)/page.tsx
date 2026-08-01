@@ -2,11 +2,11 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
-import { useAuthStore } from '@/lib/stores/authStore';
+import { useSessionStore } from '@/shared/stores/sessionStore';
 import { useBookStore } from '@/features/projects';
 import { useCharacterStore } from '@/features/characters';
 import { getManuscriptChapters } from '@/lib/storage/indexedDB';
-import { fetchVideoTasks, type MediaTask } from '@/features/projects/api/media';
+import { type MediaTask } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { BookOpen, LayoutDashboard, Target, Users, BarChart3 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -14,8 +14,10 @@ import { PageHeader } from '@/shared/components';
 import { OnboardingWizard } from '@/shared/components/OnboardingWizard';
 import { Button } from '@/components/ui/button';
 
+const fetchVideoTasks = async (): Promise<MediaTask[]> => [];
+
 export default function DashboardPage() {
-  const { user } = useAuthStore();
+  const { user } = useSessionStore();
   const [stats, setStats] = useState({ books: 0, characters: 0, totalWords: 0, completedWords: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -87,14 +89,14 @@ export default function DashboardPage() {
   }, [books.length, characters.length, dailyGoal]);
 
   const statCards = [
-    { icon: BookOpen, label: '书籍数', value: String(stats.books), color: 'text-blue-500' },
-    { icon: Users, label: '角色数', value: String(stats.characters), color: 'text-purple-500' },
-    { icon: Target, label: '目标字数', value: totalWordGoal > 0 ? `${totalWordGoal.toLocaleString()} 字` : '-', color: 'text-green-500' },
+    { icon: BookOpen, label: '书籍数', value: String(stats.books), color: 'text-accent' },
+    { icon: Users, label: '角色数', value: String(stats.characters), color: 'text-accent' },
+    { icon: Target, label: '目标字数', value: totalWordGoal > 0 ? `${totalWordGoal.toLocaleString()} 字` : '-', color: 'text-accent' },
   ];
 
   const progressCards = [
-    { icon: BarChart3, label: '总字数', value: stats.totalWords > 0 ? `${stats.totalWords.toLocaleString()} 字` : '-', color: 'text-indigo-500' },
-    { icon: BarChart3, label: '当前字数', value: dailyGoal > 0 ? `${dailyGoal.toLocaleString()} 字` : '-', color: 'text-pink-500' },
+    { icon: BarChart3, label: '总字数', value: stats.totalWords > 0 ? `${stats.totalWords.toLocaleString()} 字` : '-', color: 'text-accent' },
+    { icon: BarChart3, label: '当前字数', value: dailyGoal > 0 ? `${dailyGoal.toLocaleString()} 字` : '-', color: 'text-accent' },
   ];
 
   return (

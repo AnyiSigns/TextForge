@@ -14,7 +14,7 @@ export function StatsTab({ bookId }: StatsTabProps) {
   const [summary, setSummary] = useState<StatisticsSummary | null>(null);
   const [trend, setTrend] = useState<WritingTrendPoint[]>([]);
   const [charFreq, setCharFreq] = useState<CharacterFrequency[]>([]);
-  const [plotProgress, setPlotProgress] = useState<PlotProgress[]>([]);
+  const [plotProgress, setPlotProgress] = useState<PlotProgress | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -38,7 +38,7 @@ export function StatsTab({ bookId }: StatsTabProps) {
     return <div className="flex items-center justify-center h-64 text-xs text-muted-foreground">加载统计中...</div>;
   }
 
-  if (!summary) {
+  if (!summary || !plotProgress) {
     return <div className="flex items-center justify-center h-64 text-xs text-muted-foreground">暂无统计数据</div>;
   }
 
@@ -101,21 +101,30 @@ export function StatsTab({ bookId }: StatsTabProps) {
         <Card>
           <CardHeader><CardTitle className="text-sm">情节脉络进度</CardTitle></CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              {plotProgress.map((p) => (
-                <div key={p.outline_node_id} className="space-y-1">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="truncate">{p.title}</span>
-                    <span className="text-muted-foreground">{Math.round(p.progress * 100)}%</span>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>完成率</span>
+                <span>{Math.round(plotProgress.completion_rate * 100)}%</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-border/60 overflow-hidden">
+                <div className="h-full rounded-full bg-primary/80 transition-all" style={{ width: `${plotProgress.completion_rate * 100}%` }} />
+              </div>
+              <div className="flex items-center justify-between text-xs text-muted-foreground pt-1">
+                <span>已完成 {plotProgress.chapters_with_content} / {plotProgress.total_chapters} 章</span>
+              </div>
+              <div className="space-y-2 pt-2">
+                {plotProgress.chapter_details.map((d) => (
+                  <div key={d.chapter_id} className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="truncate">{d.title}</span>
+                      <span className="text-muted-foreground">{d.total_words} 字</span>
+                    </div>
                   </div>
-                  <div className="h-1.5 rounded-full bg-border/60 overflow-hidden">
-                    <div className="h-full rounded-full bg-primary/80 transition-all" style={{ width: `${p.progress * 100}%` }} />
-                  </div>
-                </div>
-              ))}
-              {plotProgress.length === 0 && (
-                <p className="text-xs text-muted-foreground">暂无情节脉络数据</p>
-              )}
+                ))}
+                {plotProgress.chapter_details.length === 0 && (
+                  <p className="text-xs text-muted-foreground">暂无情节脉络数据</p>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>

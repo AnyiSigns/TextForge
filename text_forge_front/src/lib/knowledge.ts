@@ -11,8 +11,8 @@
 // 浏览器(web)工具与 RAG 一样属于"agent 的工具能力"：前端只声明节点 toolIds，
 // 真实执行（抓网页/向量检索）在后端 tool 完成，由 agent 自主决定是否调用。
 
-import { API_URL } from '@/lib/config/env';
-import { useAuthStore } from '@/lib/stores/authStore';
+import apiClient from '@/shared/lib/apiClient';
+import { authFetch } from '@/shared/lib/authFetch';
 import { type RagChunk, putKbDoc, getKbDoc, getAllKbDocs, deleteKbDoc, type KbDocRecord } from '@/lib/storage/indexedDB';
 import { vectorSearch, indexDocument, removeDocumentChunks } from '@/lib/rag/vectorStore';
 import { downloadBlob } from '@/lib/utils/download';
@@ -32,13 +32,8 @@ export interface KbDocMeta {
 
 // 公共库后端搜索（失败直接抛错，不再回退演示语料）
 async function backendPublicSearch(q: string): Promise<RagChunk[]> {
-  const token = useAuthStore.getState().accessToken;
-  const res = await fetch(`${API_URL}/api/knowledge/search?scope=public&q=${encodeURIComponent(q)}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  if (!res.ok) throw new Error(`公共库检索失败：${res.status}`);
-  const data = await res.json();
-  return (data.chunks as RagChunk[]) ?? [];
+  const { data } = await apiClient.get<{ chunks: RagChunk[] }>(`/api/knowledge/search?scope=public&q=${encodeURIComponent(q)}`);
+  return data.chunks ?? [];
 }
 
 // ---------- 统一 RAG 客户端 ----------
@@ -73,23 +68,20 @@ export const ragClient = {
     };
     await putKbDoc(rec);
     indexDocument(rec).catch(() => {});
-    const token = useAuthStore.getState().accessToken;
-    await fetch(`${API_URL}/api/knowledge/upload`, {
-      method: 'POST',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      body: file,
-    });
+    apiClient.post('/api/knowledge/upload', file, {
+      headers: { 'Content-Type': file.type || 'application/octet-stream' },
+    }).catch(() => {});
     return rec;
   },
 
   async listPersonal(): Promise<KbDocMeta[]> {
-    const token = useAuthStore.getState().accessToken;
-    const res = await fetch(`${API_URL}/api/knowledge`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
-    if (res.ok) {
-      const data = await res.json();
+    try {
+      const { data } = await apiClient.get<{ documents: KbDocMeta[] }>('/api/knowledge');
       if (Array.isArray(data.documents)) {
         return data.documents as KbDocMeta[];
       }
+    } catch {
+      /* 后端未就绪，回退本地 */
     }
     return (await getAllKbDocs()).filter((d) => d.scope === 'personal');
   },
@@ -103,35 +95,36 @@ export const ragClient = {
     await deleteKbDoc(id);
     await removeDocumentChunks(id).catch(() => {});
     try {
-      const token = useAuthStore.getState().accessToken;
-      await fetch(`${API_URL}/api/knowledge/${id}`, { method: 'DELETE', headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      await apiClient.delete(`/api/knowledge/${id}`);
     } catch { /* 已本地删 */ }
   },
 
   // 公共库：列表（后端优先，不再回退演示）
   async listPublic(): Promise<KbDocMeta[]> {
-    const res = await fetch(`${API_URL}/api/knowledge/public`);
-    if (res.ok) {
-      const data = await res.json();
+    try {
+      const { data } = await apiClient.get<{ documents: KbDocMeta[] }>('/api/knowledge/public');
       if (Array.isArray(data.documents)) {
         return data.documents as KbDocMeta[];
       }
+    } catch {
+      /* 后端未就绪 */
     }
     return [];
   },
 
   // 公共库文档内容（查看/下载）：后端契约
   async getPublicContent(id: string): Promise<string | null> {
-    const res = await fetch(`${API_URL}/api/knowledge/public/${id}`);
-    if (res.ok) {
-      const data = await res.json();
+    try {
+      const { data } = await apiClient.get<{ content: string }>(`/api/knowledge/public/${id}`);
       if (typeof data.content === 'string') return data.content;
+    } catch {
+      /* fall through */
     }
     return null;
   },
 
   async downloadPublic(id: string, name: string): Promise<void> {
-    const res = await fetch(`${API_URL}/api/knowledge/public/${id}/download`);
+    const res = await authFetch(`/api/knowledge/public/${id}/download`);
     if (res.ok) {
       const blob = await res.blob();
       downloadBlob(blob, name);

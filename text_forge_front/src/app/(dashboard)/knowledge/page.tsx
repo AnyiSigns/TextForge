@@ -12,7 +12,7 @@ import { toast } from 'sonner';
 import { PageHeader } from '@/shared/components';
 import { EmptyState } from '@/shared/components';
 import { ProcessNav } from '@/features/projects';
-import { useAuthStore } from '@/lib/stores/authStore';
+import { useSessionStore } from '@/shared/stores/sessionStore';
 import { useSettingsStore } from '@/features/settings';
 import { ragClient, type KbDocMeta } from '@/lib/knowledge';
 import { initDownloadedTiers, isTierDownloaded } from '@/lib/rag/embed';
@@ -22,7 +22,7 @@ import { reindexAll } from '@/lib/rag/vectorStore';
 const FORBIDDEN_NOTE = '请勿上传违规内容。违规内容将被拦截。';
 
 export default function KnowledgePage() {
-  const { user } = useAuthStore();
+  const { user } = useSessionStore();
   const [view, setView] = useState<'personal' | 'public'>('personal');
   const [publicFilter, setPublicFilter] = useState<'all' | 'mine'>('all');
   const [personal, setPersonal] = useState<KbDocMeta[]>([]);

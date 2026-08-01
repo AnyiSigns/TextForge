@@ -53,7 +53,7 @@ export async function runWorkflow(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${(await import('@/lib/stores/authStore')).useAuthStore.getState().accessToken}`,
+      Authorization: `Bearer ${(await import('@/shared/stores/sessionStore')).useSessionStore.getState().accessToken}`,
     },
     body: JSON.stringify(body),
     signal: opts?.signal,

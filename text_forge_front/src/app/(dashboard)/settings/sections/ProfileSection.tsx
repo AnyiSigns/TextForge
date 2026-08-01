@@ -1,7 +1,7 @@
 // src/app/(dashboard)/settings/sections/ProfileSection.tsx
 'use client';
 
-import { useAuthStore } from '@/lib/stores/authStore';
+import { useSessionStore } from '@/shared/stores/sessionStore';
 import { useSettingsForm } from '@/features/settings';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -12,7 +12,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Eye, EyeOff, KeyRound, Mail } from 'lucide-react';
 
 export function ProfileSection() {
-  const { user } = useAuthStore();
+  const { user } = useSessionStore();
   const {
     username, email, oldPassword, newPassword, confirmPassword, emailCode,
     passwordMode, isLoading, isAvatarLoading, showOldPwd, showNewPwd, isSendingCode,

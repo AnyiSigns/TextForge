@@ -6,7 +6,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAgentStore } from '@/features/user-agent/stores/agentStore';
 import { AgentMessage, AgentPhase } from '@/features/user-agent/types/agent';
-import { streamAgent, executeTextOperation } from '@/features/user-agent/api/agentApi';
+import { streamAgent, executeTextOperation, resumeAgentStream } from '@/features/user-agent/api/agentApi';
+import { useModelStore } from '@/features/settings/stores/modelStore';
 import { 
   MessageBubble 
 } from './MessageBubble';
@@ -43,10 +44,13 @@ import {
 import { cn } from '@/lib/utils';
 
 interface AgentSidebarProps {
+  isOpen: boolean;
+  onToggle: () => void;
+  onClose: () => void;
   className?: string;
 }
 
-export function AgentSidebar({ className = '' }: AgentSidebarProps) {
+export function AgentSidebar({ isOpen, onToggle, onClose, className = '' }: AgentSidebarProps) {
   const {
     threads,
     currentThreadId,
@@ -57,10 +61,17 @@ export function AgentSidebar({ className = '' }: AgentSidebarProps) {
     isLoading,
     error,
     selectedText,
+    pendingReview,
+    pendingCards,
+    nodeOutputs,
+    thinkingSteps,
+    activeNode,
     setSelectedText,
     setPhase,
     setLoading,
     setError,
+    handleSSEEvent,
+    setPendingReview,
     createThread,
     setCurrentThread,
     deleteThread,
@@ -71,68 +82,71 @@ export function AgentSidebar({ className = '' }: AgentSidebarProps) {
     addToolCall,
     updateToolCall,
     addPlan,
-    setPhase: dispatchSetPhase,
     reset
   } = useAgentStore();
   
-  const [isOpen, setIsOpen] = useState(false);
-  const [theme, setTheme] = useState<'light' | 'dark'>('dark'); // 实际应从系统或用户设置获取
+  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const sidebarRef = useRef<HTMLDivElement>(null);
   const resizeRef = useRef<null | {
     startX: number;
     startWidth: number;
   }>(null);
+
+  const getModelConfig = () => {
+    const modelStore = useModelStore.getState()
+    const { textRoleModels } = modelStore
+    return {
+      main_config: textRoleModels.main ?? null,
+      audit_config: textRoleModels.audit ?? null,
+      router_config: textRoleModels.router ?? null,
+      tool_config: textRoleModels.tool ?? null,
+    }
+  }
   
-  // 从 localStorage 恢复状态
+  // 从 localStorage 恢复主题
   useEffect(() => {
-    const savedState = localStorage.getItem('agentSidebarState');
-    if (savedState) {
+    const savedTheme = localStorage.getItem('agentSidebarTheme');
+    if (savedTheme) {
       try {
-        const state = JSON.parse(savedState);
-        setIsOpen(state.isOpen ?? false);
+        const state = JSON.parse(savedTheme);
         setTheme(state.theme ?? 'dark');
-        // 宽度恢复通过 CSS 变量处理
       } catch (e) {
-        console.warn('Failed to parse agent sidebar state:', e);
+        console.warn('Failed to parse agent sidebar theme:', e);
       }
     }
-    
+
     // 监听存储变化以支持多标签同步
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'agentSidebarState') {
+      if (e.key === 'agentSidebarTheme') {
         try {
           const state = JSON.parse(e.newValue || '{}');
-          setIsOpen(state.isOpen ?? false);
           setTheme(state.theme ?? 'dark');
         } catch (e) {
-          console.warn('Failed to parse agent sidebar state from storage event:', e);
+          console.warn('Failed to parse agent sidebar theme from storage event:', e);
         }
       }
     };
-    
+
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
-  
-  // 保存状态到 localStorage
+
+  // 保存主题到 localStorage（isOpen 由父组件管理并持久化）
   useEffect(() => {
-    const state = {
-      isOpen,
-      theme
-    };
-    localStorage.setItem('agentSidebarState', JSON.stringify(state));
-  }, [isOpen, theme]);
+    localStorage.setItem('agentSidebarTheme', JSON.stringify({ theme }));
+  }, [theme]);
   
   // 按下 Esc 键关闭侧边栏
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isOpen) {
-        setIsOpen(false);
+        e.preventDefault();
+        onClose();
       }
       // Ctrl+\ 切换侧边栏展开/折叠
       if (e.ctrlKey && e.key === '\\') {
         e.preventDefault();
-        setIsOpen(prev => !prev);
+        onToggle();
       }
     };
     
@@ -144,9 +158,14 @@ export function AgentSidebar({ className = '' }: AgentSidebarProps) {
   useEffect(() => {
     if (!isOpen) return;
     
-    const handleClickOutside = (e: MouseEvent) => {
+     const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node & Element;
       if (sidebarRef.current && !sidebarRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
+        // 忽略浮动 toggle 按钮区域（点击它应触发 toggle，而非关闭）
+        if (target?.closest?.('.agent-toggle-btn')) {
+          return;
+        }
+        onClose();
       }
     };
     
@@ -178,13 +197,10 @@ export function AgentSidebar({ className = '' }: AgentSidebarProps) {
     setError(null);
     
     try {
-      // 调用 Agent API 开始流式响应
-      const stream = await streamAgent(currentThreadId);
+      const stream = await streamAgent(currentThreadId, content.trim(), getModelConfig())
       
-      // 处理流式响应
       for await (const event of stream) {
-        // 实际处理在 agentStore 的 handleSSEEvent 中
-        // 这里我们只需要确保流被消费
+        handleSSEEvent(event)
         if (event.type === 'end') {
           break;
         }
@@ -261,13 +277,14 @@ export function AgentSidebar({ className = '' }: AgentSidebarProps) {
         isOpen ? 'translate-x-0' : 'translate-x-full',
         'transition-transform duration-300 ease-in-out',
         'bg-background/80 backdrop-blur-sm border-l border-border/50',
-        'dark:bg-popover/80 dark:border-popover/30'
+        'dark:bg-popover/80 dark:border-popover/30',
+        className
       )}
     >
       {/* 侧边栏拖拽手柄 */}
-      <SidebarHandle 
+       <SidebarHandle 
         isOpen={isOpen} 
-        onToggle={() => setIsOpen(!isOpen)}
+        onToggle={onToggle}
         onMouseDown={(e) => {
           if (isOpen) {
             resizeRef.current = {
@@ -291,8 +308,8 @@ export function AgentSidebar({ className = '' }: AgentSidebarProps) {
               <Button 
                 variant="ghost" 
                 size="icon" 
-                onClick={() => setIsOpen(false)}
-                aria-label="关闭侧边栏"
+                 onClick={onClose}
+                 aria-label="关闭侧边栏"
               >
                 <X className="h-4 w-4" />
               </Button>

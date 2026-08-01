@@ -1,5 +1,6 @@
 import { Book, CreateBookRequest, BUILTIN_WORKFLOW_ID, type GenerationContext, type Step } from '@/types';
 import apiClient from '@/shared/lib/apiClient';
+import { authFetch } from '@/shared/lib/authFetch';
 import { getWorkflow, runWorkflow, workflowToSteps, type RunWorkflowOptions, type WorkflowRunStep, type Workflow } from '@/features/workflow';
 
 export interface CreateBookResponse extends Book {
@@ -81,7 +82,7 @@ export interface UpdateBookPayload {
 }
 
 export async function updateBook(id: number, payload: UpdateBookPayload): Promise<Book> {
-  const { data } = await apiClient.patch<Book>(`/api/books/${id}`, payload);
+  const { data } = await apiClient.put<Book>(`/api/books/${id}`, payload);
   return data;
 }
 
@@ -242,17 +243,12 @@ export async function exportBook(bookId: number, options: ExportBookOptions = {}
   if (includeOutline) params.set('include_outline', 'true');
   if (includeCharacters) params.set('include_characters', 'true');
   if (volumeIds && volumeIds.length > 0) params.set('volume_ids', volumeIds.join(','));
-  
-  const response = await fetch(`/api/books/${bookId}/export?${params.toString()}`, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
-  
+
+  const response = await authFetch(`/api/books/${bookId}/export?${params.toString()}`);
+
   if (!response.ok) {
     throw new Error(`导出失败: ${response.statusText}`);
   }
-  
+
   return response.blob();
 }
