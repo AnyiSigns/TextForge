@@ -3,10 +3,10 @@
 
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAgentStore } from '@/features/user-agent/stores/agentStore';
-import { AgentMessage, AgentPhase } from '@/features/user-agent/types/agent';
-import { streamAgent, executeTextOperation, resumeAgentStream } from '@/features/user-agent/api/agentApi';
+import { AgentMessage } from '@/features/user-agent/types/agent';
+import { streamAgent, executeTextOperation } from '@/features/user-agent/api/agentApi';
 import { useModelStore } from '@/features/settings/stores/modelStore';
 import { 
   MessageBubble 

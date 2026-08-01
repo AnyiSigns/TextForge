@@ -1,5 +1,6 @@
 import json
 import uuid
+from datetime import datetime, timezone
 from typing import Annotated
 from .agent_state import UserAgentState
 from .graphs.agent_graph import build_user_agent_graph
@@ -198,7 +199,7 @@ async def respond_to_agent(
             result = await graph.ainvoke(state, config=config)
         except Exception as exc:
             logger.error(f"agent respond 失败: {exc}", exc_info=True)
-            raise HTTPException(status_code=500, detail=f"Agent 执行失败: {exc}")
+            raise HTTPException(status_code=500, detail="Agent 执行失败")
         final_messages = result.get("messages", [])
         ai_message = ""
         for msg in reversed(final_messages):
@@ -424,7 +425,7 @@ async def manual_compress(
         summary = result.content if hasattr(result, "content") else str(result)
     except Exception as exc:
         logger.error(f"manual_compress LLM 调用失败: {exc}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"摘要生成失败: {exc}")
+        raise HTTPException(status_code=500, detail="摘要生成失败")
 
     try:
         from .repository import AgentMemoryRepository
@@ -437,7 +438,7 @@ async def manual_compress(
                 "source": "manual_compress",
                 "metadata": {
                     "thread_id": body.thread_id,
-                    "compressed_at": __import__("datetime").datetime.utcnow().isoformat(),
+                    "compressed_at": datetime.now(timezone.utc).isoformat(),
                 },
             },
         )

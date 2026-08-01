@@ -1,4 +1,4 @@
-import { FileText, ListTree, FileCog, Users, ImageIcon, Clapperboard, BookOpen, Settings2, BarChart, Shield, Globe } from 'lucide-react';
+import { FileText, ListTree, FileCog, Users, ImageIcon, Clapperboard, Settings2, BarChart, Shield, Globe } from 'lucide-react';
 import type { ProcessTab } from './ui/ProcessNav';
 
 export const PROJECT_TABS: ProcessTab[] = [

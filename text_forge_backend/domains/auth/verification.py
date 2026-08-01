@@ -1,4 +1,4 @@
-import random
+import secrets
 from config.settings import settings
 from shared.redis import redis_client
 
@@ -16,7 +16,7 @@ class VerificationService:
         Returns:
             5 位数字字符串。
         """
-        return f"{random.randint(10000, 99999)}"
+        return f"{secrets.randbelow(90000) + 10000:05d}"
 
     @staticmethod
     async def save_code(email: str, code: str):

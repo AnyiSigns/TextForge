@@ -197,7 +197,7 @@ class ModelWrapper:
                         "prompt": prompt,
                         "model_id": self.model_id,
                     }
-                    resp = requests.post(self.base_url, json=payload)
+                    resp = requests.post(self.base_url, json=payload, timeout=30)
                     return resp.json().get("output") or ""
 
                 @property

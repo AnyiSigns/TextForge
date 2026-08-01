@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useParams } from 'next/navigation';
-import { FileText, ListTree, FileCog, Users, ImageIcon, Clapperboard, BookOpen, Check, Wand2, Settings2 } from 'lucide-react';
+import { FileCog, Users, BookOpen, Check, Wand2 } from 'lucide-react';
 import { ProjectStudio } from '@/features/projects';
 import { ProjectGuide } from '@/features/projects';
 import { BriefPanel } from '@/features/projects';

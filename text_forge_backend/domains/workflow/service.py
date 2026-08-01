@@ -47,7 +47,7 @@ class WorkflowService:
             raise
         except Exception as e:
             logger.error("流水线异常", exc_info=True)
-            raise HTTPException(status_code=500, detail=f"{e}")
+            raise HTTPException(status_code=500, detail="操作失败")
 
     async def delete_workflow(self, workflow_id: str, _user_id: int):
         try:
@@ -60,7 +60,7 @@ class WorkflowService:
             raise
         except Exception as e:
             logger.error("删除异常", exc_info=True)
-            raise HTTPException(status_code=500, detail=f"{e}")
+            raise HTTPException(status_code=500, detail="操作失败")
 
 
 async def workflow_db(db: Annotated[AsyncSession, Depends(db_manager.get_db)]):

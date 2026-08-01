@@ -249,7 +249,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
                 ]
             except Exception as exc:
                 logger.warning(f"personal_rag_search 失败: {exc}")
-                return [{"title": "检索失败", "snippet": str(exc), "url": ""}]
+                return [{"title": "检索失败", "snippet": "内部错误", "url": ""}]
 
     @tool
     async def web_search(query: str, top_k: int = 5) -> List[dict]:
@@ -639,7 +639,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
                 ]
             except Exception as exc:
                 logger.warning(f"search_across_books 失败: {exc}")
-                return [{"error": str(exc), "query": query}]
+                return [{"error": "搜索异常", "query": query}]
 
     return lookup_tools + [
         search_public_docs,

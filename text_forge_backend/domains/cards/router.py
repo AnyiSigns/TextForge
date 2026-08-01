@@ -3,6 +3,7 @@ from typing import Annotated
 
 from config.logging import get_logger
 from core.auth import get_current
+from core.security import verify_token
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 
 from domains.agent.card_session import CARD_TYPES, card_session_manager
@@ -87,9 +88,22 @@ async def card_websocket(
         await websocket.close(code=4004, reason="卡片会话不存在或已过期")
         return
 
-    user_id = websocket.query_params.get("user_id")
-    if not user_id or int(user_id) != session.user_id:
-        await websocket.close(code=4003, reason="无权访问此卡片")
+    auth_header = websocket.headers.get("authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[len("Bearer "):]
+        payload = verify_token(token)
+        if payload:
+            token_user_id = payload.get("sub")
+            if token_user_id and int(token_user_id) == session.user_id:
+                pass
+            else:
+                await websocket.close(code=4003, reason="无权访问此卡片")
+                return
+        else:
+            await websocket.close(code=4003, reason="无效的访问令牌")
+            return
+    else:
+        await websocket.close(code=4003, reason="缺少访问令牌")
         return
 
     await websocket.accept()

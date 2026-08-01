@@ -318,5 +318,5 @@ class WorkflowExecutor:
                     continue
         except Exception as e:
             logger.error("工作流异常", exc_info=True)
-            yield f"event:error\ndata:{json.dumps({'error': str(e)})}\n\n"
+            yield f"event:error\ndata:{json.dumps({'error': '工作流执行异常'})}\n\n"
             return

@@ -76,12 +76,12 @@ export function useOutlinePanel(bookId: string): UseOutlinePanelReturn {
   }, [bookId, reload]);
 
   const stats = useMemo(() => {
-    const arr = Array.isArray(volumes) ? volumes : [];
-    const chapters = arr.reduce<OutlineVolume['chapters']>((acc, v) => acc.concat(Array.isArray(v.chapters) ? v.chapters : []), []);
-    const nodes = chapters.reduce<OutlineNode[]>((acc, c) => acc.concat(Array.isArray(c.nodes) ? c.nodes : []), []);
     if (!Array.isArray(volumes)) {
       console.error('[OutlinePanel] volumes is not array', volumes);
     }
+    const arr = Array.isArray(volumes) ? volumes : [];
+    const chapters = arr.reduce<OutlineVolume['chapters']>((acc, v) => acc.concat(Array.isArray(v.chapters) ? v.chapters : []), []);
+    const nodes = chapters.reduce<OutlineNode[]>((acc, c) => acc.concat(Array.isArray(c.nodes) ? c.nodes : []), []);
     return { total: nodes.length, done: nodes.filter((n) => n.status === 'done').length, writing: nodes.filter((n) => n.status === 'writing').length };
   }, [volumes]);
 

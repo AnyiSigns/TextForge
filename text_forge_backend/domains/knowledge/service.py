@@ -68,7 +68,7 @@ class KnowledgeService:
         Returns:
             上传处理结果。
         """
-        from domains.export.upload_repository import process_upload
+        from domains.book.upload_repository import process_upload
 
         return await process_upload(self.session, file, emb_config=emb_config)
 

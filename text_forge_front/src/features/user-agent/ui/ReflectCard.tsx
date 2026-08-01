@@ -6,7 +6,7 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle2, XCircle, AlertCircle, Plus } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Plus } from 'lucide-react';
 import { useState } from 'react';
 import type { EntityProposal } from '@/features/user-agent/types/agent';
 

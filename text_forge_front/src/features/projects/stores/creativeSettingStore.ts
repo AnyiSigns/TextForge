@@ -2,7 +2,6 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { enqueueSync } from '@/lib/storage/syncQueue';
 import type { BookCreativeSetting, CustomDimension, Origin } from '@/types';
-import apiClient from '@/shared/lib/apiClient';
 import { createIdbStorage } from '@/lib/storage/zustandIdb';
 import { syncManager } from '@/lib/storage/syncManager';
 import { updateCreativeSetting } from '../api/creativeSettings';

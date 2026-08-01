@@ -14,7 +14,7 @@ import {
   Card, CardContent, CardHeader, CardTitle,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, Pencil, Trash2, Check, AlertCircle, Loader2 } from 'lucide-react';
+import { Check, Loader2 } from 'lucide-react';
 import apiClient from '@/shared/lib/apiClient';
 import { toast } from 'sonner';
 

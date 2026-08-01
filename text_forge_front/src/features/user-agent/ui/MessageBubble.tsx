@@ -28,7 +28,6 @@ import {
 } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { DiffSlider } from '@/features/manuscript/ui/DiffSlider';
 
 interface MessageBubbleProps {
   message: AgentMessage;
@@ -40,7 +39,6 @@ interface MessageBubbleProps {
 export function MessageBubble({ message, isLast, onRegenerate, onEdit }: MessageBubbleProps) {
   const [isStreaming, setIsStreaming] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [showDiff, setShowDiff] = useState(false);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
   const messageRef = useRef<HTMLDivElement>(null);
   

@@ -1,8 +1,7 @@
 'use client';
 
-import { Wand2, CheckCircle2, PenLine, Settings2, Info } from 'lucide-react';
+import { Wand2, CheckCircle2, PenLine, Info } from 'lucide-react';
 import { useWorkbench } from '@/features/projects';
-import { PageHeader } from '@/shared/components';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { BUILTIN_WORKFLOW_ID } from '@/types';

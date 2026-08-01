@@ -1,5 +1,6 @@
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
+from config.logging import get_logger
 from .service import UserAuthService, user_db_serve
 from core.auth import get_current
 from schema.request.user import (
@@ -11,6 +12,8 @@ from schema.response.user import ProfileResponse
 from .verification import verification
 import os
 import uuid
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/user", tags=["用户"])
 
@@ -61,7 +64,8 @@ async def update_change_pwd(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(f"密码修改失败: {e}")
+        raise HTTPException(status_code=400, detail="密码修改失败")
 
 
 @router.post("/change-password-by-email")
@@ -81,7 +85,8 @@ async def update_change_pwd_by_email(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(f"邮箱换密码失败: {e}")
+        raise HTTPException(status_code=400, detail="修改失败")
 
 
 @router.post("/avatar")

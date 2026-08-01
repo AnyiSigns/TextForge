@@ -26,7 +26,7 @@ import {
    Badge 
  } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { AgentPhase, ToolCallLog, Plan } from '@/features/user-agent/types/agent';
+import { ToolCallLog, Plan } from '@/features/user-agent/types/agent';
 import type { CrossChapterContext } from '@/types';
 import { PlanCard } from './PlanCard';
 import { ToolCallCard } from './ToolCallCard';

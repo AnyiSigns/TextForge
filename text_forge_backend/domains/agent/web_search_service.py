@@ -78,7 +78,7 @@ class WebSearchService:
                 ]
         except Exception as exc:
             logger.warning(f"web_search 失败: {exc}")
-            return [{"error": str(exc), "query": query}]
+            return [{"error": "搜索失败", "query": query}]
 
     async def _get_cache(self, query_hash: str) -> Optional[List[dict]]:
         """查询搜索缓存。

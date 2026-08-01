@@ -3,6 +3,7 @@ import hashlib
 import os
 import uuid
 
+import sqlalchemy
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import UploadFile
@@ -34,7 +35,7 @@ async def find_document_by_md5(session: AsyncSession, md5: str):
         Document 实例，不存在返回 None。
     """
     stmt = (
-        __import__("sqlalchemy")
+        sqlalchemy
         .select(Document)
         .where(Document.file_md5 == md5, Document.scope == "public")
     )
