@@ -4,7 +4,7 @@
 import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Keyboard } from 'lucide-react';
+import { Keyboard, Bot } from 'lucide-react';
 
 const SHORTCUTS = [
   { key: 'Ctrl / Cmd + K', desc: '打开全局搜索（项目 / 角色）' },
@@ -16,12 +16,36 @@ const SHORTCUTS = [
   { key: 'Esc', desc: '关闭当前弹窗 / 搜索框' },
 ];
 
-// 右下角贴边的键盘图标入口：悬浮显示提示，点击展开快捷键详情
-export function Footer() {
+interface FooterProps {
+  agentOpen?: boolean;
+  onAgentToggle?: () => void;
+}
+
+// 右下角贴边的工具入口：Agent 助手 + 快捷键列表
+export function Footer({ agentOpen, onAgentToggle }: FooterProps) {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="fixed bottom-3 right-3 z-30">
+    <div className="fixed bottom-3 right-3 z-30 flex items-center gap-1">
+      {/* Agent 助手入口 */}
+      {onAgentToggle && (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                aria-label={agentOpen ? '关闭 Agent 助手' : '打开 Agent 助手'}
+                onClick={onAgentToggle}
+                className="grid place-items-center w-9 h-9 rounded-lg text-muted-foreground/70 hover:text-foreground hover:bg-foreground/5 transition-all"
+              >
+                <Bot className="w-[18px] h-[18px]" strokeWidth={1.5} />
+              </button>
+            }
+          />
+          <TooltipContent side="top">Agent 助手 (Ctrl+\)</TooltipContent>
+        </Tooltip>
+      )}
+
       <Dialog open={open} onOpenChange={setOpen}>
         <Tooltip>
           <TooltipTrigger

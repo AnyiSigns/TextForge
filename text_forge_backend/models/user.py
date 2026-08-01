@@ -22,7 +22,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(
         String(80), unique=True, nullable=False, index=True, comment="邮箱"
     )
-    avatar: Mapped[str] = mapped_column(String(255), nullable=True)
+    avatar: Mapped[str] = mapped_column(String(255), nullable=True, comment="头像URL")
 
     is_verified: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, comment="是否验证"

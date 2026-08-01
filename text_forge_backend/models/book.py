@@ -11,19 +11,19 @@ from models.base import Base
 class Book(Base):
     __tablename__ = "books"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, comment="书籍ID")
     user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True, comment="用户ID"
     )
-    title: Mapped[str] = mapped_column(String(200), nullable=False)
-    description: Mapped[str] = mapped_column(Text, nullable=True)
-    genre: Mapped[str] = mapped_column(String(128), nullable=True)
-    pinned: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
-    workflow_id: Mapped[str] = mapped_column(String(128), nullable=True, index=True)
-    total_word_goal: Mapped[int] = mapped_column(Integer, default=0)
-    current_word_count: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+    title: Mapped[str] = mapped_column(String(200), nullable=False, comment="书名")
+    description: Mapped[str] = mapped_column(Text, nullable=True, comment="书籍简介")
+    genre: Mapped[str] = mapped_column(String(128), nullable=True, comment="分类")
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False, index=True, comment="是否置顶")
+    workflow_id: Mapped[str] = mapped_column(String(128), nullable=True, index=True, comment="工作流ID")
+    total_word_goal: Mapped[int] = mapped_column(Integer, default=0, comment="总字数目标")
+    current_word_count: Mapped[int] = mapped_column(Integer, default=0, comment="当前字数")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), comment="创建时间")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), comment="更新时间")
 
     user: Mapped["User"] = relationship(back_populates="books")
     creative_setting: Mapped["CreativeSetting"] = relationship(back_populates="book", cascade="all,delete-orphan")
@@ -39,15 +39,15 @@ class Book(Base):
 class CreativeSetting(Base):
     __tablename__ = "creative_settings"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    book_id: Mapped[int] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"), unique=True, nullable=False)
-    tone: Mapped[str] = mapped_column(Text, nullable=True)
-    worldview: Mapped[str] = mapped_column(Text, nullable=True)
-    writing_taboos: Mapped[str] = mapped_column(Text, nullable=True)
-    custom_dimensions: Mapped[dict] = mapped_column(JSONB, default={})
-    locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, comment="创意设定ID")
+    book_id: Mapped[int] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"), unique=True, nullable=False, comment="书籍ID")
+    tone: Mapped[str] = mapped_column(Text, nullable=True, comment="语调/文风")
+    worldview: Mapped[str] = mapped_column(Text, nullable=True, comment="世界观")
+    writing_taboos: Mapped[str] = mapped_column(Text, nullable=True, comment="写作禁忌")
+    custom_dimensions: Mapped[dict] = mapped_column(JSONB, default={}, comment="自定义维度")
+    locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, comment="是否锁定")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), comment="创建时间")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), comment="更新时间")
 
     book: Mapped["Book"] = relationship(back_populates="creative_setting")
 
@@ -55,12 +55,12 @@ class CreativeSetting(Base):
 class Volume(Base):
     __tablename__ = "volumes"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    book_id: Mapped[int] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"), nullable=False, index=True)
-    title: Mapped[str] = mapped_column(String(100), nullable=False)
-    summary: Mapped[str] = mapped_column(Text, nullable=True)
-    sort_order: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, comment="卷ID")
+    book_id: Mapped[int] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"), nullable=False, index=True, comment="书籍ID")
+    title: Mapped[str] = mapped_column(String(100), nullable=False, comment="卷标题")
+    summary: Mapped[str] = mapped_column(Text, nullable=True, comment="卷简介")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, comment="排序")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), comment="创建时间")
 
     book: Mapped["Book"] = relationship(back_populates="volumes")
     chapters: Mapped[list["Chapter"]] = relationship(back_populates="volume", cascade="all,delete-orphan")
@@ -69,13 +69,13 @@ class Volume(Base):
 class Chapter(Base):
     __tablename__ = "chapters"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    volume_id: Mapped[int] = mapped_column(ForeignKey("volumes.id", ondelete="CASCADE"), nullable=False, index=True)
-    title: Mapped[str] = mapped_column(String(200), nullable=False)
-    summary: Mapped[str] = mapped_column(Text, nullable=True)
-    sort_order: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, comment="章节ID")
+    volume_id: Mapped[int] = mapped_column(ForeignKey("volumes.id", ondelete="CASCADE"), nullable=False, index=True, comment="所属卷ID")
+    title: Mapped[str] = mapped_column(String(200), nullable=False, comment="章节标题")
+    summary: Mapped[str] = mapped_column(Text, nullable=True, comment="章节摘要")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, comment="排序")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), comment="创建时间")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), comment="更新时间")
 
     volume: Mapped["Volume"] = relationship(back_populates="chapters")
     contents: Mapped[list["ChapterContent"]] = relationship(back_populates="chapter", cascade="all,delete-orphan")
@@ -84,11 +84,11 @@ class Chapter(Base):
 class ChapterContent(Base):
     __tablename__ = "chapter_contents"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    chapter_id: Mapped[int] = mapped_column(ForeignKey("chapters.id", ondelete="CASCADE"), nullable=False, index=True)
-    content: Mapped[str] = mapped_column(Text, nullable=True)
-    version: Mapped[int] = mapped_column(Integer, default=1)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, comment="章节内容ID")
+    chapter_id: Mapped[int] = mapped_column(ForeignKey("chapters.id", ondelete="CASCADE"), nullable=False, index=True, comment="章节ID")
+    content: Mapped[str] = mapped_column(Text, nullable=True, comment="章节内容")
+    version: Mapped[int] = mapped_column(Integer, default=1, comment="版本号")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), comment="创建时间")
 
     chapter: Mapped["Chapter"] = relationship(back_populates="contents")
 
@@ -96,19 +96,19 @@ class ChapterContent(Base):
 class Character(Base):
     __tablename__ = "characters"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    book_id: Mapped[int] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"), nullable=False, index=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    avatar_url: Mapped[str] = mapped_column(String(500), nullable=True)
-    name: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
-    aliases: Mapped[list] = mapped_column(JSONB, default=[])
-    description: Mapped[str] = mapped_column(Text, nullable=True)
-    role_type: Mapped[str] = mapped_column(String(128), nullable=True)
-    status: Mapped[str] = mapped_column(String(255), nullable=True)
-    relationship_chain: Mapped[list] = mapped_column(JSONB, default=[])
-    locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, comment="角色ID")
+    book_id: Mapped[int] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"), nullable=False, index=True, comment="所属书籍ID")
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True, comment="创建用户ID")
+    avatar_url: Mapped[str] = mapped_column(String(500), nullable=True, comment="头像URL")
+    name: Mapped[str] = mapped_column(String(50), nullable=False, index=True, comment="角色名称")
+    aliases: Mapped[list] = mapped_column(JSONB, default=[], comment="别名列表")
+    description: Mapped[str] = mapped_column(Text, nullable=True, comment="角色描述")
+    role_type: Mapped[str] = mapped_column(String(128), nullable=True, comment="角色类型")
+    status: Mapped[str] = mapped_column(String(255), nullable=True, comment="角色状态")
+    relationship_chain: Mapped[list] = mapped_column(JSONB, default=[], comment="关系链")
+    locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, comment="是否锁定")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), comment="创建时间")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), comment="更新时间")
 
     book: Mapped["Book"] = relationship(back_populates="characters")
     user: Mapped["User"] = relationship(back_populates="characters")
@@ -117,17 +117,17 @@ class Character(Base):
 class Outline(Base):
     __tablename__ = "outlines"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    book_id: Mapped[int] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"), nullable=False, index=True)
-    parent_id: Mapped[int] = mapped_column(ForeignKey("outlines.id", ondelete="CASCADE"), nullable=True)
-    target_volume_id: Mapped[int] = mapped_column(ForeignKey("volumes.id"), nullable=True)
-    target_chapter_id: Mapped[int] = mapped_column(ForeignKey("chapters.id"), nullable=True)
-    node_type: Mapped[str] = mapped_column(String(20), nullable=False)
-    title: Mapped[str] = mapped_column(String(200), nullable=False)
-    content: Mapped[str] = mapped_column(Text, nullable=True)
-    sort_order: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, comment="大纲节点ID")
+    book_id: Mapped[int] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"), nullable=False, index=True, comment="所属书籍ID")
+    parent_id: Mapped[int] = mapped_column(ForeignKey("outlines.id", ondelete="CASCADE"), nullable=True, comment="父节点ID")
+    target_volume_id: Mapped[int] = mapped_column(ForeignKey("volumes.id"), nullable=True, comment="目标卷ID")
+    target_chapter_id: Mapped[int] = mapped_column(ForeignKey("chapters.id"), nullable=True, comment="目标章节ID")
+    node_type: Mapped[str] = mapped_column(String(20), nullable=False, comment="节点类型")
+    title: Mapped[str] = mapped_column(String(200), nullable=False, comment="标题")
+    content: Mapped[str] = mapped_column(Text, nullable=True, comment="内容")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, comment="排序")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), comment="创建时间")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), comment="更新时间")
 
     book: Mapped["Book"] = relationship(back_populates="outlines")
     parent: Mapped[Optional["Outline"]] = relationship(back_populates="children", remote_side="Outline.id")
@@ -137,16 +137,16 @@ class Outline(Base):
 class Location(Base):
     __tablename__ = "locations"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    book_id: Mapped[int] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"), nullable=False, index=True)
-    name: Mapped[str] = mapped_column(String(100), nullable=False)
-    type: Mapped[str] = mapped_column(String(50), nullable=False)
-    description: Mapped[str] = mapped_column(Text, nullable=True)
-    parent_id: Mapped[int] = mapped_column(ForeignKey("locations.id", ondelete="SET NULL"), nullable=True)
-    attributes: Mapped[dict] = mapped_column(JSONB, default={})
-    locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, comment="地点ID")
+    book_id: Mapped[int] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"), nullable=False, index=True, comment="所属书籍ID")
+    name: Mapped[str] = mapped_column(String(100), nullable=False, comment="地点名称")
+    type: Mapped[str] = mapped_column(String(50), nullable=False, comment="地点类型")
+    description: Mapped[str] = mapped_column(Text, nullable=True, comment="地点描述")
+    parent_id: Mapped[int] = mapped_column(ForeignKey("locations.id", ondelete="SET NULL"), nullable=True, comment="父地点ID")
+    attributes: Mapped[dict] = mapped_column(JSONB, default={}, comment="属性")
+    locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, comment="是否锁定")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), comment="创建时间")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), comment="更新时间")
 
     book: Mapped["Book"] = relationship(back_populates="locations")
     parent: Mapped[Optional["Location"]] = relationship(back_populates="children", remote_side="Location.id")
@@ -156,18 +156,18 @@ class Location(Base):
 class TimelineEvent(Base):
     __tablename__ = "timeline_events"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    book_id: Mapped[int] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"), nullable=False, index=True)
-    name: Mapped[str] = mapped_column(String(200), nullable=False)
-    description: Mapped[str] = mapped_column(Text, nullable=True)
-    sort_order: Mapped[int] = mapped_column(Integer, default=0)
-    chapter_id: Mapped[int] = mapped_column(ForeignKey("chapters.id", ondelete="SET NULL"), nullable=True)
-    event_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    related_character_ids: Mapped[list] = mapped_column(JSONB, default=[])
-    related_location_id: Mapped[int] = mapped_column(ForeignKey("locations.id", ondelete="SET NULL"), nullable=True)
-    locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, comment="时间线事件ID")
+    book_id: Mapped[int] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"), nullable=False, index=True, comment="所属书籍ID")
+    name: Mapped[str] = mapped_column(String(200), nullable=False, comment="事件名称")
+    description: Mapped[str] = mapped_column(Text, nullable=True, comment="事件描述")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, comment="排序")
+    chapter_id: Mapped[int] = mapped_column(ForeignKey("chapters.id", ondelete="SET NULL"), nullable=True, comment="所属章节ID")
+    event_type: Mapped[str] = mapped_column(String(50), nullable=False, comment="事件类型")
+    related_character_ids: Mapped[list] = mapped_column(JSONB, default=[], comment="关联角色ID列表")
+    related_location_id: Mapped[int] = mapped_column(ForeignKey("locations.id", ondelete="SET NULL"), nullable=True, comment="关联地点ID")
+    locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, comment="是否锁定")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), comment="创建时间")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), comment="更新时间")
 
     book: Mapped["Book"] = relationship(back_populates="timeline_events")
 
@@ -175,19 +175,19 @@ class TimelineEvent(Base):
 class Foreshadowing(Base):
     __tablename__ = "foreshadowings"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    book_id: Mapped[int] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"), nullable=False, index=True)
-    description: Mapped[str] = mapped_column(Text, nullable=False)
-    status: Mapped[str] = mapped_column(String(20), nullable=False)
-    planted_at_chapter_id: Mapped[int] = mapped_column(ForeignKey("chapters.id", ondelete="SET NULL"), nullable=True)
-    resolved_at_chapter_id: Mapped[int] = mapped_column(ForeignKey("chapters.id", ondelete="SET NULL"), nullable=True)
-    related_character_ids: Mapped[list] = mapped_column(JSONB, default=[])
-    related_event_id: Mapped[int] = mapped_column(ForeignKey("timeline_events.id", ondelete="SET NULL"), nullable=True)
-    reveal_type: Mapped[str] = mapped_column(String(50), nullable=True)
-    notes: Mapped[str] = mapped_column(Text, nullable=True)
-    locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, comment="伏笔ID")
+    book_id: Mapped[int] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"), nullable=False, index=True, comment="所属书籍ID")
+    description: Mapped[str] = mapped_column(Text, nullable=False, comment="伏笔描述")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, comment="伏笔状态")
+    planted_at_chapter_id: Mapped[int] = mapped_column(ForeignKey("chapters.id", ondelete="SET NULL"), nullable=True, comment="埋下伏笔的章节ID")
+    resolved_at_chapter_id: Mapped[int] = mapped_column(ForeignKey("chapters.id", ondelete="SET NULL"), nullable=True, comment="回收伏笔的章节ID")
+    related_character_ids: Mapped[list] = mapped_column(JSONB, default=[], comment="关联角色ID列表")
+    related_event_id: Mapped[int] = mapped_column(ForeignKey("timeline_events.id", ondelete="SET NULL"), nullable=True, comment="关联事件ID")
+    reveal_type: Mapped[str] = mapped_column(String(50), nullable=True, comment="揭示方式")
+    notes: Mapped[str] = mapped_column(Text, nullable=True, comment="备注")
+    locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, comment="是否锁定")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), comment="创建时间")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), comment="更新时间")
 
     book: Mapped["Book"] = relationship(back_populates="foreshadowings")
 
@@ -195,20 +195,20 @@ class Foreshadowing(Base):
 class PlotThread(Base):
     __tablename__ = "plot_threads"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    book_id: Mapped[int] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"), nullable=False, index=True)
-    name: Mapped[str] = mapped_column(String(200), nullable=False)
-    description: Mapped[str] = mapped_column(Text, nullable=True)
-    status: Mapped[str] = mapped_column(String(20), nullable=False)
-    parent_thread_id: Mapped[int] = mapped_column(ForeignKey("plot_threads.id", ondelete="SET NULL"), nullable=True)
-    type: Mapped[str] = mapped_column(String(50), nullable=False)
-    related_character_ids: Mapped[list] = mapped_column(JSONB, default=[])
-    start_chapter_id: Mapped[int] = mapped_column(ForeignKey("chapters.id", ondelete="SET NULL"), nullable=True)
-    end_chapter_id: Mapped[int] = mapped_column(ForeignKey("chapters.id", ondelete="SET NULL"), nullable=True)
-    progress_note: Mapped[str] = mapped_column(Text, nullable=True)
-    locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, comment="剧情线索ID")
+    book_id: Mapped[int] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"), nullable=False, index=True, comment="所属书籍ID")
+    name: Mapped[str] = mapped_column(String(200), nullable=False, comment="线索名称")
+    description: Mapped[str] = mapped_column(Text, nullable=True, comment="线索描述")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, comment="线索状态")
+    parent_thread_id: Mapped[int] = mapped_column(ForeignKey("plot_threads.id", ondelete="SET NULL"), nullable=True, comment="父线索ID")
+    type: Mapped[str] = mapped_column(String(50), nullable=False, comment="线索类型")
+    related_character_ids: Mapped[list] = mapped_column(JSONB, default=[], comment="关联角色ID列表")
+    start_chapter_id: Mapped[int] = mapped_column(ForeignKey("chapters.id", ondelete="SET NULL"), nullable=True, comment="开始章节ID")
+    end_chapter_id: Mapped[int] = mapped_column(ForeignKey("chapters.id", ondelete="SET NULL"), nullable=True, comment="结束章节ID")
+    progress_note: Mapped[str] = mapped_column(Text, nullable=True, comment="进度备注")
+    locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, comment="是否锁定")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), comment="创建时间")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), comment="更新时间")
 
     book: Mapped["Book"] = relationship(back_populates="plot_threads")
     parent: Mapped[Optional["PlotThread"]] = relationship(back_populates="children", remote_side="PlotThread.id")

@@ -4,6 +4,7 @@
 
 // ---- UI 组件 (M1: MVP) ----
 export { AgentSidebar } from './ui/AgentSidebar'
+export { AgentFloatingWindow } from './ui/AgentFloatingWindow'
 export { MessageBubble } from './ui/MessageBubble'
 export { ThreadList } from './ui/ThreadList'
 export { InputBar } from './ui/InputBar'

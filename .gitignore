@@ -61,6 +61,11 @@ docs/api.md
 # ===================== 文档 =====================
 *.md
 review.txt
+审查规则.txt
+
+# ===================== 前端重制版生成/说明文件 =====================
+text_forge_front_remastered_edition/tech stack.txt
+text_forge_front_remastered_edition/tsconfig.tsbuildinfo
 
 # ===================== 配置/锁文件（非源码） =====================
 pnpm-lock.yaml
@@ -72,3 +77,8 @@ text_forge_front/docs/adr/0001-feature-sliced-architecture.md
 text_forge_front/docs/adr/0002-git-engineering-gates.md
 text_forge_front/docs/adr/0003-observability-strategy.md
 text_forge_front/docs/adr/0004-backend-integration-boundary.md
+
+# ===================== 临时/生成物 =====================
+.playwright-mcp/
+project-detail-mockup.html
+projects-mockup.html

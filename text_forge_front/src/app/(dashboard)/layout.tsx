@@ -13,13 +13,11 @@ import { ConflictDialog } from '@/shared/components';
 import { Footer } from '@/shared/layout';
 import { Spinner } from '@/shared/components';
 import { motion } from 'framer-motion';
-import { Bot } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { syncManager } from '@/lib/storage/syncManager';
 import { useSessionStore } from '@/shared/stores/sessionStore';
 import { useNetworkStatus } from '@/lib/hooks/useNetworkStatus';
 import { useSettingsStore } from '@/features/settings';
-import { AgentSidebar } from '@/features/user-agent';
+import { AgentFloatingWindow } from '@/features/user-agent';
 
 export default function DashboardLayout({
   children,
@@ -127,33 +125,17 @@ export default function DashboardLayout({
                 transition={{ duration: 0.2 }}
               >
                 <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar px-6 py-6 md:px-8 md:py-7">{children}</div>
-                <Footer />
+                <Footer
+                  agentOpen={agentOpen}
+                  onAgentToggle={() => setAgentOpen((o) => !o)}
+                />
               </motion.div>
             </main>
-            {/* Agent 侧边栏 - 浮动叠加面板，由悬浮 toggle 控制，
-                采用 fixed 定位不占据文档流，主内容区不会因展开/收起而位移 */}
-            <AgentSidebar
+            <AgentFloatingWindow
               isOpen={agentOpen}
               onToggle={() => setAgentOpen((o) => !o)}
               onClose={() => setAgentOpen(false)}
             />
-            {/* 浮动 toggle 按钮 - 固定在右下角，面板打开时位于面板左缘的缝隙处 */}
-            <button
-              type="button"
-              onClick={() => setAgentOpen((o) => !o)}
-              className={cn(
-                'fixed bottom-6 z-40 flex h-12 w-12 items-center justify-center rounded-full',
-                'bg-primary text-primary-foreground shadow-lg hover:bg-primary/90',
-                'transition-all duration-200 hover:scale-105',
-                'agent-toggle-btn',
-                agentOpen
-                  ? 'right-[calc(var(--agent-sidebar-width,380px)+1.5rem)]'
-                  : 'right-6'
-              )}
-              aria-label={agentOpen ? '关闭 Agent 助手' : '打开 Agent 助手'}
-            >
-              <Bot className="h-5 w-5" />
-            </button>
           </div>
         </BackgroundProvider>
       </AppearanceProvider>
