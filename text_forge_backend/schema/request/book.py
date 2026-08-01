@@ -1,37 +1,37 @@
-from typing import Optional
-from pydantic import BaseModel, Field, ConfigDict
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class BookRequest(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     title: str
-    description: Optional[str] = None
-    genre: Optional[str] = None
+    description: str | None = None
+    genre: str | None = None
 
 
 class UpdateBookRequest(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
-    workflow_id: Optional[str] = Field(default=None, alias="workflowId")
-    title: Optional[str] = None
-    description: Optional[str] = None
-    genre: Optional[str] = None
-    total_word_goal: Optional[int] = Field(default=None, alias="totalWordGoal")
+    workflow_id: str | None = Field(default=None, alias="workflowId")
+    title: str | None = None
+    description: str | None = None
+    genre: str | None = None
+    total_word_goal: int | None = Field(default=None, alias="totalWordGoal")
 
 
 class VolumeRequest(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     title: str
-    summary: Optional[str] = None
+    summary: str | None = None
 
 
 class ChapterRequest(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     title: str
-    summary: Optional[str] = None
+    summary: str | None = None
 
 
 class ChapterContentRequest(BaseModel):
@@ -46,13 +46,13 @@ class SectionsRequest(BaseModel):
     id: int
     title: str
     content: str
-    pinned: Optional[bool] = None
+    pinned: bool | None = None
 
 
 class CreativeSettingRequest(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
-    tone: Optional[str] = None
-    worldview: Optional[str] = None
-    writing_taboos: Optional[str] = Field(default=None, alias="writingTaboos")
-    custom_dimensions: Optional[dict] = Field(default=None, alias="customDimensions")
+    tone: str | None = None
+    worldview: str | None = None
+    writing_taboos: str | None = Field(default=None, alias="writingTaboos")
+    custom_dimensions: dict | None = Field(default=None, alias="customDimensions")

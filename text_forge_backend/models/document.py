@@ -1,10 +1,11 @@
 from datetime import datetime
-from typing import List
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, func
-from models.base import Base
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from pgvector.sqlalchemy import Vector
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from models.base import Base
 
 
 class Document(Base):
@@ -25,7 +26,7 @@ class Document(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     users: Mapped["User"] = relationship(back_populates="documents")
-    chunks: Mapped[List["Chunk"]] = relationship(
+    chunks: Mapped[list["Chunk"]] = relationship(
         back_populates="documents", cascade="all,delete-orphan"
     )
 

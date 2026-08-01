@@ -1,9 +1,8 @@
-from typing import List, Optional
-from sqlalchemy import select, delete as sqla_delete
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import literal_column
 
 from models.agent_memory import AgentMemory
+from sqlalchemy import delete as sqla_delete
+from sqlalchemy import literal_column, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class AgentMemoryRepository:
@@ -46,7 +45,7 @@ class AgentMemoryRepository:
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def list_by_user(self, user_id: int, book_id: Optional[int] = None, memory_type: Optional[str] = None) -> List[AgentMemory]:
+    async def list_by_user(self, user_id: int, book_id: int | None = None, memory_type: str | None = None) -> list[AgentMemory]:
         """查询用户记忆列表。
 
         Args:
@@ -68,7 +67,7 @@ class AgentMemoryRepository:
         result = await self.session.execute(stmt)
         return result.scalars().all()
 
-    async def update(self, memory_id: int, data: dict) -> Optional[AgentMemory]:
+    async def update(self, memory_id: int, data: dict) -> AgentMemory | None:
         """更新记忆。
 
         Args:
@@ -98,7 +97,7 @@ class AgentMemoryRepository:
         await self.session.execute(stmt)
         await self.session.flush()
 
-    async def search_fulltext(self, user_id: int, query: str, book_id: Optional[int] = None, memory_type: Optional[str] = None) -> List[AgentMemory]:
+    async def search_fulltext(self, user_id: int, query: str, book_id: int | None = None, memory_type: str | None = None) -> list[AgentMemory]:
         """全文检索记忆。
 
         Args:
@@ -123,7 +122,7 @@ class AgentMemoryRepository:
         result = await self.session.execute(stmt)
         return result.scalars().all()
 
-    async def search_semantic(self, user_id: int, query_embedding: List[float], book_id: Optional[int] = None, memory_type: Optional[str] = None, top_k: int = 5):
+    async def search_semantic(self, user_id: int, query_embedding: list[float], book_id: int | None = None, memory_type: str | None = None, top_k: int = 5):
         """语义检索记忆。
 
         Args:
@@ -136,7 +135,6 @@ class AgentMemoryRepository:
         Returns:
             (AgentMemory, distance) 元组列表。
         """
-        from pgvector.sqlalchemy import Vector
         stmt = select(AgentMemory, AgentMemory.embedding.cosine_distance(query_embedding).label("distance"))
         stmt = stmt.where(AgentMemory.user_id == user_id)
         if book_id is not None:

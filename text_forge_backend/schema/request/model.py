@@ -1,5 +1,5 @@
-from pydantic import BaseModel, Field, ConfigDict
-from typing import Optional
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class BaseModelBasicRequest(BaseModel):
@@ -8,20 +8,20 @@ class BaseModelBasicRequest(BaseModel):
     base_url: str = Field(alias="baseUrl")
     api_key: str = Field(alias="apiKey")
     model_id: str = Field(alias="modelId")
-    extra: Optional[dict] = None
+    extra: dict | None = None
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class SearchConfigRequest(BaseModel):
-    provider: Optional[str] = "bocha"
-    api_key: Optional[str] = None
+    provider: str | None = "bocha"
+    api_key: str | None = None
 
 
 class ModelRequest(BaseModel):
-    main_config: Optional[BaseModelBasicRequest] = None
-    audit_config: Optional[BaseModelBasicRequest] = None
-    router_config: Optional[BaseModelBasicRequest] = None
-    tool_config: Optional[BaseModelBasicRequest] = None
-    vision_config: Optional[BaseModelBasicRequest] = None
-    embedding_config: Optional[BaseModelBasicRequest] = None
-    search_config: Optional[SearchConfigRequest] = None
+    main_config: BaseModelBasicRequest | None = None
+    audit_config: BaseModelBasicRequest | None = None
+    router_config: BaseModelBasicRequest | None = None
+    tool_config: BaseModelBasicRequest | None = None
+    vision_config: BaseModelBasicRequest | None = None
+    embedding_config: BaseModelBasicRequest | None = None
+    search_config: SearchConfigRequest | None = None

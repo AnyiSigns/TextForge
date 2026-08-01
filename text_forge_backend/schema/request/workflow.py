@@ -1,6 +1,5 @@
-from typing import Optional
-from pydantic import BaseModel, ConfigDict, Field
 
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class WorkflowRunRequest(BaseModel):
@@ -8,7 +7,7 @@ class WorkflowRunRequest(BaseModel):
 
     book_id: int
     thread_id: str
-    model_config_data: Optional[dict] = Field(default=None, alias="modelConfig")
+    model_config_data: dict | None = Field(default=None, alias="modelConfig")
 
 
 class WorkflowNodeSummary(BaseModel):
@@ -16,4 +15,4 @@ class WorkflowNodeSummary(BaseModel):
 
     id: str
     name: str
-    description: Optional[str] = None
+    description: str | None = None

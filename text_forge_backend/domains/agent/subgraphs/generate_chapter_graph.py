@@ -1,10 +1,13 @@
-from typing import Optional, Dict, Any, Callable
-from ..agent_state import UserAgentState
-from core.model_factory import ModelFactory
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.messages import SystemMessage, HumanMessage
-from langgraph.graph import StateGraph, START, END
+from collections.abc import Callable
+from typing import Any
+
 from config.logging import get_logger
+from core.model_factory import ModelFactory
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.prompts import ChatPromptTemplate
+from langgraph.graph import END, START, StateGraph
+
+from ..agent_state import UserAgentState
 
 logger = get_logger(__name__)
 
@@ -17,7 +20,7 @@ class GenerateChapterState(UserAgentState):
     plan: str
     content: str
     reflection: str
-    progress_callback: Optional[Callable[[Dict[str, Any]], None]]
+    progress_callback: Callable[[dict[str, Any]], None] | None
 
 
 async def _emit_progress(state: GenerateChapterState, step: str, n: int, total: int, words: int = 0, eta: float = 0.0):
@@ -29,7 +32,7 @@ async def _emit_progress(state: GenerateChapterState, step: str, n: int, total: 
             logger.warning(f"progress_callback 失败: {exc}")
 
 
-async def think_node(state: GenerateChapterState) -> Dict[str, Any]:
+async def think_node(state: GenerateChapterState) -> dict[str, Any]:
     await _emit_progress(state, "think", 1, 4)
     llm = ModelFactory(state["model_config"])
     prompt = ChatPromptTemplate.from_messages([
@@ -51,7 +54,7 @@ async def think_node(state: GenerateChapterState) -> Dict[str, Any]:
     return {"plan": analysis, "step_outputs": {**state.get("step_outputs", {}), "think": analysis}}
 
 
-async def plan_node(state: GenerateChapterState) -> Dict[str, Any]:
+async def plan_node(state: GenerateChapterState) -> dict[str, Any]:
     await _emit_progress(state, "plan", 2, 4, words=len(state.get("plan", "")))
     llm = ModelFactory(state["model_config"])
     prompt = ChatPromptTemplate.from_messages([
@@ -70,7 +73,7 @@ async def plan_node(state: GenerateChapterState) -> Dict[str, Any]:
     return {"plan": plan}
 
 
-async def execute_node(state: GenerateChapterState) -> Dict[str, Any]:
+async def execute_node(state: GenerateChapterState) -> dict[str, Any]:
     await _emit_progress(state, "execute", 3, 4, words=len(state.get("plan", "")))
     llm = ModelFactory(state["model_config"])
     prompt = ChatPromptTemplate.from_messages([
@@ -97,7 +100,7 @@ async def execute_node(state: GenerateChapterState) -> Dict[str, Any]:
     return {"content": content}
 
 
-async def reflect_node(state: GenerateChapterState) -> Dict[str, Any]:
+async def reflect_node(state: GenerateChapterState) -> dict[str, Any]:
     await _emit_progress(state, "reflect", 4, 4, words=len(state.get("content", "")))
     llm = ModelFactory(state["model_config"])
     content = state.get("content", "")

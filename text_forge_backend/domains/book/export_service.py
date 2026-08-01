@@ -1,9 +1,10 @@
-from typing import List, Optional, Dict, Any
 from io import BytesIO
+from typing import Any
+
+from config.logging import get_logger
+from models.book import Book, Chapter, ChapterContent, Character, Outline, Volume
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from models.book import Book, Volume, Chapter, ChapterContent, Character, Outline
-from config.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -12,7 +13,7 @@ class ExportService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def export_book(self, user_id: int, book_id: int, fmt: str, include_outline: bool, include_characters: bool, volume_ids: Optional[List[int]]) -> Dict[str, Any]:
+    async def export_book(self, user_id: int, book_id: int, fmt: str, include_outline: bool, include_characters: bool, volume_ids: list[int] | None) -> dict[str, Any]:
         stmt = select(Book).where(Book.user_id == user_id, Book.id == book_id)
         result = await self.session.execute(stmt)
         book = result.scalar_one_or_none()
@@ -207,9 +208,9 @@ class ExportService:
 
     async def _build_pdf(self, book, chapters, characters, outline):
         from reportlab.lib.pagesizes import A4
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
         from reportlab.lib.styles import getSampleStyleSheet
         from reportlab.lib.units import cm
+        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
         buffer = BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2 * cm, leftMargin=2 * cm, topMargin=2 * cm, bottomMargin=2 * cm)

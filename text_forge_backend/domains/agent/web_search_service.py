@@ -1,9 +1,9 @@
-from typing import List, Optional
+import hashlib
+
+from config.logging import get_logger
+from models.web_search_cache import WebSearchCache
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from models.web_search_cache import WebSearchCache
-from config.logging import get_logger
-import hashlib
 
 logger = get_logger(__name__)
 
@@ -22,7 +22,7 @@ class WebSearchService:
         """
         self.session = session
 
-    async def search(self, query: str, api_key: str, top_k: int = 5, use_cache: bool = True) -> List[dict]:
+    async def search(self, query: str, api_key: str, top_k: int = 5, use_cache: bool = True) -> list[dict]:
         """执行网页搜索，优先返回缓存结果。
 
         Args:
@@ -47,7 +47,7 @@ class WebSearchService:
                 logger.warning(f"web_search 缓存保存失败: {exc}")
         return results
 
-    async def _search_bocha(self, query: str, api_key: str, top_k: int) -> List[dict]:
+    async def _search_bocha(self, query: str, api_key: str, top_k: int) -> list[dict]:
         """调用博查搜索 API。
 
         Args:
@@ -80,7 +80,7 @@ class WebSearchService:
             logger.warning(f"web_search 失败: {exc}")
             return [{"error": "搜索失败", "query": query}]
 
-    async def _get_cache(self, query_hash: str) -> Optional[List[dict]]:
+    async def _get_cache(self, query_hash: str) -> list[dict] | None:
         """查询搜索缓存。
 
         Args:
@@ -98,7 +98,7 @@ class WebSearchService:
             return cache.results
         return None
 
-    async def _save_cache(self, query: str, query_hash: str, results: List[dict]):
+    async def _save_cache(self, query: str, query_hash: str, results: list[dict]):
         """保存搜索缓存。
 
         Args:

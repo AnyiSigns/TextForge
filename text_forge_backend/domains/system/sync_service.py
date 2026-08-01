@@ -1,14 +1,11 @@
 from datetime import datetime
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from models.book import (
     Book,
     Chapter,
     ChapterContent,
-    CreativeSetting,
     Character,
+    CreativeSetting,
     Foreshadowing,
     Location,
     PlotThread,
@@ -16,6 +13,8 @@ from models.book import (
     Volume,
 )
 from models.writing_session import WritingSession
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 def model_to_dict(obj) -> dict:

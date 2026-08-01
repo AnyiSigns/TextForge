@@ -1,37 +1,37 @@
-from typing import Optional, List
-from pydantic import BaseModel, Field, ConfigDict
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class AgentMemoryRequest(BaseModel):
-    book_id: Optional[int] = Field(default=None, alias="bookId")
+    book_id: int | None = Field(default=None, alias="bookId")
     memory_type: str = Field(alias="memoryType")
     content: str
-    related_chapter_id: Optional[int] = Field(default=None, alias="relatedChapterId")
-    related_character_ids: Optional[List[int]] = Field(default=[], alias="relatedCharacterIds")
-    priority: Optional[int] = Field(default=5)
-    source: Optional[str] = "user_manual"
-    meta: Optional[dict] = Field(default=None)
-    mode: Optional[str] = "fulltext"
-    query: Optional[str] = None
+    related_chapter_id: int | None = Field(default=None, alias="relatedChapterId")
+    related_character_ids: list[int] | None = Field(default=[], alias="relatedCharacterIds")
+    priority: int | None = Field(default=5)
+    source: str | None = "user_manual"
+    meta: dict | None = Field(default=None)
+    mode: str | None = "fulltext"
+    query: str | None = None
 
     model_config = ConfigDict(populate_by_name=True)
 
 
 class AgentMemoryUpdateRequest(BaseModel):
-    memory_type: Optional[str] = Field(default=None, alias="memoryType")
-    content: Optional[str] = None
-    priority: Optional[int] = None
-    meta: Optional[dict] = Field(default=None)
+    memory_type: str | None = Field(default=None, alias="memoryType")
+    content: str | None = None
+    priority: int | None = None
+    meta: dict | None = Field(default=None)
 
     model_config = ConfigDict(populate_by_name=True)
 
 
 class AgentMemorySearchRequest(BaseModel):
     q: str = Field(alias="q")
-    mode: Optional[str] = Field(default="fulltext")
-    book_id: Optional[int] = Field(default=None, alias="bookId")
-    memory_type: Optional[str] = Field(default=None, alias="memoryType")
-    top_k: Optional[int] = Field(default=5, ge=1, le=20, alias="topK")
-    model_config_data: Optional[dict] = Field(default=None, alias="modelConfig")
+    mode: str | None = Field(default="fulltext")
+    book_id: int | None = Field(default=None, alias="bookId")
+    memory_type: str | None = Field(default=None, alias="memoryType")
+    top_k: int | None = Field(default=5, ge=1, le=20, alias="topK")
+    model_config_data: dict | None = Field(default=None, alias="modelConfig")
 
     model_config = ConfigDict(populate_by_name=True)

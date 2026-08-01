@@ -1,10 +1,12 @@
-from typing import Annotated, Optional
-from fastapi import APIRouter, Depends, Query, File, UploadFile, HTTPException, Form
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Annotated
+
 from core.auth import get_current
-from shared.database import db_manager
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from schema.request.knowledge import KnowledgeSearchRequest
-from schema.response.knowledge import KnowledgeSearchResponse, KnowledgeChunk
+from schema.response.knowledge import KnowledgeChunk, KnowledgeSearchResponse
+from shared.database import db_manager
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from .service import KnowledgeService
 
 router = APIRouter(prefix="/knowledge", tags=["知识库"])
@@ -40,7 +42,7 @@ async def search_public_knowledge(
 async def upload_public_document(
     user_id: Annotated[int, Depends(get_current)],
     file: UploadFile = File(...),
-    model_config_json: Annotated[Optional[str], Form()] = None,
+    model_config_json: Annotated[str | None, Form()] = None,
     session: AsyncSession = Depends(db_manager.get_db),
 ):
     import json

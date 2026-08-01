@@ -1,7 +1,7 @@
-from sqlalchemy import select, func
-from shared.base_repo import BaseRepository
-from sqlalchemy.ext.asyncio import AsyncSession
 from models.book import ChapterContent
+from shared.base_repo import BaseRepository
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class ChapterContentRepository(BaseRepository[ChapterContent]):

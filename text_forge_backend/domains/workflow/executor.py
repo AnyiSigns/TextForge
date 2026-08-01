@@ -1,14 +1,17 @@
 import json
 import time
-from typing import AsyncGenerator
+from collections import deque
+from collections.abc import AsyncGenerator
+
+from config.logging import get_logger
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from domains.agent.state import ParentState
 from domains.book.repository import (
     BookRepository,
 )
+
 from .repository import WorkflowRepository
-from config.logging import get_logger
-from sqlalchemy.ext.asyncio import AsyncSession
-from collections import deque
 
 logger = get_logger(__name__)
 
@@ -316,7 +319,7 @@ class WorkflowExecutor:
                     logger.info(f"[stream] done steps={len(steps_payload)}")
                     yield f"event:done\ndata:{json.dumps({'steps': steps_payload, 'output': final_output})}\n\n"
                     continue
-        except Exception as e:
+        except Exception:
             logger.error("工作流异常", exc_info=True)
             yield f"event:error\ndata:{json.dumps({'error': '工作流执行异常'})}\n\n"
             return

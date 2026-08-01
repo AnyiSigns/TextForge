@@ -1,13 +1,15 @@
 from typing import Annotated
-from fastapi import APIRouter, Depends, HTTPException, Path
+
 from core.auth import get_current
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from shared.database import db_manager
+from fastapi import APIRouter, Depends, HTTPException, Path
 from models.book import Book, Volume
-from .chapter_service import ChapterService, chapter_db
 from schema.request.book import ChapterRequest
 from schema.response.book import ChapterResponse
+from shared.database import db_manager
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from .chapter_service import ChapterService, chapter_db
 
 router = APIRouter(prefix="/chapters", tags=["Chapter"])
 

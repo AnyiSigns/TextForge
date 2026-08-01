@@ -1,9 +1,10 @@
 from datetime import datetime, timedelta
-from sqlalchemy import select, func, cast, Date
-from sqlalchemy.ext.asyncio import AsyncSession
-from shared.base_repo import BaseRepository
+from typing import Any
+
 from models.writing_session import WritingSession
-from typing import List, Dict, Any
+from shared.base_repo import BaseRepository
+from sqlalchemy import Date, cast, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class WritingSessionRepository(BaseRepository[WritingSession]):
@@ -74,7 +75,7 @@ class WritingSessionRepository(BaseRepository[WritingSession]):
             }
         return dict(row)
 
-    async def get_writing_trend(self, user_id: int, book_id: int, days: int = 30) -> List[Dict[str, Any]]:
+    async def get_writing_trend(self, user_id: int, book_id: int, days: int = 30) -> list[dict[str, Any]]:
         """获取写作趋势。
 
         Args:
@@ -113,7 +114,7 @@ class WritingSessionRepository(BaseRepository[WritingSession]):
             for row in rows
         ]
 
-    async def get_character_frequency(self, user_id: int, book_id: int) -> List[Dict[str, Any]]:
+    async def get_character_frequency(self, user_id: int, book_id: int) -> list[dict[str, Any]]:
         """获取角色出现频率。
 
         Args:
@@ -129,7 +130,7 @@ class WritingSessionRepository(BaseRepository[WritingSession]):
         )
         result = await self.session.execute(stmt)
         sessions = result.scalars().all()
-        frequency: Dict[int, Dict[str, Any]] = {}
+        frequency: dict[int, dict[str, Any]] = {}
         for s in sessions:
             for cid in (s.character_ids or []):
                 cid = int(cid)
@@ -139,7 +140,7 @@ class WritingSessionRepository(BaseRepository[WritingSession]):
                 frequency[cid]["total_words"] += s.words_written or 0
         return sorted(frequency.values(), key=lambda x: x["total_words"], reverse=True)
 
-    async def get_plot_progress(self, user_id: int, book_id: int) -> Dict[str, Any]:
+    async def get_plot_progress(self, user_id: int, book_id: int) -> dict[str, Any]:
         """获取情节进度。
 
         Args:

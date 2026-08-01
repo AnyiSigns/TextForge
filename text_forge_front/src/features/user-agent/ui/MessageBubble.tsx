@@ -224,8 +224,11 @@ const handleCopy = async () => {
           ) : (
             <div 
               className={cn('prose prose-sm max-w-none', message.role === 'user' ? 'text-primary-foreground' : '')}
-              dangerouslySetInnerHTML={{ __html: message.content.replace(/\n/g, '<br>') }}
-            />
+            >
+              {message.content.split('\n').map((line, i) => (
+                <p key={i} className="whitespace-pre-wrap">{line}</p>
+              ))}
+            </div>
           )}
         </div>
         

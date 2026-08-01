@@ -1,12 +1,15 @@
-from typing import Dict, Any
-from ..state import ToolState
-from domains.book.structured_repository import StructuredRepository
-from domains.knowledge.repository import VectorRepository
+from typing import Any
+
 from core.model_factory import ModelFactory
 from shared.database import db_manager
 
+from domains.book.structured_repository import StructuredRepository
+from domains.knowledge.repository import VectorRepository
 
-async def tool_node(state: ToolState) -> Dict[str, Any]:
+from ..state import ToolState
+
+
+async def tool_node(state: ToolState) -> dict[str, Any]:
     workflow_node = state.get("workflow_node")
     project_id = state.get("project_id")
     query_text = state.get("query", "")
@@ -43,7 +46,7 @@ async def tool_node(state: ToolState) -> Dict[str, Any]:
     return {"tool_result": formatted}
 
 
-def _format_tool_result(result: Dict[str, Any]) -> str:
+def _format_tool_result(result: dict[str, Any]) -> str:
     parts = []
 
     structured = result.get("structured", {})
@@ -106,14 +109,12 @@ def _format_record(record, table_name: str):
                 lines.append(f"创作禁忌：{wt[:1000]}")
             if cd:
                 for k, v in cd.items():
-                    if isinstance(v, str):
-                        lines.append(f"{k}：{v}")
-                    elif isinstance(v, (int, float)):
+                    if isinstance(v, str) or isinstance(v, (int, float)):
                         lines.append(f"{k}：{v}")
                     elif isinstance(v, list):
                         lines.append(f"{k}：{', '.join(str(x) for x in v)}")
                     else:
-                        lines.append(f"{k}：{str(v)}")
+                        lines.append(f"{k}：{v!s}")
             return "\n".join(lines) if lines else None
 
         if table_name == "characters":

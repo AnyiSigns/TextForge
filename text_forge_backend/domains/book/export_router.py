@@ -1,8 +1,10 @@
-from typing import Annotated, List, Optional
-from fastapi import APIRouter, Depends, Query, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Annotated
+
 from core.auth import get_current
+from fastapi import APIRouter, Depends, HTTPException, Query
 from shared.database import db_manager
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from .export_service import ExportService
 
 router = APIRouter(prefix="/books", tags=["Export"])
@@ -20,7 +22,7 @@ async def export_book(
     fmt: str = Query("md", pattern="^(md|txt|epub|pdf)$"),
     include_outline: bool = Query(False),
     include_characters: bool = Query(False),
-    volume_ids: Optional[List[int]] = Query(default=None),
+    volume_ids: list[int] | None = Query(default=None),
 ):
     data = await service.export_book(
         user_id=user_id,

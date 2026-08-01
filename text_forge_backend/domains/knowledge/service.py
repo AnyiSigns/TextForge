@@ -1,10 +1,12 @@
-from typing import List
-from sqlalchemy import select, delete as sqla_delete
-from sqlalchemy.ext.asyncio import AsyncSession
-from .repository import VectorRepository
-from core.model_factory import ModelFactory
+
 from config.logging import get_logger
+from core.model_factory import ModelFactory
 from models.document import Document
+from sqlalchemy import delete as sqla_delete
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from .repository import VectorRepository
 
 logger = get_logger(__name__)
 
@@ -25,7 +27,7 @@ class KnowledgeService:
 
     async def search_public(
         self, query: str, top_k: int = 3, model_config: dict | None = None
-    ) -> List[dict]:
+    ) -> list[dict]:
         """公共知识库语义检索。
 
         Args:

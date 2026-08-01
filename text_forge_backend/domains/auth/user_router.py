@@ -1,17 +1,19 @@
+import os
+import uuid
 from typing import Annotated
-from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
+
 from config.logging import get_logger
-from .service import UserAuthService, user_db_serve
 from core.auth import get_current
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from schema.request.user import (
-    ChangePasswordReq,
     ChangePasswordByEmailReq,
+    ChangePasswordReq,
     ProfileRequest,
 )
 from schema.response.user import ProfileResponse
+
+from .service import UserAuthService, user_db_serve
 from .verification import verification
-import os
-import uuid
 
 logger = get_logger(__name__)
 

@@ -1,12 +1,13 @@
-from typing import List, Optional, Any
 from datetime import datetime
-from pydantic import BaseModel, Field, ConfigDict
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class OutlineResponse(BaseModel):
     id: int
     book_id: int = Field(alias="bookId")
-    data: Optional[Any] = Field(default=None, description="大纲嵌套结构")
+    data: Any | None = Field(default=None, description="大纲嵌套结构")
     created_at: datetime = Field(alias="createdAt")
     updated_at: datetime = Field(alias="updatedAt")
 
@@ -14,4 +15,4 @@ class OutlineResponse(BaseModel):
 
 
 class ListOutlinesResponse(BaseModel):
-    outlines: List[OutlineResponse]
+    outlines: list[OutlineResponse]

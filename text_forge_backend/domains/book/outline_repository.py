@@ -1,9 +1,10 @@
-from sqlalchemy import select
-from shared.base_repo import BaseRepository
-from sqlalchemy.ext.asyncio import AsyncSession
-from models.book import Outline
 import copy
 import json
+
+from models.book import Outline
+from shared.base_repo import BaseRepository
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class OutlineRepository(BaseRepository[Outline]):

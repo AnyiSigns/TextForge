@@ -1,8 +1,9 @@
-from typing import Optional, Dict, Any, List
+from typing import Any
+
+from config.logging import get_logger
+from core.model_factory import ModelFactory
 from langchain_core.tools import tool
 from sqlalchemy import select
-from core.model_factory import ModelFactory
-from config.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -22,11 +23,11 @@ STRUCTURED_CONTEXT_FIELDS = [
 
 
 async def _query_structured_context(
-    session, book_id: int, user_id: int, context_fields: List[str]
-) -> Dict[str, Any]:
+    session, book_id: int, user_id: int, context_fields: list[str]
+) -> dict[str, Any]:
     result = {}
     try:
-        from models.book import Book, Character, Outline, CreativeSetting
+        from models.book import Book, CreativeSetting
         if "book_info" in context_fields:
             stmt = select(Book).where(Book.id == book_id)
             r = await session.execute(stmt)
@@ -97,8 +98,8 @@ async def _query_structured_context(
 
 
 async def _query_rag_context(
-    session, book_id: int, user_id: int, rag_queries: List[dict], model_config: dict
-) -> Dict[str, Any]:
+    session, book_id: int, user_id: int, rag_queries: list[dict], model_config: dict
+) -> dict[str, Any]:
     result = {}
     if not rag_queries:
         return result
@@ -135,17 +136,17 @@ async def _query_rag_context(
     return result
 
 
-def build_workflow_tool(session_factory, model_config: Optional[dict] = None):
+def build_workflow_tool(session_factory, model_config: dict | None = None):
     @tool
     async def execute_workflow_node(
         workflow_id: str,
         node_id: str,
         book_id: int,
         user_id: int,
-        context_fields: Optional[List[str]] = None,
-        rag_queries: Optional[List[dict]] = None,
-        web_search_queries: Optional[List[str]] = None,
-        upstream_outputs: Optional[dict] = None,
+        context_fields: list[str] | None = None,
+        rag_queries: list[dict] | None = None,
+        web_search_queries: list[str] | None = None,
+        upstream_outputs: dict | None = None,
     ) -> dict:
         async with session_factory() as session:
             from models.workflow import Workflow
@@ -193,13 +194,13 @@ def build_workflow_tool(session_factory, model_config: Optional[dict] = None):
                 full_context = upstream_text + "\n" + full_context
 
             llm = ModelFactory(model_config or {})
-            from langchain_core.messages import SystemMessage, HumanMessage
+            from langchain_core.messages import HumanMessage, SystemMessage
 
             system = SystemMessage(content=system_prompt or "你是一个专业的创作AI。根据上下文生成内容。直接输出创作内容，不要多余解释。")
             human_content = full_context or f"请为书籍 book_id={book_id} 创作内容。"
             human = HumanMessage(content=human_content)
 
-            stream_events: List[Dict[str, Any]] = []
+            stream_events: list[dict[str, Any]] = []
             output_tokens = 0
             generated_text = ""
 
@@ -214,7 +215,7 @@ def build_workflow_tool(session_factory, model_config: Optional[dict] = None):
                             "token": token,
                             "index": len(stream_events),
                         })
-            except Exception as exc:
+            except Exception:
                 logger.exception(f"execute_workflow_node {node_id} LLM 流式调用失败")
                 return {"status": "error", "message": "节点执行失败，请稍后重试"}
 

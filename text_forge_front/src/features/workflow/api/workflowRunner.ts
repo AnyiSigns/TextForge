@@ -40,7 +40,7 @@ export async function runWorkflow(
 ): Promise<WorkflowRunStep[]> {
   const threadId = opts?.bookId
     ? `${opts.bookId}-${Date.now()}`
-    : `thread-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    : `thread-${crypto.randomUUID()}`;
   const visibleNodeIds = new Set(
     Array.isArray(opts?.visibleNodeIds) ? opts.visibleNodeIds : opts?.visibleNodeIds ? Array.from(opts.visibleNodeIds) : [],
   );
@@ -74,10 +74,8 @@ export async function runWorkflow(
     for (const part of parts) {
       const event = parseSSE(part);
       if (!event) {
-        if (part.trim()) console.log('[SSE raw]', part.slice(0, 200));
         continue;
       }
-      console.log('[SSE parsed]', event);
       const eventType = event.type || event.event || '';
       if (eventType === 'node_start' && event.node) {
         const label = String(event.node);
@@ -95,7 +93,6 @@ export async function runWorkflow(
           labelToIdMap,
         );
         if (visibleNodeIds.size > 0 && !visibleNodeIds.has(nodeId)) {
-          console.warn('[SSE] node_stream skipped by visibleNodeIds', nodeId, label, text.slice(0, 20));
           continue;
         }
         const existing = steps.find((s) => s.nodeId === nodeId);
@@ -104,9 +101,7 @@ export async function runWorkflow(
           existing.status = 'running';
         } else {
           steps.push({ nodeId, label, output: text, status: 'running' });
-          console.info('[SSE] new step created', nodeId, label, text.slice(0, 30));
         }
-        console.debug('[SSE] onStep', nodeId, label, (existing ? existing.output : text).slice(0, 30));
         opts?.onStep?.(nodeId, label, existing ? existing.output : text, undefined, 'running');
       }
       if (eventType === 'node_end' && event.node) {

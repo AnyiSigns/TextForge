@@ -1,9 +1,11 @@
-from typing import Dict, List
-from ..state import ParentState, ToolState, MainState, AuditState
-from langgraph.graph import END
-from domains.book.context_config_repository import BookContextConfigRepository
-from shared.database import db_manager
+
 from config.logging import get_logger
+from langgraph.graph import END
+from shared.database import db_manager
+
+from domains.book.context_config_repository import BookContextConfigRepository
+
+from ..state import AuditState, MainState, ParentState, ToolState
 
 logger = get_logger(__name__)
 
@@ -46,7 +48,7 @@ def _to_serializable(value):
     return str(value)
 
 
-async def _load_context_pool(book_id: int) -> Dict[str, List[int]]:
+async def _load_context_pool(book_id: int) -> dict[str, list[int]]:
     """加载书籍上下文池。
 
     Args:

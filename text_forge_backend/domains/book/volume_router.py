@@ -1,22 +1,16 @@
 from typing import Annotated
-from fastapi import APIRouter, Depends, HTTPException, Path
+
 from core.auth import get_current
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from shared.database import db_manager
-from models.book import Book
-from .volume_service import VolumeService, volume_db
+from fastapi import APIRouter, Depends, HTTPException, Path
 from schema.request.book import VolumeRequest
 from schema.response.book import VolumeResponse
+from shared.database import db_manager
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ._owner_check import assert_book_owner
+from .volume_service import VolumeService, volume_db
 
 router = APIRouter(prefix="/volumes", tags=["Volume"])
-
-
-async def _assert_book_owner(book_id: int, user_id: int, session: AsyncSession):
-    stmt = select(Book).where(Book.id == book_id, Book.user_id == user_id)
-    result = await session.execute(stmt)
-    if not result.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="书籍不存在或无权访问")
 
 
 @router.get("/books/{book_id}", response_model=dict)
@@ -26,7 +20,7 @@ async def list_volumes(
     volume_service: Annotated[VolumeService, Depends(volume_db)],
     session: Annotated[AsyncSession, Depends(db_manager.get_db)],
 ):
-    await _assert_book_owner(book_id, user_id, session)
+    await assert_book_owner(book_id, user_id, session)
     items = await volume_service.list_volumes(book_id)
     return {"volumes": [VolumeResponse.model_validate(v) for v in items]}
 
@@ -39,7 +33,7 @@ async def create_volume(
     volume_service: Annotated[VolumeService, Depends(volume_db)],
     session: Annotated[AsyncSession, Depends(db_manager.get_db)],
 ):
-    await _assert_book_owner(book_id, user_id, session)
+    await assert_book_owner(book_id, user_id, session)
     item = await volume_service.create_volume(
         book_id, title=request.title, summary=request.summary
     )
@@ -61,7 +55,7 @@ async def update_volume(
         item = await volume_service.volume_repo.get_by_id(volume_id)
         if not item:
             raise HTTPException(status_code=404, detail="卷不存在")
-    await _assert_book_owner(item.book_id, user_id, session)
+    await assert_book_owner(item.book_id, user_id, session)
     item = await volume_service.update_volume(
         volume_id, title=request.title, summary=request.summary
     )
@@ -80,6 +74,6 @@ async def delete_volume(
     item = await volume_service.volume_repo.get_by_id(volume_id)
     if not item:
         raise HTTPException(status_code=404, detail="卷不存在")
-    await _assert_book_owner(item.book_id, user_id, session)
+    await assert_book_owner(item.book_id, user_id, session)
     ok = await volume_service.delete_volume(volume_id)
     return {"ok": ok}

@@ -137,7 +137,7 @@ async def card_websocket(
                             "token": token,
                         }, ensure_ascii=False))
                     await websocket.send_text(json.dumps({"type": "chat_done"}, ensure_ascii=False))
-                except Exception as exc:
+                except Exception:
                     logger.exception("card chat 失败")
                     await websocket.send_text(json.dumps({
                         "type": "error",
@@ -155,7 +155,7 @@ async def card_websocket(
                         "type": "dialogue_result",
                         "content": dialogue,
                     }, ensure_ascii=False))
-                except Exception as exc:
+                except Exception:
                     logger.exception("simulate_dialogue 失败")
                     await websocket.send_text(json.dumps({
                         "type": "error",
@@ -164,5 +164,5 @@ async def card_websocket(
 
     except WebSocketDisconnect:
         logger.info(f"card WebSocket 断开: {card_id}")
-    except Exception as exc:
+    except Exception:
         logger.exception(f"card WebSocket 异常: {card_id}")

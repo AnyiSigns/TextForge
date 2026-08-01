@@ -1,15 +1,13 @@
-from typing import List
 import hashlib
 import os
 import uuid
 
 import sqlalchemy
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import UploadFile
-
-from models.document import Document, Chunk
 from core.model_factory import ModelFactory
+from fastapi import UploadFile
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from models.document import Chunk, Document
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def compute_md5(content: bytes) -> str:
@@ -72,7 +70,7 @@ async def create_document(session: AsyncSession, file: UploadFile, md5: str, con
     return doc
 
 
-async def create_chunks(session: AsyncSession, doc_id: int, chunks: List[str], embedder) -> List[Chunk]:
+async def create_chunks(session: AsyncSession, doc_id: int, chunks: list[str], embedder) -> list[Chunk]:
     """批量创建 Chunk 并生成 embedding。
 
     Args:

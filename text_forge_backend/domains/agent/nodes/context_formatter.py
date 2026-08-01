@@ -23,14 +23,12 @@ def format_context_field(field: str, records: list, include_chapter_title: bool 
                 lines.append(f"# 创作禁忺\n{wt}")
             if cd:
                 for k, v in cd.items():
-                    if isinstance(v, str):
-                        lines.append(f"{k}：{v}")
-                    elif isinstance(v, (int, float)):
+                    if isinstance(v, str) or isinstance(v, (int, float)):
                         lines.append(f"{k}：{v}")
                     elif isinstance(v, list):
                         lines.append(f"{k}：{', '.join(str(x) for x in v)}")
                     else:
-                        lines.append(f"{k}：{str(v)}")
+                        lines.append(f"{k}：{v!s}")
         return "\n\n".join(lines)
 
     if field == "characters":

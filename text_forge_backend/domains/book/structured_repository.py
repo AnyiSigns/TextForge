@@ -1,8 +1,20 @@
+from typing import Any
+
+from models.book import (
+    Book,
+    Chapter,
+    ChapterContent,
+    Character,
+    CreativeSetting,
+    Foreshadowing,
+    Location,
+    Outline,
+    PlotThread,
+    TimelineEvent,
+    Volume,
+)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Dict, List, Any, Optional
-
-from models.book import Book, Character, CreativeSetting, Outline, Chapter, Volume, ChapterContent, Location, TimelineEvent, Foreshadowing, PlotThread
 
 
 class StructuredRepository:
@@ -33,9 +45,9 @@ class StructuredRepository:
     async def query_by_fields(
         self,
         book_id: int,
-        context_fields: List[str],
-        context_pool: Optional[Dict[str, List[int]]] = None,
-    ) -> Dict[str, List[Any]]:
+        context_fields: list[str],
+        context_pool: dict[str, list[int]] | None = None,
+    ) -> dict[str, list[Any]]:
         pool = context_pool or {}
         character_ids = pool.get("character_ids") or []
         chapter_content_ids = pool.get("chapter_content_ids") or []
@@ -43,7 +55,7 @@ class StructuredRepository:
         volume_ids = pool.get("volume_ids") or []
         outline_node_ids = pool.get("outline_node_ids") or []
 
-        results: Dict[str, List[Any]] = {}
+        results: dict[str, list[Any]] = {}
         for field in context_fields:
             normalized = self.FIELD_ALIAS.get(field, field)
             model = self.FIELD_MAP.get(normalized)
@@ -70,12 +82,12 @@ class StructuredRepository:
         field: str,
         model,
         book_id: int,
-        character_ids: Optional[List[int]],
-        chapter_content_ids: Optional[List[int]],
-        chapter_summary_ids: Optional[List[int]],
-        volume_ids: Optional[List[int]],
-        outline_node_ids: Optional[List[int]],
-    ) -> List[Any]:
+        character_ids: list[int] | None,
+        chapter_content_ids: list[int] | None,
+        chapter_summary_ids: list[int] | None,
+        volume_ids: list[int] | None,
+        outline_node_ids: list[int] | None,
+    ) -> list[Any]:
         stmt = select(model)
 
         if field == "book_info":
@@ -90,10 +102,10 @@ class StructuredRepository:
         if field == "setting":
             stmt = stmt.where(model.book_id == book_id)
             stmt = stmt.options(
-                getattr(model, "worldview"),
-                getattr(model, "tone"),
-                getattr(model, "writing_taboos"),
-                getattr(model, "custom_dimensions"),
+                model.worldview,
+                model.tone,
+                model.writing_taboos,
+                model.custom_dimensions,
             )
             query_result = await self.session.execute(stmt)
             rows = query_result.scalars().all()
@@ -104,12 +116,12 @@ class StructuredRepository:
             if character_ids:
                 stmt = stmt.where(model.id.in_(character_ids))
             stmt = stmt.options(
-                getattr(model, "name"),
-                getattr(model, "aliases"),
-                getattr(model, "description"),
-                getattr(model, "role_type"),
-                getattr(model, "status"),
-                getattr(model, "relationship_chain"),
+                model.name,
+                model.aliases,
+                model.description,
+                model.role_type,
+                model.status,
+                model.relationship_chain,
             )
             query_result = await self.session.execute(stmt)
             rows = query_result.scalars().all()
@@ -120,8 +132,8 @@ class StructuredRepository:
             if character_ids:
                 stmt = stmt.where(model.id.in_(character_ids))
             stmt = stmt.options(
-                getattr(model, "name"),
-                getattr(model, "relationship_chain"),
+                model.name,
+                model.relationship_chain,
             )
             query_result = await self.session.execute(stmt)
             rows = query_result.scalars().all()
@@ -142,9 +154,9 @@ class StructuredRepository:
             else:
                 return []
             stmt = stmt.options(
-                getattr(model, "id"),
-                getattr(model, "title"),
-                getattr(model, "summary"),
+                model.id,
+                model.title,
+                model.summary,
             )
             query_result = await self.session.execute(stmt)
             rows = query_result.scalars().all()
@@ -156,9 +168,9 @@ class StructuredRepository:
                 return []
             stmt = stmt.where(model.id.in_(ids))
             stmt = stmt.options(
-                getattr(model, "id"),
-                getattr(model, "title"),
-                getattr(model, "summary"),
+                model.id,
+                model.title,
+                model.summary,
             )
             query_result = await self.session.execute(stmt)
             chapter_rows = {c.id: c for c in query_result.scalars().all()}
@@ -197,12 +209,12 @@ class StructuredRepository:
                 stmt = stmt.where(model.id.in_(all_ids))
 
             stmt = stmt.options(
-                getattr(model, "node_type"),
-                getattr(model, "title"),
-                getattr(model, "content"),
-                getattr(model, "parent_id"),
-                getattr(model, "target_volume_id"),
-                getattr(model, "target_chapter_id"),
+                model.node_type,
+                model.title,
+                model.content,
+                model.parent_id,
+                model.target_volume_id,
+                model.target_chapter_id,
             )
             query_result = await self.session.execute(stmt)
             rows = query_result.scalars().all()
@@ -224,10 +236,10 @@ class StructuredRepository:
             if volume_ids:
                 stmt = stmt.where(model.id.in_(volume_ids))
             stmt = stmt.options(
-                getattr(model, "id"),
-                getattr(model, "title"),
-                getattr(model, "summary"),
-                getattr(model, "sort_order"),
+                model.id,
+                model.title,
+                model.summary,
+                model.sort_order,
             )
             query_result = await self.session.execute(stmt)
             rows = query_result.scalars().all()

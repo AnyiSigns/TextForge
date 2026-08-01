@@ -1,22 +1,16 @@
 from typing import Annotated
-from fastapi import APIRouter, Depends, HTTPException, Path
+
 from core.auth import get_current
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from shared.database import db_manager
-from models.book import Book
-from schema.response.outline import OutlineResponse, ListOutlinesResponse
+from fastapi import APIRouter, Depends, HTTPException, Path
 from schema.request.outline import OutlineRequest
+from schema.response.outline import ListOutlinesResponse, OutlineResponse
+from shared.database import db_manager
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ._owner_check import assert_book_owner
 from .outline_service import OutlineService, outline_db
 
 router = APIRouter(prefix="/outlines", tags=["Outline"])
-
-
-async def _assert_book_owner(book_id: int, user_id: int, session: AsyncSession):
-    stmt = select(Book).where(Book.id == book_id, Book.user_id == user_id)
-    result = await session.execute(stmt)
-    if not result.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="书籍不存在或无权访问")
 
 
 @router.get("/books/{book_id}", response_model=ListOutlinesResponse)
@@ -26,7 +20,7 @@ async def list_outlines(
     outline_service: Annotated[OutlineService, Depends(outline_db)],
     session: Annotated[AsyncSession, Depends(db_manager.get_db)],
 ):
-    await _assert_book_owner(book_id, user_id, session)
+    await assert_book_owner(book_id, user_id, session)
     items = await outline_service.list_outlines(book_id)
     return ListOutlinesResponse(outlines=items)
 
@@ -52,7 +46,7 @@ async def create_outline(
     outline_service: Annotated[OutlineService, Depends(outline_db)],
     session: Annotated[AsyncSession, Depends(db_manager.get_db)],
 ):
-    await _assert_book_owner(book_id, user_id, session)
+    await assert_book_owner(book_id, user_id, session)
     data = {
         k: v
         for k, v in body.model_dump(by_alias=False, exclude_none=True).items()
@@ -76,7 +70,7 @@ async def update_outline(
     item = await outline_service.get_outline(book_id, outline_id)
     if not item:
         raise HTTPException(status_code=404, detail="大纲不存在")
-    await _assert_book_owner(book_id, user_id, session)
+    await assert_book_owner(book_id, user_id, session)
     data = {
         k: v
         for k, v in body.model_dump(by_alias=False, exclude_none=True).items()
@@ -103,6 +97,6 @@ async def delete_outline(
     item = await outline_service.get_outline(book_id, outline_id)
     if not item:
         raise HTTPException(status_code=404, detail="大纲不存在")
-    await _assert_book_owner(book_id, user_id, session)
+    await assert_book_owner(book_id, user_id, session)
     ok = await outline_service.delete_outline(outline_id)
     return {"ok": ok}

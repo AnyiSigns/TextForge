@@ -1,22 +1,24 @@
-from typing import Optional, List
-from langchain_core.tools import tool
-from sqlalchemy import select
-from domains.book.repository import CharacterRepository
-from domains.book.outline_repository import OutlineRepository
-from domains.world.repository import WorldRepository
-from domains.knowledge.repository import VectorRepository
-from models.book import Book
-from core.model_factory import ModelFactory
-from .web_search_service import WebSearchService
-from config.logging import get_logger
 import json
+
+from config.logging import get_logger
+from core.model_factory import ModelFactory
+from langchain_core.tools import tool
+from models.book import Book
+from sqlalchemy import select
+
+from domains.book.outline_repository import OutlineRepository
+from domains.book.repository import CharacterRepository
+from domains.knowledge.repository import VectorRepository
+from domains.world.repository import WorldRepository
+
+from .web_search_service import WebSearchService
 
 logger = get_logger(__name__)
 
 
 def _build_lookup_tools(session_factory):
     @tool
-    async def lookup_characters(user_id: int, book_id: int, names: Optional[List[str]] = None) -> List[dict]:
+    async def lookup_characters(user_id: int, book_id: int, names: list[str] | None = None) -> list[dict]:
         """lookup_characters tool."""
         async with session_factory() as session:
             characters = await CharacterRepository(session).book_character_detail(user_id=user_id, book_id=book_id)
@@ -35,7 +37,7 @@ def _build_lookup_tools(session_factory):
             ]
 
     @tool
-    async def lookup_outline(book_id: int, chapter_id: Optional[int] = None) -> List[dict]:
+    async def lookup_outline(book_id: int, chapter_id: int | None = None) -> list[dict]:
         """lookup_outline tool."""
         async with session_factory() as session:
             outlines = await OutlineRepository(session).list_outlines(book_id)
@@ -44,7 +46,8 @@ def _build_lookup_tools(session_factory):
                 try:
                     content = outline.content or "[]"
                     data = json.loads(content) if isinstance(content, str) else content
-                except Exception:
+                except Exception as exc:
+                    logger.warning(f"outline 数据解析失败: {exc}")
                     data = []
                 for item in data:
                     if not isinstance(item, dict):
@@ -62,7 +65,7 @@ def _build_lookup_tools(session_factory):
             return result
 
     @tool
-    async def lookup_locations(book_id: int, query: Optional[str] = None) -> List[dict]:
+    async def lookup_locations(book_id: int, query: str | None = None) -> list[dict]:
         """lookup_locations tool."""
         async with session_factory() as session:
             locations = await WorldRepository(session).list_locations(book_id)
@@ -81,7 +84,7 @@ def _build_lookup_tools(session_factory):
             ]
 
     @tool
-    async def lookup_timeline(book_id: int, before_chapter: Optional[int] = None, limit: int = 20, query: Optional[str] = None) -> List[dict]:
+    async def lookup_timeline(book_id: int, before_chapter: int | None = None, limit: int = 20, query: str | None = None) -> list[dict]:
         """lookup_timeline tool."""
         async with session_factory() as session:
             events = await WorldRepository(session).list_timeline_events(book_id)
@@ -96,7 +99,6 @@ def _build_lookup_tools(session_factory):
                             filtered.append(event)
                     except Exception as exc:
                         logger.warning(f"过滤 timeline 事件 chapter_id 转换失败: {exc}")
-                        pass
                 events = filtered
             if query:
                 events = [ev for ev in events if query in (ev.name or "") or query in (ev.description or "")]
@@ -115,7 +117,7 @@ def _build_lookup_tools(session_factory):
             ]
 
     @tool
-    async def lookup_foreshadowing(book_id: int, status: str = "planted", query: Optional[str] = None) -> List[dict]:
+    async def lookup_foreshadowing(book_id: int, status: str = "planted", query: str | None = None) -> list[dict]:
         """lookup_foreshadowing tool."""
         async with session_factory() as session:
             items = await WorldRepository(session).list_foreshadowings(book_id, status=status)
@@ -137,7 +139,7 @@ def _build_lookup_tools(session_factory):
             ]
 
     @tool
-    async def lookup_plot_threads(book_id: int, status: str = "active", query: Optional[str] = None) -> List[dict]:
+    async def lookup_plot_threads(book_id: int, status: str = "active", query: str | None = None) -> list[dict]:
         """lookup_plot_threads tool."""
         async with session_factory() as session:
             items = await WorldRepository(session).list_plot_threads(book_id)
@@ -171,12 +173,18 @@ def _build_lookup_tools(session_factory):
     ]
 
 
-def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
-    from .tools.memory_tools import save_memory, recall_memory, list_memories_by_type, forget_memory, update_memory
+def _build_agent_tools(session_factory, model_config: dict | None = None):
+    from .tools.memory_tools import (
+        forget_memory,
+        list_memories_by_type,
+        recall_memory,
+        save_memory,
+        update_memory,
+    )
     lookup_tools = _build_lookup_tools(session_factory)
 
     @tool
-    async def search_public_docs(book_id: int, query: str, target_book_id: Optional[int] = None, top_k: int = 5) -> List[dict]:
+    async def search_public_docs(book_id: int, query: str, target_book_id: int | None = None, top_k: int = 5) -> list[dict]:
         """search_public_docs tool."""
         async with session_factory() as session:
             vector_repo = VectorRepository(session)
@@ -209,7 +217,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
             ]
 
     @tool
-    async def personal_rag_search(user_id: int, query: str, top_k: int = 5) -> List[dict]:
+    async def personal_rag_search(user_id: int, query: str, top_k: int = 5) -> list[dict]:
         """personal_rag_search tool."""
         async with session_factory() as session:
             vector_repo = VectorRepository(session)
@@ -223,8 +231,8 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
             if embedding is None:
                 return [{"title": "检索失败", "snippet": "embedding 模型不可用", "url": ""}]
             try:
-                from sqlalchemy import select as sa_select
                 from models.document import Document
+                from sqlalchemy import select as sa_select
                 doc_stmt = sa_select(Document.id, Document.file_name).where(Document.user_id == user_id, Document.scope == "personal")
                 doc_result = await session.execute(doc_stmt)
                 doc_rows = doc_result.all()
@@ -252,7 +260,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
                 return [{"title": "检索失败", "snippet": "内部错误", "url": ""}]
 
     @tool
-    async def web_search(query: str, top_k: int = 5) -> List[dict]:
+    async def web_search(query: str, top_k: int = 5) -> list[dict]:
         """web_search tool."""
         async with session_factory() as session:
             api_key = ""
@@ -264,7 +272,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
             return await service.search(query=query, api_key=api_key, top_k=top_k, use_cache=True)
 
     @tool
-    async def list_user_books(user_id: int) -> List[dict]:
+    async def list_user_books(user_id: int) -> list[dict]:
         """list_user_books tool."""
         async with session_factory() as session:
             stmt = select(Book).where(Book.user_id == user_id).order_by(Book.id)
@@ -285,8 +293,8 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
     async def get_book_context(user_id: int, book_id: int) -> dict:
         """get_book_context tool."""
         async with session_factory() as session:
+            from models.book import Book, Character, Volume
             from sqlalchemy import select as sa_select
-            from models.book import Book, Volume, Chapter, ChapterContent, Character
             book_stmt = sa_select(Book).where(Book.id == book_id, Book.user_id == user_id)
             book_result = await session.execute(book_stmt)
             book = book_result.scalar_one_or_none()
@@ -330,9 +338,9 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
                 logger.warning(f"auto_extract_entities 初始化模型失败: {exc}")
         if llm is None:
             return {"book_id": book_id, "entities": [], "message": "模型未配置，跳过提取"}
-        from langchain_core.prompts import ChatPromptTemplate
-        from langchain_core.output_parsers import JsonOutputParser
         from langchain_core.messages import SystemMessage
+        from langchain_core.output_parsers import JsonOutputParser
+        from langchain_core.prompts import ChatPromptTemplate
         prompt = ChatPromptTemplate.from_messages([
             SystemMessage(content="""你是实体提取助手。从给定文本中提取人物、地点、事件。
 输出 JSON 格式：
@@ -358,7 +366,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
         return {"book_id": book_id, "entities": entities}
 
     @tool
-    async def batch_create_entities(user_id: int, book_id: int, characters: Optional[List[dict]] = None, locations: Optional[List[dict]] = None, timeline_events: Optional[List[dict]] = None) -> dict:
+    async def batch_create_entities(user_id: int, book_id: int, characters: list[dict] | None = None, locations: list[dict] | None = None, timeline_events: list[dict] | None = None) -> dict:
         """batch_create_entities tool."""
         async with session_factory() as session:
             repo = WorldRepository(session)
@@ -422,8 +430,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
                 logger.warning(f"polish_text 初始化模型失败: {exc}")
         if llm is None:
             return {"error": "模型未配置，无法润色"}
-        from langchain_core.prompts import ChatPromptTemplate
-        from langchain_core.messages import SystemMessage, HumanMessage
+        from langchain_core.messages import HumanMessage, SystemMessage
         system = SystemMessage(content="你是专业的文字润色助手。改进文本的表达、节奏和可读性，保持原意不变。直接输出润色后的文本。")
         human = HumanMessage(content=f"请润色以下文本：\n{text[:4000]}\n润色要求：{instruction or '优化表达'}")
         try:
@@ -447,8 +454,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
                 logger.warning(f"rewrite_paragraph 初始化模型失败: {exc}")
         if llm is None:
             return {"error": "模型未配置，无法改写"}
-        from langchain_core.prompts import ChatPromptTemplate
-        from langchain_core.messages import SystemMessage, HumanMessage
+        from langchain_core.messages import HumanMessage, SystemMessage
         system = SystemMessage(content="你是专业的改写助手。根据用户指令改写文本，保持核心含义但改变表达方式。直接输出改写后的文本。")
         human = HumanMessage(content=f"请改写以下文本：\n{text[:4000]}\n改写要求：{instruction or '换个角度重写'}")
         try:
@@ -460,7 +466,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
             return {"error": f"改写失败: {exc}"}
 
     @tool
-    async def expand_text(text: str, target_length: Optional[int] = None) -> dict:
+    async def expand_text(text: str, target_length: int | None = None) -> dict:
         """expand_text tool."""
         if not text.strip():
             return {"error": "文本为空"}
@@ -472,8 +478,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
                 logger.warning(f"expand_text 初始化模型失败: {exc}")
         if llm is None:
             return {"error": "模型未配置，无法扩写"}
-        from langchain_core.prompts import ChatPromptTemplate
-        from langchain_core.messages import SystemMessage, HumanMessage
+        from langchain_core.messages import HumanMessage, SystemMessage
         target = target_length or len(text) * 3
         system = SystemMessage(content="你是专业的扩写助手。在保持原意和风格的基础上，丰富细节、描写和对话，使文本更加生动。直接输出扩写后的文本。")
         human = HumanMessage(content=f"请扩写以下文本，目标字数约 {target} 字：\n{text[:4000]}")
@@ -486,7 +491,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
             return {"error": f"扩写失败: {exc}"}
 
     @tool
-    async def summarize_selected(text: str, max_length: Optional[int] = None) -> dict:
+    async def summarize_selected(text: str, max_length: int | None = None) -> dict:
         """summarize_selected tool."""
         if not text.strip():
             return {"error": "文本为空"}
@@ -498,7 +503,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
                 logger.warning(f"summarize_selected 初始化模型失败: {exc}")
         if llm is None:
             return {"error": "模型未配置，无法总结"}
-        from langchain_core.messages import SystemMessage, HumanMessage
+        from langchain_core.messages import HumanMessage, SystemMessage
         target = max_length or 200
         system = SystemMessage(content="你是专业的摘要助手。请简洁地总结文本内容，保留关键信息和核心情节。")
         human = HumanMessage(content=f"请将以下文本总结为 {target} 字以内的摘要：\n{text[:6000]}")
@@ -511,7 +516,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
             return {"error": f"总结失败: {exc}"}
 
     @tool
-    async def suggest_alternatives(text: str, position: Optional[int] = None, count: int = 3) -> dict:
+    async def suggest_alternatives(text: str, position: int | None = None, count: int = 3) -> dict:
         """suggest_alternatives tool."""
         if not text.strip():
             return {"error": "文本为空"}
@@ -523,7 +528,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
                 logger.warning(f"suggest_alternatives 初始化模型失败: {exc}")
         if llm is None:
             return {"error": "模型未配置，无法生成建议"}
-        from langchain_core.messages import SystemMessage, HumanMessage
+        from langchain_core.messages import HumanMessage, SystemMessage
         system = SystemMessage(content="你是写作建议助手。针对给定文本，提供多个不同风格的改写建议。")
         human = HumanMessage(content=f"请提供 {count} 种不同风格的改写建议：\n{text[:4000]}")
         try:
@@ -535,10 +540,10 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
             return {"error": f"生成建议失败: {exc}"}
 
     @tool
-    async def check_consistency(book_id: int, chapter_id: Optional[int] = None) -> dict:
+    async def check_consistency(book_id: int, chapter_id: int | None = None) -> dict:
         """check_consistency tool."""
         async with session_factory() as session:
-            from models.book import Chapter, ChapterContent, Character
+            from models.book import ChapterContent
             book_stmt = select(Book).where(Book.id == book_id)
             book_result = await session.execute(book_stmt)
             book = book_result.scalar_one_or_none()
@@ -564,7 +569,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
                     logger.warning(f"check_consistency 初始化模型失败: {exc}")
             if llm is None:
                 return {"error": "模型未配置，无法检查一致性"}
-            from langchain_core.messages import SystemMessage, HumanMessage
+            from langchain_core.messages import HumanMessage, SystemMessage
             system = SystemMessage(content="你是 consistency 检查助手。检查正文中的人物、地点、时间线是否与设定一致。列出不一致的地方。")
             human = HumanMessage(content=f"书籍：{book.title}\n人物：{[c.name for c in characters]}\n地点：{[loc.name for loc in locations]}\n时间线：{[ev.name for ev in timeline_events]}\n\n请检查以下正文中的一致性：\n{content[:4000]}")
             try:
@@ -588,7 +593,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
                 logger.warning(f"check_grammar 初始化模型失败: {exc}")
         if llm is None:
             return {"error": "模型未配置，无法检查语法"}
-        from langchain_core.messages import SystemMessage, HumanMessage
+        from langchain_core.messages import HumanMessage, SystemMessage
         system = SystemMessage(content="你是语法检查助手。检查文本中的语法、拼写和标点错误，列出问题并给出修正建议。")
         human = HumanMessage(content=f"请检查以下文本的语法错误：\n{text[:4000]}")
         try:
@@ -600,7 +605,7 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
             return {"error": f"检查失败: {exc}"}
 
     @tool
-    async def search_across_books(user_id: int, query: str, top_k: int = 5) -> List[dict]:
+    async def search_across_books(user_id: int, query: str, top_k: int = 5) -> list[dict]:
         """search_across_books tool."""
         async with session_factory() as session:
             vector_repo = VectorRepository(session)
@@ -614,8 +619,8 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
             if embedding is None:
                 return [{"error": "embedding 模型不可用", "query": query}]
             try:
-                from sqlalchemy import select as sa_select
                 from models.document import Document
+                from sqlalchemy import select as sa_select
                 doc_stmt = sa_select(Document.id, Document.file_name).where(Document.user_id == user_id)
                 doc_result = await session.execute(doc_stmt)
                 doc_rows = doc_result.all()
@@ -668,12 +673,13 @@ def _build_agent_tools(session_factory, model_config: Optional[dict] = None):
     ]
 
 
-def build_tool_node(session_factory, model_config: Optional[dict] = None):
+def build_tool_node(session_factory, model_config: dict | None = None):
     from langgraph.prebuilt import ToolNode
-    from .tools.generate_chapter_tool import build_generate_chapter_tool
-    from .tools.feedback_tools import _build_feedback_tools
-    from .tools.workflow_tools import build_workflow_tool
+
     from .tools.card_tools import build_propose_cards_tool
+    from .tools.feedback_tools import _build_feedback_tools
+    from .tools.generate_chapter_tool import build_generate_chapter_tool
+    from .tools.workflow_tools import build_workflow_tool
     tools = _build_agent_tools(session_factory, model_config=model_config)
     tools.append(build_generate_chapter_tool(session_factory, model_config=model_config))
     tools.append(build_workflow_tool(session_factory, model_config=model_config))

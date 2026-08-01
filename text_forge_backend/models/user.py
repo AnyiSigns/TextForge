@@ -1,7 +1,8 @@
 from datetime import datetime
-from typing import List
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import Boolean, Integer, String, DateTime, func, ForeignKey
+
 from models.base import Base
 
 
@@ -34,20 +35,20 @@ class User(Base):
         DateTime, server_default=func.now(), onupdate=func.now(), comment="更新时间"
     )
 
-    tokens: Mapped[List["UserToken"]] = relationship(
+    tokens: Mapped[list["UserToken"]] = relationship(
         back_populates="users", cascade="all, delete-orphan"
     )
-    conversations: Mapped[List["Conversation"]] = relationship(back_populates="users", cascade="all, delete-orphan")  # type: ignore
-    books: Mapped[List["Book"]] = relationship(
+    conversations: Mapped[list["Conversation"]] = relationship(back_populates="users", cascade="all, delete-orphan")  # type: ignore
+    books: Mapped[list["Book"]] = relationship(
         back_populates="user", cascade="all,delete-orphan"
     )
-    characters: Mapped[List["Character"]] = relationship(
+    characters: Mapped[list["Character"]] = relationship(
         back_populates="user", cascade="all,delete-orphan"
     )
-    workflows: Mapped[List["Workflow"]] = relationship(
+    workflows: Mapped[list["Workflow"]] = relationship(
         back_populates="users", cascade="all,delete-orphan"
     )
-    documents: Mapped[List["Document"]] = relationship(
+    documents: Mapped[list["Document"]] = relationship(
         back_populates="users", cascade="all,delete-orphan"
     )
 

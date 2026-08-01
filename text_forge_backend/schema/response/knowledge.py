@@ -1,4 +1,4 @@
-from typing import List, Optional
+
 from pydantic import BaseModel
 
 
@@ -7,8 +7,8 @@ class KnowledgeChunk(BaseModel):
     doc_name: str
     text: str
     score: float
-    uploader_name: Optional[str] = None
+    uploader_name: str | None = None
 
 
 class KnowledgeSearchResponse(BaseModel):
-    chunks: List[KnowledgeChunk]
+    chunks: list[KnowledgeChunk]

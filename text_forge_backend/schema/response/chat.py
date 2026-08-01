@@ -1,6 +1,6 @@
 from datetime import datetime
-from typing import Optional
-from pydantic import BaseModel, Field, ConfigDict
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class HistoryResponse(BaseModel):
@@ -21,7 +21,7 @@ class MessagesResponse(BaseModel):
     conv_id:int=Field(...,description="所属会话 ID",alias="conversation_id")
     role:str=Field(...,description="发送者角色：user / assistant")
     content:str=Field(...,description="消息正文内容")
-    think:Optional[str]=Field(default=None,description="模型思考过程（reasoning_content），仅 assistant 消息可能有值")
+    think:str | None=Field(default=None,description="模型思考过程（reasoning_content），仅 assistant 消息可能有值")
     created_at:datetime=Field(...,description="消息创建时间",alias="create_at")
 
     model_config = ConfigDict(

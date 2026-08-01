@@ -1,11 +1,12 @@
-from typing import Optional, List
+
 from langchain_core.tools import tool
-from domains.memory.service import AgentMemoryService
 from shared.database import db_manager
+
+from domains.memory.service import AgentMemoryService
 
 
 @tool
-async def save_memory(user_id: int, content: str, memory_type: str = "preference", book_id: Optional[int] = None, priority: int = 5, source: str = "agent_self_reflection", related_character_ids: Optional[list] = None, related_chapter_id: Optional[int] = None, meta: Optional[dict] = None) -> dict:
+async def save_memory(user_id: int, content: str, memory_type: str = "preference", book_id: int | None = None, priority: int = 5, source: str = "agent_self_reflection", related_character_ids: list | None = None, related_chapter_id: int | None = None, meta: dict | None = None) -> dict:
     """Save a memory entry for the user."""
     async with db_manager.with_db() as session:
         service = AgentMemoryService(session)
@@ -24,7 +25,7 @@ async def save_memory(user_id: int, content: str, memory_type: str = "preference
 
 
 @tool
-async def recall_memory(user_id: int, query: str, memory_type: Optional[str] = None, book_id: Optional[int] = None, top_k: int = 5, model_config: Optional[dict] = None) -> List[dict]:
+async def recall_memory(user_id: int, query: str, memory_type: str | None = None, book_id: int | None = None, top_k: int = 5, model_config: dict | None = None) -> list[dict]:
     """Search memories for the user."""
     async with db_manager.with_db() as session:
         service = AgentMemoryService(session)
@@ -51,7 +52,7 @@ async def recall_memory(user_id: int, query: str, memory_type: Optional[str] = N
 
 
 @tool
-async def list_memories_by_type(user_id: int, memory_type: str, book_id: Optional[int] = None) -> List[dict]:
+async def list_memories_by_type(user_id: int, memory_type: str, book_id: int | None = None) -> list[dict]:
     """List memories filtered by type."""
     async with db_manager.with_db() as session:
         service = AgentMemoryService(session)
@@ -71,7 +72,7 @@ async def forget_memory(user_id: int, memory_id: int) -> dict:
 
 
 @tool
-async def update_memory(user_id: int, memory_id: int, content: Optional[str] = None, memory_type: Optional[str] = None, priority: Optional[int] = None, meta: Optional[dict] = None) -> dict:
+async def update_memory(user_id: int, memory_id: int, content: str | None = None, memory_type: str | None = None, priority: int | None = None, meta: dict | None = None) -> dict:
     """Update a memory entry."""
     async with db_manager.with_db() as session:
         service = AgentMemoryService(session)

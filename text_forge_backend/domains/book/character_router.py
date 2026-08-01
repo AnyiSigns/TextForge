@@ -1,14 +1,16 @@
+import os
 from typing import Annotated
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+
+from config.logging import get_logger
 from core.auth import get_current
-from .character_service import CharacterService, character_db
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from schema.request.character import CharacterRequest, CharacterUpdateRequest
 from schema.response.book import (
     CharacterResponse,
     ListCharactersResponse,
 )
-from schema.request.character import CharacterRequest, CharacterUpdateRequest
-from config.logging import get_logger
-import os
+
+from .character_service import CharacterService, character_db
 
 logger = get_logger(__name__)
 
@@ -116,5 +118,4 @@ async def delete_character_avatar(
                 os.remove(file_path)
         except OSError as exc:
             logger.warning(f"删除旧头像文件失败: {exc}")
-            pass
     return {}

@@ -1,7 +1,7 @@
-from sqlalchemy import select
-from shared.base_repo import BaseRepository
-from sqlalchemy.ext.asyncio import AsyncSession
 from models.book import Book, Character, CreativeSetting
+from shared.base_repo import BaseRepository
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class BookRepository(BaseRepository[Book]):

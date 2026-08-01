@@ -1,26 +1,27 @@
+import uuid
 from typing import Annotated
+
+from config.logging import get_logger
+from config.settings import settings
+from core.security import create_token, verify_token
 from fastapi import APIRouter, Depends, HTTPException
-from shared.redis import redis_client
 from schema.request.auth import (
     EmailRequest,
-    VerifyEmailRequest,
     RefreshRequest,
-    UserRequest,
     UserLogin,
+    UserRequest,
+    VerifyEmailRequest,
 )
 from schema.response.auth import (
     RefreshResponse,
     TokenRes,
     UserResponse,
 )
-from .service import user_db_serve, UserAuthService
-from config.logging import get_logger
-from core.security import verify_token
-from .verification import verification
+from shared.redis import redis_client
+
 from .email import email_service
-import uuid
-from core.security import create_token
-from config.settings import settings
+from .service import UserAuthService, user_db_serve
+from .verification import verification
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/auth", tags=["认证"])
@@ -36,7 +37,6 @@ async def logout(
     jti = payload.get("jti")
     user_id = int(user_id)
     await user_serve.token_repo.delete_user_and_jti(user_id, jti)
-    return
 
 
 @router.post("/refresh", response_model=RefreshResponse)

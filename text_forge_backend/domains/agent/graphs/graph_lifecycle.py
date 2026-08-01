@@ -1,13 +1,14 @@
+from config.logging import get_logger
+
 from .chat_graph import (
-    main_graph,
-    router_graph,
     audit_graph,
-    tool_graph,
-    parent_graph,
     compression_graph,
+    main_graph,
+    parent_graph,
+    router_graph,
+    tool_graph,
 )
 from .registry import graph_register
-from config.logging import get_logger
 
 logger = get_logger(__name__)
 

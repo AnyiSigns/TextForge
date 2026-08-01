@@ -1,11 +1,11 @@
-from typing import Optional
+
 from pydantic import BaseModel, EmailStr, Field
 
 
 class ProfileRequest(BaseModel):
     user_name: str = Field(..., alias="username")
     email: EmailStr
-    code: Optional[str] = None
+    code: str | None = None
 
 
 class ChangePasswordReq(BaseModel):

@@ -1,4 +1,5 @@
-from typing import Any, Dict
+from typing import Any
+
 from config.model_wrapper import ModelWrapper
 from langchain_core.language_models import BaseChatModel
 
@@ -23,7 +24,7 @@ class ModelFactory:
             user_config: 用户模型配置字典，通常来自 ModelService.get_user_model_config。
         """
         self.user_config = user_config
-        self._cache: Dict[str, BaseChatModel] = {}
+        self._cache: dict[str, BaseChatModel] = {}
 
         for attr_name, config_field in self.DETAILED:
             config = user_config.get(config_field)
@@ -62,7 +63,7 @@ class ModelFactory:
             return 1024
         return known_dims.get(adapter, 1536)
 
-    def _get_create_model(self, config: Dict[str, Any]) -> BaseChatModel:
+    def _get_create_model(self, config: dict[str, Any]) -> BaseChatModel:
         """创建或从缓存获取模型实例。
 
         Args:

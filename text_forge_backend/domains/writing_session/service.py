@@ -1,8 +1,9 @@
 from datetime import datetime
-from typing import List, Optional
-from sqlalchemy.ext.asyncio import AsyncSession
-from .repository import WritingSessionRepository
+
 from config.logging import get_logger
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from .repository import WritingSessionRepository
 
 logger = get_logger(__name__)
 
@@ -21,7 +22,7 @@ class WritingSessionService:
         """
         self.repo = WritingSessionRepository(session)
 
-    async def create_session(self, user_id: int, book_id: int, chapter_id: Optional[int] = None, character_ids: Optional[list] = None) -> dict:
+    async def create_session(self, user_id: int, book_id: int, chapter_id: int | None = None, character_ids: list | None = None) -> dict:
         """创建写作会话。
 
         Args:
@@ -48,7 +49,7 @@ class WritingSessionService:
         await self.repo.session.refresh(instance)
         return self._to_dict(instance)
 
-    async def end_session(self, user_id: int, session_id: int, words_written: int, duration_seconds: int) -> Optional[dict]:
+    async def end_session(self, user_id: int, session_id: int, words_written: int, duration_seconds: int) -> dict | None:
         """结束写作会话。
 
         Args:
@@ -70,7 +71,7 @@ class WritingSessionService:
         await self.repo.session.refresh(instance)
         return self._to_dict(instance)
 
-    async def get_session(self, user_id: int, session_id: int) -> Optional[dict]:
+    async def get_session(self, user_id: int, session_id: int) -> dict | None:
         """获取单个写作会话。
 
         Args:
@@ -85,7 +86,7 @@ class WritingSessionService:
             return None
         return self._to_dict(instance)
 
-    async def list_sessions(self, user_id: int, book_id: int, chapter_id: Optional[int] = None) -> List[dict]:
+    async def list_sessions(self, user_id: int, book_id: int, chapter_id: int | None = None) -> list[dict]:
         """查询用户写作会话列表。
 
         Args:
@@ -115,7 +116,7 @@ class WritingSessionService:
         await self.repo.delete(session_id)
         return True
 
-    async def get_statistics(self, user_id: int, book_id: int, chapter_id: Optional[int] = None) -> dict:
+    async def get_statistics(self, user_id: int, book_id: int, chapter_id: int | None = None) -> dict:
         """获取写作统计信息。
 
         Args:
@@ -128,7 +129,7 @@ class WritingSessionService:
         """
         return await self.repo.get_statistics(user_id=user_id, book_id=book_id, chapter_id=chapter_id)
 
-    async def get_writing_trend(self, user_id: int, book_id: int, days: int = 30) -> List[dict]:
+    async def get_writing_trend(self, user_id: int, book_id: int, days: int = 30) -> list[dict]:
         """获取写作趋势。
 
         Args:
@@ -141,7 +142,7 @@ class WritingSessionService:
         """
         return await self.repo.get_writing_trend(user_id=user_id, book_id=book_id, days=days)
 
-    async def get_character_frequency(self, user_id: int, book_id: int) -> List[dict]:
+    async def get_character_frequency(self, user_id: int, book_id: int) -> list[dict]:
         """获取角色出现频率。
 
         Args:

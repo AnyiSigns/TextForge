@@ -1,13 +1,15 @@
 from typing import Annotated
-from fastapi import APIRouter, Depends, HTTPException, Path
+
 from core.auth import get_current
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from shared.database import db_manager
+from fastapi import APIRouter, Depends, HTTPException, Path
 from models.book import Book
-from .service import BookService, book_db
 from schema.request.book import CreativeSettingRequest
 from schema.response.book import CreativeSettingResponse
+from shared.database import db_manager
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from .service import BookService, book_db
 
 router = APIRouter(prefix="/creative-settings", tags=["CreativeSetting"])
 

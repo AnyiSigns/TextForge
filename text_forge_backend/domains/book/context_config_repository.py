@@ -1,7 +1,7 @@
-from sqlalchemy import select, func
+from models.context_config import BookContextConfig
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
-from models.context_config import BookContextConfig
 
 
 class BookContextConfigRepository:

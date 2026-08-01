@@ -169,7 +169,7 @@ export const useAgentStore = create<AgentState>()(
       
       // 线程管理
       createThread: (title?: string) => {
-        const threadId = `thread_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+        const threadId = `thread_${Date.now()}_${crypto.randomUUID()}`
         const newThread: AgentThread = {
           id: threadId,
           title: createTitle(title),
@@ -543,7 +543,7 @@ export const useAgentStore = create<AgentState>()(
               }
               
               const toolCall: ToolCallLog = {
-                id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                id: `tool_${Date.now()}_${crypto.randomUUID()}`,
                 threadId: state.currentThreadId || '',
                 toolName: toolData.toolName,
                 parameters: toolData.parameters,
@@ -593,11 +593,11 @@ export const useAgentStore = create<AgentState>()(
               }
               
               const plan: Plan = {
-                id: planData.id || `plan_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                id: planData.id || `plan_${Date.now()}_${crypto.randomUUID()}`,
                 threadId: state.currentThreadId || '',
                 version: planData.version || 1,
                 steps: planData.steps.map(step => ({
-                  id: step.id || `step_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                  id: step.id || `step_${Date.now()}_${crypto.randomUUID()}`,
                   description: step.description,
                   status: 'pending',
                   referencedEntities: (planData.entities || []).map(entity => ({
@@ -758,10 +758,6 @@ export const useAgentStore = create<AgentState>()(
             break
 
           case 'compress_done':
-            if (event.data && typeof event.data === 'object') {
-              const cd = event.data as { summary?: string; removed_count?: number }
-              console.log(`[Compress] 上下文已压缩，移除 ${cd.removed_count || 0} 条消息`)
-            }
             break
 
           case 'end':

@@ -1,8 +1,10 @@
 from typing import Annotated
-from shared.database import db_manager
-from fastapi import Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
+
 from config.logging import get_logger
+from fastapi import Depends, HTTPException
+from shared.database import db_manager
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from .repository import WorkflowRepository
 
 logger = get_logger(__name__)
@@ -45,7 +47,7 @@ class WorkflowService:
             return instance
         except HTTPException:
             raise
-        except Exception as e:
+        except Exception:
             logger.error("流水线异常", exc_info=True)
             raise HTTPException(status_code=500, detail="操作失败")
 
@@ -58,7 +60,7 @@ class WorkflowService:
                 raise HTTPException(status_code=404, detail="资源删除失败")
         except HTTPException:
             raise
-        except Exception as e:
+        except Exception:
             logger.error("删除异常", exc_info=True)
             raise HTTPException(status_code=500, detail="操作失败")
 

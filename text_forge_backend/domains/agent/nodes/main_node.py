@@ -1,13 +1,13 @@
 import json
-from typing import Dict, Any
 
-from ..state import MainState
-from domains.book.structured_repository import StructuredRepository
 from core.model_factory import ModelFactory
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.types import StreamWriter
 from shared.database import db_manager
 
+from domains.book.structured_repository import StructuredRepository
+
+from ..state import MainState
 from .context_formatter import format_context_field
 
 

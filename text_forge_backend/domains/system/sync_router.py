@@ -1,11 +1,10 @@
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from core.auth import get_current
+from fastapi import APIRouter, Depends, Query
 from shared.database import db_manager
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from .sync_service import SyncService, model_to_dict
 

@@ -92,8 +92,8 @@ async def validate_ownership(session: AsyncSession, entity_type: str, entity_id:
     if not book_id:
         return False
 
-    from sqlalchemy import select as sa_select
     from models.book import Book
+    from sqlalchemy import select as sa_select
     book_stmt = sa_select(Book).where(Book.id == book_id, Book.user_id == user_id)
     book_result = await session.execute(book_stmt)
     return book_result.scalar_one_or_none() is not None

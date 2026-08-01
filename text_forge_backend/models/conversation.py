@@ -1,7 +1,8 @@
 from datetime import datetime
-from typing import List, Optional
-from sqlalchemy import Integer, ForeignKey, String, DateTime, func, Text
+
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from models.base import Base
 
 
@@ -17,7 +18,7 @@ class Conversation(Base):
         nullable=False,
         comment="用户id",
     )
-    book_id: Mapped[Optional[int]] = mapped_column(
+    book_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("books.id", ondelete="CASCADE"), nullable=True, index=True, comment="关联书籍id"
     )
     type: Mapped[str] = mapped_column(
@@ -42,7 +43,7 @@ class Conversation(Base):
     )
 
     users: Mapped["User"] = relationship(back_populates="conversations")
-    messages: Mapped[List["Message"]] = relationship(
+    messages: Mapped[list["Message"]] = relationship(
         back_populates="conversations", cascade="all,delete-orphan"
     )
 

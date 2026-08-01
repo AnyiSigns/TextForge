@@ -5,8 +5,8 @@ from config.logging import get_logger
 from core.model_factory import ModelFactory
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
-
 from shared.utils import truncate_text
+
 from .agent_state import UserAgentState
 
 logger = get_logger(__name__)

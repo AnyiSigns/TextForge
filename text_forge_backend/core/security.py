@@ -1,9 +1,10 @@
-from datetime import timedelta, datetime, timezone
-from typing import Any, Optional
-from passlib.context import CryptContext
-from jose import jwt, ExpiredSignatureError, JWTError
-from config.settings import settings
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
 from config.logging import get_logger
+from config.settings import settings
+from jose import ExpiredSignatureError, JWTError, jwt
+from passlib.context import CryptContext
 
 logger = get_logger(__name__)
 
@@ -35,7 +36,7 @@ def verify_pwd(pwd: str, pwd_hash) -> bool:
     return hash_context.verify(pwd, pwd_hash)
 
 
-def create_token(data: dict[str, Any], expire: Optional[timedelta | datetime] = None):
+def create_token(data: dict[str, Any], expire: timedelta | datetime | None = None):
     """创建 JWT Token。
 
     Args:

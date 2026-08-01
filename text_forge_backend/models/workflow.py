@@ -1,14 +1,15 @@
-from typing import Optional
-from sqlalchemy import ForeignKey, Integer, String, Text, Boolean
+
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
-from models.base import Base
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from models.base import Base
 
 
 class Workflow(Base):
     __tablename__ = "workflows"
     id: Mapped[str] = mapped_column(String(255), primary_key=True)
-    user_id: Mapped[Optional[int]] = mapped_column(
+    user_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=True
     )
     name: Mapped[str] = mapped_column(String(128), index=True)

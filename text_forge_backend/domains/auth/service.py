@@ -1,17 +1,18 @@
 import uuid
 from datetime import datetime
-from fastapi import Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from config.settings import settings
-from shared.database import db_manager
+
 from config.logging import get_logger
-from .repository import (
-    UserTokenRepository,
-    UserRepository,
-)
-from core.security import encode_pwd, verify_pwd
-from core.security import create_token
+from config.settings import settings
+from core.security import create_token, encode_pwd, verify_pwd
+from fastapi import Depends, HTTPException
+from shared.database import db_manager
 from shared.redis import redis_client
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from .repository import (
+    UserRepository,
+    UserTokenRepository,
+)
 from .verification import verification
 
 logger = get_logger(__name__)
@@ -133,7 +134,6 @@ class UserAuthService:
         new_hash_pwd = encode_pwd(new_pwd)
         user.hash_password = new_hash_pwd
         await self.session.commit()
-        return
 
     async def change_password_by_email(self, email: str, code: str, new_pwd: str):
         """通过邮箱验证码更改密码。
@@ -155,7 +155,6 @@ class UserAuthService:
         new_hash_pwd = encode_pwd(new_pwd)
         user.hash_password = new_hash_pwd
         await self.session.commit()
-        return
 
 
 async def user_db_serve(db: AsyncSession = Depends(db_manager.get_db)):

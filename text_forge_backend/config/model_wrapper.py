@@ -1,16 +1,17 @@
-from langchain_core.language_models import BaseChatModel
-from typing import Any, Dict, Optional, Type
-from langchain_qwq import ChatQwen
-from langchain_deepseek import ChatDeepSeek
-from langchain_ollama import ChatOllama
-from langchain_openai import ChatOpenAI
+from typing import Any
+
 from langchain_anthropic import ChatAnthropic
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_community.chat_models import (
     ChatZhipuAI,
     QianfanChatEndpoint,
 )
+from langchain_core.language_models import BaseChatModel
+from langchain_deepseek import ChatDeepSeek
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_moonshot import ChatMoonshot
+from langchain_ollama import ChatOllama
+from langchain_openai import ChatOpenAI
+from langchain_qwq import ChatQwen
 
 
 class _EmbeddingStub:
@@ -20,7 +21,7 @@ class _EmbeddingStub:
 
 class ModelWrapper:
     """统一封装多Provider的 LLM/Embedding/Vision 实例创建工厂。"""
-    PROVIDER_MAP: Dict[str, Type[BaseChatModel]] = {
+    PROVIDER_MAP: dict[str, type[BaseChatModel]] = {
         "dashscope": ChatQwen,
         "deepseek": ChatDeepSeek,
         "ollama": ChatOllama,
@@ -32,14 +33,14 @@ class ModelWrapper:
         "qianfan": QianfanChatEndpoint,
     }
 
-    EMBEDDING_MAP: Dict[str, Any] = {
+    EMBEDDING_MAP: dict[str, Any] = {
         "dashscope": "_create_dashscope_embedding",
         "cohere": "_create_cohere_embedding",
         "huggingface": "_create_huggingface_embedding",
         "baidu": "_create_baidu_embedding",
     }
 
-    VISION_MAP: Dict[str, Any] = {
+    VISION_MAP: dict[str, Any] = {
         "openai": "_create_openai_vision",
         "stability": "_create_stability_vision",
         "replicate": "_create_replicate_vision",
@@ -48,7 +49,7 @@ class ModelWrapper:
     }
 
     @classmethod
-    def get_model(cls, config: Dict[str, Any]) -> BaseChatModel:
+    def get_model(cls, config: dict[str, Any]) -> BaseChatModel:
         provider = config.get("adapter")
         if not provider:
             raise ValueError("没有配置提供商")
@@ -62,7 +63,7 @@ class ModelWrapper:
             raise RuntimeError(f"初始化{provider}的模型{config.get("model_id")}失败{e}")
 
     @classmethod
-    def get_embedding(cls, config: Dict[str, Any]):
+    def get_embedding(cls, config: dict[str, Any]):
         provider = config.get("adapter")
         factory_name = cls.EMBEDDING_MAP.get(provider)
         if not factory_name:
@@ -74,7 +75,7 @@ class ModelWrapper:
             return _EmbeddingStub()
 
     @classmethod
-    def get_vision(cls, config: Dict[str, Any]) -> Optional[Any]:
+    def get_vision(cls, config: dict[str, Any]) -> Any | None:
         provider = config.get("adapter")
         factory_name = cls.VISION_MAP.get(provider)
         if not factory_name:
@@ -86,7 +87,7 @@ class ModelWrapper:
             return None
 
     @staticmethod
-    def _create_dashscope_embedding(config: Dict[str, Any]):
+    def _create_dashscope_embedding(config: dict[str, Any]):
         try:
             from langchain_community.embeddings import DashScopeEmbeddings
 
@@ -98,7 +99,7 @@ class ModelWrapper:
             raise RuntimeError(f"初始化 dashscope embedding 失败: {e}")
 
     @staticmethod
-    def _create_cohere_embedding(config: Dict[str, Any]):
+    def _create_cohere_embedding(config: dict[str, Any]):
         try:
             from langchain_cohere import CohereEmbeddings
 
@@ -110,7 +111,7 @@ class ModelWrapper:
             raise RuntimeError(f"初始化 cohere embedding 失败: {e}")
 
     @staticmethod
-    def _create_huggingface_embedding(config: Dict[str, Any]):
+    def _create_huggingface_embedding(config: dict[str, Any]):
         try:
             from langchain_huggingface import HuggingFaceEndpointEmbeddings
 
@@ -124,7 +125,7 @@ class ModelWrapper:
             raise RuntimeError(f"初始化 huggingface embedding 失败: {e}")
 
     @staticmethod
-    def _create_baidu_embedding(config: Dict[str, Any]):
+    def _create_baidu_embedding(config: dict[str, Any]):
         try:
             from langchain_community.embeddings import QianfanEmbeddingsEndpoint
 
@@ -138,7 +139,7 @@ class ModelWrapper:
             raise RuntimeError(f"初始化百度千帆 embedding 失败: {e}")
 
     @staticmethod
-    def _create_openai_vision(config: Dict[str, Any]):
+    def _create_openai_vision(config: dict[str, Any]):
         try:
             from openai import OpenAI
 
@@ -149,7 +150,7 @@ class ModelWrapper:
             raise RuntimeError(f"初始化 openai vision 失败: {e}")
 
     @staticmethod
-    def _create_stability_vision(config: Dict[str, Any]):
+    def _create_stability_vision(config: dict[str, Any]):
         try:
             from langchain_community.llms.stability_ai_image_gen import (
                 StabilityAIImageGeneration,
@@ -165,7 +166,7 @@ class ModelWrapper:
             raise RuntimeError(f"初始化 stability vision 失败: {e}")
 
     @staticmethod
-    def _create_replicate_vision(config: Dict[str, Any]):
+    def _create_replicate_vision(config: dict[str, Any]):
         try:
             from langchain_replicate import Replicate
 
@@ -181,10 +182,10 @@ class ModelWrapper:
             raise RuntimeError(f"初始化 replicate vision 失败: {e}")
 
     @staticmethod
-    def _create_modelslab_vision(config: Dict[str, Any]):
+    def _create_modelslab_vision(config: dict[str, Any]):
         try:
-            from langchain.llms.base import LLM
             import requests
+            from langchain.llms.base import LLM
 
             class ModelsLab(LLM):
                 api_key: str = ""
@@ -215,7 +216,7 @@ class ModelWrapper:
             raise RuntimeError(f"初始化 modelslab vision 失败: {e}")
 
     @staticmethod
-    def _create_pollinations_vision(config: Dict[str, Any]):
+    def _create_pollinations_vision(config: dict[str, Any]):
         try:
             from langchain_pollinations import PollinationsChat
 
@@ -226,7 +227,7 @@ class ModelWrapper:
             raise RuntimeError(f"初始化 pollinations vision 失败: {e}")
 
     @staticmethod
-    def _build_kwargs(provider: str, config: Dict[str, Any]):
+    def _build_kwargs(provider: str, config: dict[str, Any]):
         base = {
             "model": config.get("model_id"),
             "temperature": config.get("temperature", 0.7),

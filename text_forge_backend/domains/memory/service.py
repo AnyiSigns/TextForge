@@ -1,8 +1,9 @@
-from typing import List, Optional
-from sqlalchemy.ext.asyncio import AsyncSession
-from .repository import AgentMemoryRepository
-from core.model_factory import ModelFactory
+
 from config.logging import get_logger
+from core.model_factory import ModelFactory
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from .repository import AgentMemoryRepository
 
 logger = get_logger(__name__)
 
@@ -11,7 +12,7 @@ class AgentMemoryService:
     def __init__(self, session: AsyncSession):
         self.repo = AgentMemoryRepository(session)
 
-    async def save_memory(self, user_id: int, book_id: Optional[int], memory_type: str, content: str, related_chapter_id: Optional[int] = None, related_character_ids: Optional[list] = None, priority: int = 5, source: str = "agent_self_reflection", meta: Optional[dict] = None):
+    async def save_memory(self, user_id: int, book_id: int | None, memory_type: str, content: str, related_chapter_id: int | None = None, related_character_ids: list | None = None, priority: int = 5, source: str = "agent_self_reflection", meta: dict | None = None):
         if related_character_ids is None:
             related_character_ids = []
         payload = {
@@ -26,7 +27,7 @@ class AgentMemoryService:
         }
         return await self.repo.create(user_id, payload)
 
-    async def list_memories(self, user_id: int, book_id: Optional[int] = None, memory_type: Optional[str] = None) -> List[dict]:
+    async def list_memories(self, user_id: int, book_id: int | None = None, memory_type: str | None = None) -> list[dict]:
         items = await self.repo.list_by_user(user_id=user_id, book_id=book_id, memory_type=memory_type)
         return [self._to_dict(m) for m in items]
 
@@ -48,7 +49,7 @@ class AgentMemoryService:
             return
         await self.repo.delete(memory_id)
 
-    async def search_memories(self, user_id: int, mode: str, query: str, book_id: Optional[int] = None, memory_type: Optional[str] = None, top_k: int = 5, model_config: Optional[dict] = None):
+    async def search_memories(self, user_id: int, mode: str, query: str, book_id: int | None = None, memory_type: str | None = None, top_k: int = 5, model_config: dict | None = None):
         if mode == "fulltext":
             items = await self.repo.search_fulltext(user_id=user_id, query=query, book_id=book_id, memory_type=memory_type)
             return [self._to_dict(m) for m in items]

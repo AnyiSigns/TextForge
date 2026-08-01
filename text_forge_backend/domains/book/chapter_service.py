@@ -1,9 +1,10 @@
+from config.logging import get_logger
 from core.exceptions import AppException
 from fastapi import Depends
 from shared.database import db_manager
-from .chapter_repository import ChapterRepository
 from sqlalchemy.ext.asyncio import AsyncSession
-from config.logging import get_logger
+
+from .chapter_repository import ChapterRepository
 
 logger = get_logger(__name__)
 

@@ -1,17 +1,18 @@
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
 class BookResponse(BaseModel):
     id: int
     title: str
-    genre: Optional[str] = None
-    description: Optional[str] = None
-    pinned: Optional[bool] = False
-    workflow_id: Optional[str] = Field(alias="workflowId")
-    total_word_goal: Optional[int] = Field(default=0, alias="totalWordGoal")
-    current_word_count: Optional[int] = Field(default=0, alias="currentWordCount")
+    genre: str | None = None
+    description: str | None = None
+    pinned: bool | None = False
+    workflow_id: str | None = Field(alias="workflowId")
+    total_word_goal: int | None = Field(default=0, alias="totalWordGoal")
+    current_word_count: int | None = Field(default=0, alias="currentWordCount")
     created_at: datetime = Field(alias="createdAt")
     updated_at: datetime = Field(alias="updatedAt")
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)
@@ -19,14 +20,14 @@ class BookResponse(BaseModel):
 
 class BookVersionResponse(BaseModel):
     book: BookResponse
-    version: Optional[int]
+    version: int | None
 
 
 class VolumeResponse(BaseModel):
     id: int
     book_id: int = Field(alias="bookId")
     title: str
-    summary: Optional[str] = None
+    summary: str | None = None
     sort_order: int = Field(default=0, alias="sortOrder")
     created_at: datetime = Field(alias="createdAt")
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)
@@ -36,7 +37,7 @@ class ChapterResponse(BaseModel):
     id: int
     volume_id: int = Field(alias="volumeId")
     title: str
-    summary: Optional[str] = None
+    summary: str | None = None
     sort_order: int = Field(default=0, alias="sortOrder")
     created_at: datetime = Field(alias="createdAt")
     updated_at: datetime = Field(alias="updatedAt")
@@ -46,7 +47,7 @@ class ChapterResponse(BaseModel):
 class ChapterContentResponse(BaseModel):
     id: int
     chapter_id: int = Field(alias="chapterId")
-    content: Optional[str] = None
+    content: str | None = None
     version: int
     created_at: datetime = Field(alias="createdAt")
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)
@@ -57,8 +58,8 @@ class ChapterContentDiffResponse(BaseModel):
     to_version: int = Field(alias="toVersion")
     from_content: str = Field(alias="fromContent")
     to_content: str = Field(alias="toContent")
-    from_created_at: Optional[str] = Field(default=None, alias="fromCreatedAt")
-    to_created_at: Optional[str] = Field(default=None, alias="toCreatedAt")
+    from_created_at: str | None = Field(default=None, alias="fromCreatedAt")
+    to_created_at: str | None = Field(default=None, alias="toCreatedAt")
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
@@ -67,34 +68,34 @@ class CharacterResponse(BaseModel):
     id: int
     name: str
     description: str
-    book_id: Optional[int] = Field(alias="bookId")
-    avatar_url: Optional[str] = Field(default=None, alias="avatarUrl")
-    aliases: Optional[List[str]] = None
-    role_type: Optional[str] = Field(default=None, alias="roleType")
-    status: Optional[str] = None
-    relationship_chain: Optional[List[Dict[str, Any]]] = Field(default=None, alias="relationshipChain")
+    book_id: int | None = Field(alias="bookId")
+    avatar_url: str | None = Field(default=None, alias="avatarUrl")
+    aliases: list[str] | None = None
+    role_type: str | None = Field(default=None, alias="roleType")
+    status: str | None = None
+    relationship_chain: list[dict[str, Any]] | None = Field(default=None, alias="relationshipChain")
     created_at: datetime = Field(alias="createdAt")
     updated_at: datetime = Field(alias="updatedAt")
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class ListCharactersResponse(BaseModel):
-    characters: List[CharacterResponse]
+    characters: list[CharacterResponse]
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class BookDetailResponse(BaseModel):
     book: BookResponse
-    characters: List[CharacterResponse]
+    characters: list[CharacterResponse]
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class CreativeSettingResponse(BaseModel):
     book_id: int = Field(alias="bookId")
-    tone: Optional[str] = None
-    worldview: Optional[str] = None
-    writing_taboos: Optional[str] = Field(default=None, alias="writingTaboos")
-    custom_dimensions: Optional[dict] = Field(default=None, alias="customDimensions")
+    tone: str | None = None
+    worldview: str | None = None
+    writing_taboos: str | None = Field(default=None, alias="writingTaboos")
+    custom_dimensions: dict | None = Field(default=None, alias="customDimensions")
 
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)

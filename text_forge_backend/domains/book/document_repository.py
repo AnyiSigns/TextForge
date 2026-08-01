@@ -1,7 +1,7 @@
-from typing import Optional, List
+
+from models.document import Chunk, Document
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from models.document import Document, Chunk
 
 
 class DocumentRepository:
@@ -15,7 +15,7 @@ class DocumentRepository:
         """
         self.session = session
 
-    async def list_documents(self, user_id: int, scope: Optional[str] = None) -> List[Document]:
+    async def list_documents(self, user_id: int, scope: str | None = None) -> list[Document]:
         """查询用户文档列表。
 
         Args:
@@ -32,7 +32,7 @@ class DocumentRepository:
         result = await self.session.execute(stmt)
         return result.scalars().all()
 
-    async def get_document(self, doc_id: int, user_id: int) -> Optional[Document]:
+    async def get_document(self, doc_id: int, user_id: int) -> Document | None:
         """查询单个文档，校验所有权。
 
         Args:
@@ -46,7 +46,7 @@ class DocumentRepository:
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def find_by_md5(self, md5: str, scope: str = "public") -> Optional[Document]:
+    async def find_by_md5(self, md5: str, scope: str = "public") -> Document | None:
         """根据 MD5 查询文档。
 
         Args:
@@ -60,7 +60,7 @@ class DocumentRepository:
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def create_document(self, user_id: int, file_name: str, file_md5: str, file_type: Optional[str] = None, file_size: Optional[int] = None, scope: str = "personal", metadatas: Optional[dict] = None) -> Document:
+    async def create_document(self, user_id: int, file_name: str, file_md5: str, file_type: str | None = None, file_size: int | None = None, scope: str = "personal", metadatas: dict | None = None) -> Document:
         """创建文档记录。
 
         Args:
@@ -108,7 +108,7 @@ class DocumentRepository:
         await self.session.flush()
         return True
 
-    async def list_chunks(self, doc_id: int, user_id: Optional[int] = None) -> List[Chunk]:
+    async def list_chunks(self, doc_id: int, user_id: int | None = None) -> list[Chunk]:
         """查询文档 Chunk 列表。
 
         Args:
@@ -124,7 +124,7 @@ class DocumentRepository:
         result = await self.session.execute(stmt)
         return result.scalars().all()
 
-    async def create_chunks(self, doc_id: int, chunks: List[str], embeddings: Optional[List[List[float]]] = None) -> List[Chunk]:
+    async def create_chunks(self, doc_id: int, chunks: list[str], embeddings: list[list[float]] | None = None) -> list[Chunk]:
         """批量创建文档 Chunk。
 
         Args:

@@ -1,12 +1,13 @@
-from typing import Optional
-from ..agent_state import UserAgentState
-from ..agent_nodes import agent_call, agent_router
-from ..context_manager import auto_compress_node, compress_router
-from ..tools_domain import build_tool_node
+
 from langgraph.graph import StateGraph
 
+from ..agent_nodes import agent_call, agent_router
+from ..agent_state import UserAgentState
+from ..context_manager import auto_compress_node, compress_router
+from ..tools_domain import build_tool_node
 
-def build_user_agent_graph(session_factory, model_config: Optional[dict] = None, checkpointer=None):
+
+def build_user_agent_graph(session_factory, model_config: dict | None = None, checkpointer=None):
     builder = StateGraph(UserAgentState)
     builder.add_node("agent", agent_call)
     tool_node = build_tool_node(session_factory, model_config=model_config)

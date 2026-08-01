@@ -93,9 +93,7 @@ apiClient.interceptors.response.use(
 );
 
 export function generateIdempotencyKey(): string {
-  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
-    ? crypto.randomUUID()
-    : `idem-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return crypto.randomUUID();
 }
 
 const IDEMPOTENT_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'] as const;

@@ -1,20 +1,21 @@
-from typing import List
-from fastapi import APIRouter, Depends, Query, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
+
 from core.auth import get_current
-from shared.database import db_manager
+from fastapi import APIRouter, Depends, HTTPException, Query
 from schema.request.world import (
-    LocationRequest,
-    TimelineEventRequest,
     ForeshadowingRequest,
+    LocationRequest,
     PlotThreadRequest,
+    TimelineEventRequest,
 )
 from schema.response.world import (
-    LocationResponse,
-    TimelineEventResponse,
     ForeshadowingResponse,
+    LocationResponse,
     PlotThreadResponse,
+    TimelineEventResponse,
 )
+from shared.database import db_manager
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from .service import WorldService
 
 router = APIRouter(prefix="/world", tags=["World"])
@@ -24,7 +25,7 @@ def world_db(session: AsyncSession = Depends(db_manager.get_db)) -> WorldService
     return WorldService(session)
 
 
-@router.get("/locations", response_model=List[LocationResponse])
+@router.get("/locations", response_model=list[LocationResponse])
 async def list_locations(
     user_id=Depends(get_current),
     book_id: int = Query(...),
@@ -66,7 +67,7 @@ async def delete_location(
     return {"ok": True}
 
 
-@router.get("/timeline-events", response_model=List[TimelineEventResponse])
+@router.get("/timeline-events", response_model=list[TimelineEventResponse])
 async def list_timeline_events(
     user_id=Depends(get_current),
     book_id: int = Query(...),
@@ -108,7 +109,7 @@ async def delete_timeline_event(
     return {"ok": True}
 
 
-@router.get("/foreshadowings", response_model=List[ForeshadowingResponse])
+@router.get("/foreshadowings", response_model=list[ForeshadowingResponse])
 async def list_foreshadowings(
     user_id=Depends(get_current),
     book_id: int = Query(...),
@@ -151,7 +152,7 @@ async def delete_foreshadowing(
     return {"ok": True}
 
 
-@router.get("/plot-threads", response_model=List[PlotThreadResponse])
+@router.get("/plot-threads", response_model=list[PlotThreadResponse])
 async def list_plot_threads(
     user_id=Depends(get_current),
     book_id: int = Query(...),

@@ -1,5 +1,6 @@
 import operator
-from typing import Any, Dict, List, Optional, TypedDict, Annotated
+from typing import Annotated, Any, TypedDict
+
 from langgraph.graph import add_messages
 from shared.utils import merge_dicts as _merge_dicts
 
@@ -18,16 +19,16 @@ class RouterState(TypedDict):
 class ToolState(TypedDict):
     query: str
     project_id: int
-    workflow_node: Dict[str, Any]
+    workflow_node: dict[str, Any]
     model_config: dict
     tool_result: str
-    context_pool: Dict[str, List[int]]
-    context_fields: List[str]
+    context_pool: dict[str, list[int]]
+    context_fields: list[str]
 
 
 class MainState(TypedDict):
     system_prompt: str
-    input_context: Dict[str, Any]
+    input_context: dict[str, Any]
     output: str
     model_config: dict
     input_worldview: str
@@ -35,13 +36,13 @@ class MainState(TypedDict):
     input_brief_summary: str
     input_recent_chapters: str
     input_outline: str
-    context_pool: Dict[str, List[int]]
-    context_fields: List[str]
+    context_pool: dict[str, list[int]]
+    context_fields: list[str]
 
 
 class AuditState(TypedDict):
     system_prompt: str
-    input_context: Dict[str, Any]
+    input_context: dict[str, Any]
     output: str
     model_config: dict
     input_worldview: str
@@ -49,8 +50,8 @@ class AuditState(TypedDict):
     input_brief_summary: str
     input_recent_chapters: str
     input_outline: str
-    context_pool: Dict[str, List[int]]
-    context_fields: List[str]
+    context_pool: dict[str, list[int]]
+    context_fields: list[str]
 
 
 class ParentState(TypedDict):
@@ -60,15 +61,15 @@ class ParentState(TypedDict):
     input_characters: str
     input_recent_chapters: str
     input_outline: str
-    workflow_nodes: List[Dict[str, Any]]
+    workflow_nodes: list[dict[str, Any]]
     step_outputs: Annotated[dict, _merge_dicts]
-    executed_steps: Annotated[List[str], operator.add]
-    metadata: Dict[str, Any]
-    next_step_id: Optional[str]
+    executed_steps: Annotated[list[str], operator.add]
+    metadata: dict[str, Any]
+    next_step_id: str | None
     model_config: dict
     book_id: int
     user_id: int
     book_title: str
     book_description: str
     book_genre: str
-    edges: List[Dict[str, Any]]
+    edges: list[dict[str, Any]]

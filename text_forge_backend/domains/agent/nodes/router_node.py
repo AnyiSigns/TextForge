@@ -1,10 +1,12 @@
 import json
 import re
-from core.model_factory import ModelFactory
-from ..state import RouterState
+
 from config.agent_conf import EXECUTOR_PROMPT
-from langchain_core.messages import SystemMessage, HumanMessage
 from config.logging import get_logger
+from core.model_factory import ModelFactory
+from langchain_core.messages import HumanMessage, SystemMessage
+
+from ..state import RouterState
 
 logger = get_logger(__name__)
 
@@ -25,6 +27,7 @@ async def router_node(state: RouterState):
             decision = json.loads(json_match.group())
         else:
             decision = {"executor": "main"}
-    except:
+    except Exception:
+        logger.warning("路由决策解析失败，回退到 main 执行器")
         decision = {"executor": "main"}
     return {"decision": json.dumps(decision)}

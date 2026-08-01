@@ -184,7 +184,7 @@ export function AgentSidebar({ isOpen, onToggle, onClose, className = '' }: Agen
     
     // 添加用户消息
     const userMessage: AgentMessage = {
-      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      id: `msg_${crypto.randomUUID()}`,
       threadId: currentThreadId,
       role: 'user',
       content: content.trim(),
@@ -244,7 +244,7 @@ export function AgentSidebar({ isOpen, onToggle, onClose, className = '' }: Agen
       if (result?.success) {
         // 将结果添加为 assistant 消息
         const responseMessage: AgentMessage = {
-          id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          id: `msg_${crypto.randomUUID()}`,
           threadId: currentThreadId,
           role: 'assistant',
           content: result.result || '',

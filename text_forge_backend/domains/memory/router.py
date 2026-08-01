@@ -1,10 +1,15 @@
-from typing import List, Optional
-from fastapi import APIRouter, Depends, Query, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
+
 from core.auth import get_current
-from shared.database import db_manager
-from schema.request.memory import AgentMemoryRequest, AgentMemoryUpdateRequest, AgentMemorySearchRequest
+from fastapi import APIRouter, Depends, HTTPException, Query
+from schema.request.memory import (
+    AgentMemoryRequest,
+    AgentMemorySearchRequest,
+    AgentMemoryUpdateRequest,
+)
 from schema.response.memory import AgentMemoryResponse
+from shared.database import db_manager
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from .service import AgentMemoryService
 
 router = APIRouter(prefix="/agent-memories", tags=["Agent Memory"])
@@ -14,11 +19,11 @@ def agent_memory_db(session: AsyncSession = Depends(db_manager.get_db)) -> Agent
     return AgentMemoryService(session)
 
 
-@router.get("/", response_model=List[AgentMemoryResponse])
+@router.get("/", response_model=list[AgentMemoryResponse])
 async def list_memories(
     user_id=Depends(get_current),
-    book_id: Optional[int] = Query(default=None),
-    memory_type: Optional[str] = Query(default=None),
+    book_id: int | None = Query(default=None),
+    memory_type: str | None = Query(default=None),
     service: AgentMemoryService = Depends(agent_memory_db),
 ):
     return await service.list_memories(user_id=user_id, book_id=book_id, memory_type=memory_type)
@@ -68,7 +73,7 @@ async def delete_memory(
     return {"ok": True}
 
 
-@router.post("/search", response_model=List[AgentMemoryResponse])
+@router.post("/search", response_model=list[AgentMemoryResponse])
 async def search_memories(
     user_id=Depends(get_current),
     body: AgentMemorySearchRequest = ...,

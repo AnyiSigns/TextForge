@@ -1,30 +1,31 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+
 from config.logging import get_logger
 from config.settings import settings
 from domains.agent.graphs.graph_lifecycle import compiled_all
+from domains.agent.router import router as agent_router
 from domains.auth.router import router as auth_router
 from domains.auth.user_router import router as user_router
-from domains.book.router import router as book_router
-from domains.book.volume_router import router as volume_router
-from domains.book.chapter_router import router as chapter_router
 from domains.book.chapter_content_router import router as chapter_content_router
+from domains.book.chapter_router import router as chapter_router
 from domains.book.character_router import router as character_router
-from domains.book.outline_router import router as outline_router
 from domains.book.creative_settings_router import router as creative_settings_router
 from domains.book.export_router import router as export_router
-from domains.agent.router import router as agent_router
-from domains.memory.router import router as memory_router
-from domains.workflow.router import router as workflow_router
-from domains.workflow.seed import seed_builtin_workflows
+from domains.book.outline_router import router as outline_router
+from domains.book.router import router as book_router
+from domains.book.volume_router import router as volume_router
+from domains.cards.router import router as cards_router
 from domains.knowledge.router import router as knowledge_router
+from domains.lock.router import router as lock_router
+from domains.memory.router import router as memory_router
 from domains.system.health_router import router as health_router
 from domains.system.sync_router import router as sync_router
+from domains.workflow.router import router as workflow_router
+from domains.workflow.seed import seed_builtin_workflows
 from domains.world.router import router as world_router
 from domains.writing_session.router import router as writing_session_router
-from domains.lock.router import router as lock_router
-from domains.cards.router import router as cards_router
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from shared.database import db_manager
 from shared.graph_store import graph_pool_manager
 from shared.redis import redis_client

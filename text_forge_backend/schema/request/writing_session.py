@@ -1,11 +1,11 @@
-from typing import Optional, List
-from pydantic import BaseModel, Field, ConfigDict
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class WritingSessionCreateRequest(BaseModel):
     book_id: int = Field(alias="bookId")
-    chapter_id: Optional[int] = Field(default=None, alias="chapterId")
-    character_ids: Optional[List[int]] = Field(default=[], alias="characterIds")
+    chapter_id: int | None = Field(default=None, alias="chapterId")
+    character_ids: list[int] | None = Field(default=[], alias="characterIds")
 
     model_config = ConfigDict(populate_by_name=True)
 

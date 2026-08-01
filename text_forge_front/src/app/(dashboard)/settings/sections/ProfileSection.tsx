@@ -26,7 +26,7 @@ export function ProfileSection() {
   const avatarUrl = user?.avatar
     ? user.avatar.startsWith('http')
       ? user.avatar
-      : `http://localhost${user.avatar}`
+      : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${user.avatar}`
     : undefined;
 
   return (

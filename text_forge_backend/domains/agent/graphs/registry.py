@@ -1,13 +1,12 @@
-from typing import Dict
+
 from langgraph.graph import StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 
-
 class GraphRegister:
     def __init__(self):
-        self._builders:Dict[str,StateGraph]={}
-        self._compiled:Dict[str,CompiledStateGraph]={}
+        self._builders:dict[str,StateGraph]={}
+        self._compiled:dict[str,CompiledStateGraph]={}
 
     def register_builder(self,name: str, graph: StateGraph):
         self._builders[name]=graph
@@ -24,7 +23,7 @@ class GraphRegister:
             raise RuntimeError(f"图{name}未编译")
         return graph
 
-    def get_all_builders(self) -> Dict[str, StateGraph]:
+    def get_all_builders(self) -> dict[str, StateGraph]:
         return dict(self._builders)
 
 graph_register=GraphRegister()

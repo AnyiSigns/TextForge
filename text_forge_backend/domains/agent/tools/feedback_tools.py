@@ -1,18 +1,19 @@
-from typing import Optional, List
+
+from config.logging import get_logger
 from langchain_core.tools import tool
 from sqlalchemy import select
-from config.logging import get_logger
 
 logger = get_logger(__name__)
 
 
-def _build_feedback_tools(session_factory, model_config: Optional[dict] = None):
+def _build_feedback_tools(session_factory, model_config: dict | None = None):
     @tool
-    async def analyze_feedback_patterns(user_id: int, book_id: Optional[int] = None, days: int = 30) -> dict:
+    async def analyze_feedback_patterns(user_id: int, book_id: int | None = None, days: int = 30) -> dict:
         """analyze_feedback_patterns tool."""
         async with session_factory() as session:
-            from models.agent_memory import AgentMemory
             from datetime import datetime, timedelta
+
+            from models.agent_memory import AgentMemory
             cutoff = datetime.now() - timedelta(days=days)
             stmt = select(AgentMemory).where(
                 AgentMemory.user_id == user_id,
@@ -67,7 +68,7 @@ def _build_feedback_tools(session_factory, model_config: Optional[dict] = None):
             return {"book_id": book_id, "patterns": patterns, "sample_feedback": feedback_items[:10]}
 
     @tool
-    async def get_proactive_suggestions(user_id: int, book_id: int) -> List[dict]:
+    async def get_proactive_suggestions(user_id: int, book_id: int) -> list[dict]:
         """get_proactive_suggestions tool."""
         async with session_factory() as session:
             from models.book import Chapter, Foreshadowing, PlotThread, Volume

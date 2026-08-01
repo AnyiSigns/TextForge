@@ -1,16 +1,17 @@
 from typing import Annotated
 
+from config.logging import get_logger
 from fastapi import Depends
-from shared.database import db_manager
 from models.book import Book
+from shared.database import db_manager
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from .repository import (
     BookRepository,
     CharacterRepository,
     CreativeSettingRepository,
 )
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from config.logging import get_logger
 
 logger = get_logger(__name__)
 

@@ -1,10 +1,12 @@
 from typing import Annotated
+
+from config.logging import get_logger
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy.ext.asyncio import AsyncSession
-from core.security import verify_token
 from shared.database import db_manager
-from config.logging import get_logger
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from core.security import verify_token
 
 logger = get_logger(__name__)
 security = HTTPBearer()  # HTTPBearer实例，用于从HTTP请求头中提取JWT令牌

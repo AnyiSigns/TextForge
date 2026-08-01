@@ -133,7 +133,5 @@ describe('模拟小说生成：上下文拼接样式', () => {
 
     const outPath = join(process.cwd(), 'simulation-context-sample.txt');
     writeFileSync(outPath, lines.join('\n'), 'utf-8');
-    // eslint-disable-next-line no-console
-    console.log('已导出上下文样例：', outPath);
   });
 });

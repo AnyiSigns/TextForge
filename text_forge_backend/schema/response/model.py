@@ -1,31 +1,31 @@
+
 from pydantic import BaseModel, ConfigDict, Field
-from typing import Optional
 
 
 class BaseModelBasicResponse(BaseModel):
-    id: Optional[str] = None
-    name: Optional[str] = None
-    adapter: Optional[str] = None
-    base_url: Optional[str] = Field(default=None, alias="baseUrl")
-    api_key: Optional[str] = Field(default=None, alias="apiKey")
-    model_id: Optional[str] = Field(default=None, alias="modelId")
-    extra: Optional[dict] = None
+    id: str | None = None
+    name: str | None = None
+    adapter: str | None = None
+    base_url: str | None = Field(default=None, alias="baseUrl")
+    api_key: str | None = Field(default=None, alias="apiKey")
+    model_id: str | None = Field(default=None, alias="modelId")
+    extra: dict | None = None
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class SearchConfigResponse(BaseModel):
-    provider: Optional[str] = "bocha"
-    api_key: Optional[str] = None
+    provider: str | None = "bocha"
+    api_key: str | None = None
 
 
 class ModelResponse(BaseModel):
-    id: Optional[int] = None
-    main_config: Optional[BaseModelBasicResponse] = None
-    audit_config: Optional[BaseModelBasicResponse] = None
-    router_config: Optional[BaseModelBasicResponse] = None
-    tool_config: Optional[BaseModelBasicResponse] = None
-    vision_config: Optional[BaseModelBasicResponse] = None
-    embedding_config: Optional[BaseModelBasicResponse] = None
-    search_config: Optional[SearchConfigResponse] = None
+    id: int | None = None
+    main_config: BaseModelBasicResponse | None = None
+    audit_config: BaseModelBasicResponse | None = None
+    router_config: BaseModelBasicResponse | None = None
+    tool_config: BaseModelBasicResponse | None = None
+    vision_config: BaseModelBasicResponse | None = None
+    embedding_config: BaseModelBasicResponse | None = None
+    search_config: SearchConfigResponse | None = None
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)

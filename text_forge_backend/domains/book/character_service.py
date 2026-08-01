@@ -1,10 +1,11 @@
-from sqlalchemy import select
-from shared.database import db_manager
-from fastapi import Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-from .repository import CharacterRepository
-from models.book import Character
 from config.logging import get_logger
+from fastapi import Depends
+from models.book import Character
+from shared.database import db_manager
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from .repository import CharacterRepository
 
 logger = get_logger(__name__)
 

@@ -1,17 +1,19 @@
-from typing import Dict, Any, List
-from .agent_state import UserAgentState
+import json
+from typing import Any
+
+from core.model_factory import ModelFactory
 from langchain_core.messages import SystemMessage
 from langchain_core.tools import BaseTool
-from core.model_factory import ModelFactory
 from langgraph.graph import END
-import json
 from shared.utils import truncate_text
+
+from .agent_state import UserAgentState
 
 AGENT_SYSTEM_PROMPT = """你是 TextForge Agent，一位专业的 AI 文学创作助手。
 你可以通过调用 execute_workflow_node 执行工作流节点来生成内容，也可以使用其他工具进行人物管理、大纲编排、RAG 检索等操作。"""
 
 
-async def agent_call(state: UserAgentState) -> Dict[str, Any]:
+async def agent_call(state: UserAgentState) -> dict[str, Any]:
     llm = ModelFactory(state["model_config"])
     system_prompt = AGENT_SYSTEM_PROMPT
 
@@ -36,12 +38,13 @@ async def agent_call(state: UserAgentState) -> Dict[str, Any]:
     return {"messages": [result]}
 
 
-def _resolve_agent_tools(state: UserAgentState) -> List[BaseTool]:
+def _resolve_agent_tools(state: UserAgentState) -> list[BaseTool]:
     model_config = state.get("model_config") or {}
     if not model_config:
         return []
-    from .tools_domain import _build_agent_tools as _domain_build_tools
     from shared.database import db_manager
+
+    from .tools_domain import _build_agent_tools as _domain_build_tools
     return _domain_build_tools(db_manager.session_factory, model_config=model_config)
 
 

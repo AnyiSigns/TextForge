@@ -1,4 +1,5 @@
 import secrets
+
 from config.settings import settings
 from shared.redis import redis_client
 

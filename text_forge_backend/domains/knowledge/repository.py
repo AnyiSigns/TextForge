@@ -1,9 +1,10 @@
+from typing import Any
+
+from config.logging import get_logger
+from models.document import Chunk, Document
+from shared.redis import cached_rag_search, set_rag_cache
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List, Dict, Any
-from models.document import Document, Chunk
-from shared.redis import cached_rag_search, set_rag_cache
-from config.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -21,11 +22,11 @@ class VectorRepository:
 
     async def search_external_books(
         self,
-        query_embedding: List[float],
-        rag_filter: Dict[str, Any],
+        query_embedding: list[float],
+        rag_filter: dict[str, Any],
         top_k: int = 3,
         use_cache: bool = True,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """向量检索公开知识库。
 
         Args:

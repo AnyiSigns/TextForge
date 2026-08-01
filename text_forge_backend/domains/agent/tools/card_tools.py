@@ -1,8 +1,8 @@
-from typing import Optional, List
-from langchain_core.tools import tool
-from langchain_core.messages import SystemMessage, HumanMessage
-from core.model_factory import ModelFactory
+
 from config.logging import get_logger
+from core.model_factory import ModelFactory
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.tools import tool
 
 logger = get_logger(__name__)
 
@@ -17,10 +17,10 @@ CARD_TYPE_DESCRIPTIONS = {
 }
 
 
-def build_propose_cards_tool(session_factory, model_config: Optional[dict] = None):
+def build_propose_cards_tool(session_factory, model_config: dict | None = None):
     @tool
     async def propose_cards(
-        card_types: List[str],
+        card_types: list[str],
         book_id: int,
         user_id: int,
         reason: str = "",
@@ -63,7 +63,7 @@ def build_propose_cards_tool(session_factory, model_config: Optional[dict] = Non
         try:
             result = await llm.main.ainvoke([SystemMessage(content="你是创意卡片生成助手。"), HumanMessage(content=prompt)])
             content = result.content if hasattr(result, "content") else str(result)
-        except Exception as exc:
+        except Exception:
             logger.exception("propose_cards LLM 调用失败")
             return {"proposed": False, "cards": [], "message": "卡片生成失败，请稍后重试"}
 

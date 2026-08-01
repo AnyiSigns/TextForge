@@ -1,8 +1,8 @@
-from typing import List, Optional
-from sqlalchemy import select, delete as sqla_delete
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.book import Location, TimelineEvent, Foreshadowing, PlotThread
+from models.book import Foreshadowing, Location, PlotThread, TimelineEvent
+from sqlalchemy import delete as sqla_delete
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class WorldRepository:
@@ -19,7 +19,7 @@ class WorldRepository:
         """
         self.session = session
 
-    async def list_locations(self, book_id: int) -> List[Location]:
+    async def list_locations(self, book_id: int) -> list[Location]:
         """查询书籍地点列表。
 
         Args:
@@ -49,7 +49,7 @@ class WorldRepository:
         await self.session.refresh(location)
         return location
 
-    async def update_location(self, location_id: int, book_id: int, data: dict) -> Optional[Location]:
+    async def update_location(self, location_id: int, book_id: int, data: dict) -> Location | None:
         """更新地点。
 
         Args:
@@ -81,7 +81,7 @@ class WorldRepository:
         await self.session.execute(stmt)
         await self.session.flush()
 
-    async def list_timeline_events(self, book_id: int) -> List[TimelineEvent]:
+    async def list_timeline_events(self, book_id: int) -> list[TimelineEvent]:
         """查询书籍时间线事件列表。
 
         Args:
@@ -111,7 +111,7 @@ class WorldRepository:
         await self.session.refresh(event)
         return event
 
-    async def update_timeline_event(self, event_id: int, book_id: int, data: dict) -> Optional[TimelineEvent]:
+    async def update_timeline_event(self, event_id: int, book_id: int, data: dict) -> TimelineEvent | None:
         """更新时间线事件。
 
         Args:
@@ -143,7 +143,7 @@ class WorldRepository:
         await self.session.execute(stmt)
         await self.session.flush()
 
-    async def list_foreshadowings(self, book_id: int, status: Optional[str] = None) -> List[Foreshadowing]:
+    async def list_foreshadowings(self, book_id: int, status: str | None = None) -> list[Foreshadowing]:
         """查询伏笔列表。
 
         Args:
@@ -177,7 +177,7 @@ class WorldRepository:
         await self.session.refresh(item)
         return item
 
-    async def update_foreshadowing(self, item_id: int, book_id: int, data: dict) -> Optional[Foreshadowing]:
+    async def update_foreshadowing(self, item_id: int, book_id: int, data: dict) -> Foreshadowing | None:
         """更新伏笔。
 
         Args:
@@ -209,7 +209,7 @@ class WorldRepository:
         await self.session.execute(stmt)
         await self.session.flush()
 
-    async def list_plot_threads(self, book_id: int) -> List[PlotThread]:
+    async def list_plot_threads(self, book_id: int) -> list[PlotThread]:
         """查询情节脉络列表。
 
         Args:
@@ -239,7 +239,7 @@ class WorldRepository:
         await self.session.refresh(item)
         return item
 
-    async def update_plot_thread(self, item_id: int, book_id: int, data: dict) -> Optional[PlotThread]:
+    async def update_plot_thread(self, item_id: int, book_id: int, data: dict) -> PlotThread | None:
         """更新情节脉络。
 
         Args:

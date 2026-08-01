@@ -1,9 +1,9 @@
-from typing import Optional
-from sqlalchemy import select, delete
-from sqlalchemy.ext.asyncio import AsyncSession
+
 from models import UserToken
-from shared.base_repo import BaseRepository
 from models.user import User
+from shared.base_repo import BaseRepository
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class UserRepository(BaseRepository[User]):
@@ -79,7 +79,7 @@ class UserRepository(BaseRepository[User]):
         user_name: str,
         email: str,
         hash_password: str,
-        phone: Optional[str] = None,
+        phone: str | None = None,
     ):
         """创建用户。
 

@@ -27,7 +27,7 @@ export function matchCharsByText<T extends { id: string; name?: string; aliases?
 
 /** 生成关系条目 id（详情编辑用，避免与既有 id 冲突）。 */
 export function makeRelationId(): string {
-  return `rel-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  return `rel-${crypto.randomUUID()}`;
 }
 
 /** 仅保留已选对端且填写关系描述的项（保存关系前过滤）。 */

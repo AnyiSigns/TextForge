@@ -1,11 +1,12 @@
+
+from config.logging import get_logger
 from core.exceptions import AppException
 from fastapi import Depends
 from shared.database import db_manager
-from typing import Optional
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from .outline_repository import OutlineRepository
 from .repository import BookRepository
-from sqlalchemy.ext.asyncio import AsyncSession
-from config.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -134,7 +135,7 @@ class OutlineService:
             logger.error("删除大纲失败", exc_info=True)
             raise AppException(status_code=500, detail="删除大纲失败", error_code="DELETE_OUTLINE_FAILED")
 
-    async def auto_summarize_if_needed(self, outline_id: int, book_id: int, user_id: int, data: dict, model_config: Optional[dict] = None):
+    async def auto_summarize_if_needed(self, outline_id: int, book_id: int, user_id: int, data: dict, model_config: dict | None = None):
         """若章节缺少摘要，自动调用模型生成摘要并回写。
 
         Args:

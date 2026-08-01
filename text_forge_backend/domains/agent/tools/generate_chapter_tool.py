@@ -1,36 +1,36 @@
-from typing import Optional, Dict, Any, List
+from typing import Any
+
+from config.logging import get_logger
 from langchain_core.tools import tool
 from sqlalchemy import select
-from ..subgraphs.generate_chapter_graph import (
-    build_generate_chapter_graph,
-    GenerateChapterState,
-)
+
 from ..chapter_context import get_previous_chapter_context
-from config.logging import get_logger
+from ..subgraphs.generate_chapter_graph import (
+    GenerateChapterState,
+    build_generate_chapter_graph,
+)
 
 logger = get_logger(__name__)
 
 
-def build_generate_chapter_tool(session_factory, model_config: Optional[dict] = None):
+def build_generate_chapter_tool(session_factory, model_config: dict | None = None):
     @tool
     async def generate_chapter(
         book_id: int,
         chapter_id: int,
         instruction: str = "",
-        instruction_hint: Optional[str] = None,
+        instruction_hint: str | None = None,
     ) -> dict:
         """Generate chapter content based on the provided instruction and context."""
         async with session_factory() as session:
             from models.book import (
                 Book,
-                Volume,
                 Chapter,
                 ChapterContent,
-                Character,
-                CreativeSetting,
             )
-            from domains.book.repository import CharacterRepository
+
             from domains.book.outline_repository import OutlineRepository
+            from domains.book.repository import CharacterRepository
             from domains.world.repository import WorldRepository
 
             book_stmt = select(Book).where(Book.id == book_id)
@@ -117,9 +117,9 @@ def build_generate_chapter_tool(session_factory, model_config: Optional[dict] = 
 
             previous_context = await get_previous_chapter_context(session, book_id, chapter_id)
 
-            progress_events: List[Dict[str, Any]] = []
+            progress_events: list[dict[str, Any]] = []
 
-            def _progress_callback(event: Dict[str, Any]):
+            def _progress_callback(event: dict[str, Any]):
                 progress_events.append(event)
 
             state: GenerateChapterState = {

@@ -1,8 +1,10 @@
 from datetime import datetime
-from typing import List, Optional
-from sqlalchemy import String, Integer, Text, DateTime, ForeignKey, func, Boolean
+from typing import Optional
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from models.base import Base
 
 
@@ -25,13 +27,13 @@ class Book(Base):
 
     user: Mapped["User"] = relationship(back_populates="books")
     creative_setting: Mapped["CreativeSetting"] = relationship(back_populates="book", cascade="all,delete-orphan")
-    volumes: Mapped[List["Volume"]] = relationship(back_populates="book", cascade="all,delete-orphan")
-    characters: Mapped[List["Character"]] = relationship(back_populates="book", cascade="all,delete-orphan")
-    outlines: Mapped[List["Outline"]] = relationship(back_populates="book", cascade="all,delete-orphan")
-    locations: Mapped[List["Location"]] = relationship(back_populates="book", cascade="all,delete-orphan")
-    timeline_events: Mapped[List["TimelineEvent"]] = relationship(back_populates="book", cascade="all,delete-orphan")
-    foreshadowings: Mapped[List["Foreshadowing"]] = relationship(back_populates="book", cascade="all,delete-orphan")
-    plot_threads: Mapped[List["PlotThread"]] = relationship(back_populates="book", cascade="all,delete-orphan")
+    volumes: Mapped[list["Volume"]] = relationship(back_populates="book", cascade="all,delete-orphan")
+    characters: Mapped[list["Character"]] = relationship(back_populates="book", cascade="all,delete-orphan")
+    outlines: Mapped[list["Outline"]] = relationship(back_populates="book", cascade="all,delete-orphan")
+    locations: Mapped[list["Location"]] = relationship(back_populates="book", cascade="all,delete-orphan")
+    timeline_events: Mapped[list["TimelineEvent"]] = relationship(back_populates="book", cascade="all,delete-orphan")
+    foreshadowings: Mapped[list["Foreshadowing"]] = relationship(back_populates="book", cascade="all,delete-orphan")
+    plot_threads: Mapped[list["PlotThread"]] = relationship(back_populates="book", cascade="all,delete-orphan")
 
 
 class CreativeSetting(Base):
@@ -61,7 +63,7 @@ class Volume(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     book: Mapped["Book"] = relationship(back_populates="volumes")
-    chapters: Mapped[List["Chapter"]] = relationship(back_populates="volume", cascade="all,delete-orphan")
+    chapters: Mapped[list["Chapter"]] = relationship(back_populates="volume", cascade="all,delete-orphan")
 
 
 class Chapter(Base):
@@ -76,7 +78,7 @@ class Chapter(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
     volume: Mapped["Volume"] = relationship(back_populates="chapters")
-    contents: Mapped[List["ChapterContent"]] = relationship(back_populates="chapter", cascade="all,delete-orphan")
+    contents: Mapped[list["ChapterContent"]] = relationship(back_populates="chapter", cascade="all,delete-orphan")
 
 
 class ChapterContent(Base):
@@ -129,7 +131,7 @@ class Outline(Base):
 
     book: Mapped["Book"] = relationship(back_populates="outlines")
     parent: Mapped[Optional["Outline"]] = relationship(back_populates="children", remote_side="Outline.id")
-    children: Mapped[List["Outline"]] = relationship(back_populates="parent", cascade="all,delete-orphan")
+    children: Mapped[list["Outline"]] = relationship(back_populates="parent", cascade="all,delete-orphan")
 
 
 class Location(Base):
@@ -148,7 +150,7 @@ class Location(Base):
 
     book: Mapped["Book"] = relationship(back_populates="locations")
     parent: Mapped[Optional["Location"]] = relationship(back_populates="children", remote_side="Location.id")
-    children: Mapped[List["Location"]] = relationship(back_populates="parent", cascade="all,delete-orphan")
+    children: Mapped[list["Location"]] = relationship(back_populates="parent", cascade="all,delete-orphan")
 
 
 class TimelineEvent(Base):
@@ -210,4 +212,4 @@ class PlotThread(Base):
 
     book: Mapped["Book"] = relationship(back_populates="plot_threads")
     parent: Mapped[Optional["PlotThread"]] = relationship(back_populates="children", remote_side="PlotThread.id")
-    children: Mapped[List["PlotThread"]] = relationship(back_populates="parent", cascade="all,delete-orphan")
+    children: Mapped[list["PlotThread"]] = relationship(back_populates="parent", cascade="all,delete-orphan")

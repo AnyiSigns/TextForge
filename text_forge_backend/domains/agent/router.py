@@ -2,21 +2,23 @@ import json
 import uuid
 from datetime import datetime, timezone
 from typing import Annotated
-from .agent_state import UserAgentState
-from .graphs.agent_graph import build_user_agent_graph
+
+from config.logging import get_logger
 from core.auth import get_current
 from core.model_factory import ModelFactory
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from shared.database import db_manager
-from shared.redis import redis_client
-from shared.graph_store import graph_pool_manager
 from models.book import Book
 from models.conversation import Conversation, Message
 from schema.request.common import ChatRequest, CompressRequest, ReviewActionRequest
+from shared.database import db_manager
+from shared.graph_store import graph_pool_manager
+from shared.redis import redis_client
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from config.logging import get_logger
+
+from .agent_state import UserAgentState
+from .graphs.agent_graph import build_user_agent_graph
 
 logger = get_logger(__name__)
 
@@ -404,7 +406,7 @@ async def manual_compress(
         return {"summary": "", "removed_count": 0, "remaining_count": len(messages), "error": "未找到模型配置"}
 
     llm = ModelFactory(model_config)
-    from langchain_core.messages import SystemMessage, HumanMessage
+    from langchain_core.messages import HumanMessage, SystemMessage
 
     parts = []
     for msg in messages:
@@ -428,7 +430,7 @@ async def manual_compress(
         raise HTTPException(status_code=500, detail="摘要生成失败")
 
     try:
-        from .repository import AgentMemoryRepository
+        from domains.memory.repository import AgentMemoryRepository
         memory_repo = AgentMemoryRepository(session)
         await memory_repo.create(
             user_id=user_id,
