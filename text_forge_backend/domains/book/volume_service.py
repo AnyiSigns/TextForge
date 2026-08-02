@@ -63,6 +63,7 @@ class VolumeService:
             if not instance:
                 raise AppException(status_code=404, detail="卷不存在", error_code="VOLUME_NOT_FOUND")
             await self.volume_repo.delete_volume(volume_id)
+            await self.session.commit()
             return True
         except AppException:
             raise

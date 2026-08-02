@@ -60,11 +60,9 @@ async def update_chapter(
     chapter_service: Annotated[ChapterService, Depends(chapter_db)],
     session: Annotated[AsyncSession, Depends(db_manager.get_db)],
 ):
-    item = await chapter_service.get_chapter(0, chapter_id)
+    item = await chapter_service.chapter_repo.get_by_id(chapter_id)
     if not item:
-        item = await chapter_service.chapter_repo.get_by_id(chapter_id)
-        if not item:
-            raise HTTPException(status_code=404, detail="章节不存在")
+        raise HTTPException(status_code=404, detail="章节不存在")
     await _assert_volume_owner(item.volume_id, user_id, session)
     item = await chapter_service.update_chapter(
         chapter_id, title=request.title, summary=request.summary

@@ -8,9 +8,10 @@ from core.auth import get_current
 from core.model_factory import ModelFactory
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from models.book import Book
+from models.book import Book, Chapter, Volume
 from models.conversation import Conversation, Message
 from schema.request.common import ChatRequest, CompressRequest, ReviewActionRequest
+from schema.response.chat import HistoryResponse, MessagesResponse
 from shared.database import db_manager
 from shared.graph_store import graph_pool_manager
 from shared.redis import redis_client
@@ -127,6 +128,8 @@ async def _prepare_agent_state(
         "active_workflow_id": None,
         "pending_review": None,
         "pending_cards": None,
+        "review_decision": None,
+        "edited_content": None,
         "workflow_node_outputs": {},
     }
 
@@ -134,7 +137,16 @@ async def _prepare_agent_state(
         try:
             from .chapter_context import get_previous_chapter_context
 
-            prev_ctx = await get_previous_chapter_context(session, book_id, 0)
+            latest_chapter_stmt = select(Chapter).where(
+                Chapter.volume_id.in_(
+                    select(Volume.id).where(Volume.book_id == book_id)
+                )
+            ).order_by(Chapter.created_at.desc()).limit(1)
+            latest_chapter_result = await session.execute(latest_chapter_stmt)
+            latest_chapter = latest_chapter_result.scalar_one_or_none()
+            latest_chapter_id = latest_chapter.id if latest_chapter else 0
+
+            prev_ctx = await get_previous_chapter_context(session, book_id, latest_chapter_id)
             state["previous_chapter_summary"] = prev_ctx.get("previous_chapter_summary")
             state["previous_chapter_content"] = prev_ctx.get("previous_chapter_content")
             state["cross_chapter_context"] = prev_ctx.get("cross_chapter_context", {})
@@ -142,6 +154,38 @@ async def _prepare_agent_state(
             logger.warning(f"查询上一章上下文失败: {exc}")
 
     return conversation, state, book_id
+
+
+@router.get("/conversations", response_model=list[HistoryResponse])
+async def list_conversations(
+    user_id: Annotated[int, Depends(get_current)],
+    book_id: int | None = Query(default=None),
+    session: Annotated[AsyncSession, Depends(db_manager.get_db)] = None,
+):
+    stmt = select(Conversation).where(Conversation.user_id == user_id)
+    if book_id is not None:
+        stmt = stmt.where(Conversation.book_id == book_id)
+    stmt = stmt.order_by(Conversation.update_at.desc())
+    result = await session.execute(stmt)
+    conversations = result.scalars().all()
+    return [HistoryResponse.model_validate(c) for c in conversations]
+
+
+@router.get("/conversations/{conv_id}/messages", response_model=list[MessagesResponse])
+async def list_messages(
+    conv_id: int,
+    user_id: Annotated[int, Depends(get_current)],
+    session: Annotated[AsyncSession, Depends(db_manager.get_db)] = None,
+):
+    conv_stmt = select(Conversation).where(Conversation.id == conv_id, Conversation.user_id == user_id)
+    conv_result = await session.execute(conv_stmt)
+    conversation = conv_result.scalar_one_or_none()
+    if not conversation:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    stmt = select(Message).where(Message.conversation_id == conv_id).order_by(Message.create_at)
+    result = await session.execute(stmt)
+    messages = result.scalars().all()
+    return [MessagesResponse.model_validate(m) for m in messages]
 
 
 @router.post("/start")
@@ -253,7 +297,33 @@ async def stream_agent(
                     _empty_sse("无待处理的审核，请发送新消息开始对话"),
                     media_type="text/event-stream",
                 )
-            state = state_data
+            review_decision = state_data.get("review_decision", "accept")
+            edited_content = state_data.get("edited_content", "")
+            node_label = pending_review.get("node_label", "")
+
+            from langchain_core.messages import HumanMessage
+            messages = list(state_data.get("messages", []))
+
+            if review_decision == "retry":
+                messages.append(HumanMessage(
+                    content=f"节点 [{node_label}] 的输出被用户拒绝。请调整参数或从不同的角度重新生成，确保输出严格遵循该节点的写作要求。"
+                ))
+            elif review_decision == "edit" and edited_content:
+                messages.append(HumanMessage(
+                    content=f"节点 [{node_label}] 的输出已被用户修改为以下内容：\n\n{edited_content}\n\n请基于此修改后的内容继续工作，并相应调整后续节点的上下文。"
+                ))
+            else:
+                messages.append(HumanMessage(
+                    content=f"节点 [{node_label}] 的输出已被用户接受。请继续执行下一个节点。"
+                ))
+
+            state = {
+                **state_data,
+                "messages": messages,
+                "pending_review": None,
+                "review_decision": None,
+                "edited_content": None,
+            }
         else:
             conversation, state, book_id = await _prepare_agent_state(
                 session, user_id, thread_id, body.message, model_config

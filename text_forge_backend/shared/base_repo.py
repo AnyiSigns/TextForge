@@ -74,13 +74,56 @@ class BaseRepository(Generic[ModelType]):
         instance = await self.get(id)
         if instance:
             await self.session.delete(instance)
-            await self.session.commit()
+            await self.session.flush()
             return True
         else:
             return False
 
+    async def delete_and_commit(self, id):
+        """根据主键删除实体并提交。
+
+        .. deprecated::
+            优先使用 delete() 后由上层统一 commit。
+
+        Args:
+            id: 主键值。
+
+        Returns:
+            删除成功返回 True，实体不存在返回 False。
+        """
+        instance = await self.get(id)
+        if instance:
+            await self.session.delete(instance)
+            await self.session.commit()
+            return True
+        return False
+
     async def update(self, id, **kwargs):
         """根据主键更新实体。
+
+        Args:
+            id: 主键值。
+            **kwargs: 要更新的字段，仅更新非 None 值。
+
+        Returns:
+            更新后的实体实例，不存在返回 None。
+        """
+        instance = await self.get(id)
+        if instance:
+            for key, value in kwargs.items():
+                if value is not None:
+                    setattr(instance, key, value)
+            await self.session.flush()
+            await self.session.refresh(instance)
+            return instance
+        else:
+            return None
+
+    async def update_and_commit(self, id, **kwargs):
+        """根据主键更新实体并提交。
+
+        .. deprecated::
+            优先使用 update() 后由上层统一 commit。
 
         Args:
             id: 主键值。

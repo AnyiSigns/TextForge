@@ -63,6 +63,7 @@ class ChapterService:
             if not instance:
                 raise AppException(status_code=404, detail="章节不存在", error_code="CHAPTER_NOT_FOUND")
             await self.chapter_repo.delete_chapter(chapter_id)
+            await self.session.commit()
             return True
         except AppException:
             raise

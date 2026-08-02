@@ -1,5 +1,6 @@
 
 from config.logging import get_logger
+from shared.pagination import PageParams, PageResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .repository import WorldRepository
@@ -10,6 +11,10 @@ logger = get_logger(__name__)
 class WorldService:
     def __init__(self, session: AsyncSession):
         self.repo = WorldRepository(session)
+
+    async def list_locations_page(self, book_id: int, page_params: PageParams) -> PageResult:
+        items, total = await self.repo.list_locations_page(book_id, offset=page_params.offset, limit=page_params.limit)
+        return PageResult(items=items, total=total, page=page_params.page, page_size=page_params.page_size)
 
     async def list_locations(self, book_id: int) -> list[dict]:
         return await self.repo.list_locations(book_id)
@@ -23,6 +28,10 @@ class WorldService:
     async def delete_location(self, location_id: int, book_id: int):
         await self.repo.delete_location(location_id, book_id)
 
+    async def list_timeline_events_page(self, book_id: int, page_params: PageParams) -> PageResult:
+        items, total = await self.repo.list_timeline_events_page(book_id, offset=page_params.offset, limit=page_params.limit)
+        return PageResult(items=items, total=total, page=page_params.page, page_size=page_params.page_size)
+
     async def list_timeline_events(self, book_id: int) -> list[dict]:
         return await self.repo.list_timeline_events(book_id)
 
@@ -35,6 +44,10 @@ class WorldService:
     async def delete_timeline_event(self, event_id: int, book_id: int):
         await self.repo.delete_timeline_event(event_id, book_id)
 
+    async def list_foreshadowings_page(self, book_id: int, page_params: PageParams, status: str | None = None) -> PageResult:
+        items, total = await self.repo.list_foreshadowings_page(book_id, offset=page_params.offset, limit=page_params.limit, status=status)
+        return PageResult(items=items, total=total, page=page_params.page, page_size=page_params.page_size)
+
     async def list_foreshadowings(self, book_id: int, status: str | None = None) -> list[dict]:
         return await self.repo.list_foreshadowings(book_id, status=status)
 
@@ -46,6 +59,10 @@ class WorldService:
 
     async def delete_foreshadowing(self, item_id: int, book_id: int):
         await self.repo.delete_foreshadowing(item_id, book_id)
+
+    async def list_plot_threads_page(self, book_id: int, page_params: PageParams) -> PageResult:
+        items, total = await self.repo.list_plot_threads_page(book_id, offset=page_params.offset, limit=page_params.limit)
+        return PageResult(items=items, total=total, page=page_params.page, page_size=page_params.page_size)
 
     async def list_plot_threads(self, book_id: int) -> list[dict]:
         return await self.repo.list_plot_threads(book_id)

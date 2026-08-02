@@ -7,6 +7,7 @@ from schema.request.writing_session import (
 )
 from schema.response.writing_session import WritingSessionResponse
 from shared.database import db_manager
+from shared.pagination import PageParams, PageResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .service import WritingSessionService
@@ -51,15 +52,15 @@ async def end_session(
     return WritingSessionResponse(**session)
 
 
-@router.get("/", response_model=list[WritingSessionResponse])
+@router.get("/", response_model=PageResult[WritingSessionResponse])
 async def list_sessions(
     user_id=Depends(get_current),
     book_id: int = Query(...),
     chapter_id: int | None = Query(default=None),
+    page_params: PageParams = Depends(),
     service: WritingSessionService = Depends(writing_session_db),
 ):
-    sessions = await service.list_sessions(user_id=user_id, book_id=book_id, chapter_id=chapter_id)
-    return [WritingSessionResponse(**s) for s in sessions]
+    return await service.list_sessions_page(user_id=user_id, book_id=book_id, chapter_id=chapter_id, page_params=page_params)
 
 
 @router.get("/{session_id}", response_model=WritingSessionResponse)

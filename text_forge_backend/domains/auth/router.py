@@ -33,10 +33,12 @@ async def logout(
     user_serve: Annotated[UserAuthService, Depends(user_db_serve)],
 ):
     payload = verify_token(request.refresh_token)
-    user_id = payload.get("sub")
+    if not payload:
+        raise HTTPException(status_code=401, detail="令牌无效")
+    user_id = int(payload.get("sub"))
     jti = payload.get("jti")
-    user_id = int(user_id)
     await user_serve.token_repo.delete_user_and_jti(user_id, jti)
+    await redis_client.srem(f"refresh_token_{user_id}", request.refresh_token)
 
 
 @router.post("/refresh", response_model=RefreshResponse)
@@ -68,6 +70,8 @@ async def refresh_at(
 @router.post("/resend-verify")
 async def resend_verify(request: EmailRequest):
     """发送邮件"""
+    if await verification.is_rate_limited(request.email):
+        raise HTTPException(status_code=429, detail="验证码发送过于频繁，请稍后再试")
     code = verification.generate_code()
     await verification.save_code(request.email, code)
     await email_service.send_verification_email(request.email, code)
@@ -98,6 +102,8 @@ async def verify_email(
     request: VerifyEmailRequest,
     user_serve: Annotated[UserAuthService, Depends(user_db_serve)],
 ):
+    if await verification.is_rate_limited(request.email):
+        raise HTTPException(status_code=429, detail="验证尝试过于频繁，请稍后再试")
     verified = await verification.verify_code(request.email, request.code)
     if verified:
         await user_serve.user_repo.update_verified(request.email, True)

@@ -1,4 +1,5 @@
 from config.logging import get_logger
+from core.exceptions import AppException
 from fastapi import Depends
 from models.book import Character
 from shared.database import db_manager
@@ -43,7 +44,7 @@ class CharacterService:
             return result.scalars().all()
         except Exception:
             logger.error("获取角色列表失败", exc_info=True)
-            return []
+            raise AppException(status_code=500, detail="获取角色列表失败", error_code="LIST_CHARACTERS_FAILED")
 
     async def get_character(self, user_id: int, character_id: int):
         """获取单个角色，校验所有权。
@@ -62,7 +63,7 @@ class CharacterService:
             return None
         except Exception:
             logger.error("获取角色失败", exc_info=True)
-            return None
+            raise AppException(status_code=500, detail="获取角色失败", error_code="GET_CHARACTER_FAILED")
 
     async def create_character(self, user_id: int, **data):
         """创建角色。
@@ -82,7 +83,7 @@ class CharacterService:
             return instance
         except Exception:
             logger.error("创建角色失败", exc_info=True)
-            return None
+            raise AppException(status_code=500, detail="创建角色失败", error_code="CREATE_CHARACTER_FAILED")
 
     async def update_character(self, user_id: int, character_id: int, **data):
         """更新角色，校验所有权。
@@ -107,7 +108,7 @@ class CharacterService:
             return instance
         except Exception:
             logger.error("更新角色失败", exc_info=True)
-            return None
+            raise AppException(status_code=500, detail="更新角色失败", error_code="UPDATE_CHARACTER_FAILED")
 
     async def delete_character(self, user_id: int, character_id: int):
         """删除角色，校验所有权。
@@ -128,7 +129,7 @@ class CharacterService:
             return True
         except Exception:
             logger.error("删除角色失败", exc_info=True)
-            return False
+            raise AppException(status_code=500, detail="删除角色失败", error_code="DELETE_CHARACTER_FAILED")
 
     async def delete_character_avatar(self, user_id: int, character_id: int):
         """删除角色头像，校验所有权。
@@ -151,7 +152,7 @@ class CharacterService:
             return old_avatar
         except Exception:
             logger.error("删除角色头像失败", exc_info=True)
-            return None
+            raise AppException(status_code=500, detail="删除角色头像失败", error_code="DELETE_CHARACTER_AVATAR_FAILED")
 
 
 async def character_db(db: AsyncSession = Depends(db_manager.get_db)):

@@ -1,7 +1,7 @@
 
 from models.book import Foreshadowing, Location, PlotThread, TimelineEvent
 from sqlalchemy import delete as sqla_delete
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -31,6 +31,15 @@ class WorldRepository:
         stmt = select(Location).where(Location.book_id == book_id).order_by(Location.id)
         result = await self.session.execute(stmt)
         return result.scalars().all()
+
+    async def list_locations_page(self, book_id: int, offset: int = 0, limit: int = 10) -> tuple[list[Location], int]:
+        stmt = select(Location).where(Location.book_id == book_id).order_by(Location.id)
+        count_stmt = select(func.count()).select_from(Location).where(Location.book_id == book_id)
+        total_result = await self.session.execute(count_stmt)
+        total = total_result.scalar() or 0
+        stmt = stmt.offset(offset).limit(limit)
+        result = await self.session.execute(stmt)
+        return result.scalars().all(), total
 
     async def create_location(self, book_id: int, data: dict) -> Location:
         """创建地点。
@@ -93,6 +102,15 @@ class WorldRepository:
         stmt = select(TimelineEvent).where(TimelineEvent.book_id == book_id).order_by(TimelineEvent.sort_order, TimelineEvent.id)
         result = await self.session.execute(stmt)
         return result.scalars().all()
+
+    async def list_timeline_events_page(self, book_id: int, offset: int = 0, limit: int = 10) -> tuple[list[TimelineEvent], int]:
+        stmt = select(TimelineEvent).where(TimelineEvent.book_id == book_id).order_by(TimelineEvent.sort_order, TimelineEvent.id)
+        count_stmt = select(func.count()).select_from(TimelineEvent).where(TimelineEvent.book_id == book_id)
+        total_result = await self.session.execute(count_stmt)
+        total = total_result.scalar() or 0
+        stmt = stmt.offset(offset).limit(limit)
+        result = await self.session.execute(stmt)
+        return result.scalars().all(), total
 
     async def create_timeline_event(self, book_id: int, data: dict) -> TimelineEvent:
         """创建时间线事件。
@@ -160,6 +178,18 @@ class WorldRepository:
         result = await self.session.execute(stmt)
         return result.scalars().all()
 
+    async def list_foreshadowings_page(self, book_id: int, offset: int = 0, limit: int = 10, status: str | None = None) -> tuple[list[Foreshadowing], int]:
+        stmt = select(Foreshadowing).where(Foreshadowing.book_id == book_id)
+        count_stmt = select(func.count()).select_from(Foreshadowing).where(Foreshadowing.book_id == book_id)
+        if status:
+            stmt = stmt.where(Foreshadowing.status == status)
+            count_stmt = count_stmt.where(Foreshadowing.status == status)
+        total_result = await self.session.execute(count_stmt)
+        total = total_result.scalar() or 0
+        stmt = stmt.order_by(Foreshadowing.id).offset(offset).limit(limit)
+        result = await self.session.execute(stmt)
+        return result.scalars().all(), total
+
     async def create_foreshadowing(self, book_id: int, data: dict) -> Foreshadowing:
         """创建伏笔。
 
@@ -221,6 +251,15 @@ class WorldRepository:
         stmt = select(PlotThread).where(PlotThread.book_id == book_id).order_by(PlotThread.id)
         result = await self.session.execute(stmt)
         return result.scalars().all()
+
+    async def list_plot_threads_page(self, book_id: int, offset: int = 0, limit: int = 10) -> tuple[list[PlotThread], int]:
+        stmt = select(PlotThread).where(PlotThread.book_id == book_id).order_by(PlotThread.id)
+        count_stmt = select(func.count()).select_from(PlotThread).where(PlotThread.book_id == book_id)
+        total_result = await self.session.execute(count_stmt)
+        total = total_result.scalar() or 0
+        stmt = stmt.offset(offset).limit(limit)
+        result = await self.session.execute(stmt)
+        return result.scalars().all(), total
 
     async def create_plot_thread(self, book_id: int, data: dict) -> PlotThread:
         """创建情节脉络。

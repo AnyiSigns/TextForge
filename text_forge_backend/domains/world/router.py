@@ -14,6 +14,7 @@ from schema.response.world import (
     TimelineEventResponse,
 )
 from shared.database import db_manager
+from shared.pagination import PageParams, PageResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .service import WorldService
@@ -25,13 +26,14 @@ def world_db(session: AsyncSession = Depends(db_manager.get_db)) -> WorldService
     return WorldService(session)
 
 
-@router.get("/locations", response_model=list[LocationResponse])
+@router.get("/locations", response_model=PageResult[LocationResponse])
 async def list_locations(
     user_id=Depends(get_current),
     book_id: int = Query(...),
+    page_params: PageParams = Depends(),
     service: WorldService = Depends(world_db),
 ):
-    return await service.list_locations(book_id)
+    return await service.list_locations_page(book_id, page_params)
 
 
 @router.post("/locations", response_model=LocationResponse)
@@ -67,13 +69,14 @@ async def delete_location(
     return {"ok": True}
 
 
-@router.get("/timeline-events", response_model=list[TimelineEventResponse])
+@router.get("/timeline-events", response_model=PageResult[TimelineEventResponse])
 async def list_timeline_events(
     user_id=Depends(get_current),
     book_id: int = Query(...),
+    page_params: PageParams = Depends(),
     service: WorldService = Depends(world_db),
 ):
-    return await service.list_timeline_events(book_id)
+    return await service.list_timeline_events_page(book_id, page_params)
 
 
 @router.post("/timeline-events", response_model=TimelineEventResponse)
@@ -109,14 +112,15 @@ async def delete_timeline_event(
     return {"ok": True}
 
 
-@router.get("/foreshadowings", response_model=list[ForeshadowingResponse])
+@router.get("/foreshadowings", response_model=PageResult[ForeshadowingResponse])
 async def list_foreshadowings(
     user_id=Depends(get_current),
     book_id: int = Query(...),
     status: str | None = None,
+    page_params: PageParams = Depends(),
     service: WorldService = Depends(world_db),
 ):
-    return await service.list_foreshadowings(book_id, status=status)
+    return await service.list_foreshadowings_page(book_id, page_params, status=status)
 
 
 @router.post("/foreshadowings", response_model=ForeshadowingResponse)
@@ -152,13 +156,14 @@ async def delete_foreshadowing(
     return {"ok": True}
 
 
-@router.get("/plot-threads", response_model=list[PlotThreadResponse])
+@router.get("/plot-threads", response_model=PageResult[PlotThreadResponse])
 async def list_plot_threads(
     user_id=Depends(get_current),
     book_id: int = Query(...),
+    page_params: PageParams = Depends(),
     service: WorldService = Depends(world_db),
 ):
-    return await service.list_plot_threads(book_id)
+    return await service.list_plot_threads_page(book_id, page_params)
 
 
 @router.post("/plot-threads", response_model=PlotThreadResponse)

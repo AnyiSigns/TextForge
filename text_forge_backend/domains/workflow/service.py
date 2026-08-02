@@ -55,6 +55,7 @@ class WorkflowService:
         try:
             status = await self.workflow_repo.delete_user_in_workflow(workflow_id)
             if status:
+                await self.workflow_repo.session.commit()
                 return status
             else:
                 raise HTTPException(status_code=404, detail="资源删除失败")

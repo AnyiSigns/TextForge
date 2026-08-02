@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from config.logging import get_logger
+from shared.pagination import PageParams, PageResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .repository import WritingSessionRepository
@@ -100,6 +101,15 @@ class WritingSessionService:
         items = await self.repo.list_by_user_book(user_id=user_id, book_id=book_id, chapter_id=chapter_id)
         return [self._to_dict(item) for item in items]
 
+    async def list_sessions_page(self, user_id: int, book_id: int, page_params: PageParams, chapter_id: int | None = None) -> PageResult:
+        items, total = await self.repo.list_by_user_book_page(user_id=user_id, book_id=book_id, chapter_id=chapter_id, offset=page_params.offset, limit=page_params.limit)
+        return PageResult(
+            items=[self._to_dict(item) for item in items],
+            total=total,
+            page=page_params.page,
+            page_size=page_params.page_size,
+        )
+
     async def delete_session(self, user_id: int, session_id: int) -> bool:
         """删除写作会话。
 
@@ -114,6 +124,7 @@ class WritingSessionService:
         if not instance or instance.user_id != user_id:
             return False
         await self.repo.delete(session_id)
+        await self.repo.session.commit()
         return True
 
     async def get_statistics(self, user_id: int, book_id: int, chapter_id: int | None = None) -> dict:

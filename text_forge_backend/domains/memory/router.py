@@ -8,6 +8,7 @@ from schema.request.memory import (
 )
 from schema.response.memory import AgentMemoryResponse
 from shared.database import db_manager
+from shared.pagination import PageParams, PageResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .service import AgentMemoryService
@@ -19,14 +20,15 @@ def agent_memory_db(session: AsyncSession = Depends(db_manager.get_db)) -> Agent
     return AgentMemoryService(session)
 
 
-@router.get("/", response_model=list[AgentMemoryResponse])
+@router.get("/", response_model=PageResult[AgentMemoryResponse])
 async def list_memories(
     user_id=Depends(get_current),
     book_id: int | None = Query(default=None),
     memory_type: str | None = Query(default=None),
+    page_params: PageParams = Depends(),
     service: AgentMemoryService = Depends(agent_memory_db),
 ):
-    return await service.list_memories(user_id=user_id, book_id=book_id, memory_type=memory_type)
+    return await service.list_memories_page(user_id=user_id, book_id=book_id, memory_type=memory_type, page_params=page_params)
 
 
 @router.post("/", response_model=AgentMemoryResponse)

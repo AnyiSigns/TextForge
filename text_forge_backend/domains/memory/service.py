@@ -1,6 +1,7 @@
 
 from config.logging import get_logger
 from core.model_factory import ModelFactory
+from shared.pagination import PageParams, PageResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .repository import AgentMemoryRepository
@@ -30,6 +31,15 @@ class AgentMemoryService:
     async def list_memories(self, user_id: int, book_id: int | None = None, memory_type: str | None = None) -> list[dict]:
         items = await self.repo.list_by_user(user_id=user_id, book_id=book_id, memory_type=memory_type)
         return [self._to_dict(m) for m in items]
+
+    async def list_memories_page(self, user_id: int, book_id: int | None, memory_type: str | None, page_params: PageParams) -> PageResult:
+        items, total = await self.repo.list_by_user_page(user_id=user_id, book_id=book_id, memory_type=memory_type, offset=page_params.offset, limit=page_params.limit)
+        return PageResult(
+            items=[self._to_dict(m) for m in items],
+            total=total,
+            page=page_params.page,
+            page_size=page_params.page_size,
+        )
 
     async def get_memory(self, user_id: int, memory_id: int):
         memory = await self.repo.get(memory_id)

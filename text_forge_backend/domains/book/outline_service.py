@@ -1,3 +1,4 @@
+import copy
 
 from config.logging import get_logger
 from core.exceptions import AppException
@@ -83,7 +84,7 @@ class OutlineService:
             return instance
         except Exception:
             logger.error("创建大纲失败", exc_info=True)
-            return None
+            raise AppException(status_code=500, detail="创建大纲失败", error_code="CREATE_OUTLINE_FAILED")
 
     async def update_outline(self, outline_id: int, **data):
         """更新大纲。
@@ -128,6 +129,7 @@ class OutlineService:
             if not instance:
                 raise AppException(status_code=404, detail="大纲不存在", error_code="OUTLINE_NOT_FOUND")
             await self.outline_repo.delete_outline(outline_id)
+            await self.session.commit()
             return True
         except AppException:
             raise
@@ -143,15 +145,16 @@ class OutlineService:
             book_id: 书籍 ID。
             user_id: 用户 ID。
             data: 大纲数据。
+            model_config: 模型配置。
 
-        注意:
-            此方法直接修改传入的 data 字典/列表（在其中章节添加 summary 字段），
-            不会返回副本。调用方需注意副作用。
+        Returns:
+            包含自动生成摘要的新大纲数据副本。
         """
         try:
             from core.model_factory import ModelFactory
             from langchain_core.messages import HumanMessage, SystemMessage
 
+            data = copy.deepcopy(data)
             book = await self.book_repo.get(book_id)
             if not book:
                 return

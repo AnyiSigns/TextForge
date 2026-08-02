@@ -1,7 +1,7 @@
 
 from models.agent_memory import AgentMemory
 from sqlalchemy import delete as sqla_delete
-from sqlalchemy import literal_column, select
+from sqlalchemy import func, literal_column, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -66,6 +66,24 @@ class AgentMemoryRepository:
         stmt = stmt.order_by(AgentMemory.priority.desc(), AgentMemory.updated_at.desc())
         result = await self.session.execute(stmt)
         return result.scalars().all()
+
+    async def list_by_user_page(self, user_id: int, book_id: int | None = None, memory_type: str | None = None, offset: int = 0, limit: int = 10) -> tuple[list[AgentMemory], int]:
+        stmt = select(AgentMemory).where(AgentMemory.user_id == user_id)
+        count_stmt = select(func.count()).select_from(AgentMemory).where(AgentMemory.user_id == user_id)
+        if book_id is not None:
+            stmt = stmt.where(AgentMemory.book_id == book_id)
+            count_stmt = count_stmt.where(AgentMemory.book_id == book_id)
+        else:
+            stmt = stmt.where(AgentMemory.book_id.is_(None))
+            count_stmt = count_stmt.where(AgentMemory.book_id.is_(None))
+        if memory_type:
+            stmt = stmt.where(AgentMemory.memory_type == memory_type)
+            count_stmt = count_stmt.where(AgentMemory.memory_type == memory_type)
+        total_result = await self.session.execute(count_stmt)
+        total = total_result.scalar() or 0
+        stmt = stmt.order_by(AgentMemory.priority.desc(), AgentMemory.updated_at.desc()).offset(offset).limit(limit)
+        result = await self.session.execute(stmt)
+        return result.scalars().all(), total
 
     async def update(self, memory_id: int, data: dict) -> AgentMemory | None:
         """更新记忆。

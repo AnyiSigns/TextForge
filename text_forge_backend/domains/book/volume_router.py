@@ -50,11 +50,9 @@ async def update_volume(
     volume_service: Annotated[VolumeService, Depends(volume_db)],
     session: Annotated[AsyncSession, Depends(db_manager.get_db)],
 ):
-    item = await volume_service.get_volume(0, volume_id)
+    item = await volume_service.volume_repo.get_by_id(volume_id)
     if not item:
-        item = await volume_service.volume_repo.get_by_id(volume_id)
-        if not item:
-            raise HTTPException(status_code=404, detail="卷不存在")
+        raise HTTPException(status_code=404, detail="卷不存在")
     await assert_book_owner(item.book_id, user_id, session)
     item = await volume_service.update_volume(
         volume_id, title=request.title, summary=request.summary

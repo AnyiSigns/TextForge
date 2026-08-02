@@ -9,6 +9,7 @@ from schema.request.user import (
     ChangePasswordByEmailReq,
     ChangePasswordReq,
     ProfileRequest,
+    SendCodeRequest,
 )
 from schema.response.user import ProfileResponse
 
@@ -47,6 +48,8 @@ async def user_profile(
     if update_data:
         updated = await user_serve.user_repo.update(user_id, **update_data)
         if updated:
+            await user_serve.session.commit()
+            await user_serve.session.refresh(updated)
             user = updated
 
     return ProfileResponse(user=user)
@@ -91,6 +94,28 @@ async def update_change_pwd_by_email(
         raise HTTPException(status_code=400, detail="修改失败")
 
 
+@router.post("/send-code")
+async def send_verification_code(
+    user_id: Annotated[int, Depends(get_current)],
+    user_serve: Annotated[UserAuthService, Depends(user_db_serve)],
+    body: SendCodeRequest,
+):
+    user = await user_serve.user_repo.get(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    target_email = body.email if body.email else user.email
+    code = verification.generate_code()
+    await verification.save_code(target_email, code)
+
+    from .email import email_service
+
+    ok = await email_service.send_verification_email(target_email, code)
+    if ok:
+        return {"message": f"验证码已发送至 {target_email}"}
+    raise HTTPException(status_code=500, detail="验证码发送失败，请检查邮件服务器配置")
+
+
 @router.post("/avatar")
 async def upload_avatar(
     user_serve: Annotated[UserAuthService, Depends(user_db_serve)],
@@ -119,4 +144,5 @@ async def upload_avatar(
 
     avatar_url = f"/static/avatars/{filename}"
     await user_serve.user_repo.update(user_id, avatar=avatar_url)
+    await user_serve.session.commit()
     return {"avatar_url": avatar_url}

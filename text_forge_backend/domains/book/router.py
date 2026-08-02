@@ -95,7 +95,7 @@ async def delete_book(
 ):
     result = await book_service.delete_book(user_id, id)
     if not result:
-        raise HTTPException(status_code=404, detail="书籍删除失败")
+        raise HTTPException(status_code=404, detail="书籍不存在或无权删除")
     return {}
 
 

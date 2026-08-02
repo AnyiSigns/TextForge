@@ -40,6 +40,24 @@ class WritingSessionRepository(BaseRepository[WritingSession]):
         result = await self.session.execute(stmt)
         return result.scalars().all()
 
+    async def list_by_user_book_page(self, user_id: int, book_id: int, chapter_id: int | None = None, offset: int = 0, limit: int = 10) -> tuple[list[WritingSession], int]:
+        stmt = select(WritingSession).where(
+            WritingSession.user_id == user_id,
+            WritingSession.book_id == book_id,
+        )
+        count_stmt = select(func.count()).select_from(WritingSession).where(
+            WritingSession.user_id == user_id,
+            WritingSession.book_id == book_id,
+        )
+        if chapter_id is not None:
+            stmt = stmt.where(WritingSession.chapter_id == chapter_id)
+            count_stmt = count_stmt.where(WritingSession.chapter_id == chapter_id)
+        total_result = await self.session.execute(count_stmt)
+        total = total_result.scalar() or 0
+        stmt = stmt.order_by(WritingSession.started_at.desc()).offset(offset).limit(limit)
+        result = await self.session.execute(stmt)
+        return result.scalars().all(), total
+
     async def get_statistics(self, user_id: int, book_id: int, chapter_id: int | None = None):
         """获取写作统计信息。
 
