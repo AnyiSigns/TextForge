@@ -18,3 +18,7 @@ class ChangePasswordByEmailReq(BaseModel):
     new_password: str = Field(
         ..., alias="newPassword", min_length=6, max_length=50, description="新密码"
     )
+
+
+class SendCodeRequest(BaseModel):
+    email: EmailStr | None = None

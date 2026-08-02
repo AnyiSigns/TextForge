@@ -32,6 +32,7 @@ class ChapterRequest(BaseModel):
 
     title: str
     summary: str | None = None
+    character_ids: list[int] | None = Field(default=None, alias="characterIds")
 
 
 class ChapterContentRequest(BaseModel):

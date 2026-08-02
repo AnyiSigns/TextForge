@@ -1,0 +1,287 @@
+"""角色模拟导演图 — 循环对话 + 角色子Agent记忆 + 压缩 + 结束判断"""
+from datetime import datetime
+from typing import Any, Annotated, TypedDict
+
+from config.logging import get_logger
+from core.model_factory import ModelFactory
+from langchain_core.messages import HumanMessage, SystemMessage
+from langgraph.graph import END, StateGraph
+from shared.utils import merge_dicts as _merge_dicts
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = get_logger(__name__)
+
+MAX_ROUNDS = 30
+COMPRESS_EVERY = 5
+
+
+class SimRoomState(TypedDict):
+    room_id: int
+    round_count: int
+    should_end: bool
+    last_user_input: str
+    speak_as: str
+    room_setting: str
+    character_details: list[dict[str, Any]]
+    character_memories: dict[str, str]  # character_label -> compressed memory
+    recent_history: list[str]           # last 5 round summaries
+    director_decision: dict[str, Any] | None
+    character_outputs: Annotated[dict[str, str], _merge_dicts]
+    scene_output: str | None
+    final_output: str
+
+
+def _build_bridge(
+    execute_sql, room_id: int, character_details: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """桥接方法：提供数据库访问给图节点。execute_sql 是 async 函数，接收 SQLAlchemy statement"""
+    return {
+        "execute_sql": execute_sql,
+        "room_id": room_id,
+        "character_details": character_details,
+    }
+
+
+async def director_decide_node(state: SimRoomState) -> dict[str, Any]:
+    if state["round_count"] >= MAX_ROUNDS:
+        return {"should_end": True, "director_decision": {"action": "end", "reason": "已达30轮上限"}}
+
+    chars_desc = "\n".join(
+        f"- {c['role_label']}（entity_id={c.get('entity_id')}, description={c.get('description', '')[:200]}）"
+        for c in state["character_details"]
+    )
+    recent = "\n".join(state["recent_history"][-5:]) or "（对话刚开始）"
+    user_input = state["last_user_input"]
+    speak_as = state["speak_as"]
+
+    prompt = f"""你是模拟对话的导演，负责决定下一步谁发言、是否需要场景描写，以及对话是否结束。
+
+场景设定：{state['room_setting']}
+
+角色列表：
+{chars_desc}
+
+最近对话：
+{recent}
+
+用户最新输入（{speak_as}）：{user_input}
+
+请输出 JSON，包含以下字段：
+- action: "speak" | "scene" | "end"
+- speakers: 需要发言的角色名列表（action=speak 时）
+- scene_focus: 场景描写的焦点关键词（action=scene 时）
+- end_reason: 结束原因（action=end 时）
+- tone: 当前氛围（如 紧张/轻松/悲伤/悬疑）
+
+只输出 JSON，不要其他内容。"""
+
+    llm = ModelFactory({})
+    result = await llm.tool.ainvoke(prompt)
+    text = result.content if hasattr(result, "content") else str(result)
+    try:
+        import json
+        decision = json.loads(text.strip().removeprefix("```json").removesuffix("```").strip())
+    except Exception:
+        decision = {"action": "speak", "speakers": [c["role_label"] for c in state["character_details"]]}
+
+    should_end = decision.get("action") == "end"
+    return {"director_decision": decision, "should_end": should_end}
+
+
+async def character_speak_node(state: SimRoomState) -> dict[str, Any]:
+    decision = state.get("director_decision") or {}
+    speakers = list(decision.get("speakers", []))
+    if not speakers:
+        return {}
+
+    char_outputs: dict[str, str] = {}
+    chars_map = {c["role_label"]: c for c in state["character_details"]}
+
+    for speaker_label in speakers:
+        char = chars_map.get(speaker_label)
+        if not char:
+            continue
+        char_desc = char.get("description", "") or char.get("personality_override", "") or ""
+        memory = state["character_memories"].get(speaker_label, "")
+        recent = "\n".join(state["recent_history"][-5:])
+        user_input = state["last_user_input"]
+        tone = decision.get("tone", "")
+
+        sys = SystemMessage(content=f"""你是角色【{speaker_label}】。严格按你的性格和口吻回复。
+
+角色设定：{char_desc[:500]}
+当前氛围：{tone}
+角色记忆：{memory or '暂无'}
+最近对话：{recent}
+
+用户发言（{state['speak_as']}）：{user_input}
+
+以角色【{speaker_label}】的口吻回复，可包含对话、动作、表情。只输出发言内容。""")
+
+        human = HumanMessage(content=f"请以【{speaker_label}】的身份回应。")
+
+        llm = ModelFactory({})
+        result = await llm.main.ainvoke([sys, human])
+        content = result.content if hasattr(result, "content") else str(result)
+        char_outputs[speaker_label] = content
+
+    return {"character_outputs": char_outputs}
+
+
+async def scene_describe_node(state: SimRoomState) -> dict[str, Any]:
+    decision = state.get("director_decision") or {}
+    if decision.get("action") != "scene":
+        return {"scene_output": None}
+
+    focus = decision.get("scene_focus", "")
+    tone = decision.get("tone", "")
+    chars = state["character_outputs"]
+    chars_summary = "\n".join(f"{k}：{v[:200]}" for k, v in chars.items())
+    recent = "\n".join(state["recent_history"][-3:])
+
+    llm = ModelFactory({})
+    prompt = f"""你是场景描写助手。环境设定：{state['room_setting']}
+
+当前氛围：{tone}
+焦点：{focus}
+角色最近发言：{chars_summary or '无'}
+最近场景：{recent}
+
+请生成一段简短的场景描写（50-150字），包含环境细节、光影、氛围，自然衔接角色互动。只输出描写内容。"""
+    result = await llm.main.ainvoke(prompt)
+    content = result.content if hasattr(result, "content") else str(result)
+    return {"scene_output": content}
+
+
+async def stitch_output_node(state: SimRoomState) -> dict[str, Any]:
+    parts: list[str] = []
+    chars = state.get("character_outputs", {})
+    scene = state.get("scene_output")
+
+    if scene:
+        parts.append(scene.strip())
+    for label, text in chars.items():
+        parts.append(f"{label}：{text}")
+
+    return {"final_output": "\n\n".join(parts)}
+
+
+async def compress_memories_node(state: SimRoomState, bridge: dict[str, Any]) -> dict[str, Any]:
+    if state["round_count"] % COMPRESS_EVERY != 0 or state["round_count"] == 0:
+        pending_output = {
+            "room_id": None,
+            "character_label": None,
+            "character_id": None,
+            "memory_type": "sim_character",
+            "source": None,
+            "content": None,
+            "priority": 0,
+            "is_compressed": False,
+        }
+        return {"character_memories": state.get("character_memories", {})}
+
+    execute_sql = bridge.get("execute_sql")
+    room_id = bridge.get("room_id")
+    user_id = bridge.get("user_id", 0)
+    new_memories = dict(state.get("character_memories", {}))
+
+    for char in state["character_details"]:
+        label = char["role_label"]
+        char_id = char.get("entity_id")
+        if not char_id:
+            continue
+
+        char_output = state.get("character_outputs", {}).get(label, "")
+        old_memory = new_memories.get(label, "")
+        recent = "\n".join(state["recent_history"][-COMPRESS_EVERY:])
+
+        if not old_memory and not recent:
+            continue
+
+        llm = ModelFactory({})
+        compress_prompt = f"""将以下角色对话记忆压缩为一段 200 字内的摘要。
+
+角色：{label}
+旧记忆：{old_memory[:300]}
+最近对话：{recent[:500]}
+本回合角色发言：{char_output[:300]}
+
+只输出压缩后的摘要，不要其他内容。"""
+        try:
+            result = await llm.tool.ainvoke(compress_prompt)
+            compressed = result.content if hasattr(result, "content") else str(result)
+        except Exception:
+            compressed = f"{old_memory} | {recent[:100]}" if old_memory else recent[:200]
+
+        new_memories[label] = compressed[:300]
+
+        if execute_sql:
+            try:
+                from models.agent_memory import AgentMemory
+                source = f"sim_room:{room_id}:char:{char_id}"
+                stmt = select(AgentMemory).where(
+                    AgentMemory.source == source,
+                    AgentMemory.user_id == user_id,
+                )
+                agent_mem_result = await execute_sql(stmt)
+                existing = agent_mem_result.scalar_one_or_none()
+                if existing:
+                    await execute_sql(
+                        update(AgentMemory)
+                        .where(AgentMemory.id == existing.id)
+                        .values(content=compressed[:300], updated_at=datetime.now())
+                    )
+                else:
+                    await execute_sql(
+                        AgentMemory.__table__.insert()                        .values(
+                            user_id=user_id,
+                            memory_type="sim_character",
+                            source=source,
+                            content=compressed[:300],
+                            priority=5,
+                            is_compressed=True,
+                        )
+                    )
+            except Exception as exc:
+                logger.warning(f"保存角色记忆失败: {exc}")
+
+    return {"character_memories": new_memories}
+
+
+def director_router(state: SimRoomState) -> str:
+    if state["should_end"]:
+        return END
+    decision = state.get("director_decision") or {}
+    if decision.get("action") == "scene":
+        return "scene_describe"
+    return "character_speak"
+
+
+def char_router(state: SimRoomState) -> str:
+    decision = state.get("director_decision") or {}
+    if decision.get("action") == "scene":
+        return "scene_describe"
+    return "compress_memories"
+
+
+def scene_router(state: SimRoomState) -> str:
+    return "compress_memories"
+
+
+def build_sim_director_graph(bridge: dict[str, Any]):
+    builder = StateGraph(SimRoomState)
+    builder.add_node("director_decide", director_decide_node)
+    builder.add_node("character_speak", character_speak_node)
+    builder.add_node("scene_describe", scene_describe_node)
+    builder.add_node("compress_memories", lambda s: compress_memories_node(s, bridge))
+    builder.add_node("stitch_output", stitch_output_node)
+
+    builder.set_entry_point("director_decide")
+    builder.add_conditional_edges("director_decide", director_router)
+    builder.add_conditional_edges("character_speak", char_router)
+    builder.add_edge("scene_describe", "compress_memories")
+    builder.add_edge("compress_memories", "stitch_output")
+    builder.add_edge("stitch_output", END)
+
+    return builder.compile()

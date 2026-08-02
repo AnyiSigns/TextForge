@@ -35,8 +35,6 @@ class ModelFactory:
 
         self.embedding = ModelWrapper.get_embedding(user_config.get("embedding_config") or {})
 
-        self.vision = ModelWrapper.get_vision(user_config.get("vision_config") or {})
-
         self.search_config = user_config.get("search_config") or {}
 
     def get_embedding_dimension(self) -> int:

@@ -2,7 +2,7 @@ import json
 from typing import Any
 
 from core.model_factory import ModelFactory
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import SystemMessage, ToolMessage
 from langchain_core.tools import BaseTool
 from langgraph.graph import END
 from shared.utils import truncate_text
@@ -57,7 +57,70 @@ def agent_router(state: UserAgentState) -> str:
     Returns:
         下一节点名称或 END。
     """
-    last = state["messages"][-1]
+    pending_review = state.get("pending_review")
+    if pending_review:
+        return END
+
+    messages = state.get("messages", [])
+    if not messages:
+        return END
+
+    last = messages[-1]
     if hasattr(last, "tool_calls") and last.tool_calls:
         return "tool_calls"
     return END
+
+
+def quality_gate_router(state: UserAgentState) -> str:
+    """工具执行后路由：检查是否需要质量审核。
+
+    Args:
+        state: Agent 状态。
+
+    Returns:
+        compress（继续）或 END（触发审核中断）。
+    """
+    pending_review = state.get("pending_review")
+    if pending_review:
+        return END
+    return "compress"
+
+
+async def quality_gate_node(state: UserAgentState) -> dict[str, Any]:
+    """工具执行后质量门：检查 execute_workflow_node 输出是否需要用户审核。"""
+    messages = state.get("messages", [])
+
+    last_tool_call = None
+    for msg in reversed(messages):
+        if isinstance(msg, ToolMessage):
+            last_tool_call = msg
+            break
+
+    if not last_tool_call:
+        return {}
+
+    tool_name = getattr(last_tool_call, "name", "")
+    if tool_name != "execute_workflow_node":
+        return {}
+
+    tool_content = getattr(last_tool_call, "content", "")
+    if not tool_content:
+        return {}
+
+    try:
+        result = json.loads(tool_content)
+    except json.JSONDecodeError:
+        return {}
+
+    if not isinstance(result, dict) or not result.get("needs_review"):
+        return {}
+
+    quality_check = result.get("quality_check", {})
+    pending_review = {
+        "node_id": result.get("node_id", ""),
+        "node_label": result.get("node_label", ""),
+        "output_preview": result.get("output", "")[:1000],
+        "reason": quality_check.get("reason", "输出质量不满足角色节点要求"),
+        "system_prompt": quality_check.get("system_prompt", ""),
+    }
+    return {"pending_review": pending_review}

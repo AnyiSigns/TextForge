@@ -39,6 +39,7 @@ class ChapterResponse(BaseModel):
     title: str
     summary: str | None = None
     sort_order: int = Field(default=0, alias="sortOrder")
+    character_ids: list[int] = Field(default=[], alias="characterIds")
     created_at: datetime = Field(alias="createdAt")
     updated_at: datetime = Field(alias="updatedAt")
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)
@@ -74,6 +75,8 @@ class CharacterResponse(BaseModel):
     role_type: str | None = Field(default=None, alias="roleType")
     status: str | None = None
     relationship_chain: list[dict[str, Any]] | None = Field(default=None, alias="relationshipChain")
+    locked: bool = Field(default=False)
+    custom_fields: dict[str, Any] = Field(default={}, alias="customFields")
     created_at: datetime = Field(alias="createdAt")
     updated_at: datetime = Field(alias="updatedAt")
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)

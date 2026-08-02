@@ -14,6 +14,8 @@ class CharacterRequest(BaseModel):
     role_type: str | None = Field(default=None, alias="roleType")
     status: str | None = None
     relationship_chain: list[dict[str, Any]] | None = Field(default=None, alias="relationshipChain")
+    locked: bool | None = Field(default=None)
+    custom_fields: dict[str, Any] | None = Field(default=None, alias="customFields")
 
 
 class CharacterUpdateRequest(BaseModel):
@@ -27,3 +29,5 @@ class CharacterUpdateRequest(BaseModel):
     role_type: str | None = Field(default=None, alias="roleType")
     status: str | None = None
     relationship_chain: list[dict[str, Any]] | None = Field(default=None, alias="relationshipChain")
+    locked: bool | None = Field(default=None)
+    custom_fields: dict[str, Any] | None = Field(default=None, alias="customFields")

@@ -74,6 +74,7 @@ class Chapter(Base):
     title: Mapped[str] = mapped_column(String(200), nullable=False, comment="章节标题")
     summary: Mapped[str] = mapped_column(Text, nullable=True, comment="章节摘要")
     sort_order: Mapped[int] = mapped_column(Integer, default=0, comment="排序")
+    character_ids: Mapped[list] = mapped_column(JSONB, default=[], comment="当前章节出场角色ID列表")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), comment="创建时间")
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), comment="更新时间")
 
@@ -107,6 +108,7 @@ class Character(Base):
     status: Mapped[str] = mapped_column(String(255), nullable=True, comment="角色状态")
     relationship_chain: Mapped[list] = mapped_column(JSONB, default=[], comment="关系链")
     locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, comment="是否锁定")
+    custom_fields: Mapped[dict] = mapped_column(JSONB, default={}, comment="自定义属性字段（如功法/武器/物品等）")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), comment="创建时间")
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), comment="更新时间")
 

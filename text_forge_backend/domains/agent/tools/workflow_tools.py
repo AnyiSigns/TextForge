@@ -7,20 +7,6 @@ from sqlalchemy import select
 
 logger = get_logger(__name__)
 
-STRUCTURED_CONTEXT_FIELDS = [
-    "characters",
-    "outline",
-    "chapter_content",
-    "locations",
-    "timeline_events",
-    "foreshadowings",
-    "plot_threads",
-    "creative_settings",
-    "volumes",
-    "chapters",
-    "book_info",
-]
-
 
 async def _query_structured_context(
     session, book_id: int, user_id: int, context_fields: list[str]
@@ -145,7 +131,6 @@ def build_workflow_tool(session_factory, model_config: dict | None = None):
         user_id: int,
         context_fields: list[str] | None = None,
         rag_queries: list[dict] | None = None,
-        web_search_queries: list[str] | None = None,
         upstream_outputs: dict | None = None,
     ) -> dict:
         async with session_factory() as session:
@@ -219,7 +204,7 @@ def build_workflow_tool(session_factory, model_config: dict | None = None):
                 logger.exception(f"execute_workflow_node {node_id} LLM 流式调用失败")
                 return {"status": "error", "message": "节点执行失败，请稍后重试"}
 
-            return {
+            result = {
                 "node_id": node_id,
                 "node_label": node_label,
                 "output": generated_text,
@@ -227,6 +212,36 @@ def build_workflow_tool(session_factory, model_config: dict | None = None):
                 "tokens": output_tokens,
                 "status": "completed",
             }
+
+            if not generated_text.strip():
+                return result
+
+            if system_prompt and len(generated_text) > 50:
+                try:
+                    quality_prompt = (
+                        f"请判断以下创作输出是否符合角色节点的写作要求。\n\n"
+                        f"【角色节点要求】\n{system_prompt[:1500]}\n\n"
+                        f"【创作输出】\n{generated_text[:2000]}\n\n"
+                        f"输出是否严格遵循了上述写作要求？只回答 PASS 或 FAIL，然后简要说明理由。"
+                    )
+                    quality_response = await llm.audit.ainvoke(quality_prompt)
+                    quality_text = quality_response.content if hasattr(quality_response, "content") else str(quality_response)
+                    if quality_text.strip().upper().startswith("FAIL") or "不合格" in quality_text:
+                        result["needs_review"] = True
+                        result["quality_check"] = {
+                            "passed": False,
+                            "reason": quality_text.strip()[:500],
+                            "node_id": node_id,
+                            "node_label": node_label,
+                            "system_prompt": system_prompt[:500],
+                        }
+                    else:
+                        result["needs_review"] = False
+                        result["quality_check"] = {"passed": True}
+                except Exception:
+                    logger.exception(f"execute_workflow_node {node_id} 质量检查失败，跳过")
+
+            return result
 
     return execute_workflow_node
 

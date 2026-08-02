@@ -19,9 +19,11 @@ def build_generate_chapter_tool(session_factory, model_config: dict | None = Non
         book_id: int,
         chapter_id: int,
         instruction: str = "",
-        instruction_hint: str | None = None,
+        instruction_hint: str | None = None,  # 额外的创作提示，会追加到 instruction 末尾
     ) -> dict:
         """Generate chapter content based on the provided instruction and context."""
+        if instruction_hint:
+            instruction = f"{instruction}\n\n创作提示：{instruction_hint}"
         async with session_factory() as session:
             from models.book import (
                 Book,

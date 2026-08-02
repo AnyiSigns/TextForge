@@ -3,8 +3,6 @@ from typing import Annotated
 from config.logging import get_logger
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from shared.database import db_manager
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.security import verify_token
 
@@ -14,13 +12,11 @@ security = HTTPBearer()  # HTTPBearer实例，用于从HTTP请求头中提取JWT
 
 async def get_current(
     credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
-    db: Annotated[AsyncSession, Depends(db_manager.get_db)],
 ):
     """FastAPI 依赖：从 JWT 提取当前用户 ID。
 
     Args:
         credentials: HTTP Bearer 凭证。
-        db: SQLAlchemy 异步会话。
 
     Returns:
         当前用户 ID。

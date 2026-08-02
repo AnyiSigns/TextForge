@@ -16,6 +16,7 @@ from .book import (
 from .context_config import BookContextConfig
 from .conversation import Conversation, Message
 from .document import Chunk, Document
+from .sim_room import SimRoom, SimParticipant, SimMessage, SimBranch
 from .user import User, UserToken
 from .web_search_cache import WebSearchCache
 from .workflow import Workflow
@@ -38,6 +39,10 @@ __all__ = [
     "Message",
     "Outline",
     "PlotThread",
+    "SimRoom",
+    "SimParticipant",
+    "SimMessage",
+    "SimBranch",
     "TimelineEvent",
     "User",
     "UserToken",

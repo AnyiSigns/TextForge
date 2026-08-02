@@ -18,6 +18,7 @@ from domains.cards.router import router as cards_router
 from domains.knowledge.router import router as knowledge_router
 from domains.lock.router import router as lock_router
 from domains.memory.router import router as memory_router
+from domains.sim_rooms.router import router as sim_rooms_router
 from domains.system.health_router import router as health_router
 from domains.system.sync_router import router as sync_router
 from domains.workflow.router import router as workflow_router
@@ -108,3 +109,4 @@ app.include_router(health_router, prefix="/api")
 app.include_router(sync_router, prefix="/api")
 app.include_router(lock_router, prefix="/api")
 app.include_router(cards_router, prefix="/api")
+app.include_router(sim_rooms_router, prefix="/api")

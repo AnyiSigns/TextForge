@@ -1,12 +1,11 @@
 from typing import Annotated
-
 from config.logging import get_logger
 from fastapi import Depends
 from models.book import Book
 from shared.database import db_manager
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from core.exceptions import AppException
 from .repository import (
     BookRepository,
     CharacterRepository,
@@ -48,7 +47,11 @@ class BookService:
             return result or []
         except Exception:
             logger.error("查询错误", exc_info=True)
-            raise AppException(status_code=500, detail="查询书籍列表失败", error_code="LIST_BOOKS_FAILED")
+            raise AppException(
+                status_code=500,
+                detail="查询书籍列表失败",
+                error_code="LIST_BOOKS_FAILED",
+            )
 
     async def create_book(self, **kwargs):
         """创建新书籍。
@@ -77,7 +80,11 @@ class BookService:
             raise
         except Exception:
             logger.error("创建新书籍失败", exc_info=True)
-            raise AppException(status_code=500, detail="创建新书籍失败", error_code="CREATE_BOOK_FAILED")
+            raise AppException(
+                status_code=500,
+                detail="创建新书籍失败",
+                error_code="CREATE_BOOK_FAILED",
+            )
 
     async def book_characters(self, user_id: int, book_id: int):
         """获取书籍角色列表。
@@ -94,7 +101,11 @@ class BookService:
             return result, None
         except Exception:
             logger.error("获取角色列表失败", exc_info=True)
-            raise AppException(status_code=500, detail="获取角色列表失败", error_code="LIST_CHARACTERS_FAILED")
+            raise AppException(
+                status_code=500,
+                detail="获取角色列表失败",
+                error_code="LIST_CHARACTERS_FAILED",
+            )
 
     async def book_info(self, user_id: int, book_id: int):
         """获取书籍基本信息。
@@ -133,7 +144,11 @@ class BookService:
             return result
         except Exception:
             logger.error("获取书籍详情失败", exc_info=True)
-            raise AppException(status_code=500, detail="获取书籍详情失败", error_code="GET_BOOK_DETAIL_FAILED")
+            raise AppException(
+                status_code=500,
+                detail="获取书籍详情失败",
+                error_code="GET_BOOK_DETAIL_FAILED",
+            )
 
     async def update_book(self, user_id: int, book_id: int, **kwargs):
         """更新书籍信息，需校验所有权。
@@ -156,7 +171,9 @@ class BookService:
             return result
         except Exception:
             logger.error("书籍更新失败", exc_info=True)
-            raise AppException(status_code=500, detail="更新书籍失败", error_code="UPDATE_BOOK_FAILED")
+            raise AppException(
+                status_code=500, detail="更新书籍失败", error_code="UPDATE_BOOK_FAILED"
+            )
 
     async def delete_book(self, user_id: int, book_id: int):
         """删除书籍，需校验所有权。
@@ -177,7 +194,9 @@ class BookService:
             return True
         except Exception:
             logger.error("书籍删除失败", exc_info=True)
-            raise AppException(status_code=500, detail="删除书籍失败", error_code="DELETE_BOOK_FAILED")
+            raise AppException(
+                status_code=500, detail="删除书籍失败", error_code="DELETE_BOOK_FAILED"
+            )
 
     async def save_creative_setting(self, book_id: int, _user_id: int, setting):
         """保存或更新书籍创意设定。
@@ -197,7 +216,11 @@ class BookService:
             return True
         except Exception:
             logger.error("设定保存失败", exc_info=True)
-            raise AppException(status_code=500, detail="保存创意设定失败", error_code="SAVE_CREATIVE_SETTING_FAILED")
+            raise AppException(
+                status_code=500,
+                detail="保存创意设定失败",
+                error_code="SAVE_CREATIVE_SETTING_FAILED",
+            )
 
 
 async def book_db(db: Annotated[AsyncSession, Depends(db_manager.get_db)]):

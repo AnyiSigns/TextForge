@@ -76,6 +76,22 @@ class CardSession:
         self.messages.append(result)
         return content
 
+    async def simulate_dialogue_stream(
+        self, characters: list[str], setting: str
+    ):
+        self.touch()
+        system = SystemMessage(
+            content=f"你正在扮演{', '.join(characters)}。在{setting}中对话。请自然地模拟角色之间的对话。"
+        )
+        llm = ModelFactory(self.model_config)
+        full_response = ""
+        async for chunk in llm.main.astream([system, HumanMessage(content="开始对话")]):
+            token = chunk.content if hasattr(chunk, "content") else str(chunk)
+            if token:
+                full_response += token
+                yield token
+        self.messages.append(AIMessage(content=full_response))
+
 
 class CardSessionManager:
     def __init__(self):

@@ -6,7 +6,6 @@ from pydantic import BaseModel, ConfigDict, Field
 class ChatRequest(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
-    user_id: int
     thread_id: str
     message: str
     model_config_data: dict | None = Field(default=None, alias="modelConfig")

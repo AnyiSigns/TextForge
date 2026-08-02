@@ -162,6 +162,25 @@ async def card_websocket(
                         "message": "对话模拟失败",
                     }, ensure_ascii=False))
 
+            elif msg_type == "simulate_dialogue_stream":
+                characters = msg.get("characters", [])
+                setting = msg.get("setting", "自由对话")
+                try:
+                    async for token in session.simulate_dialogue_stream(
+                        characters, setting,
+                    ):
+                        await websocket.send_text(json.dumps({
+                            "type": "dialogue_stream_token",
+                            "token": token,
+                        }, ensure_ascii=False))
+                    await websocket.send_text(json.dumps({"type": "dialogue_done"}, ensure_ascii=False))
+                except Exception:
+                    logger.exception("simulate_dialogue_stream 失败")
+                    await websocket.send_text(json.dumps({
+                        "type": "error",
+                        "message": "对话模拟流式处理失败",
+                    }, ensure_ascii=False))
+
     except WebSocketDisconnect:
         logger.info(f"card WebSocket 断开: {card_id}")
     except Exception:

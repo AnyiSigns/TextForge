@@ -18,4 +18,6 @@ class UserAgentState(TypedDict):
     active_workflow_id: str | None
     pending_review: dict | None
     pending_cards: list | None
+    review_decision: str | None
+    edited_content: str | None
     workflow_node_outputs: Annotated[dict, _merge_dicts]

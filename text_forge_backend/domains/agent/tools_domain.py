@@ -530,7 +530,8 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
             return {"error": "模型未配置，无法生成建议"}
         from langchain_core.messages import HumanMessage, SystemMessage
         system = SystemMessage(content="你是写作建议助手。针对给定文本，提供多个不同风格的改写建议。")
-        human = HumanMessage(content=f"请提供 {count} 种不同风格的改写建议：\n{text[:4000]}")
+        pos_hint = f"请针对文本中第{position}个字符附近的位置，" if position is not None else "请"
+        human = HumanMessage(content=f"{pos_hint}提供 {count} 种不同风格的改写建议：\n{text[:4000]}")
         try:
             result = await llm.main.ainvoke([system, human])
             alternatives = result.content if hasattr(result, "content") else str(result)
