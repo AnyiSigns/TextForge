@@ -55,6 +55,14 @@ function getDB(): Promise<IDBPDatabase> {
   return dbPromise;
 }
 
+async function closeDB(): Promise<void> {
+  if (dbPromise) {
+    const db = await dbPromise;
+    db.close();
+    dbPromise = null;
+  }
+}
+
 export interface StoredChunk {
   id: string;            // chunk 唯一 id: `${docId}#${idx}`
   docId: string;
@@ -240,6 +248,10 @@ export async function resetForTier(tierId: string): Promise<number> {
   const t = EMBED_TIERS.find((x) => x.id === tierId);
   if (!t) return 0;
   if (t.dim === getEmbedDim()) return 0; // 未变化
+
+  await closeDB();
+  engine = null;
+  invalidateChunkCache();
 
   // 清空所有维度档位各自的向量分块库（库名带维度后缀，直接删除整库最稳妥）。
   // 注意：若其它标签页正打开该库，deleteDatabase 会触发 onblocked 且不会真正删除，

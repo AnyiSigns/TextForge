@@ -10,6 +10,8 @@ export function OverviewTab() {
   const characters = useBookDetailStore((s) => s.characters);
   const writingStats = useBookDetailStore((s) => s.writingStats);
   const writingTrend = useBookDetailStore((s) => s.writingTrend);
+  const characterFrequency = useBookDetailStore((s) => s.characterFrequency);
+  const plotProgress = useBookDetailStore((s) => s.plotProgress);
   const volumes = useBookDetailStore((s) => s.volumes);
 
   const totalChapters = useMemo(
@@ -32,6 +34,20 @@ export function OverviewTab() {
 
   const trendDays = writingTrend.length > 0 ? writingTrend : [];
   const maxWords = Math.max(1, ...trendDays.map((d) => d.words));
+
+  const topCharacters = useMemo(() => {
+    const charMap = new Map<number, { name: string; count: number }>();
+    for (const cf of characterFrequency) {
+      const ch = characters.find((c) => c.id === cf.characterId);
+      if (ch) charMap.set(cf.characterId, { name: ch.name, count: cf.count });
+    }
+    return Array.from(charMap.entries())
+      .map(([id, v]) => ({ id, ...v }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 8);
+  }, [characterFrequency, characters]);
+
+  const progressList = useMemo(() => plotProgress.slice(0, 8), [plotProgress]);
 
   return (
     <div>
@@ -106,6 +122,40 @@ export function OverviewTab() {
                     style={{ height: `${Math.max(4, (d.words / maxWords) * 100)}%` }}
                     title={`${d.date}: ${d.words}字`}
                   />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-xs text-muted-foreground p-3 text-center">暂无数据</div>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">角色出现频率</div>
+          {topCharacters.length > 0 ? (
+            <div className="space-y-1.5">
+              {topCharacters.map((ch) => (
+                <div key={ch.id} className="flex items-center justify-between p-2 rounded-md bg-card border border-border">
+                  <span className="text-sm truncate">{ch.name}</span>
+                  <span className="text-[11px] text-muted-foreground tabular-nums">{ch.count} 次</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-xs text-muted-foreground p-3 text-center">暂无数据</div>
+          )}
+        </div>
+
+        <div>
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">情节进度</div>
+          {progressList.length > 0 ? (
+            <div className="space-y-1.5">
+              {progressList.map((p, i) => (
+                <div key={i} className="flex items-center justify-between p-2 rounded-md bg-card border border-border">
+                  <span className="text-sm truncate">{p.chapterTitle || `章节 ${p.chapterId ?? ''}`}</span>
+                  <span className="text-[11px] text-muted-foreground tabular-nums">{p.progress}%</span>
                 </div>
               ))}
             </div>

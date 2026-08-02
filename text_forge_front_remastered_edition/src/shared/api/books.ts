@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import type { Book, Volume, Chapter, CreativeSetting, WritingStats } from './types';
+import type { Book, Volume, Chapter, CreativeSetting, WritingStats, BookContextConfig } from './types';
 
 export async function fetchBooks(): Promise<Book[]> {
   const { data } = await apiClient.get<{ books: Book[] }>('/books/');
@@ -11,9 +11,18 @@ export async function fetchBook(id: number): Promise<Book> {
   return data.book;
 }
 
+export async function createBook(body: { title: string; genre?: string; description?: string }): Promise<Book> {
+  const { data } = await apiClient.post<Book>('/books/', body);
+  return data;
+}
+
 export async function updateBook(id: number, patch: Partial<Book>): Promise<Book> {
   const { data } = await apiClient.put<Book>(`/books/${id}`, patch);
   return data;
+}
+
+export async function deleteBook(id: number): Promise<void> {
+  await apiClient.delete(`/books/${id}`);
 }
 
 export async function fetchVolumes(bookId: number): Promise<Volume[]> {
@@ -61,6 +70,16 @@ export async function fetchCreativeSetting(bookId: number): Promise<CreativeSett
 
 export async function updateCreativeSetting(bookId: number, setting: Partial<CreativeSetting>): Promise<CreativeSetting> {
   const { data } = await apiClient.put<CreativeSetting>(`/creative-settings/books/${bookId}`, setting);
+  return data;
+}
+
+export async function fetchBookContextConfig(bookId: number): Promise<BookContextConfig> {
+  const { data } = await apiClient.get<BookContextConfig>(`/books/${bookId}/context-config`);
+  return data;
+}
+
+export async function saveBookContextConfig(bookId: number, contextIds: number[]): Promise<BookContextConfig> {
+  const { data } = await apiClient.put<BookContextConfig>(`/books/${bookId}/context-config`, { contextIds });
   return data;
 }
 

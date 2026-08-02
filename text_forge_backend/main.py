@@ -18,6 +18,7 @@ from domains.cards.router import router as cards_router
 from domains.knowledge.router import router as knowledge_router
 from domains.lock.router import router as lock_router
 from domains.memory.router import router as memory_router
+from domains.model.router import router as model_router
 from domains.sim_rooms.router import router as sim_rooms_router
 from domains.system.health_router import router as health_router
 from domains.system.sync_router import router as sync_router
@@ -89,6 +90,7 @@ def read_root():
     return {"Hello": "World"}
 
 
+app.include_router(model_router, prefix="/api")
 app.include_router(auth_router, prefix="/api")
 app.include_router(user_router, prefix="/api")
 app.include_router(book_router, prefix="/api")

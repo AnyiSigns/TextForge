@@ -1,4 +1,5 @@
-import type { SSEEvent } from './types';
+import { apiClient } from './client';
+import type { SSEEvent, AgentConversation, AgentMessage } from './types';
 
 interface AgentStartResult {
   thread_id: string;
@@ -97,3 +98,29 @@ export async function submitReviewAction(
   });
   if (!res.ok) throw new Error('提交审核失败');
 }
+
+export async function agentRespond(threadId: string, message: string): Promise<SSEEvent> {
+  const res = await fetch('/api/agent/respond', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ threadId, message }),
+  });
+  if (!res.ok) throw new Error('同步对话失败');
+  return res.json();
+}
+
+export async function fetchAgentConversations(): Promise<AgentConversation[]> {
+  const { data } = await apiClient.get<{ conversations: AgentConversation[] }>('/agent/conversations');
+  return data.conversations ?? [];
+}
+
+export async function fetchAgentMessages(conversationId: number): Promise<AgentMessage[]> {
+  const { data } = await apiClient.get<{ messages: AgentMessage[] }>(`/agent/conversations/${conversationId}/messages`);
+  return data.messages ?? [];
+}
+
+export async function compressAgentContext(threadId: string): Promise<void> {
+  await apiClient.post('/agent/compress', { thread_id: threadId });
+}
+

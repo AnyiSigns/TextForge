@@ -1,11 +1,11 @@
 import { apiClient } from './client';
 
-export async function fetchProfile(): Promise<{ userName: string; email: string; avatar: string }> {
-  const { data } = await apiClient.get('/user/profile');
-  return data;
+export async function fetchProfile(): Promise<{ username: string; email: string; avatar: string | null }> {
+  const { data } = await apiClient.get<{ user: { username: string; email: string; avatar: string | null } }>('/user/profile');
+  return data.user;
 }
 
-export async function updateProfile(patch: { userName?: string; email?: string; code?: string }): Promise<void> {
+export async function updateProfile(patch: { username?: string; email?: string; code?: string }): Promise<void> {
   await apiClient.put('/user/profile', patch);
 }
 
@@ -19,4 +19,13 @@ export async function changePasswordByEmail(code: string, newPassword: string): 
 
 export async function sendCode(): Promise<void> {
   await apiClient.post('/user/send-code');
+}
+
+export async function uploadAvatar(file: File): Promise<{ avatar: string }> {
+  const form = new FormData();
+  form.append('file', file);
+  const { data } = await apiClient.post<{ avatar: string }>('/user/avatar', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data;
 }

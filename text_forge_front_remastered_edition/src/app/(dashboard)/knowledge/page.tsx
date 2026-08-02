@@ -1,11 +1,16 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Upload, FileText, Trash2, BookOpen, Globe2, FolderOpen, Search, Eye, Download, RefreshCw, AlertCircle, ShieldAlert } from 'lucide-react';
+import { Upload, FileText, Trash2, BookOpen, Globe2, FolderOpen, Search, Eye, Download, RefreshCw, AlertCircle, ShieldAlert, Cpu } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card } from '@/shared/ui/card';
 import { cn } from '@/shared/lib/cn';
 import { ragClient, type KbDocMeta } from '@/lib/knowledge';
+import { EMBED_TIERS } from '@/lib/rag/embed';
+import { resetForTier, reindexAll } from '@/lib/rag/vectorStore';
+import { getAllKbDocs } from '@/lib/storage/indexedDB';
+import { useEmbedDownloaded } from '@/hooks/useEmbedDownloaded';
+import { useEmbedTier } from '@/hooks/useEmbedTier';
 
 export default function KnowledgePage() {
   const [view, setView] = useState<'personal' | 'public'>('personal');
@@ -15,7 +20,11 @@ export default function KnowledgePage() {
   const [viewing, setViewing] = useState<{ name: string; content: string } | null>(null);
   const [personalSearch, setPersonalSearch] = useState('');
   const [publicSearch, setPublicSearch] = useState('');
+  const [reindexing, setReindexing] = useState(false);
   const personalInputRef = useRef<HTMLInputElement>(null);
+
+  const embedTierId = useEmbedTier();
+  const downloadedIds = useEmbedDownloaded();
 
   const refresh = useCallback(async () => {
     const [p, pub] = await Promise.all([ragClient.listPersonal(), ragClient.listPublic()]);
@@ -23,7 +32,51 @@ export default function KnowledgePage() {
     setPublicDocs(pub);
   }, []);
 
+  const refreshLocal = useCallback(async () => {
+    const localDocs = await getAllKbDocs();
+    setPersonal(localDocs.filter((d) => d.scope === 'personal'));
+  }, []);
+
   useEffect(() => { void refresh(); }, [refresh]);
+
+  const pendingReindex = personal.filter((d) => d.status === 'indexing').length;
+
+  const handleEmbedChange = async (id: string) => {
+    if (!downloadedIds.includes(id)) {
+      toast.error('该精度未下载，请前往设置 → 模型 下载', { duration: 4000 });
+      return;
+    }
+    const t = EMBED_TIERS.find((x) => x.id === id);
+    if (!t) return;
+    try {
+      const removed = await resetForTier(id);
+      await refreshLocal();
+      if (removed > 0) {
+        toast.success(`已切换到「${t.label}」，${removed} 篇文档需重新整理`, { description: '点击下方「整理文档」' });
+      } else {
+        toast.success(`已切换到「${t.label}」`);
+      }
+    } catch {
+      toast.error('切换失败，请重试');
+    }
+  };
+
+  const handleReindex = async () => {
+    if (reindexing) return;
+    setReindexing(true);
+    try {
+      await reindexAll();
+      await refreshLocal();
+      toast.success('文档已重新整理，现在可以正常检索了');
+    } catch {
+      toast.error('整理文档失败');
+    } finally {
+      setReindexing(false);
+    }
+  };
+
+  const currentTierLabel = EMBED_TIERS.find((x) => x.id === embedTierId)?.label ?? '—';
+  const currentTierDim = EMBED_TIERS.find((x) => x.id === embedTierId)?.dim ?? 0;
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -81,6 +134,33 @@ export default function KnowledgePage() {
 
       {view === 'personal' ? (
         <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+            <div className="flex items-center gap-1.5">
+              <Cpu size={13} className="text-muted-foreground" />
+              <span className="text-muted-foreground">检索精度：</span>
+              <span className="font-medium">{currentTierLabel} · {currentTierDim}维</span>
+              {downloadedIds.includes(embedTierId) ? (
+                <span className="text-[10px] text-emerald-600 border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 rounded-full">已就绪</span>
+              ) : (
+                <span className="text-[10px] text-amber-500 border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 rounded-full">未就绪</span>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-muted-foreground">切换：</span>
+              <select
+                value={embedTierId}
+                onChange={(e) => handleEmbedChange(e.target.value)}
+                className="text-xs border border-border rounded px-2 py-1 bg-background"
+              >
+                {EMBED_TIERS.map((t) => (
+                  <option key={t.id} value={t.id} disabled={!downloadedIds.includes(t.id)}>
+                    {t.label} · {t.dim}维{t.sizeMB}MB
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
           <div className="flex items-center gap-3">
             <button onClick={() => personalInputRef.current?.click()} disabled={loading}
               className="flex items-center gap-1.5 h-8 px-3 rounded-md border border-border bg-transparent text-xs hover:bg-muted cursor-pointer">
@@ -96,26 +176,40 @@ export default function KnowledgePage() {
               placeholder="搜索文件名..." className="w-full h-8 pl-8 pr-2 rounded-md text-xs bg-background border border-border focus:outline-none" />
           </div>
 
-          <div className="space-y-1.5">
-            {personal.filter((d) => d.name.toLowerCase().includes(personalSearch.toLowerCase())).map((doc) => (
-              <div key={doc.id} className="flex items-center justify-between p-3 rounded-lg border border-border/40 bg-card hover:bg-card/60 transition-colors">
-                <div className="flex items-center gap-3 min-w-0">
-                  <FileText size={16} className="text-muted-foreground shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-sm truncate">{doc.name}</p>
-                    <p className="text-[10px] text-muted-foreground">
-                      {doc.status === 'indexed' ? '已整理' : doc.status === 'indexing' ? '待整理' : '失败'} · {doc.createdAt ? new Date(doc.createdAt).toLocaleDateString() : ''}
-                    </p>
+          {pendingReindex > 0 ? (
+            <div className="flex flex-wrap items-center gap-3 p-4 rounded-lg border border-amber-500/30 bg-amber-500/10">
+              <AlertCircle size={16} className="text-amber-500 shrink-0" />
+              <p className="text-xs text-foreground/80 flex-1 min-w-0">
+                切换了检索精度，有 <span className="font-semibold">{pendingReindex}</span> 篇文档需要重新整理才能被检索到。
+              </p>
+              <button onClick={handleReindex} disabled={reindexing}
+                className="h-7 px-2.5 rounded-md text-[10px] border border-border cursor-pointer bg-transparent hover:bg-muted disabled:opacity-50 transition-colors flex items-center gap-1 shrink-0">
+                <RefreshCw size={10} className={cn(reindexing && 'animate-spin')} />
+                {reindexing ? '整理中…' : '整理文档'}
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {personal.filter((d) => d.name.toLowerCase().includes(personalSearch.toLowerCase())).map((doc) => (
+                <div key={doc.id} className="flex items-center justify-between p-3 rounded-lg border border-border/40 bg-card hover:bg-card/60 transition-colors">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <FileText size={16} className="text-muted-foreground shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-sm truncate">{doc.name}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {doc.status === 'indexed' ? '已整理' : doc.status === 'indexing' ? '待整理' : '失败'} · {doc.createdAt ? new Date(doc.createdAt).toLocaleDateString() : ''}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => preview(doc)} className="p-1.5 rounded hover:bg-muted bg-transparent border-none cursor-pointer text-muted-foreground"><Eye size={14} /></button>
+                    <button onClick={() => handleDelete(doc)} className="p-1.5 rounded hover:bg-destructive/10 bg-transparent border-none cursor-pointer text-muted-foreground hover:text-destructive"><Trash2 size={14} /></button>
                   </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <button onClick={() => preview(doc)} className="p-1.5 rounded hover:bg-muted bg-transparent border-none cursor-pointer text-muted-foreground"><Eye size={14} /></button>
-                  <button onClick={() => handleDelete(doc)} className="p-1.5 rounded hover:bg-destructive/10 bg-transparent border-none cursor-pointer text-muted-foreground hover:text-destructive"><Trash2 size={14} /></button>
-                </div>
-              </div>
-            ))}
-            {personal.length === 0 && <div className="text-xs text-muted-foreground text-center py-8">暂无个人文档，上传文件以开始</div>}
-          </div>
+              ))}
+              {personal.length === 0 && <div className="text-xs text-muted-foreground text-center py-8">暂无个人文档，上传文件以开始</div>}
+            </div>
+          )}
         </div>
       ) : (
         <div className="space-y-4">

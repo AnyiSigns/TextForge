@@ -3,7 +3,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useBookDetailStore } from '../store';
 import { OutlineEditor } from './OutlineEditor';
-import { OutlineChat } from './OutlineChat';
 import * as outlineApi from '@/shared/api/outlines';
 import type { OutlineNode } from '@/shared/api/types';
 
@@ -38,6 +37,12 @@ export function OutlineTab() {
 
   useEffect(() => { void loadOutlines(); }, [loadOutlines]);
 
+  useEffect(() => {
+    const handleRefresh = () => { void loadOutlines(); };
+    window.addEventListener('textforge:refresh-outlines', handleRefresh);
+    return () => window.removeEventListener('textforge:refresh-outlines', handleRefresh);
+  }, [loadOutlines]);
+
   const handleCreate = useCallback(async (parentId?: number) => {
     try {
       const created = await outlineApi.createOutline(bookId, { title: '新节点', nodeType: 'scene', parentId });
@@ -68,21 +73,15 @@ export function OutlineTab() {
   }, [bookId, loadOutlines]);
 
   return (
-    <div className="flex h-full gap-4">
-      <div className="flex-1 overflow-y-auto pr-2">
-        <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">大纲树</div>
-        <OutlineEditor
-          nodes={nodes}
-          onCreate={handleCreate}
-          onUpdate={handleUpdate}
-          onDelete={handleDelete}
-          onReorder={handleReorder}
-        />
-      </div>
-      <div className="w-[340px] shrink-0 border-l border-border pl-4 flex flex-col">
-        <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">AI 大纲助手</div>
-        <OutlineChat bookId={bookId} onOutlineGenerated={loadOutlines} />
-      </div>
+    <div className="h-full overflow-y-auto pr-2">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">大纲树</div>
+      <OutlineEditor
+        nodes={nodes}
+        onCreate={handleCreate}
+        onUpdate={handleUpdate}
+        onDelete={handleDelete}
+        onReorder={handleReorder}
+      />
     </div>
   );
 }

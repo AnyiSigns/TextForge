@@ -92,8 +92,12 @@ export const ragClient = {
   },
 
   async downloadPublic(id: string, name: string): Promise<void> {
-    const res = await fetch(`/api/knowledge/public/${id}/download`, { credentials: 'include' });
-    if (res.ok) { const blob = await res.blob(); downloadBlob(blob, name); return; }
-    throw new Error('下载失败');
+    const res = await fetch(`/api/knowledge/${id}`, { credentials: 'include' });
+    if (!res.ok) throw new Error('获取文档详情失败');
+    const { data } = await res.json().catch(() => ({}));
+    const content = typeof data?.content === 'string' ? data.content : undefined;
+    if (!content) throw new Error('文档内容为空');
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    downloadBlob(blob, name);
   },
 };

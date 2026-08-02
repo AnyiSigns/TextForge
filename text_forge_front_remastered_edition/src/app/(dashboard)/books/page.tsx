@@ -1,40 +1,33 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { cn } from '@/shared/lib/cn';
 import Link from 'next/link';
 import { BookOpen, Plus, Search, Pin, PinOff, Trash2, ChevronRight, Pencil } from 'lucide-react';
-
-interface Book {
-  id: number;
-  title: string;
-  genre: string;
-  description?: string;
-  pinned?: boolean;
-  createdAt: string;
-  updatedAt: string;
-  totalWordGoal?: number;
-  currentWords?: number;
-}
+import { toast } from 'sonner';
+import * as booksApi from '@/shared/api/books';
+import type { Book } from '@/shared/api/types';
 
 export default function BooksListPage() {
-  const [books, setBooks] = useState<Book[]>([
-    { id: 1, title: '星辰的回响', genre: '科幻', description: '阿斯特拉在流放中收到来自柯伊伯带深处的神秘信号，一场跨越星海的冒险就此展开……', pinned: true, createdAt: '2025-06-15', updatedAt: '2026-08-01', totalWordGoal: 100000, currentWords: 87342 },
-    { id: 2, title: '龙脊纪元', genre: '奇幻', description: '在龙脊山脉脚下，一个少年觉醒了失落的龙血，古老预言即将应验。', createdAt: '2025-09-01', updatedAt: '2026-07-25', totalWordGoal: 150000, currentWords: 68000 },
-    { id: 3, title: '深夜编辑室', genre: '都市', description: '深夜的编辑室，藏着不为人知的秘密。每个故事背后都是一段人生。', createdAt: '2026-01-10', updatedAt: '2026-07-20', totalWordGoal: 80000, currentWords: 25000 },
-  ]);
+  const [books, setBooks] = useState<Book[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [hoveredId, setHoveredId] = useState<number | null>(null);
 
-  // Modal state
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [formTitle, setFormTitle] = useState('');
   const [formGenre, setFormGenre] = useState('');
   const [formDesc, setFormDesc] = useState('');
   const [formGoal, setFormGoal] = useState<number | ''>('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    booksApi.fetchBooks().then((list) => { setBooks(list); setLoading(false); }).catch(() => setLoading(false));
+  }, []);
 
   const openNew = () => {
     setEditingId(null);
@@ -48,54 +41,66 @@ export default function BooksListPage() {
   const openEdit = (book: Book) => {
     setEditingId(book.id);
     setFormTitle(book.title);
-    setFormGenre(book.genre);
+    setFormGenre(book.genre || '');
     setFormDesc(book.description || '');
     setFormGoal(book.totalWordGoal ?? '');
     setModalOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formTitle.trim()) return;
-    const today = new Date().toISOString().split('T')[0];
-    if (editingId !== null) {
-      setBooks(prev => prev.map(b => b.id === editingId ? {
-        ...b,
-        title: formTitle.trim(),
-        genre: formGenre.trim(),
-        description: formDesc.trim() || undefined,
-        totalWordGoal: formGoal === '' ? undefined : Number(formGoal),
-        updatedAt: today,
-      } : b));
-    } else {
-      const newBook: Book = {
-        id: Date.now(),
-        title: formTitle.trim(),
-        genre: formGenre.trim(),
-        description: formDesc.trim() || undefined,
-        totalWordGoal: formGoal === '' ? undefined : Number(formGoal),
-        pinned: false,
-        createdAt: today,
-        updatedAt: today,
-        currentWords: 0,
-      };
-      setBooks(prev => [...prev, newBook]);
-    }
-    setModalOpen(false);
+    setSaving(true);
+    try {
+      if (editingId !== null) {
+        const updated = await booksApi.updateBook(editingId, {
+          title: formTitle.trim(),
+          genre: formGenre.trim() || undefined,
+          description: formDesc.trim() || undefined,
+          totalWordGoal: formGoal === '' ? undefined : Number(formGoal),
+        });
+        setBooks(prev => prev.map(b => b.id === editingId ? { ...b, ...updated } : b));
+        toast.success('已保存');
+      } else {
+        const created = await booksApi.createBook({
+          title: formTitle.trim(),
+          genre: formGenre.trim() || undefined,
+          description: formDesc.trim() || undefined,
+        });
+        setBooks(prev => [...prev, { ...created, totalWordGoal: formGoal === '' ? undefined : Number(formGoal) }]);
+        toast.success('已创建');
+      }
+      setModalOpen(false);
+    } catch { toast.error('保存失败'); }
+    finally { setSaving(false); }
   };
 
-  const togglePin = (id: number) => {
-    setBooks(prev => prev.map(b => b.id === id ? { ...b, pinned: !b.pinned } : b));
+  const togglePin = async (id: number) => {
+    const book = books.find(b => b.id === id);
+    if (!book) return;
+    try {
+      const updated = await booksApi.updateBook(id, { pinned: !book.pinned });
+      setBooks(prev => prev.map(b => b.id === id ? { ...b, ...updated } : b));
+    } catch { toast.error('操作失败'); }
   };
 
-  const handleDelete = (id: number) => {
-    setBooks(prev => prev.filter(b => b.id !== id));
-    setSelectedIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+  const handleDelete = async (id: number) => {
+    if (!confirm('确定要删除这本书吗？')) return;
+    try {
+      await booksApi.deleteBook(id);
+      setBooks(prev => prev.filter(b => b.id !== id));
+      setSelectedIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+      toast.success('已删除');
+    } catch { toast.error('删除失败'); }
   };
 
-  const handleBatchDelete = () => {
+  const handleBatchDelete = async () => {
     if (!confirm(`确定要删除选中的 ${selectedIds.size} 本书吗？`)) return;
+    for (const id of selectedIds) {
+      try { await booksApi.deleteBook(id); } catch { /* continue */ }
+    }
     setBooks(prev => prev.filter(b => !selectedIds.has(b.id)));
     setSelectedIds(new Set());
+    toast.success('批量删除完成');
   };
 
   const sorted = useMemo(() => [...books].sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned)), [books]);
@@ -108,7 +113,6 @@ export default function BooksListPage() {
 
   return (
     <div className="h-full overflow-y-auto">
-      {/* Header */}
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border shadow-header">
         <div className="px-6 py-4">
           <div className="flex items-center justify-between">
@@ -116,7 +120,7 @@ export default function BooksListPage() {
               <BookOpen size={20} strokeWidth={1.6} className="text-muted-foreground" />
               <div>
                 <h1 className="text-lg font-semibold">书籍管理</h1>
-                <p className="text-xs text-muted-foreground">{books.length} 本书 · {books.reduce((s, b) => s + (b.currentWords ?? 0), 0) >= 10000 ? formatWords(books.reduce((s, b) => s + (b.currentWords ?? 0), 0)) : '--'}</p>
+                <p className="text-xs text-muted-foreground">{books.length} 本书 · {books.reduce((s, b) => s + (b.currentWordCount ?? 0), 0) >= 10000 ? formatWords(books.reduce((s, b) => s + (b.currentWordCount ?? 0), 0)) : '--'}</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -136,7 +140,6 @@ export default function BooksListPage() {
             </div>
           </div>
 
-          {/* Search bar */}
           <div className="relative mt-4 max-w-xs">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input
@@ -149,9 +152,9 @@ export default function BooksListPage() {
         </div>
       </div>
 
-      {/* Content */}
       <div className="px-6 py-5">
-        {filtered.length === 0 && (
+        {loading && <div className="flex items-center justify-center py-20 text-center text-sm text-muted-foreground">加载中...</div>}
+        {!loading && filtered.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <BookOpen size={36} strokeWidth={1.2} className="text-muted-foreground/25 mb-4" />
             <h3 className="text-sm font-medium text-muted-foreground">没有匹配的书籍</h3>
@@ -159,10 +162,9 @@ export default function BooksListPage() {
           </div>
         )}
 
-        {/* List view */}
         <div className="space-y-2">
           {filtered.map(book => {
-            const progress = book.totalWordGoal ? Math.min(100, Math.round((book.currentWords ?? 0) / book.totalWordGoal * 100)) : 0;
+            const progress = book.totalWordGoal ? Math.min(100, Math.round((book.currentWordCount ?? 0) / book.totalWordGoal * 100)) : 0;
             const isHovered = hoveredId === book.id;
             return (
               <div
@@ -192,12 +194,12 @@ export default function BooksListPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-medium text-sm truncate group-hover:text-foreground/70 transition-colors">{book.title}</span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">{book.genre}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">{book.genre || '未分类'}</span>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-0.5 truncate">{book.description}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5 truncate">{book.description || '暂无简介'}</p>
                   </div>
                   <div className="shrink-0 flex items-center gap-4 text-xs text-muted-foreground">
-                    <span>{formatWords(book.currentWords ?? 0)}</span>
+                    <span>{formatWords(book.currentWordCount ?? 0)}</span>
                     {book.totalWordGoal ? (
                       <div className="flex items-center gap-1.5">
                         <div className="w-16 h-1 bg-border/40 rounded-full overflow-hidden">
@@ -227,7 +229,6 @@ export default function BooksListPage() {
         </div>
       </div>
 
-      {/* Edit / New Book Modal */}
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-foreground/[0.03]" onClick={() => setModalOpen(false)} />
@@ -280,8 +281,8 @@ export default function BooksListPage() {
               <button onClick={() => setModalOpen(false)} className="h-7 px-4 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-hover)] transition-colors bg-transparent border-none cursor-pointer">
                 取消
               </button>
-              <button onClick={handleSave} disabled={!formTitle.trim()} className="h-7 px-4 rounded-md text-xs font-medium bg-foreground text-background hover:opacity-90 transition-opacity border-none cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed">
-                保存
+              <button onClick={handleSave} disabled={saving || !formTitle.trim()} className="h-7 px-4 rounded-md text-xs font-medium bg-foreground text-background hover:opacity-90 transition-opacity border-none cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed">
+                {saving ? '保存中...' : '保存'}
               </button>
             </div>
           </div>

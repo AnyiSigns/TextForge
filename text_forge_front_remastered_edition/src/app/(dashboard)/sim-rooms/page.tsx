@@ -43,6 +43,25 @@ export default function SimRoomsPage() {
       .then((r) => r.json()).then((d) => setRooms(d.rooms || [])).catch(() => {});
   }, [selectedBookId]);
 
+  useEffect(() => {
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!activeRoom && wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+      setWsConnected(false);
+      setStreaming(false);
+      setRoundCount(0);
+    }
+  }, [activeRoom]);
+
   const enterRoom = async (roomId: number) => {
     if (wsRef.current) wsRef.current.close();
     const res = await fetch(`/api/sim-rooms/${roomId}`, { credentials: 'include' });

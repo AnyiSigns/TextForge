@@ -21,6 +21,17 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/user", tags=["用户"])
 
 
+@router.get("/profile", response_model=ProfileResponse)
+async def get_profile(
+    user_id=Depends(get_current),
+    user_serve: Annotated[UserAuthService, Depends(user_db_serve)] = None,
+):
+    user = await user_serve.user_repo.get(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    return ProfileResponse(user=user)
+
+
 @router.put("/profile", response_model=ProfileResponse)
 async def user_profile(
     request: ProfileRequest,

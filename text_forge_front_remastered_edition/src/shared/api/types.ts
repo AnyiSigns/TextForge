@@ -135,6 +135,100 @@ export interface WritingStats {
   trend?: { date: string; words: number }[];
 }
 
+export interface WritingSession {
+  id: number;
+  userId: number;
+  bookId: number;
+  chapterId?: number;
+  characterIds: number[];
+  wordsWritten: number;
+  durationSeconds: number;
+  startedAt?: string;
+  endedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface WritingStatsSummary {
+  totalWords: number;
+  totalSessions: number;
+  totalDurationSeconds: number;
+  activeDays: number;
+}
+
+export interface WritingTrendPoint {
+  date: string;
+  words: number;
+}
+
+export interface CharacterFrequency {
+  characterId: number;
+  characterName: string;
+  count: number;
+}
+
+export interface PlotProgress {
+  chapterId?: number;
+  chapterTitle?: string;
+  progress: number;
+}
+
+export interface AgentConversation {
+  id: number;
+  userId: number;
+  title: string;
+  threadId: string;
+  updatedAt: string;
+}
+
+export interface AgentMessage {
+  conversationId: number;
+  role: string;
+  content: string;
+  think?: string;
+  createdAt: string;
+}
+
+export interface AgentMemory {
+  id: number;
+  userId: number;
+  bookId?: number;
+  memoryType: string;
+  content: string;
+  relatedChapterId?: number;
+  relatedCharacterIds: number[];
+  priority: number;
+  source: string;
+  meta?: Record<string, unknown>;
+  createdAt?: string;
+  updatedAt?: string;
+  distance?: number;
+}
+
+export interface KnowledgeDoc {
+  id: number;
+  name: string;
+  status: 'indexing' | 'indexed' | 'failed';
+  createdAt: string;
+  scope: 'personal' | 'public';
+  uploaderId?: string;
+  uploaderName?: string;
+  content?: string;
+}
+
+export interface CardSession {
+  cardId: string;
+  cardType: string;
+  title: string;
+  wsEndpoint: string;
+}
+
+export interface LockResult {
+  entityType: string;
+  entityId: number;
+  locked: boolean;
+}
+
 export interface SSEEvent {
   type: 'token' | 'agent_think' | 'tool_start' | 'tool_end' | 'progress' |
         'node_start' | 'node_stream' | 'node_end' |
@@ -149,4 +243,9 @@ export interface SSEEvent {
   cards?: unknown[];
   card_types?: string[];
   reason?: string;
+}
+
+export interface BookContextConfig {
+  bookId: number;
+  contextIds: number[];
 }

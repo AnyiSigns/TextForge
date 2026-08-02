@@ -6,6 +6,11 @@ export async function fetchOutlines(bookId: number): Promise<OutlineNode[]> {
   return data.nodes ?? [];
 }
 
+export async function fetchOutlineDetail(bookId: number, outlineId: number): Promise<OutlineNode> {
+  const { data } = await apiClient.get<OutlineNode>(`/outlines/books/${bookId}/${outlineId}`);
+  return data;
+}
+
 export async function createOutline(
   bookId: number,
   body: { title: string; content?: string; nodeType?: string; parentId?: number; targetVolumeId?: number; targetChapterId?: number },

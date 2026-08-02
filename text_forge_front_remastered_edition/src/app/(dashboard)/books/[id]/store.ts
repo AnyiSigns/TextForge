@@ -1,12 +1,15 @@
 import { create } from 'zustand';
-import type { Book, Volume, Chapter, Character, OutlineNode, Location, TimelineEvent, Foreshadowing, PlotThread, CreativeSetting, WritingStats } from '@/shared/api/types';
+import type { Book, Volume, Chapter, Character, OutlineNode, Location, TimelineEvent, Foreshadowing, PlotThread, CreativeSetting, WritingStats, CharacterFrequency, PlotProgress } from '@/shared/api/types';
 import * as booksApi from '@/shared/api/books';
 import * as charactersApi from '@/shared/api/characters';
 import * as worldApi from '@/shared/api/world';
+import * as writingSessionsApi from '@/shared/api/writingSessions';
 
-type PanelId = 'outline' | 'characters' | 'world';
-type TabId = 'overview' | 'outline' | 'settings';
-type WorldSubTab = 'locations' | 'events' | 'foreshadowings' | 'plot-threads';
+export type CreativePhase = 'overview' | 'worldbuilding' | 'outlining' | 'drafting' | 'revising';
+
+export type PanelId = 'outline' | 'characters' | 'world';
+export type WorldSubTab = 'locations' | 'events' | 'foreshadowings' | 'plot-threads';
+export type TabId = 'overview' | 'outline' | 'settings' | 'characters' | 'world';
 
 interface BookDetailState {
   bookId: number;
@@ -22,17 +25,23 @@ interface BookDetailState {
   creativeSetting: CreativeSetting | null;
   writingStats: WritingStats | null;
   writingTrend: { date: string; words: number }[];
+  characterFrequency: CharacterFrequency[];
+  plotProgress: PlotProgress[];
 
   activePanel: PanelId;
   activeTab: TabId;
   worldSubTab: WorldSubTab;
   sidebarCollapsed: boolean;
 
+  creativePhase: CreativePhase;
+
   agentMessages: { role: string; content: string; type?: string; token?: string }[];
   agentStreaming: boolean;
   agentThreadId: string | null;
   agentOpen: boolean;
   cardDrawOpen: boolean;
+  cardDrawPreset: { characters?: string[]; locations?: string[]; storyDirection?: string } | null;
+  selectedChapterId: number | null;
   pendingReview: Record<string, unknown> | null;
   pendingCards: unknown[] | null;
 
@@ -43,6 +52,9 @@ interface BookDetailState {
   setActiveTab: (tab: TabId) => void;
   setWorldSubTab: (subTab: WorldSubTab) => void;
   toggleSidebar: () => void;
+  setCreativePhase: (phase: CreativePhase) => void;
+  autoDetectPhase: () => void;
+  selectChapter: (chapterId: number | null) => void;
 
   loadBook: (id: number) => Promise<void>;
   loadChapters: () => Promise<void>;
@@ -51,10 +63,10 @@ interface BookDetailState {
   loadCreativeSetting: () => Promise<void>;
   loadWritingStats: () => Promise<void>;
 
-  setAgentThreadId: (threadId: string) => void;
+  setAgentThreadId: (threadId: string | null) => void;
   toggleAgent: () => void;
   setAgentOpen: (v: boolean) => void;
-  openCardDraw: () => void;
+  openCardDraw: (preset?: { characters?: string[]; locations?: string[]; storyDirection?: string }) => void;
   closeCardDraw: () => void;
   addAgentMessage: (msg: { role: string; content: string; type?: string; token?: string }) => void;
   updateAgentStreamToken: (token: string) => void;
@@ -77,17 +89,22 @@ export const useBookDetailStore = create<BookDetailState>((set, get) => ({
   creativeSetting: null,
   writingStats: null,
   writingTrend: [],
+  characterFrequency: [],
+  plotProgress: [],
 
   activePanel: 'outline',
   activeTab: 'overview',
   worldSubTab: 'locations',
   sidebarCollapsed: false,
+  creativePhase: 'overview',
 
   agentMessages: [],
   agentStreaming: false,
   agentThreadId: null,
   agentOpen: false,
   cardDrawOpen: false,
+  cardDrawPreset: null,
+  selectedChapterId: null,
   pendingReview: null,
   pendingCards: null,
 
@@ -98,6 +115,29 @@ export const useBookDetailStore = create<BookDetailState>((set, get) => ({
   setActiveTab: (tab) => set({ activeTab: tab }),
   setWorldSubTab: (subTab) => set({ worldSubTab: subTab }),
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+  setCreativePhase: (phase) => set({ creativePhase: phase }),
+  autoDetectPhase: () => {
+    const s = get();
+    const hasSetting = !!(s.creativeSetting && (s.creativeSetting.worldview || s.creativeSetting.tone));
+    const hasCharacters = s.characters.length > 0;
+    const hasOutline = s.outlineNodes.length > 0;
+    const hasChapters = s.chapters.some((v) => v.chapters.length > 0);
+
+    if (!hasSetting && !hasCharacters) {
+      set({ creativePhase: 'worldbuilding' });
+    } else if (!hasOutline && !hasChapters) {
+      set({ creativePhase: 'outlining' });
+    } else if (hasChapters) {
+      set({ creativePhase: 'drafting' });
+    } else {
+      set({ creativePhase: 'overview' });
+    }
+  },
+  // 根据书籍数据自动推断当前创作阶段
+  // worldbuilding: 缺少设定或角色
+  // outlining: 有设定/角色但缺少大纲和章节
+  // drafting: 已有章节
+  selectChapter: (chapterId) => set({ selectedChapterId: chapterId }),
 
   loadBook: async (id) => {
     set({ loading: true, error: null, bookId: id });
@@ -150,19 +190,21 @@ export const useBookDetailStore = create<BookDetailState>((set, get) => ({
   loadWritingStats: async () => {
     const { bookId } = get();
     try {
-      const [writingStats, writingTrend] = await Promise.all([
+      const [writingStats, writingTrend, characterFrequency, plotProgress] = await Promise.all([
         booksApi.fetchWritingStats(bookId),
         booksApi.fetchWritingTrend(bookId),
+        writingSessionsApi.fetchCharacterFrequency(bookId),
+        writingSessionsApi.fetchPlotProgress(bookId),
       ]);
-      set({ writingStats, writingTrend });
+      set({ writingStats, writingTrend, characterFrequency, plotProgress });
     } catch { /* silent */ }
   },
 
   setAgentThreadId: (threadId) => set({ agentThreadId: threadId }),
   toggleAgent: () => set((s) => ({ agentOpen: !s.agentOpen })),
-  setAgentOpen: (v: boolean) => set({ agentOpen: v }),
-  openCardDraw: () => set({ cardDrawOpen: true, agentOpen: true }),
-  closeCardDraw: () => set({ cardDrawOpen: false }),
+  setAgentOpen: (v) => set({ agentOpen: v }),
+  openCardDraw: (preset) => set({ cardDrawOpen: true, agentOpen: true, cardDrawPreset: preset || null }),
+  closeCardDraw: () => set({ cardDrawOpen: false, cardDrawPreset: null }),
   addAgentMessage: (msg) => set((s) => ({ agentMessages: [...s.agentMessages, msg] })),
   updateAgentStreamToken: (token) => {
     const msgs = get().agentMessages;

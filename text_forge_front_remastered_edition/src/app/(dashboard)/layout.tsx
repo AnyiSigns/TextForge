@@ -9,6 +9,12 @@ import {
   Wifi,
 } from 'lucide-react';
 import { cn } from '@/shared/lib/cn';
+import { useAuthStore } from '@/shared/stores/authStore';
+import * as userApi from '@/shared/api/user';
+import * as booksApi from '@/shared/api/books';
+import * as systemApi from '@/shared/api/system';
+import { useBookDetailStore } from './books/[id]/store';
+import { AgentPanel } from './books/[id]/AgentPanel/AgentPanel';
 
 const menuGroups = [
   {
@@ -33,9 +39,81 @@ const menuGroups = [
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
-  const [agentOpen, setAgentOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+
+  const [userName, setUserName] = useState('');
+  const [userEmail, setUserEmail] = useState('');
+  const [bookStats, setBookStats] = useState({ total: 0, currentWords: 0, goal: 0, type: '' });
+  const [latencyMs, setLatencyMs] = useState<number | null>(null);
+
+  const [panelWidth, setPanelWidth] = useState(340);
+  const [panelFullscreen, setPanelFullscreen] = useState(false);
+  const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
+
+  const handleResizeDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    resizeRef.current = { startX: e.clientX, startWidth: panelWidth };
+    document.addEventListener('mousemove', handleResizeMove);
+    document.addEventListener('mouseup', handleResizeUp);
+  };
+
+  const handleResizeMove = (e: MouseEvent) => {
+    if (!resizeRef.current) return;
+    const delta = resizeRef.current.startX - e.clientX;
+    setPanelWidth(Math.max(260, Math.min(700, resizeRef.current.startWidth + delta)));
+  };
+
+  const handleResizeUp = () => {
+    resizeRef.current = null;
+    document.removeEventListener('mousemove', handleResizeMove);
+    document.removeEventListener('mouseup', handleResizeUp);
+  };
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const ping = async () => {
+      try {
+        const { latencyMs } = await systemApi.fetchHealth();
+        setLatencyMs(latencyMs ?? null);
+      } catch {
+        setLatencyMs(null);
+      }
+    };
+    void ping();
+    timer = setInterval(ping, 10000);
+    return () => { if (timer) clearInterval(timer); };
+  }, []);
+
+  useEffect(() => {
+    userApi.fetchProfile().then((p) => {
+      setUserName(p.username || '');
+      setUserEmail(p.email || '');
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (pathname && pathname.startsWith('/books/') && pathname !== '/books') {
+      setCollapsed(true);
+    }
+  }, [pathname]);
+
+  useEffect(() => {
+    const bookIdMatch = pathname?.match(/^\/books\/(\d+)/);
+    if (bookIdMatch) {
+      const bookId = parseInt(bookIdMatch[1], 10);
+      booksApi.fetchBook(bookId).then((book) => {
+        setBookStats({
+          total: 1,
+          currentWords: book.currentWordCount || 0,
+          goal: book.totalWordGoal || 0,
+          type: book.genre || '',
+        });
+      }).catch(() => {});
+    } else {
+      setBookStats({ total: 0, currentWords: 0, goal: 0, type: '' });
+    }
+  }, [pathname]);
 
   useEffect(() => {
     if (!userMenuOpen) return;
@@ -53,35 +131,30 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     };
   }, [userMenuOpen]);
 
-  useEffect(() => {
-    if (pathname && pathname.startsWith('/books/') && pathname !== '/books') {
-      setCollapsed(true);
-    }
-  }, [pathname]);
+  const agentActive = useBookDetailStore((s) => s.agentOpen);
+
+  const isBookDetail = pathname?.startsWith('/books/') && pathname !== '/books';
 
   const toggleAgent = () => {
-    setAgentOpen(!agentOpen);
+    if (isBookDetail) {
+      const store = useBookDetailStore.getState();
+      store.setAgentOpen(!store.agentOpen);
+    }
   };
 
   const toggleSidebar = () => {
     setCollapsed(!collapsed);
   };
 
-  const getStatusbarContext = () => {
-    if (pathname?.startsWith('/books/') && pathname !== '/books') {
-      return { label: '当前书籍', type: '书籍类型', goal: '字数目标', currentWords: '0', progress: '0%', books: 0, latency: '0ms' };
-    }
-    return { label: 'TextForge', type: '', goal: '', currentWords: '', progress: '', books: 0, latency: '0ms' };
-  };
 
-  const statusbarCtx = getStatusbarContext();
-  const now = new Date();
-  const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-  const isBookDetail = pathname?.startsWith('/books/') && pathname !== '/books';
+  const progress = bookStats.goal > 0 ? Math.min(100, Math.round((bookStats.currentWords / bookStats.goal) * 100)) : 0;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      <aside className={cn('app-sidebar', collapsed && 'is-collapsed')}>
+    <div className="flex flex-col h-screen overflow-hidden bg-background" style={{ paddingBottom: 24 }}>
+      <div className="flex flex-1 min-h-0">
+        {!panelFullscreen && (
+          <>
+            <aside className={cn('app-sidebar', collapsed && 'is-collapsed')}>
         <div className="app-sidebar-header">
           <span className="app-sidebar-brand">Text Forge</span>
           <button
@@ -118,23 +191,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         <div className="app-sidebar-footer">
           <div className="app-user-row" onClick={() => setUserMenuOpen(!userMenuOpen)}>
-            <div className="app-user-avatar">U</div>
+            <div className="app-user-avatar">{userName ? userName.charAt(0).toUpperCase() : 'U'}</div>
             <div className="app-user-info">
-              <div className="app-user-name">用户名</div>
-              <div className="app-user-email">user@email.com</div>
+              <div className="app-user-name">{userName || '用户名'}</div>
+              <div className="app-user-email">{userEmail || 'user@email.com'}</div>
             </div>
           </div>
           {userMenuOpen && (
             <div ref={userMenuRef} className="app-user-popup" style={{ left: collapsed ? 60 : 228 }}>
               <div className="app-user-popup-item">
-                <div className="app-user-avatar" style={{ width: 24, height: 24, fontSize: 10 }}>U</div>
+                <div className="app-user-avatar" style={{ width: 24, height: 24, fontSize: 10 }}>{userName ? userName.charAt(0).toUpperCase() : 'U'}</div>
                 <div>
-                  <div className="text-xs font-medium">用户名</div>
-                  <div className="text-[10px] text-muted-foreground">user@email.com</div>
+                  <div className="text-xs font-medium">{userName || '用户名'}</div>
+                  <div className="text-[10px] text-muted-foreground">{userEmail || 'user@email.com'}</div>
                 </div>
               </div>
               <div className="app-user-popup-sep" />
-              <button className="app-user-popup-item is-danger">
+              <button className="app-user-popup-item is-danger" onClick={() => useAuthStore.getState().logout()}>
                 <LogOut size={14} />
                 <span>退出登录</span>
               </button>
@@ -143,71 +216,62 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </aside>
 
-      <main className="flex-1 overflow-hidden transition-all duration-300" style={{ paddingBottom: 24, marginRight: agentOpen ? 340 : 0 }}>{children}</main>
+      <main className="flex-1 overflow-hidden">{children}</main>
+          </>
+        )}
 
-      {/* 全局状态栏 */}
+        {agentActive && (
+          <div className="app-right-panel" style={{ width: panelFullscreen ? undefined : panelWidth, flex: panelFullscreen ? 1 : undefined }}>
+            {!panelFullscreen && (
+              <div
+                className={cn('app-right-panel-handle', resizeRef.current && 'is-dragging')}
+                onMouseDown={handleResizeDown}
+              />
+            )}
+            <AgentPanel panelFullscreen={panelFullscreen} onToggleFullscreen={() => setPanelFullscreen(!panelFullscreen)} />
+          </div>
+        )}
+      </div>
+
       <footer className="app-statusbar">
         <div className="app-statusbar-left">
           <span className="app-statusbar-item text-muted-foreground">
-            书籍总数：<span className="font-medium text-foreground">{statusbarCtx.books}</span>
+            书籍总数：<span className="font-medium text-foreground">{bookStats.total}</span>
           </span>
           <span className="app-statusbar-sep" />
-          <span className="app-statusbar-item flex items-center gap-1" title={`网络延迟 ${statusbarCtx.latency}`}>
+          <span className="app-statusbar-item flex items-center gap-1" title="网络延迟">
             <Wifi size={10} className="text-foreground/60" />
-            <span className="font-mono text-[10px]">{statusbarCtx.latency}</span>
+            <span className="font-mono text-[10px]">{latencyMs !== null ? `${latencyMs}ms` : '--ms'}</span>
           </span>
           {isBookDetail && (
             <>
               <span className="app-statusbar-sep" />
               <span className="app-statusbar-item text-muted-foreground">
-                {statusbarCtx.label}<span className="text-border mx-1">|</span><span className="text-foreground/80">{statusbarCtx.type}</span>
+                当前书籍<span className="text-border mx-1">|</span><span className="text-foreground/80">{bookStats.type}</span>
               </span>
               <span className="app-statusbar-sep" />
-              <span className="app-statusbar-item text-muted-foreground">{statusbarCtx.goal}</span>
+              <span className="app-statusbar-item text-muted-foreground">目标 <span className="font-medium text-foreground">{bookStats.goal.toLocaleString()}</span></span>
               <span className="app-statusbar-sep" />
-              <span className="app-statusbar-item text-muted-foreground">当前 <span className="font-medium text-foreground">{statusbarCtx.currentWords}</span></span>
+              <span className="app-statusbar-item text-muted-foreground">当前 <span className="font-medium text-foreground">{bookStats.currentWords.toLocaleString()}</span></span>
               <span className="app-statusbar-sep" />
-              <span className="app-statusbar-item text-muted-foreground">进度 <span className="font-medium text-foreground">{statusbarCtx.progress}</span></span>
+              <span className="app-statusbar-item text-muted-foreground">进度 <span className="font-medium text-foreground">{progress}%</span></span>
             </>
           )}
         </div>
         <div className="app-statusbar-right">
-          <span className="app-statusbar-item text-muted-foreground" style={{ fontFamily: 'var(--font-mono)' }}>{timeStr}</span>
+          <span className="app-statusbar-item text-muted-foreground" style={{ fontFamily: 'var(--font-mono)' }}>
+            {new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+          </span>
           <button
             type="button"
             onClick={toggleAgent}
-            className={cn('app-statusbar-btn', agentOpen && 'is-active')}
+            className={cn('app-statusbar-btn', agentActive && 'is-active')}
           >
             <Bot size={11} />
             <span>AI</span>
           </button>
         </div>
       </footer>
-
-      {/* Agent 会话浮层 */}
-      {agentOpen && (
-        <aside className="app-agent-panel">
-          <div className="app-agent-header">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">AI 助手</span>
-            <span className="text-[10px] text-foreground/60 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-foreground/60" />就绪
-            </span>
-          </div>
-          <div className="app-agent-body">
-            <div className="text-xs text-muted-foreground text-center mt-8">暂无消息</div>
-          </div>
-          <div className="app-agent-input-row">
-            <input
-              type="text"
-              placeholder="输入指令..."
-              className="flex-1 h-8 px-3 rounded-md text-xs bg-background border border-border focus:outline-none"
-            />
-            <button className="h-8 px-3 rounded-md bg-foreground text-background text-xs font-medium border-none cursor-pointer hover:opacity-90 transition-opacity">
-              发送
-            </button>
-          </div>
-        </aside>
-      )}
     </div>
   );
 }

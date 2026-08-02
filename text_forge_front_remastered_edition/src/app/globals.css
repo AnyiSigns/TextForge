@@ -221,66 +221,35 @@ textarea:focus {
 
 .ide-grid {
   display: grid; height: 100%; overflow: hidden;
-  grid-template-columns: var(--ide-activity-w, 48px) var(--ide-sidebar-w, 0px) 1fr var(--ide-agent-w, 0px);
-  grid-template-rows:    var(--ide-topbar-h, 0px)    var(--ide-tabbar-h, 0px)    1fr var(--ide-statusbar-h, 0px);
+  grid-template-columns: var(--ide-tabsbar-w, 48px) 1fr;
+  grid-template-rows:    1fr;
   grid-template-areas:
-    "topbar    topbar    topbar    topbar"
-    "tabbar    tabbar    tabbar    tabbar"
-    "activity  sidebar   editor    agent"
-    "statusbar statusbar statusbar statusbar";
+    "tabsbar editor";
 }
 
-.ide-grid--topbar    { --ide-topbar-h: 30px; }
-.ide-grid--tabbar    { --ide-tabbar-h: 35px; }
-.ide-grid--sidebar   { --ide-sidebar-w: 260px; }
-.ide-grid--agent     { --ide-agent-w: 340px; }
-.ide-grid--statusbar { --ide-statusbar-h: 22px; }
-
-.ide-topbar {
-  grid-area: topbar;
-  border-bottom: 1px solid var(--border);
-  display: flex; align-items: center; padding: 0 12px;
-  font-size: 12px;
-}
-.ide-tabbar {
-  grid-area: tabbar;
-  border-bottom: 1px solid var(--border);
-  display: flex; align-items: stretch; overflow-x: auto;
-}
-.ide-tab {
-  display: flex; align-items: center; gap: 5px;
-  padding: 0 14px; font-size: 12px; cursor: pointer;
-  background: var(--card); color: var(--muted-foreground);
-  border-right: 1px solid var(--border); border-bottom: 1px solid var(--border);
-  white-space: nowrap; position: relative; top: 1px;
-}
-.ide-tab:hover { background: var(--sidebar-hover); }
-.ide-tab.is-active { background: var(--background); color: var(--foreground); border-bottom-color: var(--background); }
-
-.ide-activity {
-  grid-area: activity;
+.ide-tabsbar {
+  grid-area: tabsbar;
   background: var(--muted);
   border-right: 1px solid var(--border);
-  display: flex; flex-direction: column; align-items: center; padding-top: 4px;
+  display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden;
+  padding: 4px 0;
 }
-.ide-activity-btn {
+.ide-tabsbar-btn {
   width: 100%; aspect-ratio: 1;
-  display: grid; place-items: center; cursor: pointer;
-  color: var(--muted-foreground);
-  background: none; border: none; padding: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  cursor: pointer; color: var(--muted-foreground);
+  background: none; border: none; font-size: 10px; position: relative;
 }
-.ide-activity-btn:hover { color: var(--foreground); }
-.ide-activity-btn.is-active { color: var(--accent); }
-.ide-activity-btn.is-active::before {
-  content: ''; position: absolute; left: 0; top: 6px; bottom: 6px;
+.ide-tabsbar-btn:hover { color: var(--foreground); background: var(--sidebar-hover); }
+.ide-tabsbar-btn.is-active { color: var(--accent); }
+.ide-tabsbar-btn.is-active::before {
+  content: ''; position: absolute; left: 0; top: 4px; bottom: 4px;
   width: 2px; background: var(--accent); border-radius: 0 1px 1px 0;
 }
 
-.ide-sidebar {
-  grid-area: sidebar;
-  border-right: 1px solid var(--border);
-  display: flex; flex-direction: column; overflow: hidden;
-}
+.ide-editor { grid-area: editor; background: var(--background); display: flex; flex-direction: column; overflow: hidden; }
+.ide-editor-body { flex: 1; overflow-y: auto; padding: 20px 24px; }
+
 .ide-sidebar-header {
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 12px; height: 35px; flex-shrink: 0;
@@ -304,79 +273,84 @@ textarea:focus {
 .ide-outline-row--chapter { color: var(--muted-foreground); padding-left: 28px; }
 .ide-outline-row .ol-label { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.ide-editor { grid-area: editor; background: var(--background); display: flex; flex-direction: column; overflow: hidden; }
-.ide-editor-body { flex: 1; overflow-y: auto; padding: 20px 24px; }
+/* ===== 右侧 Agent 面板 ===== */
+
+.app-right-panel {
+  border-left: 1px solid var(--border);
+  background: var(--background);
+  display: flex; flex-direction: column; overflow: hidden;
+  flex-shrink: 0;
+  position: relative;
+}
+.app-right-panel-handle {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 4px;
+  cursor: ew-resize;
+  background: transparent;
+  transition: background 0.15s;
+  z-index: 2;
+}
+.app-right-panel-handle:hover,
+.app-right-panel-handle.is-dragging {
+  background: var(--border);
+}
 
 .ide-agent {
-  grid-area: agent;
+  display: flex; flex-direction: column; overflow: hidden; flex: 1;
+}
+
+.ide-agent-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 12px; height: 36px; flex-shrink: 0;
+  font-size: 12px; color: var(--foreground);
+  border-bottom: 1px solid var(--border);
+}
+
+.ide-agent-main {
+  flex: 1; display: flex; overflow: hidden; min-height: 0;
+}
+
+.ide-agent-chat {
+  flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0;
+}
+
+.ide-agent-body { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+
+.ide-agent-input-row { display: flex; padding: 10px 12px; flex-shrink: 0; }
+
+.ide-agent-sessions {
+  width: 220px; flex-shrink: 0;
   border-left: 1px solid var(--border);
   display: flex; flex-direction: column; overflow: hidden;
 }
-.ide-agent-header {
+
+.ide-agent-sessions-header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 0 12px; height: 35px; flex-shrink: 0;
-  font-size: 11px; font-weight: 600; color: var(--muted-foreground);
-  text-transform: uppercase; letter-spacing: 0.05em;
-  border-bottom: 1px solid var(--border);
-}
-.ide-agent-body { flex: 1; overflow-y: auto; padding: 12px; }
-.ide-agent-input-row { display: flex; gap: 4px; padding: 8px 12px; border-top: 1px solid var(--border); flex-shrink: 0; }
-.ide-agent-tags { display: flex; gap: 4px; flex-wrap: wrap; padding: 4px 12px 8px; flex-shrink: 0; }
-
-.ide-statusbar {
-  grid-area: statusbar;
-  background: var(--primary);
-  display: flex; align-items: center; padding: 0 10px;
-  font-size: 11px; color: var(--primary-foreground); gap: 12px;
-}
-
-/* ===== 全局 Agent 面板 ===== */
-
-.app-agent-panel {
-  position: fixed;
-  top: 0; right: 0;
-  bottom: 24px;
-  width: 340px;
-  background: var(--card);
-  border-left: 1px solid var(--border);
-  display: flex; flex-direction: column;
-  z-index: 35;
-  animation: agent-in 0.25s ease-out;
-}
-@keyframes agent-in {
-  from { opacity: 0; transform: translateX(20px); }
-  to { opacity: 1; transform: translateX(0); }
-}
-
-.app-agent-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 0 16px; height: 42px; flex-shrink: 0;
+  padding: 0 8px; height: 30px; flex-shrink: 0;
   border-bottom: 1px solid var(--border);
 }
 
-.app-agent-body {
-  flex: 1; overflow-y: auto;
-  padding: 16px;
-  display: flex; flex-direction: column; gap: 12px;
+.ide-agent-sessions-list {
+  flex: 1; overflow-y: auto; padding: 4px;
 }
 
-.app-agent-msg {
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  background: var(--background);
+.agent-session-item {
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.1s;
 }
-.app-agent-msg.is-user {
-  background: var(--muted);
-  border-color: transparent;
-}
+.agent-session-item:hover { background: var(--muted); }
 
-.app-agent-input-row {
-  display: flex; gap: 4px;
-  padding: 8px 12px;
-  border-top: 1px solid var(--border);
-  flex-shrink: 0;
+.agent-icon-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 4px;
+  color: var(--muted-foreground);
+  background: none; border: none; cursor: pointer;
+  transition: color 0.1s, background 0.1s;
 }
+.agent-icon-btn:hover { color: var(--foreground); background: var(--sidebar-hover); }
 
 /* ===== 全局状态栏 ===== */
 

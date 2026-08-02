@@ -28,9 +28,27 @@ export async function createLocation(body: Partial<Location>): Promise<Location>
   return data;
 }
 
+export async function updateLocation(id: number, body: Partial<Location>): Promise<Location> {
+  const { data } = await apiClient.put<Location>(`/world/locations/${id}`, body);
+  return data;
+}
+
+export async function deleteLocation(id: number, bookId: number): Promise<void> {
+  await apiClient.delete(`/world/locations/${id}`, { params: { book_id: bookId } });
+}
+
 export async function createTimelineEvent(body: Partial<TimelineEvent>): Promise<TimelineEvent> {
   const { data } = await apiClient.post<TimelineEvent>('/world/timeline-events', body);
   return data;
+}
+
+export async function updateTimelineEvent(id: number, body: Partial<TimelineEvent>): Promise<TimelineEvent> {
+  const { data } = await apiClient.put<TimelineEvent>(`/world/timeline-events/${id}`, body);
+  return data;
+}
+
+export async function deleteTimelineEvent(id: number, bookId: number): Promise<void> {
+  await apiClient.delete(`/world/timeline-events/${id}`, { params: { book_id: bookId } });
 }
 
 export async function createForeshadowing(body: Partial<Foreshadowing>): Promise<Foreshadowing> {
@@ -38,7 +56,25 @@ export async function createForeshadowing(body: Partial<Foreshadowing>): Promise
   return data;
 }
 
+export async function updateForeshadowing(id: number, body: Partial<Foreshadowing>): Promise<Foreshadowing> {
+  const { data } = await apiClient.put<Foreshadowing>(`/world/foreshadowings/${id}`, body);
+  return data;
+}
+
+export async function deleteForeshadowing(id: number, bookId: number): Promise<void> {
+  await apiClient.delete(`/world/foreshadowings/${id}`, { params: { book_id: bookId } });
+}
+
 export async function createPlotThread(body: Partial<PlotThread>): Promise<PlotThread> {
   const { data } = await apiClient.post<PlotThread>('/world/plot-threads', body);
   return data;
+}
+
+export async function updatePlotThread(id: number, body: Partial<PlotThread>): Promise<PlotThread> {
+  const { data } = await apiClient.put<PlotThread>(`/world/plot-threads/${id}`, body);
+  return data;
+}
+
+export async function deletePlotThread(id: number, bookId: number): Promise<void> {
+  await apiClient.delete(`/world/plot-threads/${id}`, { params: { book_id: bookId } });
 }

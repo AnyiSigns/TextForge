@@ -124,7 +124,7 @@ export const useAuthStore = create<AuthState>()(
         const getDb = (): Promise<IDBDatabase> => {
           if (!dbPromise) {
             dbPromise = new Promise((resolve, reject) => {
-              const req = indexedDB.open('text-forge-auth', 1);
+              const req = indexedDB.open('text-forge-auth', 99);
               req.onupgradeneeded = () => {
                 if (!req.result.objectStoreNames.contains('keyval')) {
                   req.result.createObjectStore('keyval');
@@ -183,6 +183,7 @@ export const useAuthStore = create<AuthState>()(
       partialize: (state) => ({
         user: state.user,
         accessToken: state.accessToken,
+        refreshToken: state.refreshToken,
       }),
       onRehydrateStorage: () => (state, error) => {
         if (error) {

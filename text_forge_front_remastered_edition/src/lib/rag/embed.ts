@@ -11,6 +11,7 @@
 // 注意：transformers.js 在浏览器顶层初始化会访问 Node 环境，必须动态 import，
 // 且只在浏览器端真正调用时才加载，避免污染页面 hydration。
 import type { FeatureExtractionPipeline } from '@huggingface/transformers';
+import { MODEL_PROXY_BASE } from '@/shared/api/client';
 import { getItem, setItem } from '@/lib/storage/indexedDB';
 
 // 模型档位：维度越高语义越准，但下载体积/首次耗时越大。
@@ -31,8 +32,9 @@ export const EMBED_TIERS: EmbedModelTier[] = [
 
 const DEFAULT_TIER_ID = 'base';
 
-// 浏览器端权重经同源代理拉取（proxy.ts 转发到镜像源），无需在客户端写死镜像域名。
-const MODEL_BASE_URL = '/hf/';
+// 浏览器端权重经后端代理拉取，避免浏览器直连 HuggingFace 被墙或触发 CORS。
+// 后端统一走 huggingface.co / hf-mirror.com 取文件，前端无需感知镜像。
+const MODEL_BASE_URL = MODEL_PROXY_BASE.replace(/\/$/, '');
 
 let currentTier: EmbedModelTier = EMBED_TIERS.find((t) => t.id === DEFAULT_TIER_ID)!;
 let extractor: FeatureExtractionPipeline | null = null;
@@ -45,10 +47,11 @@ export function getEmbedDim(): number {
 export function setEmbedTier(id: string) {
   const t = EMBED_TIERS.find((x) => x.id === id);
   if (!t || t.id === currentTier.id) return;
-  // 切换档位：旧模型/索引失效，清空并交由调用方重建索引
   currentTier = t;
   extractor = null;
   loading = null;
+  setItem(CURRENT_TIER_KEY, id).catch(() => {});
+  emitTier();
 }
 
 // 下载进度回调：真实字节累计。多文件依次下载，分母优先用 transformers 上报的
@@ -63,9 +66,25 @@ export interface EmbedDownloadProgress {
 // 这里额外把「曾成功下载过的档位 id」集合持久化到 IndexedDB（与 modelStore 同库），
 // 比 localStorage 更稳：刷新、重开浏览器、清 cookie 都不丢。
 const DOWNLOADED_KEY = 'tf_embed_downloaded';
-let memoryDownloaded: string[] | null = null; // 同步读取用的内存缓存
+const CURRENT_TIER_KEY = 'tf_embed_current_tier';
+let memoryDownloaded: string[] | null = null;
 
-// 确保已下载集合已从 IndexedDB 载入内存（幂等；SSR 下跳过）
+type TierListener = () => void;
+const tierListeners = new Set<TierListener>();
+
+export function subscribeTier(fn: TierListener): () => void {
+  tierListeners.add(fn);
+  return () => { tierListeners.delete(fn); };
+}
+
+function emitTier() {
+  tierListeners.forEach((fn) => fn());
+}
+
+export function getCurrentTier(): string {
+  return currentTier.id;
+}
+
 export async function initDownloadedTiers(): Promise<void> {
   if (typeof window === 'undefined') return;
   if (memoryDownloaded) return;
@@ -76,6 +95,19 @@ export async function initDownloadedTiers(): Promise<void> {
     memoryDownloaded = [];
   }
   snapshotCache = [...(memoryDownloaded ?? [])];
+
+  try {
+    const tierId = await getItem<string>(CURRENT_TIER_KEY);
+    if (tierId) {
+      const t = EMBED_TIERS.find((x) => x.id === tierId);
+      if (t) {
+        currentTier = t;
+        emitTier();
+      }
+    }
+  } catch {
+    // ignore
+  }
 }
 
 // 稳定快照：useSyncExternalStore 要求 getSnapshot 在未变更时返回同一引用，
@@ -134,18 +166,15 @@ async function buildExtractor(onProgress?: (p: EmbedDownloadProgress) => void, c
   const mod = await import('@huggingface/transformers');
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { pipeline, env } = mod as any;
-  // 浏览器端：权重走同源 /hf/ 代理，规避镜像站 CORS。
+  // 浏览器端：权重走后端代理，规避浏览器直连 HuggingFace 被墙 / CORS。
   if (typeof window !== 'undefined') {
     env.allowLocalModels = false;
     env.remoteHost = MODEL_BASE_URL;
-    // onnxruntime-web 的 wasm 默认从外部 CDN（jsdelivr/unpkg）拉取，本机环境不可达会卡死。
-    // 改为同源 /ort-wasm/（已把 wasm 文件放到 public/ort-wasm/）规避外网依赖。
     if (env.backends?.onnx?.wasm) {
       env.backends.onnx.wasm.wasmPaths = '/ort-wasm/';
     }
   }
-  // 字节聚合进度：每个文件单独上报 loaded/total，大文件（onnx）不报中间 loaded，
-  // 仅 'done' 时给终值，故 done 事件把该文件 loaded 补满到其 total。
+
   const estTotal = currentTier.sizeMB * 1024 * 1024;
   const fileMap: Record<string, { loaded: number; total: number }> = {};
   const report = (onProgress: (p: EmbedDownloadProgress) => void) => {
@@ -158,6 +187,7 @@ async function buildExtractor(onProgress?: (p: EmbedDownloadProgress) => void, c
     const denom = total > 0 ? total : estTotal;
     onProgress({ loaded, total: denom });
   };
+
   const pipe = await pipeline('feature-extraction', currentTier.model, {
     progress_callback: onProgress
       ? (e: { status: string; progress?: number; loaded?: number; total?: number; file?: string }) => {
@@ -178,7 +208,6 @@ async function buildExtractor(onProgress?: (p: EmbedDownloadProgress) => void, c
         }
       : undefined,
   });
-  // 下载完成：回调满值，UI 据此切到「已就绪」
   if (onProgress) onProgress({ loaded: estTotal, total: estTotal });
   return pipe as FeatureExtractionPipeline;
 }
@@ -234,11 +263,12 @@ export function switchEmbedTier(id: string) {
   const t = EMBED_TIERS.find((x) => x.id === id);
   if (!t) return;
   if (extractor && currentTier.id !== id) {
-    // 切换档位：旧 extractor 失效，清空交由下次检索/预热重建
     extractor = null;
     loading = null;
   }
   currentTier = t;
+  setItem(CURRENT_TIER_KEY, id).catch(() => {});
+  emitTier();
 }
 
 // 删除某个档位：清浏览器 Cache Storage 中该模型权重 + 从已下载集合移除。
@@ -246,7 +276,6 @@ export function switchEmbedTier(id: string) {
 export async function deleteEmbedModel(id: string): Promise<void> {
   const t = EMBED_TIERS.find((x) => x.id === id);
   if (!t) return;
-  const prefix = `/hf/${t.model}/`;
   if (typeof window !== 'undefined' && 'caches' in window) {
     try {
       const cache = await caches.open('transformers-cache');
@@ -255,7 +284,7 @@ export async function deleteEmbedModel(id: string): Promise<void> {
         keys
           .filter((req) => {
             const u = req.url;
-            return u.includes(prefix) || u.endsWith(`/hf/${t.model}`);
+            return u.includes(t.model);
           })
           .map((req) => cache.delete(req))
       );

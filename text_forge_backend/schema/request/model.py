@@ -16,6 +16,13 @@ class SearchConfigRequest(BaseModel):
     api_key: str | None = None
 
 
+class TestConnectionRequest(BaseModel):
+    adapter: str
+    base_url: str
+    api_key: str
+    model_id: str
+
+
 class ModelRequest(BaseModel):
     main_config: BaseModelBasicRequest | None = None
     audit_config: BaseModelBasicRequest | None = None
