@@ -8,10 +8,10 @@ from domains.auth.router import router as auth_router
 from domains.auth.user_router import router as user_router
 from domains.book.chapter_content_router import router as chapter_content_router
 from domains.book.chapter_router import router as chapter_router
+from domains.book.chapter_node_router import router as chapter_node_router
 from domains.book.character_router import router as character_router
 from domains.book.creative_settings_router import router as creative_settings_router
 from domains.book.export_router import router as export_router
-from domains.book.outline_router import router as outline_router
 from domains.book.router import router as book_router
 from domains.book.volume_router import router as volume_router
 from domains.cards.router import router as cards_router
@@ -24,6 +24,7 @@ from domains.system.health_router import router as health_router
 from domains.system.sync_router import router as sync_router
 from domains.workflow.router import router as workflow_router
 from domains.workflow.seed import seed_builtin_workflows
+from domains.wizard.router import router as wizard_router
 from domains.world.router import router as world_router
 from domains.writing_session.router import router as writing_session_router
 from fastapi import FastAPI
@@ -96,9 +97,9 @@ app.include_router(user_router, prefix="/api")
 app.include_router(book_router, prefix="/api")
 app.include_router(volume_router, prefix="/api")
 app.include_router(chapter_router, prefix="/api")
+app.include_router(chapter_node_router, prefix="/api")
 app.include_router(chapter_content_router, prefix="/api")
 app.include_router(character_router, prefix="/api")
-app.include_router(outline_router, prefix="/api")
 app.include_router(creative_settings_router, prefix="/api")
 app.include_router(export_router, prefix="/api")
 app.include_router(agent_router, prefix="/api")
@@ -112,3 +113,4 @@ app.include_router(sync_router, prefix="/api")
 app.include_router(lock_router, prefix="/api")
 app.include_router(cards_router, prefix="/api")
 app.include_router(sim_rooms_router, prefix="/api")
+app.include_router(wizard_router, prefix="/api")

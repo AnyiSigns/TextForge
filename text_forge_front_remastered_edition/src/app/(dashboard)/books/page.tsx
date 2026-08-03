@@ -3,10 +3,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { cn } from '@/shared/lib/cn';
 import Link from 'next/link';
-import { BookOpen, Plus, Search, Pin, PinOff, Trash2, ChevronRight, Pencil } from 'lucide-react';
+import { BookOpen, Plus, Search, Pin, PinOff, Trash2, ChevronRight, Pencil, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
 import * as booksApi from '@/shared/api/books';
 import type { Book } from '@/shared/api/types';
+import { hasProgress } from '@/app/(dashboard)/books/[id]/wizard/store';
 
 export default function BooksListPage() {
   const [books, setBooks] = useState<Book[]>([]);
@@ -210,6 +211,16 @@ export default function BooksListPage() {
                     ) : null}
                     <ChevronRight size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" />
                   </div>
+                </Link>
+                <Link
+                  href={`/books/${book.id}?wizard=flow`}
+                  onClick={() => {
+                    try { sessionStorage.setItem('wizard_auto_start', String(book.id)); } catch {}
+                  }}
+                  className={cn('flex items-center gap-1 h-7 px-2.5 rounded-md text-[11px] font-medium bg-secondary/80 text-foreground/70 hover:bg-foreground hover:text-background transition-colors cursor-pointer shrink-0 no-underline', isHovered ? 'opacity-100' : 'opacity-0')}
+                >
+                  <Wand2 size={12} />
+                  {hasProgress(book.id) ? '继续流程' : '流程模式'}
                 </Link>
                 <button
                   onClick={() => openEdit(book)}

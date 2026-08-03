@@ -24,9 +24,22 @@ export interface Chapter {
   id: number;
   volumeId: number;
   title: string;
-  summary?: string;
+  summary?: string | null;
   sortOrder: number;
   characterIds: number[];
+  locked: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChapterNode {
+  id: number;
+  chapterId: number;
+  title: string;
+  content?: string | null;
+  sortOrder: number;
+  characterIds: number[];
+  locked: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -43,21 +56,6 @@ export interface Character {
   relationshipChain?: Record<string, unknown>[];
   locked: boolean;
   customFields: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface OutlineNode {
-  id: number;
-  bookId: number;
-  parentId?: number;
-  targetVolumeId?: number;
-  targetChapterId?: number;
-  nodeType: string;
-  title: string;
-  content?: string;
-  sortOrder: number;
-  children?: OutlineNode[];
   createdAt: string;
   updatedAt: string;
 }
@@ -167,10 +165,19 @@ export interface CharacterFrequency {
   count: number;
 }
 
+export interface ChapterProgressDetail {
+  chapter_id: number;
+  title: string;
+  has_summary: boolean;
+  session_count: number;
+  total_words: number;
+}
+
 export interface PlotProgress {
-  chapterId?: number;
-  chapterTitle?: string;
-  progress: number;
+  total_chapters: number;
+  chapters_with_content: number;
+  completion_rate: number;
+  chapter_details: ChapterProgressDetail[];
 }
 
 export interface AgentConversation {
@@ -230,7 +237,7 @@ export interface LockResult {
 }
 
 export interface SSEEvent {
-  type: 'token' | 'agent_think' | 'tool_start' | 'tool_end' | 'progress' |
+  type: 'token' | 'think_start' | 'agent_think_end' | 'tool_start' | 'tool_end' | 'progress' |
         'node_start' | 'node_stream' | 'node_end' |
         'propose_cards' | 'review_card' | 'suggestions' | 'end' | 'error';
   token?: string;
@@ -243,6 +250,9 @@ export interface SSEEvent {
   cards?: unknown[];
   card_types?: string[];
   reason?: string;
+  content?: string;
+  elapsed?: number;
+  user_id?: number;
 }
 
 export interface BookContextConfig {

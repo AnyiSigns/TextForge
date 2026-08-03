@@ -1,11 +1,17 @@
 import { create } from 'zustand';
-import type { Book, Volume, Chapter, Character, OutlineNode, Location, TimelineEvent, Foreshadowing, PlotThread, CreativeSetting, WritingStats, CharacterFrequency, PlotProgress } from '@/shared/api/types';
+import type { Book, Volume, Chapter, Character, Location, TimelineEvent, Foreshadowing, PlotThread, CreativeSetting, WritingStats, CharacterFrequency, PlotProgress } from '@/shared/api/types';
 import * as booksApi from '@/shared/api/books';
 import * as charactersApi from '@/shared/api/characters';
 import * as worldApi from '@/shared/api/world';
 import * as writingSessionsApi from '@/shared/api/writingSessions';
 
 export type CreativePhase = 'overview' | 'worldbuilding' | 'outlining' | 'drafting' | 'revising';
+
+export type AgentStatus =
+  | { kind: 'idle' }
+  | { kind: 'thinking' }
+  | { kind: 'working'; label: string }
+  | { kind: 'error'; message: string };
 
 export type PanelId = 'outline' | 'characters' | 'world';
 export type WorldSubTab = 'locations' | 'events' | 'foreshadowings' | 'plot-threads';
@@ -17,7 +23,6 @@ interface BookDetailState {
   volumes: Volume[];
   chapters: (Volume & { chapters: Chapter[] })[];
   characters: Character[];
-  outlineNodes: OutlineNode[];
   locations: Location[];
   timelineEvents: TimelineEvent[];
   foreshadowings: Foreshadowing[];
@@ -26,7 +31,7 @@ interface BookDetailState {
   writingStats: WritingStats | null;
   writingTrend: { date: string; words: number }[];
   characterFrequency: CharacterFrequency[];
-  plotProgress: PlotProgress[];
+  plotProgress: PlotProgress | null;
 
   activePanel: PanelId;
   activeTab: TabId;
@@ -37,6 +42,7 @@ interface BookDetailState {
 
   agentMessages: { role: string; content: string; type?: string; token?: string }[];
   agentStreaming: boolean;
+  agentStatus: AgentStatus;
   agentThreadId: string | null;
   agentOpen: boolean;
   cardDrawOpen: boolean;
@@ -44,6 +50,7 @@ interface BookDetailState {
   selectedChapterId: number | null;
   pendingReview: Record<string, unknown> | null;
   pendingCards: unknown[] | null;
+  wizardMode: 'flow' | 'custom' | null;
 
   loading: boolean;
   error: string | null;
@@ -71,8 +78,10 @@ interface BookDetailState {
   addAgentMessage: (msg: { role: string; content: string; type?: string; token?: string }) => void;
   updateAgentStreamToken: (token: string) => void;
   setAgentStreaming: (v: boolean) => void;
+  setAgentStatus: (status: AgentStatus) => void;
   setPendingReview: (review: Record<string, unknown> | null) => void;
   setPendingCards: (cards: unknown[] | null) => void;
+  setWizardMode: (mode: 'flow' | 'custom' | null) => void;
 }
 
 export const useBookDetailStore = create<BookDetailState>((set, get) => ({
@@ -81,7 +90,6 @@ export const useBookDetailStore = create<BookDetailState>((set, get) => ({
   volumes: [],
   chapters: [],
   characters: [],
-  outlineNodes: [],
   locations: [],
   timelineEvents: [],
   foreshadowings: [],
@@ -90,7 +98,7 @@ export const useBookDetailStore = create<BookDetailState>((set, get) => ({
   writingStats: null,
   writingTrend: [],
   characterFrequency: [],
-  plotProgress: [],
+  plotProgress: null,
 
   activePanel: 'outline',
   activeTab: 'overview',
@@ -100,6 +108,7 @@ export const useBookDetailStore = create<BookDetailState>((set, get) => ({
 
   agentMessages: [],
   agentStreaming: false,
+  agentStatus: { kind: 'idle' },
   agentThreadId: null,
   agentOpen: false,
   cardDrawOpen: false,
@@ -107,6 +116,7 @@ export const useBookDetailStore = create<BookDetailState>((set, get) => ({
   selectedChapterId: null,
   pendingReview: null,
   pendingCards: null,
+  wizardMode: null,
 
   loading: false,
   error: null,
@@ -120,8 +130,8 @@ export const useBookDetailStore = create<BookDetailState>((set, get) => ({
     const s = get();
     const hasSetting = !!(s.creativeSetting && (s.creativeSetting.worldview || s.creativeSetting.tone));
     const hasCharacters = s.characters.length > 0;
-    const hasOutline = s.outlineNodes.length > 0;
-    const hasChapters = s.chapters.some((v) => v.chapters.length > 0);
+    const hasOutline = s.chapters.some((v) => v.chapters.length > 0);
+    const hasChapters = false;
 
     if (!hasSetting && !hasCharacters) {
       set({ creativePhase: 'worldbuilding' });
@@ -209,13 +219,15 @@ export const useBookDetailStore = create<BookDetailState>((set, get) => ({
   updateAgentStreamToken: (token) => {
     const msgs = get().agentMessages;
     const last = msgs[msgs.length - 1];
-    if (last && last.role === 'assistant' && last.content === '') {
+    if (last && last.role === 'assistant' && last.type === 'streaming') {
       set({ agentMessages: [...msgs.slice(0, -1), { ...last, content: token }] });
     } else {
-      set({ agentMessages: [...msgs, { role: 'assistant', content: token }] });
+      set({ agentMessages: [...msgs, { role: 'assistant', content: token, type: 'streaming' }] });
     }
   },
   setAgentStreaming: (v) => set({ agentStreaming: v }),
+  setAgentStatus: (status) => set({ agentStatus: status }),
   setPendingReview: (review) => set({ pendingReview: review }),
   setPendingCards: (cards) => set({ pendingCards: cards }),
+  setWizardMode: (mode) => set({ wizardMode: mode }),
 }));
