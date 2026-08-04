@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   BookOpen, Database, Settings,
-  Workflow, ChevronsLeft, LogOut, Bot,
+  Workflow, ChevronsLeft, LogOut,
 } from 'lucide-react';
 import { cn } from '@/shared/lib/cn';
 import { useAuthStore } from '@/shared/stores/authStore';
@@ -38,6 +38,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [panelFullscreen, setPanelFullscreen] = useState(false);
   const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
+  const [sidebarWidth, setSidebarWidth] = useState(224);
+  const sidebarResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const [sidebarDragging, setSidebarDragging] = useState(false);
+
   const handleResizeDown = (e: React.MouseEvent) => {
     e.preventDefault();
     resizeRef.current = { startX: e.clientX, startWidth: panelWidth };
@@ -55,6 +59,37 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     resizeRef.current = null;
     document.removeEventListener('mousemove', handleResizeMove);
     document.removeEventListener('mouseup', handleResizeUp);
+  };
+
+  const handleSidebarResizeDown = (e: React.MouseEvent) => {
+    if (collapsed) return;
+    e.preventDefault();
+    setSidebarDragging(true);
+    sidebarResizeRef.current = { startX: e.clientX, startWidth: sidebarWidth };
+    document.addEventListener('mousemove', handleSidebarResizeMove);
+    document.addEventListener('mouseup', handleSidebarResizeUp);
+  };
+
+  const handleSidebarResizeMove = (e: MouseEvent) => {
+    if (!sidebarResizeRef.current) return;
+    const newWidth = Math.max(56, Math.min(400, sidebarResizeRef.current.startWidth + (e.clientX - sidebarResizeRef.current.startX)));
+    setSidebarWidth(newWidth);
+  };
+
+  const handleSidebarResizeUp = () => {
+    sidebarResizeRef.current = null;
+    setSidebarDragging(false);
+    document.removeEventListener('mousemove', handleSidebarResizeMove);
+    document.removeEventListener('mouseup', handleSidebarResizeUp);
+    setSidebarWidth((current) => {
+      if (current < 120) {
+        setCollapsed(true);
+        return 56;
+      } else {
+        setCollapsed(false);
+        return current;
+      }
+    });
   };
 
   useEffect(() => {
@@ -96,7 +131,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   };
 
   const toggleSidebar = () => {
-    setCollapsed(!collapsed);
+    if (collapsed) {
+      setSidebarWidth(224);
+      setCollapsed(false);
+    } else {
+      setSidebarWidth(56);
+      setCollapsed(true);
+    }
   };
 
 
@@ -105,7 +146,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div className="flex flex-1 min-h-0">
         {!panelFullscreen && (
           <>
-            <aside className={cn('app-sidebar', collapsed && 'is-collapsed')}>
+            <aside
+              className={cn('app-sidebar', collapsed && 'is-collapsed')}
+              style={{ width: collapsed ? 56 : sidebarWidth }}
+            >
         <div className="app-sidebar-header">
           <span className="app-sidebar-brand">Text Forge</span>
           <button
@@ -167,7 +211,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </aside>
 
-      <main className="flex-1 overflow-hidden">{children}</main>
+            <div
+              className={cn(
+                'w-[4px] h-full cursor-ew-resize transition-colors hover:bg-foreground/[0.06] flex-shrink-0',
+                sidebarDragging && 'bg-foreground/[0.08]',
+                collapsed && 'pointer-events-none',
+              )}
+              onMouseDown={handleSidebarResizeDown}
+            />
+
+      <main className="flex-1 overflow-hidden"
+        style={{ pointerEvents: sidebarDragging ? 'none' : 'auto' }}
+      >{children}</main>
           </>
         )}
 

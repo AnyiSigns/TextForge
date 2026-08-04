@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { Plus, X } from 'lucide-react';
 import { useEntityStore } from '@/features/map/stores/entityStore';
 
 interface CharacterEditorProps {
@@ -24,6 +25,12 @@ export function CharacterEditor({ characterId, isNew, onClose }: CharacterEditor
   const [status, setStatus] = useState('');
   const [baseLocationId, setBaseLocationId] = useState<number>(0);
   const [spawnLocationId, setSpawnLocationId] = useState<number>(0);
+  const [avatarUrl, setAvatarUrl] = useState('');
+  const [aliases, setAliases] = useState<string[]>([]);
+  const [aliasInput, setAliasInput] = useState('');
+  const [relationshipChain, setRelationshipChain] = useState<Array<{ targetId: number; type: string; description: string }>>([]);
+  const [customFields, setCustomFields] = useState<Record<string, unknown>>({});
+  const [locked, setLocked] = useState(false);
 
   useEffect(() => {
     if (isNew) return;
@@ -34,6 +41,11 @@ export function CharacterEditor({ characterId, isNew, onClose }: CharacterEditor
     setStatus(character.status);
     setBaseLocationId(character.baseLocationId ?? 0);
     setSpawnLocationId(character.spawnLocationId ?? 0);
+    setAvatarUrl(character.avatarUrl ?? '');
+    setAliases(character.aliases || []);
+    setRelationshipChain(character.relationshipChain || []);
+    setCustomFields(character.customFields || {});
+    setLocked(character.locked || false);
   }, [character, isNew]);
 
   const handleSave = () => {
@@ -43,17 +55,17 @@ export function CharacterEditor({ characterId, isNew, onClose }: CharacterEditor
         id: nextId,
         bookId,
         name,
-        aliases: [],
+        aliases: aliases,
         description,
         roleType,
         status: status || '活跃',
-        relationshipChain: [],
-        locked: false,
-        avatarUrl: null,
+        relationshipChain: relationshipChain,
+        locked,
+        avatarUrl: avatarUrl || null,
         role_type: roleType,
         spawnLocationId: spawnLocationId || null,
         baseLocationId: baseLocationId || null,
-        customFields: {},
+        customFields,
         userId: 1,
       });
     } else if (characterId !== null) {
@@ -62,6 +74,11 @@ export function CharacterEditor({ characterId, isNew, onClose }: CharacterEditor
         roleType,
         description,
         status,
+        avatarUrl: avatarUrl || null,
+        aliases,
+        relationshipChain,
+        customFields,
+        locked,
       });
     }
     onClose();
@@ -107,7 +124,7 @@ export function CharacterEditor({ characterId, isNew, onClose }: CharacterEditor
       {isNew ? (
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
-            <label className="text-[11px] font-medium text-muted-foreground">出场地点 ID</label>
+            <label className="text-[11px] font-medium text-muted-foreground">首次出场地点 ID</label>
             <input
               type="number"
               value={spawnLocationId || ''}
@@ -116,7 +133,7 @@ export function CharacterEditor({ characterId, isNew, onClose }: CharacterEditor
             />
           </div>
           <div className="space-y-1.5">
-            <label className="text-[11px] font-medium text-muted-foreground">常驻地 ID</label>
+            <label className="text-[11px] font-medium text-muted-foreground">当前所在地点 ID</label>
             <input
               type="number"
               value={baseLocationId || ''}
@@ -128,13 +145,13 @@ export function CharacterEditor({ characterId, isNew, onClose }: CharacterEditor
       ) : (
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
-            <label className="text-[11px] font-medium text-muted-foreground">出场地点</label>
+            <label className="text-[11px] font-medium text-muted-foreground">首次出场地点</label>
             <div className="text-sm text-muted-foreground/70 pt-2">
               {spawnLocation?.name ?? '未设置'}
             </div>
           </div>
           <div className="space-y-1.5">
-            <label className="text-[11px] font-medium text-muted-foreground">常驻地</label>
+            <label className="text-[11px] font-medium text-muted-foreground">当前所在地点</label>
             <div className="text-sm text-muted-foreground/70 pt-2">
               {baseLocation?.name ?? '未设置'}
             </div>
@@ -151,6 +168,103 @@ export function CharacterEditor({ characterId, isNew, onClose }: CharacterEditor
           className="w-full px-3 py-2 rounded-md text-sm leading-relaxed bg-background border border-border focus:outline-none focus:border-foreground/20 resize-none"
           placeholder="输入角色描述..."
         />
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-[11px] font-medium text-muted-foreground">关系</label>
+        {relationshipChain.map((rel, i) => (
+          <div key={i} className="flex items-center gap-1.5">
+            <select
+              value={rel.targetId}
+              onChange={(e) => {
+                const next = [...relationshipChain];
+                next[i] = { ...next[i], targetId: parseInt(e.target.value) || 0 };
+                setRelationshipChain(next);
+              }}
+              className="flex-1 h-7 px-1.5 rounded text-[11px] bg-background border border-border focus:outline-none focus:border-foreground/20"
+            >
+              <option value={0}>选择目标角色</option>
+              {characters
+                .filter((c) => isNew || c.id !== characterId)
+                .map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+            </select>
+            <input
+              value={rel.type}
+              onChange={(e) => {
+                const next = [...relationshipChain];
+                next[i] = { ...next[i], type: e.target.value };
+                setRelationshipChain(next);
+              }}
+              placeholder="关系类型"
+              className="w-20 h-7 px-1.5 rounded text-[11px] bg-background border border-border focus:outline-none focus:border-foreground/20"
+            />
+            <input
+              value={rel.description}
+              onChange={(e) => {
+                const next = [...relationshipChain];
+                next[i] = { ...next[i], description: e.target.value };
+                setRelationshipChain(next);
+              }}
+              placeholder="描述"
+              className="flex-1 h-7 px-1.5 rounded text-[11px] bg-background border border-border focus:outline-none focus:border-foreground/20"
+            />
+            <button
+              onClick={() => setRelationshipChain(relationshipChain.filter((_, j) => j !== i))}
+              className="w-5 h-5 flex items-center justify-center rounded text-muted-foreground/40 hover:text-destructive bg-transparent border-none cursor-pointer"
+            >
+              <X size={10} />
+            </button>
+          </div>
+        ))}
+        <button
+          onClick={() => setRelationshipChain([...relationshipChain, { targetId: 0, type: '', description: '' }])}
+          className="flex items-center gap-1 text-[11px] text-muted-foreground/50 hover:text-foreground/60 bg-transparent border-none cursor-pointer transition-colors"
+        >
+          <Plus size={10} />
+          添加关系
+        </button>
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-[11px] font-medium text-muted-foreground">头像 URL</label>
+        <input
+          value={avatarUrl}
+          onChange={(e) => setAvatarUrl(e.target.value)}
+          className="w-full h-8 px-3 rounded-md text-sm bg-background border border-border focus:outline-none focus:border-foreground/20"
+          placeholder="https://..."
+        />
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-[11px] font-medium text-muted-foreground">别名</label>
+        <div className="flex flex-wrap gap-1 mb-1">
+          {aliases.map((a, i) => (
+            <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] bg-foreground/[0.06] text-foreground/70">
+              {a}
+              <button onClick={() => setAliases(aliases.filter((_, j) => j !== i))} className="w-3 h-3 flex items-center justify-center rounded bg-transparent border-none cursor-pointer text-muted-foreground/50 hover:text-destructive">
+                <X size={10} />
+              </button>
+            </span>
+          ))}
+        </div>
+        <div className="flex gap-1">
+          <input
+            value={aliasInput}
+            onChange={(e) => setAliasInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && aliasInput.trim()) { setAliases([...aliases, aliasInput.trim()]); setAliasInput(''); e.preventDefault(); } }}
+            className="flex-1 h-7 px-2 rounded-md text-xs bg-background border border-border focus:outline-none"
+            placeholder="输入后按 Enter 添加"
+          />
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <div className="flex items-center gap-2">
+          <label className="text-[11px] font-medium text-muted-foreground">锁定</label>
+          <input type="checkbox" checked={locked} onChange={(e) => setLocked(e.target.checked)} className="w-3 h-3" />
+        </div>
       </div>
 
       <div className="flex justify-end gap-2 pt-2">

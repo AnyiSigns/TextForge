@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { X, Plus, Trash2 } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { X, Plus, Trash2, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import * as agentMemoryApi from '@/shared/api/agentMemory';
+import * as agentApi from '@/shared/api/agent';
 import type { AgentMemory } from '@/shared/api/types';
 
 interface AgentMemoryManagerProps {
@@ -17,6 +18,9 @@ export function AgentMemoryManager({ bookId, onClose }: AgentMemoryManagerProps)
   const [newContent, setNewContent] = useState('');
   const [newType, setNewType] = useState('note');
   const [saving, setSaving] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[] | null>(null);
+  const [searching, setSearching] = useState(false);
 
   const loadMemories = async () => {
     setLoading(true);
@@ -28,6 +32,16 @@ export function AgentMemoryManager({ bookId, onClose }: AgentMemoryManagerProps)
   };
 
   useEffect(() => { void loadMemories(); }, [bookId]);
+
+  const handleSearch = useCallback(async () => {
+    if (!searchQuery.trim()) return;
+    setSearching(true);
+    try {
+      const results = await agentApi.searchAgentMemories(bookId, searchQuery.trim());
+      setSearchResults(results);
+    } catch { toast.error('搜索失败'); }
+    finally { setSearching(false); }
+  }, [bookId, searchQuery]);
 
   const handleCreate = async () => {
     if (!newContent.trim()) return;
@@ -65,7 +79,50 @@ export function AgentMemoryManager({ bookId, onClose }: AgentMemoryManagerProps)
             <X size={14} />
           </button>
         </div>
+
+        <div className="px-5 py-2 border-b border-border/30 flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search size={11} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground/30" />
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
+              placeholder="搜索记忆..."
+              className="w-full h-7 pl-6 pr-2 rounded-md text-[11px] bg-background border border-border focus:outline-none focus:border-foreground/20"
+            />
+          </div>
+          <button
+            onClick={handleSearch}
+            disabled={searching || !searchQuery.trim()}
+            className="h-7 px-3 rounded-md text-[11px] bg-foreground text-background border-none cursor-pointer disabled:opacity-50"
+          >
+            {searching ? '搜索中...' : '搜索'}
+          </button>
+        </div>
+
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {searchResults !== null && (
+            <div className="mb-3 p-3 rounded-lg bg-foreground/[0.03] border border-border/30">
+              <div className="text-[11px] font-medium text-muted-foreground mb-2">搜索结果 ({searchResults.length})</div>
+              {searchResults.length === 0 ? (
+                <div className="text-[11px] text-muted-foreground/50">无结果</div>
+              ) : (
+                searchResults.map((r: any, i: number) => (
+                  <div key={i} className="text-[11px] text-foreground/70 leading-relaxed mb-2 pb-2 border-b border-border/20 last:border-0 last:mb-0 last:pb-0">
+                    <span className="text-[10px] text-muted-foreground/50 mr-2">{r.memoryType || r.type}</span>
+                    {r.content}
+                  </div>
+                ))
+              )}
+              <button
+                onClick={() => setSearchResults(null)}
+                className="text-[10px] text-muted-foreground/50 hover:text-foreground/60 bg-transparent border-none cursor-pointer mt-2"
+              >
+                清除搜索结果
+              </button>
+            </div>
+          )}
+
           {loading && <div className="text-xs text-muted-foreground text-center py-4">加载中...</div>}
           {!loading && memories.length === 0 && (
             <div className="text-xs text-muted-foreground text-center py-4">暂无记忆</div>

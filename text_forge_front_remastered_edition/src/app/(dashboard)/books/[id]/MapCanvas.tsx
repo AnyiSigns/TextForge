@@ -12,7 +12,9 @@ import { RelationshipLines } from '@/features/map/components/RelationshipLines';
 import { ZoomControls } from '@/features/map/components/ZoomControls';
 import { LocationTooltip } from '@/features/map/components/LocationTooltip';
 import { CharacterTooltip } from '@/features/map/components/CharacterTooltip';
-import { CharacterSidebar } from '@/features/map/components/CharacterSidebar';
+import { BreadcrumbNav } from '@/features/map/components/BreadcrumbNav';
+import { CreativeSettingSidebar } from '@/features/map/components/CreativeSettingSidebar';
+import { Palette } from 'lucide-react';
 import type { MockLocation } from '@/mocks/data';
 
 export function MapCanvas() {
@@ -33,10 +35,13 @@ export function MapCanvas() {
   const selectedEventId = useTimelineStore((s) => s.selectedEventId);
 
   const [hoveredCharId, setHoveredCharId] = useState<number | null>(null);
+  const [creativeSettingOpen, setCreativeSettingOpen] = useState(false);
 
   const {
     d3Transform,
     visibleLocations,
+    worldLocations,
+    focusedLocationId,
     focusedLocation,
     depth,
     zoomTo,
@@ -153,9 +158,13 @@ export function MapCanvas() {
         visibleLocations={visibleLocations}
         d3Transform={d3Transform}
         hoveredLocId={hoveredLocId}
+        focusedLocation={focusedLocation}
+        worldLocations={worldLocations}
         width={dimensions.width}
         height={dimensions.height}
       />
+
+      <BreadcrumbNav focusedLocationId={focusedLocationId} />
 
       <div
         ref={containerRef}
@@ -252,7 +261,23 @@ export function MapCanvas() {
         locationName={focusedLocation?.name ?? '—'}
       />
 
-      <CharacterSidebar />
+      {!creativeSettingOpen && (
+        <button
+          onClick={() => setCreativeSettingOpen(true)}
+          className="absolute top-24 right-0 z-40 w-9 h-9 flex items-center justify-center bg-card/90 backdrop-blur-sm border border-border/50 rounded-l-xl shadow-sm cursor-pointer text-muted-foreground/60 hover:text-foreground transition-colors"
+          title="创作设定"
+        >
+          <Palette size={14} strokeWidth={1.5} />
+        </button>
+      )}
+      {creativeSettingOpen && (
+        <div className="absolute top-0 right-0 z-50 h-full">
+          <CreativeSettingSidebar
+            bookId={allLocations[0]?.bookId ?? 1}
+            onClose={() => setCreativeSettingOpen(false)}
+          />
+        </div>
+      )}
 
       {mismatchInfo && (
         <div

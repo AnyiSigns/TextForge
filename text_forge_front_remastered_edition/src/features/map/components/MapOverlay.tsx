@@ -115,6 +115,44 @@ export function MapOverlay({
         const sx = p.screenX;
         const sy = p.screenY;
 
+        if (p.tier === 'overflow') {
+          return (
+            <div
+              key={`char-overflow-${p.character.id}-${p.locationId}`}
+              className="absolute cursor-pointer group"
+              style={{
+                left: sx - 14,
+                top: sy - 6,
+                pointerEvents: 'auto',
+              }}
+              onMouseEnter={() => setHoveredCharId(p.character.id)}
+              onMouseLeave={() => setHoveredCharId(null)}
+            >
+              <div className="relative">
+                <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-semibold bg-card/70 text-foreground/50 border-2 border-dashed border-border/40 transition-all duration-200 hover:border-foreground/30 hover:scale-105">
+                  {initials}
+                </div>
+                {(p.overflowCount ?? 0) > 0 && (
+                  <div className="absolute -top-1.5 -right-2.5 min-w-[16px] h-[16px] rounded-full bg-foreground/70 text-background text-[8px] font-bold flex items-center justify-center px-1 shadow-sm">
+                    +{p.overflowCount}
+                  </div>
+                )}
+              </div>
+              {(p.overflowCount ?? 0) > 0 && (
+                <div className="absolute top-full mt-1 left-1/2 -translate-x-1/2 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="bg-card/95 backdrop-blur-sm border border-border/50 rounded-lg px-3 py-2 shadow-lg text-[11px] whitespace-nowrap">
+                    {p.clusterCharacters.map((c) => (
+                      <div key={c.id} className="text-foreground/70 leading-relaxed">
+                        {c.name}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        }
+
         if (p.tier === 1) {
           return (
             <div

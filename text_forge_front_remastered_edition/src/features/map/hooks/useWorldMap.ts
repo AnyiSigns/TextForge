@@ -15,16 +15,18 @@ export interface CharacterPlacement {
   screenY: number;
   worldX: number;
   worldY: number;
-  tier: 1 | 2 | 3;
+  tier: 1 | 2 | 'overflow';
   locationId: number | null;
   isRepresentative: boolean;
   clusterSize: number;
   clusterCharacters: MockCharacter[];
+  overflowCount?: number;
 }
 
 interface UseWorldMapReturn {
   d3Transform: { x: number; y: number; k: number };
   visibleLocations: WorldCoords[];
+  worldLocations: WorldCoords[];
   focusedLocationId: number | null;
   focusedLocation: WorldCoords | null;
   depth: number;
@@ -72,10 +74,10 @@ function findNearestVisibleAncestor(
 
 function worldSpaceSpread(
   charId: number,
-  focusedLocationId: number | null,
+  focusId: number | null,
   worldLocationsMap: Map<number, WorldCoords>,
 ): { wx: number; wy: number } {
-  const focus = focusedLocationId ? worldLocationsMap.get(focusedLocationId) : null;
+  const focus = focusId ? worldLocationsMap.get(focusId) : null;
   if (!focus) return { wx: 0, wy: 0 };
 
   const angle = (charId * 137.508) % (2 * Math.PI);
@@ -163,7 +165,7 @@ export function useWorldMap(
 
       const vpW = node.clientWidth || 800;
       const vpH = node.clientHeight || 600;
-      const scale = Math.max(0.15, Math.min(200, 350 / target.radius));
+      const scale = Math.max(0.15, vpW * 0.35 / target.radius);
       const tx = vpW / 2 - target.cx * scale;
       const ty = vpH / 2 - target.cy * scale;
 
@@ -190,6 +192,29 @@ export function useWorldMap(
   const characterPlacements = useMemo((): CharacterPlacement[] => {
     if (characters.length === 0) return [];
 
+    const visualFocusId = focusedLocation?.id ?? null;
+
+    const descendantIds = new Set<number>();
+    if (focusedLocation) {
+      const stack = [focusedLocation.id];
+      while (stack.length > 0) {
+        const lid = stack.pop()!;
+        for (const loc of worldLocations) {
+          if (loc.parentId === lid) {
+            descendantIds.add(loc.id);
+            stack.push(loc.id);
+          }
+        }
+      }
+    }
+
+    const extendedVisibleLocations = worldLocations.filter((c) => {
+      const sr = c.radius * k;
+      const isDescendant = descendantIds.has(c.id) || c.id === focusedLocation?.id;
+      const minSr = isDescendant ? 1 : 3;
+      return sr >= minSr && sr <= 600;
+    });
+
     const clusters = new Map<
       number,
       { ch: MockCharacter[]; loc: WorldCoords }
@@ -204,7 +229,7 @@ export function useWorldMap(
         ch.spawnLocationId;
 
       if (locId === null || locId === undefined) {
-        const spread = worldSpaceSpread(ch.id, focusedLocationId, worldLocationsMap);
+        const spread = worldSpaceSpread(ch.id, visualFocusId, worldLocationsMap);
         worldSpreads.set(ch.id, spread);
         tier1.push({
           character: ch,
@@ -223,15 +248,15 @@ export function useWorldMap(
 
       const nearestVisible = findNearestVisibleAncestor(
         locId,
-        visibleLocations,
+        extendedVisibleLocations,
         worldLocationsMap,
       );
 
       if (
         nearestVisible === null ||
-        (focusedLocationId !== null && nearestVisible.id === focusedLocationId)
+        nearestVisible.id === visualFocusId
       ) {
-        const spread = worldSpaceSpread(ch.id, focusedLocationId, worldLocationsMap);
+        const spread = worldSpaceSpread(ch.id, visualFocusId, worldLocationsMap);
         worldSpreads.set(ch.id, spread);
         tier1.push({
           character: ch,
@@ -256,7 +281,37 @@ export function useWorldMap(
       }
     }
 
-    const placements: CharacterPlacement[] = [...tier1];
+    const placements: CharacterPlacement[] = [];
+
+    if (tier1.length > 0) {
+      const visualFocus = visualFocusId ? worldLocationsMap.get(visualFocusId) : null;
+      if (tier1.length > 5 && visualFocus) {
+        const visibleChars = tier1.slice(0, 4);
+        for (const p of visibleChars) {
+          placements.push(p);
+        }
+        const repChar = tier1[4];
+        const offsetX = ((repChar.character.id * 7907) % 1000) / 1000 - 0.5;
+        const offsetY = ((repChar.character.id * 6353) % 1000) / 1000 - 0.5;
+        placements.push({
+          character: repChar.character,
+          screenX: 0,
+          screenY: 0,
+          worldX: visualFocus.cx + offsetX * visualFocus.radius * 0.1,
+          worldY: visualFocus.cy + offsetY * visualFocus.radius * 0.1,
+          tier: 'overflow',
+          locationId: visualFocus.id,
+          isRepresentative: true,
+          clusterSize: tier1.length - 4,
+          clusterCharacters: tier1.slice(4).map((p) => p.character),
+          overflowCount: tier1.length - 4,
+        });
+      } else {
+        for (const p of tier1) {
+          placements.push(p);
+        }
+      }
+    }
 
     for (const [, cluster] of clusters) {
       const { ch: chars, loc } = cluster;
@@ -299,6 +354,10 @@ export function useWorldMap(
         const screen = worldToScreen(p.worldX, p.worldY);
         p.screenX = screen.sx;
         p.screenY = screen.sy;
+      } else if (p.tier === 'overflow') {
+        const screen = worldToScreen(p.worldX, p.worldY);
+        p.screenX = screen.sx;
+        p.screenY = screen.sy;
       }
     }
 
@@ -307,9 +366,9 @@ export function useWorldMap(
     characters,
     sceneEvents,
     cursorTs,
-    visibleLocations,
+    worldLocations,
     worldLocationsMap,
-    focusedLocationId,
+    focusedLocation,
     worldToScreen,
     k,
   ]);
@@ -318,9 +377,14 @@ export function useWorldMap(
     const node = containerRef.current;
     if (!node) return;
 
+    const minRadius = worldLocations.length > 0
+      ? Math.min(...worldLocations.map((l) => l.radius), 1)
+      : 1;
+    const maxScale = Math.max(200, (node.clientWidth || 800) * 0.35 / minRadius);
+
     const zoom = d3
       .zoom<HTMLDivElement, unknown>()
-      .scaleExtent([0.15, 200])
+      .scaleExtent([0.15, maxScale])
       .wheelDelta((event) => -event.deltaY * 0.002)
       .on('zoom', (event) => {
         setD3Transform(event.transform);
@@ -333,14 +397,15 @@ export function useWorldMap(
       d3.select(node).on('.zoom', null);
       zoomRef.current = null;
     };
-  }, [containerRef]);
+  }, [containerRef, worldLocations]);
 
   useEffect(() => {
     if (userDriven && focusedLocationId !== null) {
+      const node = containerRef.current;
       zoomTo(focusedLocationId);
-      clearUserDriven();
+      setTimeout(() => clearUserDriven(), 700);
     }
-  }, [focusedLocationId, userDriven, zoomTo, clearUserDriven]);
+  }, [focusedLocationId, userDriven, zoomTo, clearUserDriven, containerRef]);
 
   useEffect(() => {
     return () => {
@@ -352,6 +417,7 @@ export function useWorldMap(
   return {
     d3Transform,
     visibleLocations,
+    worldLocations,
     focusedLocationId,
     focusedLocation,
     depth,

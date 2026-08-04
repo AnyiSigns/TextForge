@@ -2,11 +2,11 @@ import { create } from 'zustand';
 
 interface EditorState {
   isOpen: boolean;
-  entityType: 'scene' | 'location' | 'character' | null;
+  entityType: 'scene' | 'location' | 'character' | 'foreshadowing' | 'plot-thread' | 'chapter' | 'volume' | null;
   entityId: number | null;
   isNew: boolean;
 
-  open: (type: 'scene' | 'location' | 'character', entityId: number | null) => void;
+  open: (type: EditorState['entityType'], entityId: number | null) => void;
   close: () => void;
 }
 

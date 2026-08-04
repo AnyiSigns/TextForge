@@ -111,10 +111,16 @@ export async function resumeAgent(
 
 export async function submitReviewAction(
   threadId: string,
-  action: 'accept' | 'retry' | 'edit',
+  action: 'accept' | 'retry' | 'edit' | 'terminate',
   editedContent?: string,
+  chapterId?: number,
 ): Promise<void> {
-  await apiClient.post('/agent/review-action', { threadId, action, editedContent: editedContent || null });
+  await apiClient.post('/agent/review-action', { threadId, action, editedContent: editedContent || null, chapterId: chapterId ?? null });
+}
+
+
+export async function patchAgentState(threadId: string, values: Record<string, unknown>): Promise<void> {
+  await apiClient.patch(`/agent/state/${threadId}`, values);
 }
 
 export async function agentRespond(threadId: string, message: string): Promise<SSEEvent> {
@@ -123,13 +129,40 @@ export async function agentRespond(threadId: string, message: string): Promise<S
 }
 
 export async function fetchAgentConversations(): Promise<AgentConversation[]> {
-  const { data } = await apiClient.get<{ conversations: AgentConversation[] }>('/agent/conversations');
-  return data.conversations ?? [];
+  const { data } = await apiClient.get<any[]>('/agent/conversations');
+  return (data as any[]).map((c: any) => ({
+    id: c.id,
+    userId: c.user_id,
+    title: c.title,
+    threadId: c.thread_id,
+    updatedAt: c.update_at,
+  }));
 }
 
 export async function fetchAgentMessages(conversationId: number): Promise<AgentMessage[]> {
-  const { data } = await apiClient.get<{ messages: AgentMessage[] }>(`/agent/conversations/${conversationId}/messages`);
-  return data.messages ?? [];
+  const { data } = await apiClient.get<any[]>('/agent/conversations/' + conversationId + '/messages');
+  return (data as any[]).map((m: any) => ({
+    conversationId: m.conversation_id,
+    role: m.role,
+    content: m.content,
+    think: m.think,
+    createdAt: m.create_at,
+  }));
+}
+
+export async function deleteConversation(id: number): Promise<void> {
+  try {
+    await apiClient.delete(`/agent/conversations/${id}`);
+  } catch { /* endpoint may not exist yet */ }
+}
+
+export async function searchAgentMemories(bookId: number, query: string): Promise<any[]> {
+  try {
+    const { data } = await apiClient.get<any[]>(`/agent/memories/search?book_id=${bookId}&q=${encodeURIComponent(query)}`);
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
 }
 
 export async function compressAgentContext(threadId: string): Promise<{ summary: string; removed_count: number; remaining_count: number }> {

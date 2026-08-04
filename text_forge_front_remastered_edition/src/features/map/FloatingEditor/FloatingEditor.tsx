@@ -7,16 +7,24 @@ import { SceneEditor } from './SceneEditor';
 import { LocationEditor } from './LocationEditor';
 import { CharacterEditor } from './CharacterEditor';
 
-const PANEL_LABELS = {
+const PANEL_LABELS: Record<string, string> = {
   scene: '场景编辑',
   location: '地点编辑',
   character: '角色编辑',
+  foreshadowing: '伏笔编辑',
+  'plot-thread': '情节线编辑',
+  chapter: '章节编辑',
+  volume: '卷编辑',
 };
 
-const NEW_PANEL_LABELS = {
+const NEW_PANEL_LABELS: Record<string, string> = {
   scene: '新建场景',
   location: '新建地点',
   character: '新建角色',
+  foreshadowing: '新建伏笔',
+  'plot-thread': '新建情节线',
+  chapter: '新建章节',
+  volume: '新建卷',
 };
 
 export function FloatingEditor() {
@@ -55,6 +63,11 @@ export function FloatingEditor() {
         return <LocationEditor locationId={entityId} isNew={isNew} onClose={close} />;
       case 'character':
         return <CharacterEditor characterId={entityId} isNew={isNew} onClose={close} />;
+      case 'foreshadowing':
+      case 'plot-thread':
+      case 'chapter':
+      case 'volume':
+        return <SceneEditor eventId={entityId} isNew={isNew} onClose={close} />;
       default:
         return null;
     }
@@ -81,7 +94,7 @@ export function FloatingEditor() {
         <div className="flex items-center justify-between px-5 h-14 border-b border-border/40">
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-foreground/80">
-              {entityType ? (isNew ? NEW_PANEL_LABELS[entityType] : PANEL_LABELS[entityType]) : '编辑'}
+              {entityType ? (isNew ? (NEW_PANEL_LABELS[entityType] ?? entityType) : (PANEL_LABELS[entityType] ?? entityType)) : '编辑'}
             </span>
           </div>
           <button

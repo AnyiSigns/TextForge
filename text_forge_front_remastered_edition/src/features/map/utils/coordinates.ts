@@ -12,22 +12,87 @@ export interface WorldCoords {
   alternateOfId: number | null;
 }
 
-export function getWorldCoords(
-  locations: Array<{
-    id: number;
-    parentId: number | null;
-    name: string;
-    type: string;
-    description: string;
-    positionX: number | null;
-    positionY: number | null;
-    bookId: number;
-    alternateOfId: number | null;
-  }>,
-): WorldCoords[] {
+interface LocationInput {
+  id: number;
+  parentId: number | null;
+  name: string;
+  type: string;
+  description: string;
+  positionX: number | null;
+  positionY: number | null;
+  bookId: number;
+  alternateOfId: number | null;
+}
+
+const RADIUS_RATIO = 0.35;
+
+function clamp(val: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, val));
+}
+
+function iterativeCollisionSeparation(
+  entries: { child: LocationInput; cx: number; cy: number; radius: number }[],
+  parentCx: number,
+  parentCy: number,
+  parentRadius: number,
+): void {
+  const margin = parentRadius - (parentRadius * RADIUS_RATIO);
+  for (let iter = 0; iter < 50; iter++) {
+    let anyOverlap = false;
+    for (let i = 0; i < entries.length; i++) {
+      for (let j = i + 1; j < entries.length; j++) {
+        const a = entries[i];
+        const b = entries[j];
+        const dx = b.cx - a.cx;
+        const dy = b.cy - a.cy;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 1e-6) continue;
+        const overlap = a.radius + b.radius - dist;
+        if (overlap > 0) {
+          anyOverlap = true;
+          const push = overlap * 0.55;
+          const nx = dx / dist;
+          const ny = dy / dist;
+          entries[i].cx -= nx * push * 0.5;
+          entries[i].cy -= ny * push * 0.5;
+          entries[j].cx += nx * push * 0.5;
+          entries[j].cy += ny * push * 0.5;
+        }
+      }
+    }
+    for (const e of entries) {
+      const dx = e.cx - parentCx;
+      const dy = e.cy - parentCy;
+      const dist = Math.hypot(dx, dy);
+      if (dist > margin) {
+        const nx = dx / (dist || 1);
+        const ny = dy / (dist || 1);
+        e.cx = parentCx + nx * margin;
+        e.cy = parentCy + ny * margin;
+      }
+    }
+    if (!anyOverlap) break;
+  }
+}
+
+function radialEquidistantLayout(
+  entries: { child: LocationInput; cx: number; cy: number; radius: number }[],
+  parentCx: number,
+  parentCy: number,
+  parentRadius: number,
+): void {
+  const margin = (parentRadius - (parentRadius * RADIUS_RATIO)) * 0.65;
+  const count = entries.length;
+  for (let i = 0; i < count; i++) {
+    const angle = (i / count) * 2 * Math.PI;
+    entries[i].cx = parentCx + Math.cos(angle) * margin;
+    entries[i].cy = parentCy + Math.sin(angle) * margin;
+  }
+}
+
+export function getWorldCoords(locations: LocationInput[]): WorldCoords[] {
   if (locations.length === 0) return [];
 
-  const radiusRatio = 0.35;
   const visited = new Set<number>();
   const result: WorldCoords[] = [];
   const locationMap = new Map(locations.map((l) => [l.id, l]));
@@ -40,10 +105,10 @@ export function getWorldCoords(
   for (let i = 0; i < roots.length; i++) {
     const root = roots[i];
     if (root.id === mainRoot.id) {
-      buildNode(root, 0, 0, 500, 0, visited, result, locationMap, radiusRatio);
+      buildNode(root, 0, 0, 500, 0, visited, result, locationMap);
     } else {
       const offset = 2000 * i;
-      buildNode(root, offset, 0, 500, 0, visited, result, locationMap, radiusRatio);
+      buildNode(root, offset, 0, 500, 0, visited, result, locationMap);
     }
   }
 
@@ -51,35 +116,25 @@ export function getWorldCoords(
 }
 
 function buildNode(
-  loc: {
-    id: number;
-    parentId: number | null;
-    name: string;
-    type: string;
-    description: string;
-    positionX: number | null;
-    positionY: number | null;
-    bookId: number;
-    alternateOfId: number | null;
-  },
+  loc: LocationInput,
   parentCx: number,
   parentCy: number,
   parentRadius: number,
   depth: number,
   visited: Set<number>,
   accumulator: WorldCoords[],
-  locationMap: Map<number, typeof loc>,
-  radiusRatio: number,
+  locationMap: Map<number, LocationInput>,
 ): void {
   if (visited.has(loc.id)) return;
   visited.add(loc.id);
 
-  const posX = loc.positionX ?? 0.5;
-  const posY = loc.positionY ?? 0.5;
-  const radius = parentRadius * radiusRatio;
+  const posX = clamp(loc.positionX ?? 0.5, 0, 1);
+  const posY = clamp(loc.positionY ?? 0.5, 0, 1);
+  const radius = parentRadius * RADIUS_RATIO;
+  const margin = parentRadius - radius;
 
-  const cx = parentCx + (posX - 0.5) * 2 * parentRadius;
-  const cy = parentCy + (posY - 0.5) * 2 * parentRadius;
+  const cx = parentCx + (posX - 0.5) * 2 * margin;
+  const cy = parentCy + (posY - 0.5) * 2 * margin;
 
   accumulator.push({
     id: loc.id,
@@ -96,24 +151,34 @@ function buildNode(
   });
 
   const children = Array.from(locationMap.values()).filter((l) => l.parentId === loc.id);
-  for (const child of children) {
-    buildNode(child, cx, cy, radius, depth + 1, visited, accumulator, locationMap, radiusRatio);
+  if (children.length === 0) return;
+
+  const childRadius = radius * RADIUS_RATIO;
+  const childMargin = radius - childRadius;
+
+  const childEntries = children.map((child) => {
+    const cpx = clamp(child.positionX ?? 0.5, 0, 1);
+    const cpy = clamp(child.positionY ?? 0.5, 0, 1);
+    return {
+      child,
+      cx: cx + (cpx - 0.5) * 2 * childMargin,
+      cy: cy + (cpy - 0.5) * 2 * childMargin,
+      radius: childRadius,
+    };
+  });
+
+  if (childEntries.length <= 7) {
+    iterativeCollisionSeparation(childEntries, cx, cy, radius);
+  } else {
+    radialEquidistantLayout(childEntries, cx, cy, radius);
+  }
+
+  for (const entry of childEntries) {
+    buildNode(entry.child, entry.cx, entry.cy, entry.radius, depth + 1, visited, accumulator, locationMap);
   }
 }
 
-export function getWorldCoordsMap(
-  locations: Array<{
-    id: number;
-    parentId: number | null;
-    name: string;
-    type: string;
-    description: string;
-    positionX: number | null;
-    positionY: number | null;
-    bookId: number;
-    alternateOfId: number | null;
-  }>,
-): Map<number, WorldCoords> {
+export function getWorldCoordsMap(locations: LocationInput[]): Map<number, WorldCoords> {
   const coords = getWorldCoords(locations);
   return new Map(coords.map((c) => [c.id, c]));
 }

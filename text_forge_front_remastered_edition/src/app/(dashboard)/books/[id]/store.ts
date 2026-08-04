@@ -108,20 +108,24 @@ export const useBookDetailStore = create<BookDetailState>((set) => ({
 
   addAgentMessage: (msg) =>
     set((state) => ({
-      agentMessages: [
-        ...state.agentMessages,
-        ...(msg.type === 'streaming' ? [] : [msg]),
-      ],
+      agentMessages: [...state.agentMessages, msg],
     })),
 
   updateAgentStreamToken: (token) =>
     set((state) => {
       const messages = [...state.agentMessages];
-      const lastIdx = messages.length - 1;
-      if (lastIdx >= 0 && messages[lastIdx].type === 'streaming') {
-        messages[lastIdx] = { ...messages[lastIdx], content: token };
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].type === 'streaming') {
+          messages[i] = { ...messages[i], content: token };
+          return { agentMessages: messages };
+        }
       }
-      return { agentMessages: messages };
+      return {
+        agentMessages: [
+          ...messages,
+          { role: 'assistant', content: token, type: 'streaming' },
+        ],
+      };
     }),
 
   closeCardDraw: () => set({ cardDrawOpen: false }),

@@ -13,8 +13,7 @@ import { Initializer } from './Initializer';
 import { StoryFlow } from './StoryFlow';
 import { SimRoom } from './SimRoom';
 import { SidePanel } from '@/features/map/SidePanel/SidePanel';
-import { AgentPanel } from './AgentPanel/AgentPanel';
-import { PanelLeftOpen, MessageCircle, Bot, X } from 'lucide-react';
+import { PanelLeftOpen, MessageCircle, Bot, PenLine } from 'lucide-react';
 
 export default function MapPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -22,6 +21,8 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
   const setBookId = useBookDetailStore((s) => s.setBookId);
   const loadBook = useBookDetailStore((s) => s.loadBook);
   const setAgentContext = useBookDetailStore((s) => s.setAgentContext);
+  const agentOpen = useBookDetailStore((s) => s.agentOpen);
+  const setAgentOpen = useBookDetailStore((s) => s.setAgentOpen);
   const characters = useEntityStore((s) => s.characters);
   const selectedCharacterId = useMapStore((s) => s.selectedCharacterId);
   const selectedEventId = useTimelineStore((s) => s.selectedEventId);
@@ -30,7 +31,6 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
 
   const [panelOpen, setPanelOpen] = useState(false);
   const [simRoomOpen, setSimRoomOpen] = useState(false);
-  const [agentOpen, setAgentOpen] = useState(false);
 
   useEffect(() => {
     seedMockData();
@@ -108,6 +108,13 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
               >
                 <Bot size={14} strokeWidth={1.5} />
               </button>
+              <a
+                href={`/manuscript/book/${bookId}`}
+                className="w-8 h-8 flex items-center justify-center rounded-xl bg-card/90 backdrop-blur-sm border border-border/50 shadow-sm text-muted-foreground/60 hover:text-foreground hover:bg-card transition-colors no-underline"
+                title="手稿"
+              >
+                <PenLine size={14} strokeWidth={1.5} />
+              </a>
             </div>
           )}
           <MapCanvas />
@@ -122,32 +129,6 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
       {simRoomOpen && (
         <SimRoom onClose={() => setSimRoomOpen(false)} />
       )}
-
-      {agentOpen && (
-        <div className="fixed top-0 right-0 z-50 h-full w-[380px] bg-card/98 backdrop-blur-md border-l border-border/60 shadow-2xl overflow-hidden"
-          style={{ animation: 'slideInRight 0.25s ease-out' }}
-        >
-          <div className="flex items-center justify-between px-4 h-11 border-b border-border/30">
-            <span className="text-[12px] font-semibold text-foreground/70">AI 助手</span>
-            <button
-              onClick={() => setAgentOpen(false)}
-              className="w-6 h-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground bg-transparent border-none cursor-pointer"
-            >
-              <X size={13} strokeWidth={1.5} />
-            </button>
-          </div>
-          <div className="h-[calc(100%-44px)]">
-            <AgentPanel />
-          </div>
-        </div>
-      )}
-
-      <style jsx global>{`
-        @keyframes slideInRight {
-          from { transform: translateX(100%); opacity: 0; }
-          to { transform: translateX(0); opacity: 1; }
-        }
-      `}</style>
     </div>
   );
 }

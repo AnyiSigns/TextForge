@@ -1,11 +1,13 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { ArrowUp, CircleStop, Plus, Shrink, BookOpen, PanelRightOpen, PanelRightClose, RefreshCw } from 'lucide-react';
+import { ArrowUp, CircleStop, Plus, Shrink, BookOpen, PanelRightOpen, PanelRightClose, RefreshCw, Trash2, Search } from 'lucide-react';
+import Link from 'next/link';
 import { cn } from '@/shared/lib/cn';
 import { useBookDetailStore } from '../store';
 import * as agentApi from '@/shared/api/agent';
-import type { SSEEvent, AgentConversation } from '@/shared/api/types';
+import * as workflowApi from '@/shared/api/workflows';
+import type { SSEEvent, AgentConversation, AgentMessage } from '@/shared/api/types';
 import { ReviewCard } from './ReviewCard';
 import { ProposeCards } from './ProposeCards';
 import { AgentMemoryManager } from './AgentMemoryManager';
@@ -48,6 +50,19 @@ function MarkdownContent({ children }: { children: string }) {
   );
 }
 
+function relativeTime(dateStr: string): string {
+  const now = Date.now();
+  const diff = now - new Date(dateStr).getTime();
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return '刚刚';
+  if (minutes < 60) return `${minutes}分钟前`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}小时前`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}天前`;
+  return `${Math.floor(days / 7)}周前`;
+}
+
 interface AgentPanelProps {
   panelFullscreen?: boolean;
   onToggleFullscreen?: () => void;
@@ -56,9 +71,12 @@ interface AgentPanelProps {
 export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelProps) {
   const [input, setInput] = useState('');
   const [showMemoryManager, setShowMemoryManager] = useState(false);
-  const [sessionsExpanded, setSessionsExpanded] = useState(false);
+  const [sessionsExpanded, setSessionsExpanded] = useState(true);
   const [sessions, setSessions] = useState<AgentConversation[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
+  const [workflowList, setWorkflowList] = useState<workflowApi.Workflow[]>([]);
+  const [sessionSearch, setSessionSearch] = useState('');
+  const [draftByThreadId, setDraftByThreadId] = useState<Map<string, string>>(new Map());
   const thinkingStartRef = useRef(0);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -105,6 +123,12 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
     void fetchSessions();
   }, [fetchSessions, bookId]);
 
+  useEffect(() => {
+    workflowApi.listWorkflows().then(setWorkflowList).catch(() => {});
+  }, []);
+
+  const showWorkflowSuggestions = input.trim().startsWith('用') && workflowList.length > 0;
+
   const nearBottomRef = useRef(true);
 
   useEffect(() => {
@@ -145,10 +169,18 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
           setAgentStatus({ kind: 'idle' });
           break;
         case 'node_start':
-          setAgentStatus({ kind: 'working', label: '执行节点中...' });
+          setAgentStatus({ kind: 'working', label: `正在执行: ${(event as any).label || (event as any).node_id || ''}` });
+          break;
+        case 'node_stream':
+          replyBufferRef.current += event.token || '';
+          updateAgentStreamToken(replyBufferRef.current);
           break;
         case 'node_end':
-          setAgentStatus({ kind: 'idle' });
+          break;
+        case 'node_fail':
+          break;
+        case 'extend_outline':
+          setAgentStatus({ kind: 'working', label: '追加章节大纲中...' });
           break;
         case 'progress':
           setAgentStatus({ kind: 'working', label: '生成章节中...' });
@@ -235,6 +267,12 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
     void sendMessage(msg);
   }, [input, sendMessage]);
 
+  const handleWorkflowSelect = useCallback((wf: workflowApi.Workflow) => {
+    const msg = `请用工作流"${wf.name}"（ID: ${wf.id}）执行创作任务。`;
+    setInput('');
+    void sendMessage(msg);
+  }, [sendMessage]);
+
   useEffect(() => {
     const handleCardDrawStart = (e: Event) => {
       const detail = (e as CustomEvent).detail as Record<string, unknown> | undefined;
@@ -261,17 +299,74 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
     return () => window.removeEventListener('textforge:card-draw-start', handleCardDrawStart);
   }, [sendMessage]);
 
+  useEffect(() => {
+    const handleExtendOutline = (e: Event) => {
+      const detail = (e as CustomEvent).detail as Record<string, unknown> | undefined;
+      const count = detail?.chapterCount as number | undefined;
+      const n = count ?? 5;
+      void sendMessage(`请调用 generate_outline_extension 工具，为当前书籍追加 ${n} 章大纲。`);
+    };
+    window.addEventListener('textforge:extend-outline', handleExtendOutline);
+    return () => window.removeEventListener('textforge:extend-outline', handleExtendOutline);
+  }, [sendMessage]);
+
   const handleAbort = () => {
     abortRef.current?.abort();
     setAgentStreaming(false);
     setAgentStatus({ kind: 'idle' });
+    useBookDetailStore.setState((state) => ({
+      agentMessages: state.agentMessages.map((m) =>
+        m.type === 'streaming' ? { ...m, type: 'system' } : m
+      ),
+    }));
   };
 
   const handleNewSession = () => {
+    if (input.trim() && agentThreadId) {
+      setDraftByThreadId((prev) => {
+        const next = new Map(prev);
+        next.set(agentThreadId, input);
+        return next;
+      });
+    }
     setAgentThreadId(null);
-    useBookDetailStore.setState({ agentMessages: [] });
+    useBookDetailStore.setState((state) => ({
+      agentMessages: state.agentMessages.filter((m) => m.type !== 'streaming'),
+    }));
     setAgentStreaming(false);
     setAgentStatus({ kind: 'idle' });
+    setInput('');
+  };
+
+  const handleSelectSession = async (s: AgentConversation) => {
+    if (input.trim() && agentThreadId) {
+      setDraftByThreadId((prev) => {
+        const next = new Map(prev);
+        next.set(agentThreadId, input);
+        return next;
+      });
+    }
+    setAgentThreadId(s.threadId);
+    useBookDetailStore.setState({ agentMessages: [], agentStreaming: false, agentStatus: { kind: 'idle' } });
+    setInput(draftByThreadId.get(s.threadId) || '');
+    try {
+      const msgs = await agentApi.fetchAgentMessages(s.id);
+      const mapped: Array<{ role: 'user' | 'assistant'; content: string; type?: string }> = msgs.map((m) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      }));
+      useBookDetailStore.setState({ agentMessages: mapped });
+    } catch { /* ignore */ }
+  };
+
+  const handleDeleteSession = async (s: AgentConversation) => {
+    try {
+      await agentApi.deleteConversation(s.id);
+      setSessions((prev) => prev.filter((x) => x.id !== s.id));
+      if (agentThreadId === s.threadId) {
+        handleNewSession();
+      }
+    } catch { /* ignore */ }
   };
 
   const handleManualCompress = async () => {
@@ -286,7 +381,7 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
     }
   };
 
-  const handleReviewAction = async (action: 'accept' | 'retry' | 'edit', editedContent?: string) => {
+  const handleReviewAction = async (action: 'accept' | 'retry' | 'edit' | 'terminate', editedContent?: string) => {
     if (!agentThreadId) return;
     setPendingReview(null);
     try {
@@ -310,6 +405,12 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
       setAgentStreaming(false);
     }
   };
+
+  const filteredSessions = sessions.filter((s) =>
+    !sessionSearch.trim() || (s.title || '').toLowerCase().includes(sessionSearch.toLowerCase())
+  );
+
+  const placeholderText = book ? '输入创作指令…' : '输入消息…';
 
   return (
     <div className="ide-agent">
@@ -342,26 +443,11 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
             className="agent-icon-btn"
             title={panelFullscreen ? '还原' : '全屏'}
           >
-            <span className={cn(
-              'block w-3 h-3 relative',
-              panelFullscreen && 'text-foreground',
-            )}>
-              <span className={cn(
-                'absolute top-0 left-0 w-1 h-1 border-l border-t',
-                panelFullscreen ? 'border-foreground/60' : 'border-foreground/40',
-              )} />
-              <span className={cn(
-                'absolute top-0 right-0 w-1 h-1 border-r border-t',
-                panelFullscreen ? 'border-foreground/60' : 'border-foreground/40',
-              )} />
-              <span className={cn(
-                'absolute bottom-0 left-0 w-1 h-1 border-l border-b',
-                panelFullscreen ? 'border-foreground/60' : 'border-foreground/40',
-              )} />
-              <span className={cn(
-                'absolute bottom-0 right-0 w-1 h-1 border-r border-b',
-                panelFullscreen ? 'border-foreground/60' : 'border-foreground/40',
-              )} />
+            <span className={cn('block w-3 h-3 relative', panelFullscreen && 'text-foreground')}>
+              <span className={cn('absolute top-0 left-0 w-1 h-1 border-l border-t', panelFullscreen ? 'border-foreground/60' : 'border-foreground/40')} />
+              <span className={cn('absolute top-0 right-0 w-1 h-1 border-r border-t', panelFullscreen ? 'border-foreground/60' : 'border-foreground/40')} />
+              <span className={cn('absolute bottom-0 left-0 w-1 h-1 border-l border-b', panelFullscreen ? 'border-foreground/60' : 'border-foreground/40')} />
+              <span className={cn('absolute bottom-0 right-0 w-1 h-1 border-r border-b', panelFullscreen ? 'border-foreground/60' : 'border-foreground/40')} />
             </span>
           </button>
         </div>
@@ -415,7 +501,7 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
                 const isLastStreaming = i === agentMessages.length - 1;
                 return (
                   <div key={i} className="flex justify-start">
-                    <div className="max-w-[88%] px-3 py-2 bg-transparent text-[13px] leading-relaxed">
+                    <div className="max-w-[88%] px-3 py-2 border-l-2 border-foreground/10 text-[13px] leading-relaxed">
                       {msg.content ? (
                         <MarkdownContent>{msg.content}</MarkdownContent>
                       ) : isLastStreaming && agentStreaming && agentStatus.kind !== 'thinking' ? (
@@ -440,7 +526,7 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
                     'max-w-[88%] text-[13px] leading-relaxed',
                     msg.role === 'user'
                       ? 'rounded-2xl bg-[color-mix(in_srgb,var(--foreground)_12%,transparent)] text-foreground/85 backdrop-blur-sm px-3.5 py-1.5'
-                      : 'px-3 py-2 bg-transparent agent-markdown',
+                      : 'px-3 py-2 border-l-2 border-foreground/10 agent-markdown',
                   )}>
                     {msg.role === 'user' ? msg.content : <MarkdownContent>{msg.content}</MarkdownContent>}
                   </div>
@@ -463,6 +549,26 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
           </div>
 
           <div className="ide-agent-input-row">
+            {showWorkflowSuggestions && (
+              <div className="mb-1 mx-1 rounded-lg border border-border/60 bg-background overflow-hidden">
+                <div className="px-3 py-1.5 text-[10px] text-muted-foreground/60 font-medium">我的工作流</div>
+                {workflowList.map((wf) => (
+                  <button
+                    key={wf.id}
+                    onClick={() => handleWorkflowSelect(wf)}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-left bg-transparent border-none cursor-pointer hover:bg-muted/50 text-xs"
+                  >
+                    <span className="text-[#1c1b1a]/60 truncate">{wf.name}</span>
+                    <span className="text-[10px] text-muted-foreground/40 ml-auto shrink-0">
+                      {wf.nodes?.length ?? 0}角色
+                    </span>
+                  </button>
+                ))}
+                <Link href="/workflow" className="block px-3 py-1.5 text-[10px] text-muted-foreground/40 no-underline hover:bg-muted/50 border-t border-border/30">
+                  管理工作流 →
+                </Link>
+              </div>
+            )}
             <div className="relative flex-1">
               <textarea
                 ref={inputRef}
@@ -474,7 +580,7 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
                   el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
                 }}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleSend(); } }}
-                placeholder={book ? '输入创作指令…' : '输入消息…'}
+                placeholder={placeholderText}
                 disabled={false}
                 rows={1}
                 className={cn(
@@ -516,18 +622,51 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
                 <PanelRightClose size={12} strokeWidth={1.8} />
               </button>
             </div>
+            <div className="px-2 pb-1">
+              <div className="relative">
+                <Search size={11} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground/30" />
+                <input
+                  value={sessionSearch}
+                  onChange={(e) => setSessionSearch(e.target.value)}
+                  placeholder="搜索会话..."
+                  className="w-full h-7 pl-6 pr-2 rounded-md text-[11px] bg-muted/50 border border-border/30 focus:outline-none focus:border-foreground/20"
+                />
+              </div>
+            </div>
             <div className="ide-agent-sessions-list">
               {loadingSessions ? (
                 <div className="text-[11px] text-muted-foreground text-center py-4">加载中...</div>
-              ) : sessions.length === 0 ? (
+              ) : filteredSessions.length === 0 ? (
                 <div className="text-[11px] text-muted-foreground text-center py-4">暂无会话记录</div>
               ) : (
-                sessions.map((s) => (
-                  <div key={s.id} className="agent-session-item">
-                    <div className="text-[12px] font-medium text-foreground truncate">{s.title || '未命名会话'}</div>
-                    <div className="text-[10px] text-muted-foreground truncate mt-0.5">{s.threadId}</div>
-                  </div>
-                ))
+                filteredSessions.map((s) => {
+                  const isActive = s.threadId === agentThreadId;
+                  return (
+                    <div
+                      key={s.id}
+                      onClick={() => handleSelectSession(s)}
+                      className={cn(
+                        'agent-session-item group',
+                        isActive && 'is-active',
+                      )}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[12px] font-medium text-foreground truncate">{s.title || '未命名会话'}</div>
+                        <div className="text-[10px] text-muted-foreground truncate mt-0.5 flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400/60 flex-shrink-0" />
+                          <span>{relativeTime(s.updatedAt)}</span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDeleteSession(s); }}
+                        className="w-4 h-4 flex items-center justify-center rounded text-muted-foreground/30 hover:text-red-500/60 opacity-0 group-hover:opacity-100 transition-all bg-transparent border-none cursor-pointer flex-shrink-0"
+                        title="删除会话"
+                      >
+                        <Trash2 size={11} strokeWidth={1.5} />
+                      </button>
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>
