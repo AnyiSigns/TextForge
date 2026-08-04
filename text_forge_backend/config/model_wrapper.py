@@ -11,7 +11,9 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_moonshot import ChatMoonshot
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
-from langchain_qwq import ChatQwen
+
+
+from langchain_qwq import ChatQwQ
 
 
 class _EmbeddingStub:
@@ -21,8 +23,9 @@ class _EmbeddingStub:
 
 class ModelWrapper:
     """统一封装多Provider的 LLM/Embedding/Vision 实例创建工厂。"""
+
     PROVIDER_MAP: dict[str, type[BaseChatModel]] = {
-        "dashscope": ChatQwen,
+        "dashscope": ChatQwQ,
         "deepseek": ChatDeepSeek,
         "ollama": ChatOllama,
         "openai": ChatOpenAI,

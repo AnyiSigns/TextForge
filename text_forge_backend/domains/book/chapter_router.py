@@ -45,7 +45,11 @@ async def create_chapter(
 ):
     await _assert_volume_owner(volume_id, user_id, session)
     item = await chapter_service.create_chapter(
-        volume_id, title=request.title, summary=request.summary
+        volume_id,
+        title=request.title,
+        summary=request.summary,
+        character_ids=request.character_ids,
+        locked=request.locked,
     )
     if not item:
         raise HTTPException(status_code=500, detail="创建章节失败")
@@ -65,7 +69,11 @@ async def update_chapter(
         raise HTTPException(status_code=404, detail="章节不存在")
     await _assert_volume_owner(item.volume_id, user_id, session)
     item = await chapter_service.update_chapter(
-        chapter_id, title=request.title, summary=request.summary
+        chapter_id,
+        title=request.title,
+        summary=request.summary,
+        character_ids=request.character_ids,
+        locked=request.locked,
     )
     if not item:
         raise HTTPException(status_code=404, detail="章节不存在")

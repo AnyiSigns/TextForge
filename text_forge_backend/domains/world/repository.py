@@ -1,5 +1,5 @@
 
-from models.book import Foreshadowing, Location, PlotThread, TimelineEvent
+from models.book import Foreshadowing, Location, PlotThread, SceneEvent
 from sqlalchemy import delete as sqla_delete
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -90,7 +90,7 @@ class WorldRepository:
         await self.session.execute(stmt)
         await self.session.flush()
 
-    async def list_timeline_events(self, book_id: int) -> list[TimelineEvent]:
+    async def list_scene_events(self, book_id: int) -> list[SceneEvent]:
         """查询书籍时间线事件列表。
 
         Args:
@@ -99,20 +99,20 @@ class WorldRepository:
         Returns:
             时间线事件实例列表。
         """
-        stmt = select(TimelineEvent).where(TimelineEvent.book_id == book_id).order_by(TimelineEvent.sort_order, TimelineEvent.id)
+        stmt = select(SceneEvent).where(SceneEvent.book_id == book_id).order_by(SceneEvent.sort_order, SceneEvent.id)
         result = await self.session.execute(stmt)
         return result.scalars().all()
 
-    async def list_timeline_events_page(self, book_id: int, offset: int = 0, limit: int = 10) -> tuple[list[TimelineEvent], int]:
-        stmt = select(TimelineEvent).where(TimelineEvent.book_id == book_id).order_by(TimelineEvent.sort_order, TimelineEvent.id)
-        count_stmt = select(func.count()).select_from(TimelineEvent).where(TimelineEvent.book_id == book_id)
+    async def list_scene_events_page(self, book_id: int, offset: int = 0, limit: int = 10) -> tuple[list[SceneEvent], int]:
+        stmt = select(SceneEvent).where(SceneEvent.book_id == book_id).order_by(SceneEvent.sort_order, SceneEvent.id)
+        count_stmt = select(func.count()).select_from(SceneEvent).where(SceneEvent.book_id == book_id)
         total_result = await self.session.execute(count_stmt)
         total = total_result.scalar() or 0
         stmt = stmt.offset(offset).limit(limit)
         result = await self.session.execute(stmt)
         return result.scalars().all(), total
 
-    async def create_timeline_event(self, book_id: int, data: dict) -> TimelineEvent:
+    async def create_scene_event(self, book_id: int, data: dict) -> SceneEvent:
         """创建时间线事件。
 
         Args:
@@ -123,13 +123,13 @@ class WorldRepository:
             新创建的时间线事件实例。
         """
         data.pop("book_id", None)
-        event = TimelineEvent(book_id=book_id, **data)
+        event = SceneEvent(book_id=book_id, **data)
         self.session.add(event)
         await self.session.flush()
         await self.session.refresh(event)
         return event
 
-    async def update_timeline_event(self, event_id: int, book_id: int, data: dict) -> TimelineEvent | None:
+    async def update_scene_event(self, event_id: int, book_id: int, data: dict) -> SceneEvent | None:
         """更新时间线事件。
 
         Args:
@@ -140,7 +140,7 @@ class WorldRepository:
         Returns:
             更新后的事件实例，不存在返回 None。
         """
-        stmt = select(TimelineEvent).where(TimelineEvent.id == event_id, TimelineEvent.book_id == book_id)
+        stmt = select(SceneEvent).where(SceneEvent.id == event_id, SceneEvent.book_id == book_id)
         result = await self.session.execute(stmt)
         instance = result.scalar_one_or_none()
         if instance:
@@ -150,14 +150,14 @@ class WorldRepository:
             await self.session.refresh(instance)
         return instance
 
-    async def delete_timeline_event(self, event_id: int, book_id: int):
+    async def delete_scene_event(self, event_id: int, book_id: int):
         """删除时间线事件。
 
         Args:
             event_id: 事件 ID。
             book_id: 书籍 ID。
         """
-        stmt = sqla_delete(TimelineEvent).where(TimelineEvent.id == event_id, TimelineEvent.book_id == book_id)
+        stmt = sqla_delete(SceneEvent).where(SceneEvent.id == event_id, SceneEvent.book_id == book_id)
         await self.session.execute(stmt)
         await self.session.flush()
 

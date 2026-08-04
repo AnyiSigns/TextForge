@@ -18,7 +18,7 @@ class LocationResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)
 
 
-class TimelineEventResponse(BaseModel):
+class SceneEventResponse(BaseModel):
     id: int
     book_id: int = Field(alias="bookId")
     name: str

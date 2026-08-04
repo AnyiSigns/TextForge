@@ -1,20 +1,40 @@
 import { apiClient } from './client';
+import { getAccessToken } from '@/shared/stores/authStore';
+import { fetchModelConfig } from '@/shared/api/models';
 import type { SSEEvent, AgentConversation, AgentMessage } from './types';
 
 interface AgentStartResult {
   thread_id: string;
-  book_id: number;
+  book_id: number | null;
   type: string;
 }
 
-export async function startAgentSession(bookId: number): Promise<AgentStartResult> {
-  const res = await fetch(`/api/agent/start?book_id=${bookId}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
-  });
-  if (!res.ok) throw new Error('启动 Agent 会话失败');
-  return res.json();
+async function getModelConfigData() {
+  try {
+    const cfg = await fetchModelConfig();
+    const main = cfg.textRoleModels?.main;
+    if (!main) return null;
+    return {
+      main_config: {
+        adapter: main.adapter,
+        base_url: main.base_url,
+        api_key: main.api_key,
+        model_id: main.model_id,
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function startAgentSession(bookId?: number): Promise<AgentStartResult> {
+  const modelConfigData = await getModelConfigData();
+  const params: Record<string, unknown> = {};
+  if (bookId) {
+    params.book_id = bookId;
+  }
+  const res = await apiClient.post<AgentStartResult>('/agent/start', modelConfigData, { params });
+  return res.data;
 }
 
 export async function streamAgent(
@@ -25,11 +45,15 @@ export async function streamAgent(
   onError: (err: string) => void,
   abortSignal?: AbortSignal,
 ): Promise<void> {
+  const token = getAccessToken();
+  const modelConfigData = await getModelConfigData();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
   const res = await fetch(`/api/agent/stream/${threadId}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify({ message, threadId }),
+    headers,
+    body: JSON.stringify({ thread_id: threadId, message, model_config_data: modelConfigData }),
     signal: abortSignal,
   });
 
@@ -90,24 +114,12 @@ export async function submitReviewAction(
   action: 'accept' | 'retry' | 'edit',
   editedContent?: string,
 ): Promise<void> {
-  const res = await fetch('/api/agent/review-action', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify({ threadId, action, editedContent: editedContent || null }),
-  });
-  if (!res.ok) throw new Error('提交审核失败');
+  await apiClient.post('/agent/review-action', { threadId, action, editedContent: editedContent || null });
 }
 
 export async function agentRespond(threadId: string, message: string): Promise<SSEEvent> {
-  const res = await fetch('/api/agent/respond', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify({ threadId, message }),
-  });
-  if (!res.ok) throw new Error('同步对话失败');
-  return res.json();
+  const res = await apiClient.post<SSEEvent>('/agent/respond', { threadId, message });
+  return res.data;
 }
 
 export async function fetchAgentConversations(): Promise<AgentConversation[]> {
@@ -120,7 +132,8 @@ export async function fetchAgentMessages(conversationId: number): Promise<AgentM
   return data.messages ?? [];
 }
 
-export async function compressAgentContext(threadId: string): Promise<void> {
-  await apiClient.post('/agent/compress', { thread_id: threadId });
+export async function compressAgentContext(threadId: string): Promise<{ summary: string; removed_count: number; remaining_count: number }> {
+  const { data } = await apiClient.post<{ summary: string; removed_count: number; remaining_count: number }>('/agent/compress', { thread_id: threadId });
+  return data;
 }
 

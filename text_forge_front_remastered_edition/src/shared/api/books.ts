@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import type { Book, Volume, Chapter, CreativeSetting, WritingStats, BookContextConfig } from './types';
+import type { Book, Volume, Chapter, SceneEvent, CreativeSetting, WritingStats, BookContextConfig } from './types';
 
 export async function fetchBooks(): Promise<Book[]> {
   const { data } = await apiClient.get<{ books: Book[] }>('/books/');
@@ -11,7 +11,13 @@ export async function fetchBook(id: number): Promise<Book> {
   return data.book;
 }
 
-export async function createBook(body: { title: string; genre?: string; description?: string }): Promise<Book> {
+export async function createBook(body: {
+  title: string;
+  genre?: string;
+  description?: string;
+  time_unit?: string;
+  epoch_label?: string;
+}): Promise<Book> {
   const { data } = await apiClient.post<Book>('/books/', body);
   return data;
 }
@@ -49,8 +55,11 @@ export async function deleteVolume(volumeId: number): Promise<void> {
   await apiClient.delete(`/volumes/${volumeId}`);
 }
 
-export async function createChapter(volumeId: number, title: string, summary?: string, characterIds?: number[]): Promise<Chapter> {
-  const { data } = await apiClient.post<Chapter>(`/chapters/volumes/${volumeId}`, { title, summary, characterIds });
+export async function createChapter(
+  volumeId: number,
+  body: { title: string; summary?: string; characterIds?: number[]; locked?: boolean },
+): Promise<Chapter> {
+  const { data } = await apiClient.post<Chapter>(`/chapters/volumes/${volumeId}`, body);
   return data;
 }
 
@@ -59,8 +68,30 @@ export async function updateChapter(chapterId: number, patch: Partial<Chapter>):
   return data;
 }
 
+export async function fetchOutlineTree(bookId: number): Promise<{ volumes: Volume[]; chapters: Chapter[]; nodes: SceneEvent[] }> {
+  const { data } = await apiClient.get<{ volumes: Volume[]; chapters: Chapter[]; nodes: SceneEvent[] }>(`/books/${bookId}/outline-tree`);
+  return { volumes: data.volumes ?? [], chapters: data.chapters ?? [], nodes: data.nodes ?? [] };
+}
+
 export async function deleteChapter(chapterId: number): Promise<void> {
   await apiClient.delete(`/chapters/${chapterId}`);
+}
+
+export async function createSceneEvent(
+  chapterId: number,
+  body: { title: string; content?: string; characterIds?: number[]; locked?: boolean },
+): Promise<SceneEvent> {
+  const { data } = await apiClient.post<SceneEvent>(`/scene-events/chapters/${chapterId}`, body);
+  return data;
+}
+
+export async function updateSceneEvent(nodeId: number, patch: Partial<SceneEvent>): Promise<SceneEvent> {
+  const { data } = await apiClient.put<SceneEvent>(`/scene-events/${nodeId}`, patch);
+  return data;
+}
+
+export async function deleteSceneEvent(nodeId: number): Promise<void> {
+  await apiClient.delete(`/scene-events/${nodeId}`);
 }
 
 export async function fetchCreativeSetting(bookId: number): Promise<CreativeSetting> {
@@ -84,8 +115,20 @@ export async function saveBookContextConfig(bookId: number, contextIds: number[]
 }
 
 export async function fetchWritingStats(bookId: number): Promise<WritingStats> {
-  const { data } = await apiClient.get<WritingStats>(`/writing-sessions/statistics/summary?book_id=${bookId}`);
-  return data;
+  const { data } = await apiClient.get<{
+    session_count: number;
+    total_words: number;
+    total_duration_seconds: number;
+    active_days: number;
+  }>(`/writing-sessions/statistics/summary?book_id=${bookId}`);
+  return {
+    summary: {
+      totalWords: data.total_words ?? 0,
+      totalSessions: data.session_count ?? 0,
+      totalDurationSeconds: data.total_duration_seconds ?? 0,
+      activeDays: data.active_days ?? 0,
+    },
+  };
 }
 
 export async function fetchWritingTrend(bookId: number, days = 7): Promise<{ date: string; words: number }[]> {

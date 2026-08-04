@@ -1,140 +1,37 @@
-from typing import Any
+﻿from typing import Annotated, Any
 
 from config.logging import get_logger
-from core.model_factory import ModelFactory
 from langchain_core.tools import tool
-from sqlalchemy import select
+from langgraph.prebuilt import InjectedState
+
+from ..workflow_scheduler import execute_node as scheduler_execute_node
+from ..workflow_scheduler import run_workflow as scheduler_run_workflow
 
 logger = get_logger(__name__)
-
-
-async def _query_structured_context(
-    session, book_id: int, user_id: int, context_fields: list[str]
-) -> dict[str, Any]:
-    result = {}
-    try:
-        from models.book import Book, CreativeSetting
-        if "book_info" in context_fields:
-            stmt = select(Book).where(Book.id == book_id)
-            r = await session.execute(stmt)
-            book = r.scalar_one_or_none()
-            if book:
-                result["book_info"] = {
-                    "title": book.title,
-                    "genre": book.genre,
-                    "description": book.description,
-                }
-        if "characters" in context_fields:
-            from domains.book.repository import CharacterRepository
-            chars = await CharacterRepository(session).book_character_detail(
-                user_id=user_id, book_id=book_id
-            )
-            result["characters"] = [
-                {"id": c.id, "name": c.name, "description": c.description, "role_type": c.role_type, "status": c.status}
-                for c in chars
-            ]
-        if "outline" in context_fields:
-            from domains.book.outline_repository import OutlineRepository
-            outlines = await OutlineRepository(session).list_outlines(book_id)
-            result["outline"] = [
-                {"id": o.id, "title": o.title, "node_type": o.node_type, "content": o.content}
-                for o in outlines
-            ]
-        if "locations" in context_fields:
-            from domains.world.repository import WorldRepository
-            locs = await WorldRepository(session).list_locations(book_id)
-            result["locations"] = [
-                {"id": loc.id, "name": loc.name, "type": loc.type, "description": loc.description}
-                for loc in locs
-            ]
-        if "timeline_events" in context_fields:
-            from domains.world.repository import WorldRepository
-            events = await WorldRepository(session).list_timeline_events(book_id)
-            result["timeline_events"] = [
-                {"id": e.id, "name": e.name, "description": e.description, "event_type": e.event_type, "chapter_id": e.chapter_id}
-                for e in events[:30]
-            ]
-        if "foreshadowings" in context_fields:
-            from domains.world.repository import WorldRepository
-            items = await WorldRepository(session).list_foreshadowings(book_id)
-            result["foreshadowings"] = [
-                {"id": i.id, "description": i.description, "status": i.status, "planted_at_chapter_id": i.planted_at_chapter_id}
-                for i in items
-            ]
-        if "plot_threads" in context_fields:
-            from domains.world.repository import WorldRepository
-            items = await WorldRepository(session).list_plot_threads(book_id)
-            result["plot_threads"] = [
-                {"id": i.id, "name": i.name, "description": i.description, "status": i.status, "type": i.type}
-                for i in items
-            ]
-        if "creative_settings" in context_fields:
-            stmt = select(CreativeSetting).where(CreativeSetting.book_id == book_id)
-            r = await session.execute(stmt)
-            cs = r.scalar_one_or_none()
-            if cs:
-                result["creative_settings"] = {
-                    "tone": cs.tone,
-                    "worldview": cs.worldview,
-                    "writing_taboos": cs.writing_taboos,
-                }
-    except Exception as exc:
-        logger.warning(f"_query_structured_context 部分失败: {exc}")
-    return result
-
-
-async def _query_rag_context(
-    session, book_id: int, user_id: int, rag_queries: list[dict], model_config: dict
-) -> dict[str, Any]:
-    result = {}
-    if not rag_queries:
-        return result
-    try:
-        from domains.knowledge.repository import VectorRepository
-        vector_repo = VectorRepository(session)
-        for rq in rag_queries:
-            query = rq.get("query", "")
-            kb = rq.get("knowledge_base", "全库")
-            top_k = rq.get("top_k", 5)
-            if not query:
-                continue
-            embedding = None
-            try:
-                llm = ModelFactory(model_config)
-                embedding = await llm.embedding.aembed_query(query)
-            except Exception as exc:
-                logger.warning(f"_query_rag_context embedding 失败: {exc}")
-                continue
-            rag_filter = {"query": query}
-            if kb == "设定库":
-                rag_filter["doc_ids"] = [str(book_id)]
-            items = await vector_repo.search_external_books(
-                query_embedding=embedding,
-                rag_filter=rag_filter,
-                top_k=top_k,
-            )
-            result[f"rag_{kb}"] = [
-                {"content": i.get("content", ""), "doc_title": i.get("doc_title", ""), "score": 1 - float(i.get("distance", 0) or 0)}
-                for i in (items or [])
-            ]
-    except Exception as exc:
-        logger.warning(f"_query_rag_context 失败: {exc}")
-    return result
 
 
 def build_workflow_tool(session_factory, model_config: dict | None = None):
     @tool
     async def execute_workflow_node(
-        workflow_id: str,
-        node_id: str,
-        book_id: int,
-        user_id: int,
-        context_fields: list[str] | None = None,
-        rag_queries: list[dict] | None = None,
-        upstream_outputs: dict | None = None,
+        workflow_id: Annotated[str, "工作流 ID，从数据库中查找对应的工作流定义"],
+        node_id: Annotated[str, "要执行的节点 ID，必须是该工作流中已定义的节点"],
+        context_fields: Annotated[list[str] | None, "需要查询的结构化上下文字段列表，如 book_info/characters/outline/locations 等"] = None,
+        upstream_outputs: Annotated[dict | None, "上游节点的输出映射，格式为 {node_id: text}"] = None,
+        user_id: Annotated[int, InjectedState("user_id")] = 0,
+        book_id: Annotated[int, InjectedState("active_book_id")] = 0,
     ) -> dict:
+        """执行工作流中的单个节点，委托给调度器执行。
+
+        Args:
+            workflow_id: 工作流 ID。
+            node_id: 要执行的节点 ID。
+            context_fields: 需要查询的结构化上下文字段列表。
+            upstream_outputs: 上游节点的输出映射。
+        """
+        logger.debug(f"[tool] execute_workflow_node  book_id={book_id}  workflow_id={workflow_id}  node_id={node_id}")
         async with session_factory() as session:
             from models.workflow import Workflow
+            from sqlalchemy import select
 
             wf_stmt = select(Workflow).where(Workflow.id == workflow_id)
             wf_result = await session.execute(wf_stmt)
@@ -148,109 +45,72 @@ def build_workflow_tool(session_factory, model_config: dict | None = None):
                 return {"status": "error", "message": f"节点不存在: {node_id}"}
 
             node_label = node.get("label") or node.get("name") or node_id
-            executor_type = node.get("executor", "main")
-            system_prompt = node.get("system_prompt", "")
-            node_config = node.get("config", {}) or {}
 
-            structured = {}
-            rag = {}
             if context_fields:
-                structured = await _query_structured_context(session, book_id, user_id, context_fields)
-            if rag_queries and model_config:
-                rag = await _query_rag_context(session, book_id, user_id, rag_queries, model_config)
+                node["context_fields"] = context_fields
 
-            context_parts = []
-            for field_name, data in structured.items():
-                context_parts.append(f"\n[{field_name}]\n{_format_context_value(data)}")
-            for rag_key, items in rag.items():
-                snippets = "\n".join([
-                    f"  [{item.get('doc_title', '')}] {item.get('content', '')[:500]}"
-                    for item in items
-                ])
-                context_parts.append(f"\n[RAG: {rag_key}]\n{snippets}")
-
-            upstream_text = ""
             if upstream_outputs:
                 for uid, text in upstream_outputs.items():
-                    upstream_text += f"\n[上游节点 {uid} 输出]\n{text[:3000]}\n"
+                    if len(text) > 3000:
+                        upstream_outputs[uid] = text[:3000] + "\n…（已截断）"
 
-            full_context = "\n".join(context_parts)
-            if upstream_text:
-                full_context = upstream_text + "\n" + full_context
+            result = await scheduler_execute_node(
+                node_def=node,
+                book_id=book_id,
+                upstream_outputs=upstream_outputs,
+                model_config=model_config,
+            )
 
-            llm = ModelFactory(model_config or {})
-            from langchain_core.messages import HumanMessage, SystemMessage
-
-            system = SystemMessage(content=system_prompt or "你是一个专业的创作AI。根据上下文生成内容。直接输出创作内容，不要多余解释。")
-            human_content = full_context or f"请为书籍 book_id={book_id} 创作内容。"
-            human = HumanMessage(content=human_content)
-
-            stream_events: list[dict[str, Any]] = []
-            output_tokens = 0
-            generated_text = ""
-
-            try:
-                async for chunk in llm.main.astream([system, human]):
-                    token = chunk.content if hasattr(chunk, "content") else str(chunk)
-                    if token:
-                        generated_text += token
-                        output_tokens += 1
-                        stream_events.append({
-                            "node_id": node_id,
-                            "token": token,
-                            "index": len(stream_events),
-                        })
-            except Exception:
-                logger.exception(f"execute_workflow_node {node_id} LLM 流式调用失败")
-                return {"status": "error", "message": "节点执行失败，请稍后重试"}
-
-            result = {
+            return {
                 "node_id": node_id,
                 "node_label": node_label,
-                "output": generated_text,
-                "stream_events": stream_events,
-                "tokens": output_tokens,
-                "status": "completed",
+                "output": result.get("output", ""),
+                "tokens": result.get("tokens", 0),
+                "status": "completed" if result.get("success") else "error",
+                "needs_review": result.get("needs_review", False),
+                "quality_check": result.get("quality_check"),
             }
 
-            if not generated_text.strip():
-                return result
+    @tool
+    async def execute_workflow(
+        workflow_id: Annotated[str, "工作流 ID"],
+        instruction: Annotated[str | None, "额外的创作指令"] = None,
+        user_id: Annotated[int, InjectedState("user_id")] = 0,
+        book_id: Annotated[int, InjectedState("active_book_id")] = 0,
+    ) -> dict:
+        """执行完整工作流，按拓扑顺序自动运行所有节点。
 
-            if system_prompt and len(generated_text) > 50:
-                try:
-                    quality_prompt = (
-                        f"请判断以下创作输出是否符合角色节点的写作要求。\n\n"
-                        f"【角色节点要求】\n{system_prompt[:1500]}\n\n"
-                        f"【创作输出】\n{generated_text[:2000]}\n\n"
-                        f"输出是否严格遵循了上述写作要求？只回答 PASS 或 FAIL，然后简要说明理由。"
-                    )
-                    quality_response = await llm.audit.ainvoke(quality_prompt)
-                    quality_text = quality_response.content if hasattr(quality_response, "content") else str(quality_response)
-                    if quality_text.strip().upper().startswith("FAIL") or "不合格" in quality_text:
-                        result["needs_review"] = True
-                        result["quality_check"] = {
-                            "passed": False,
-                            "reason": quality_text.strip()[:500],
-                            "node_id": node_id,
-                            "node_label": node_label,
-                            "system_prompt": system_prompt[:500],
-                        }
-                    else:
-                        result["needs_review"] = False
-                        result["quality_check"] = {"passed": True}
-                except Exception:
-                    logger.exception(f"execute_workflow_node {node_id} 质量检查失败，跳过")
+        Agent 在收到用户"按工作流X生成"的指令时调用此工具，
+        它一次性执行所有节点，只在中间出错或全部完成时才返回控制权给 Agent。
 
-            return result
+        Args:
+            workflow_id: 工作流 ID。
+            instruction: 额外创作指令（已弃用，由 Agent system prompt 控制）。
+        """
+        logger.debug(f"[tool] execute_workflow  book_id={book_id}  workflow_id={workflow_id}")
 
-    return execute_workflow_node
+        progress_events: list[dict[str, Any]] = []
 
+        def on_progress(event: dict[str, Any]):
+            progress_events.append(event)
+            logger.debug(f"[workflow-progress] {event.get('event')} {event.get('node_id')}")
 
-def _format_context_value(value: Any) -> str:
-    if isinstance(value, str):
-        return value[:3000]
-    if isinstance(value, (list, tuple)):
-        return "\n".join([str(item) for item in value[:20]])
-    if isinstance(value, dict):
-        return str(value)[:3000]
-    return str(value)[:3000]
+        try:
+            result = await scheduler_run_workflow(
+                workflow_id=workflow_id,
+                book_id=book_id,
+                model_config=model_config or {},
+                on_progress=on_progress,
+            )
+        except Exception as exc:
+            logger.exception(f"execute_workflow 失败")
+            return {
+                "status": "error",
+                "message": f"工作流执行失败: {exc}",
+                "progress_events": progress_events,
+            }
+
+        result["progress_events"] = progress_events
+        return result
+
+    return [execute_workflow_node, execute_workflow]

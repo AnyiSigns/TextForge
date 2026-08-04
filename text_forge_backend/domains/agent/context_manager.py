@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import Any
 
 from config.logging import get_logger
@@ -44,11 +43,6 @@ async def auto_compress_node(state: UserAgentState) -> dict[str, Any]:
         "messages": messages[-COMPRESS_THRESHOLD:],
         "compressed_context": summary,
         "message_count_at_compress": len(messages),
-        "step_outputs": {
-            **state.get("step_outputs", {}),
-            "compressed_context": summary,
-            "compressed_at": datetime.utcnow().isoformat(),
-        },
     }
 
 

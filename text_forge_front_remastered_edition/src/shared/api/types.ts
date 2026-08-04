@@ -7,6 +7,8 @@ export interface Book {
   workflowId?: string;
   totalWordGoal?: number;
   currentWordCount?: number;
+  timeUnit?: string;
+  epochLabel?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -26,6 +28,24 @@ export interface Chapter {
   title: string;
   summary?: string | null;
   sortOrder: number;
+  characterIds: number[];
+  locked: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+
+export interface SceneEvent {
+  id: number;
+  bookId: number;
+  chapterId: number | null;
+  title: string;
+  content: string | null;
+  sortOrder: number;
+  eventType: 'scene' | 'event' | 'milestone';
+  storyTs: number;
+  storyLabel: string | null;
+  locationId: number | null;
   characterIds: number[];
   locked: boolean;
   createdAt: string;
@@ -55,6 +75,8 @@ export interface Character {
   status?: string;
   relationshipChain?: Record<string, unknown>[];
   locked: boolean;
+  spawnLocationId?: number | null;
+  baseLocationId?: number | null;
   customFields: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
@@ -67,6 +89,11 @@ export interface Location {
   type: string;
   description?: string;
   parentId?: number;
+  positionX?: number | null;
+  positionY?: number | null;
+  backgroundUrl?: string | null;
+  alternateOfId?: number | null;
+  mapIcon?: string | null;
   attributes: Record<string, unknown>;
   locked: boolean;
   children?: Location[];

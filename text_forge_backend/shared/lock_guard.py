@@ -11,7 +11,7 @@ ENTITY_TABLE_MAP = {
     "locations": "models.book.Location",
     "foreshadowings": "models.book.Foreshadowing",
     "plot_threads": "models.book.PlotThread",
-    "timeline_events": "models.book.TimelineEvent",
+    "scene_events": "models.book.SceneEvent",
     "creative_settings": "models.book.CreativeSetting",
 }
 

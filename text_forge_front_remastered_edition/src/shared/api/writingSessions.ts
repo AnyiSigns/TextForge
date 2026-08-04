@@ -40,11 +40,20 @@ export async function fetchWritingTrend(bookId: number, days = 7): Promise<Writi
 }
 
 export async function fetchCharacterFrequency(bookId: number): Promise<CharacterFrequency[]> {
-  const { data } = await apiClient.get<{ frequency: CharacterFrequency[] }>(`/writing-sessions/statistics/character-frequency?book_id=${bookId}`);
-  return data.frequency ?? [];
+  const { data } = await apiClient.get<{ frequency: Array<{ character_id: number; session_count: number; total_words: number }> }>(`/writing-sessions/statistics/character-frequency?book_id=${bookId}`);
+  return (data.frequency ?? []).map((item) => ({
+    characterId: item.character_id,
+    characterName: '',
+    count: item.total_words,
+  }));
 }
 
-export async function fetchPlotProgress(bookId: number): Promise<PlotProgress[]> {
-  const { data } = await apiClient.get<{ progress: PlotProgress[] }>(`/writing-sessions/statistics/plot-progress?book_id=${bookId}`);
-  return data.progress ?? [];
+export async function fetchPlotProgress(bookId: number): Promise<PlotProgress> {
+  const { data } = await apiClient.get<{ progress: PlotProgress }>(`/writing-sessions/statistics/plot-progress?book_id=${bookId}`);
+  return data.progress ?? {
+    total_chapters: 0,
+    chapters_with_content: 0,
+    completion_rate: 0,
+    chapter_details: [],
+  };
 }

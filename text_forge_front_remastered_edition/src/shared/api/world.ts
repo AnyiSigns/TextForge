@@ -1,13 +1,13 @@
 import { apiClient } from './client';
-import type { Location, TimelineEvent, Foreshadowing, PlotThread } from './types';
+import type { Location, SceneEvent, Foreshadowing, PlotThread } from './types';
 
 export async function fetchLocations(bookId: number): Promise<Location[]> {
   const { data } = await apiClient.get<Location[]>(`/world/locations?book_id=${bookId}`);
   return Array.isArray(data) ? data : [];
 }
 
-export async function fetchTimelineEvents(bookId: number): Promise<TimelineEvent[]> {
-  const { data } = await apiClient.get<TimelineEvent[]>(`/world/timeline-events?book_id=${bookId}`);
+export async function fetchSceneEvents(bookId: number): Promise<SceneEvent[]> {
+  const { data } = await apiClient.get<SceneEvent[]>(`/world/timeline-events?book_id=${bookId}`);
   return Array.isArray(data) ? data : [];
 }
 
@@ -37,18 +37,18 @@ export async function deleteLocation(id: number, bookId: number): Promise<void> 
   await apiClient.delete(`/world/locations/${id}`, { params: { book_id: bookId } });
 }
 
-export async function createTimelineEvent(body: Partial<TimelineEvent>): Promise<TimelineEvent> {
-  const { data } = await apiClient.post<TimelineEvent>('/world/timeline-events', body);
+export async function createSceneEvent(body: Partial<SceneEvent>): Promise<SceneEvent> {
+  const { data } = await apiClient.post<SceneEvent>('/world/timeline-events', body);
   return data;
 }
 
-export async function updateTimelineEvent(id: number, body: Partial<TimelineEvent>): Promise<TimelineEvent> {
-  const { data } = await apiClient.put<TimelineEvent>(`/world/timeline-events/${id}`, body);
+export async function updateSceneEvent(id: number, body: Partial<SceneEvent>): Promise<SceneEvent> {
+  const { data } = await apiClient.put<SceneEvent>(`/world/scene-events/${id}`, body);
   return data;
 }
 
-export async function deleteTimelineEvent(id: number, bookId: number): Promise<void> {
-  await apiClient.delete(`/world/timeline-events/${id}`, { params: { book_id: bookId } });
+export async function deleteSceneEvent(id: number, bookId: number): Promise<void> {
+  await apiClient.delete(`/world/scene-events/${id}`, { params: { book_id: bookId } });
 }
 
 export async function createForeshadowing(body: Partial<Foreshadowing>): Promise<Foreshadowing> {

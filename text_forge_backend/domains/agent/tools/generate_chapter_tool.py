@@ -1,7 +1,8 @@
-from typing import Any
+﻿from typing import Annotated, Any
 
 from config.logging import get_logger
 from langchain_core.tools import tool
+from langgraph.prebuilt import InjectedState
 from sqlalchemy import select
 
 from ..chapter_context import get_previous_chapter_context
@@ -16,12 +17,13 @@ logger = get_logger(__name__)
 def build_generate_chapter_tool(session_factory, model_config: dict | None = None):
     @tool
     async def generate_chapter(
-        book_id: int,
-        chapter_id: int,
-        instruction: str = "",
-        instruction_hint: str | None = None,  # 额外的创作提示，会追加到 instruction 末尾
+        chapter_id: Annotated[int, "目标章节 ID"],
+        instruction: Annotated[str, "创作指令，描述章节的写作要求"] = "",
+        instruction_hint: Annotated[str | None, "额外的创作提示，会追加到 instruction 末尾"] = None,
+        book_id: Annotated[int, InjectedState("active_book_id")] = 0,
     ) -> dict:
         """Generate chapter content based on the provided instruction and context."""
+        logger.debug(f"[tool] generate_chapter  book_id={book_id}  chapter_id={chapter_id}  instruction_len={len(instruction)}")
         if instruction_hint:
             instruction = f"{instruction}\n\n创作提示：{instruction_hint}"
         async with session_factory() as session:
@@ -29,9 +31,9 @@ def build_generate_chapter_tool(session_factory, model_config: dict | None = Non
                 Book,
                 Chapter,
                 ChapterContent,
+                Volume,
             )
 
-            from domains.book.outline_repository import OutlineRepository
             from domains.book.repository import CharacterRepository
             from domains.world.repository import WorldRepository
 
@@ -45,11 +47,9 @@ def build_generate_chapter_tool(session_factory, model_config: dict | None = Non
             characters = await char_repo.book_character_detail(
                 user_id=book.user_id, book_id=book_id
             )
-            outline_repo = OutlineRepository(session)
-            outlines = await outline_repo.list_outlines(book_id)
             world_repo = WorldRepository(session)
             locations = await world_repo.list_locations(book_id)
-            timeline_events = await world_repo.list_timeline_events(book_id)
+            scene_events = await world_repo.list_scene_events(book_id)
 
             chapter_stmt = select(Chapter).where(Chapter.id == chapter_id)
             chapter_result = await session.execute(chapter_stmt)
@@ -82,11 +82,54 @@ def build_generate_chapter_tool(session_factory, model_config: dict | None = Non
                         ]
                     )
                 )
-            if outlines:
+            vol_stmt = select(Volume).where(Volume.book_id == book_id)
+            vol_result = await session.execute(vol_stmt)
+            vol_ids = [r[0] for r in vol_result.all()]
+            ch_stmt = select(Chapter).where(Chapter.volume_id.in_(vol_ids)) if vol_ids else select(Chapter).where(Chapter.id == -1)
+            ch_result = await session.execute(ch_stmt)
+            chapters = ch_result.scalars().all()
+            if chapters:
                 context_parts.append(
-                    "大纲：\n"
-                    + "\n".join([f"- {o.title}: {o.content or ''}" for o in outlines[:5]])
+                    "大纲（全部章节）：\n"
+                    +                     "\n".join([f"- {c.title}: {c.summary or ''}" for c in chapters])
                 )
+
+            foreshadowings = await world_repo.list_foreshadowings(book_id)
+            chapter_foreshadowings = [
+                f for f in foreshadowings
+                if f.planted_at_chapter_id == chapter_id or f.resolved_at_chapter_id == chapter_id
+            ]
+            if chapter_foreshadowings:
+                context_parts.append(
+                    "本章关联伏笔：\n"
+                    + "\n".join([
+                        f"- [{f.status}] {f.description or ''}" for f in chapter_foreshadowings
+                    ])
+                )
+
+            plot_threads = await world_repo.list_plot_threads(book_id)
+            active_threads = [
+                t for t in plot_threads
+                if t.status == "进行中"
+                and (
+                    t.start_chapter_id is None
+                    or t.start_chapter_id <= chapter_id
+                )
+                and (
+                    t.end_chapter_id is None
+                    or t.end_chapter_id >= chapter_id
+                )
+            ]
+            if active_threads:
+                context_parts.append(
+                    "当前进行中的情节线：\n"
+                    + "\n".join([
+                        f"- {t.name}：{t.description or ''}" for t in active_threads
+                    ])
+                )
+
+            if hasattr(chapter, "generation_batch") and chapter.generation_batch and chapter.generation_batch > 1:
+                context_parts.append(f"（本批为第 {chapter.generation_batch} 批次扩展）")
             if locations:
                 context_parts.append(
                     "地点：\n"
@@ -97,13 +140,13 @@ def build_generate_chapter_tool(session_factory, model_config: dict | None = Non
                         ]
                     )
                 )
-            if timeline_events:
+            if scene_events:
                 context_parts.append(
                     "时间线：\n"
                     + "\n".join(
                         [
                             f"- {ev.name}({ev.event_type}):{ev.description or ''}"
-                            for ev in timeline_events[:10]
+                            for ev in scene_events[:10]
                         ]
                     )
                 )

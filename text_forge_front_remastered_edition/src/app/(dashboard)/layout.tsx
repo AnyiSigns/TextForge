@@ -4,36 +4,25 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  LayoutDashboard, BookOpen, Users, Database, Settings,
-  Workflow, PenLine, ChevronsLeft, LogOut, Bot,
-  Wifi,
+  BookOpen, Database, Settings,
+  Workflow, ChevronsLeft, LogOut, Bot,
 } from 'lucide-react';
 import { cn } from '@/shared/lib/cn';
 import { useAuthStore } from '@/shared/stores/authStore';
 import * as userApi from '@/shared/api/user';
-import * as booksApi from '@/shared/api/books';
-import * as systemApi from '@/shared/api/system';
 import { useBookDetailStore } from './books/[id]/store';
 import { AgentPanel } from './books/[id]/AgentPanel/AgentPanel';
 
 const menuGroups = [
   {
-    label: '创作区',
+    label: '',
     items: [
-      { icon: LayoutDashboard, label: '仪表盘', href: '/' },
-      { icon: BookOpen, label: '书籍管理', href: '/books' },
-      { icon: PenLine, label: '手稿', href: '/manuscript' },
-      { icon: Users, label: '角色模拟', href: '/characters' },
-      { icon: Workflow, label: '创作流程', href: '/workflow' },
+      { icon: BookOpen, label: '书籍', href: '/books' },
+      { icon: Workflow, label: '工作流', href: '/workflow' },
       { icon: Database, label: '知识库', href: '/knowledge' },
+      { icon: Settings, label: '设置', href: '/settings' },
     ],
   },
-  {
-    label: '设置',
-    items: [
-      { icon: Settings, label: '偏好设置', href: '/settings' },
-    ],
-  }
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -44,8 +33,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const [userName, setUserName] = useState('');
   const [userEmail, setUserEmail] = useState('');
-  const [bookStats, setBookStats] = useState({ total: 0, currentWords: 0, goal: 0, type: '' });
-  const [latencyMs, setLatencyMs] = useState<number | null>(null);
 
   const [panelWidth, setPanelWidth] = useState(340);
   const [panelFullscreen, setPanelFullscreen] = useState(false);
@@ -71,21 +58,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   };
 
   useEffect(() => {
-    let timer: ReturnType<typeof setInterval> | null = null;
-    const ping = async () => {
-      try {
-        const { latencyMs } = await systemApi.fetchHealth();
-        setLatencyMs(latencyMs ?? null);
-      } catch {
-        setLatencyMs(null);
-      }
-    };
-    void ping();
-    timer = setInterval(ping, 10000);
-    return () => { if (timer) clearInterval(timer); };
-  }, []);
-
-  useEffect(() => {
     userApi.fetchProfile().then((p) => {
       setUserName(p.username || '');
       setUserEmail(p.email || '');
@@ -95,23 +67,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     if (pathname && pathname.startsWith('/books/') && pathname !== '/books') {
       setCollapsed(true);
-    }
-  }, [pathname]);
-
-  useEffect(() => {
-    const bookIdMatch = pathname?.match(/^\/books\/(\d+)/);
-    if (bookIdMatch) {
-      const bookId = parseInt(bookIdMatch[1], 10);
-      booksApi.fetchBook(bookId).then((book) => {
-        setBookStats({
-          total: 1,
-          currentWords: book.currentWordCount || 0,
-          goal: book.totalWordGoal || 0,
-          type: book.genre || '',
-        });
-      }).catch(() => {});
-    } else {
-      setBookStats({ total: 0, currentWords: 0, goal: 0, type: '' });
     }
   }, [pathname]);
 
@@ -136,10 +91,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const isBookDetail = pathname?.startsWith('/books/') && pathname !== '/books';
 
   const toggleAgent = () => {
-    if (isBookDetail) {
-      const store = useBookDetailStore.getState();
-      store.setAgentOpen(!store.agentOpen);
-    }
+    const store = useBookDetailStore.getState();
+    store.setAgentOpen(!store.agentOpen);
   };
 
   const toggleSidebar = () => {
@@ -147,10 +100,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   };
 
 
-  const progress = bookStats.goal > 0 ? Math.min(100, Math.round((bookStats.currentWords / bookStats.goal) * 100)) : 0;
-
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-background" style={{ paddingBottom: 24 }}>
+    <div className="flex flex-col h-screen overflow-hidden bg-background">
       <div className="flex flex-1 min-h-0">
         {!panelFullscreen && (
           <>
@@ -232,46 +183,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         )}
       </div>
-
-      <footer className="app-statusbar">
-        <div className="app-statusbar-left">
-          <span className="app-statusbar-item text-muted-foreground">
-            书籍总数：<span className="font-medium text-foreground">{bookStats.total}</span>
-          </span>
-          <span className="app-statusbar-sep" />
-          <span className="app-statusbar-item flex items-center gap-1" title="网络延迟">
-            <Wifi size={10} className="text-foreground/60" />
-            <span className="font-mono text-[10px]">{latencyMs !== null ? `${latencyMs}ms` : '--ms'}</span>
-          </span>
-          {isBookDetail && (
-            <>
-              <span className="app-statusbar-sep" />
-              <span className="app-statusbar-item text-muted-foreground">
-                当前书籍<span className="text-border mx-1">|</span><span className="text-foreground/80">{bookStats.type}</span>
-              </span>
-              <span className="app-statusbar-sep" />
-              <span className="app-statusbar-item text-muted-foreground">目标 <span className="font-medium text-foreground">{bookStats.goal.toLocaleString()}</span></span>
-              <span className="app-statusbar-sep" />
-              <span className="app-statusbar-item text-muted-foreground">当前 <span className="font-medium text-foreground">{bookStats.currentWords.toLocaleString()}</span></span>
-              <span className="app-statusbar-sep" />
-              <span className="app-statusbar-item text-muted-foreground">进度 <span className="font-medium text-foreground">{progress}%</span></span>
-            </>
-          )}
-        </div>
-        <div className="app-statusbar-right">
-          <span className="app-statusbar-item text-muted-foreground" style={{ fontFamily: 'var(--font-mono)' }}>
-            {new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
-          </span>
-          <button
-            type="button"
-            onClick={toggleAgent}
-            className={cn('app-statusbar-btn', agentActive && 'is-active')}
-          >
-            <Bot size={11} />
-            <span>AI</span>
-          </button>
-        </div>
-      </footer>
     </div>
   );
 }

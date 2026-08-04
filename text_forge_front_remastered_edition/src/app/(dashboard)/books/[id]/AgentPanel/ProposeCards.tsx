@@ -86,10 +86,10 @@ export function ProposeCards({ data }: ProposeCardsProps) {
           const volumes = await booksApi.fetchVolumes(bookId);
           if (volumes.length === 0) {
             const vol = await booksApi.createVolume(bookId, title || '第一卷', summary);
-            await booksApi.createChapter(vol.id, '第一章', summary || title);
+            await booksApi.createChapter(vol.id, { title: '第一章', summary: summary || title });
           } else {
             const lastVol = volumes[volumes.length - 1];
-            await booksApi.createChapter(lastVol.id, title || '新章节', summary || title);
+            await booksApi.createChapter(lastVol.id, { title: title || '新章节', summary: summary || title });
           }
           await loadChapters();
           setCreativePhase('outlining');

@@ -14,7 +14,7 @@ class LocationRequest(BaseModel):
     attributes: dict[str, Any] | None = None
 
 
-class TimelineEventRequest(BaseModel):
+class SceneEventRequest(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     book_id: int = Field(alias="bookId")

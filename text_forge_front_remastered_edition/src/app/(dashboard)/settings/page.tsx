@@ -256,6 +256,7 @@ export default function SettingsPage() {
         </div>
 
         {activeTab === 'profile' && (
+          <>
           <Card className="p-5 space-y-5">
             <div className="space-y-3">
               <label className="text-[11px] text-muted-foreground block">用户名</label>
@@ -333,6 +334,24 @@ export default function SettingsPage() {
               </div>
             </div>
           </Card>
+
+          <Card className="p-5 space-y-3 border-destructive/20 bg-destructive/[0.02] mt-4">
+            <h3 className="text-[12px] font-semibold text-destructive/80">危险区域</h3>
+            <p className="text-[11px] leading-relaxed text-muted-foreground/80">
+              删除账户后所有数据将永久丢失且无法恢复，包括你的书籍、设定和创作内容。
+            </p>
+            <button
+              onClick={() => {
+                if (confirm('确定要永久删除账户吗？此操作不可撤销。')) {
+                  toast.error('账户删除功能需要后端支持');
+                }
+              }}
+              className="h-8 px-4 rounded-md text-[11px] font-medium bg-destructive/10 text-destructive/80 hover:bg-destructive/20 border border-destructive/20 cursor-pointer transition-colors"
+            >
+              删除我的账户
+            </button>
+          </Card>
+          </>
         )}
 
         {activeTab === 'appearance' && (

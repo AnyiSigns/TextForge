@@ -17,7 +17,8 @@ class UserAgentState(TypedDict):
     message_count_at_compress: int | None
     active_workflow_id: str | None
     pending_review: dict | None
-    pending_cards: list | None
     review_decision: str | None
     edited_content: str | None
     workflow_node_outputs: Annotated[dict, _merge_dicts]
+    personal_rag_results: list | None
+    terminate_chapter_id: int | None

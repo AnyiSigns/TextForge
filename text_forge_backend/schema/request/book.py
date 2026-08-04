@@ -32,7 +32,17 @@ class ChapterRequest(BaseModel):
 
     title: str
     summary: str | None = None
-    character_ids: list[int] | None = Field(default=None, alias="characterIds")
+    character_ids: list[int] = Field(default_factory=list, alias="characterIds")
+    locked: bool | None = None
+
+
+class SceneEventRequest(BaseModel):
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    title: str
+    content: str | None = None
+    character_ids: list[int] = Field(default_factory=list, alias="characterIds")
+    locked: bool | None = None
 
 
 class ChapterContentRequest(BaseModel):

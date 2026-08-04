@@ -315,7 +315,41 @@ textarea:focus {
   flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0;
 }
 
-.ide-agent-body { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.ide-agent-body {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+@keyframes thinking-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.thinking-shimmer-text {
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--foreground) 40%, transparent) 0%,
+    color-mix(in srgb, var(--foreground) 80%, transparent) 45%,
+    color-mix(in srgb, var(--foreground) 40%, transparent) 55%,
+    color-mix(in srgb, var(--foreground) 10%, transparent) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: thinking-shimmer 2.5s ease-in-out infinite;
+}
+
+.thinking-done-bubble {
+  background: color-mix(in srgb, var(--foreground) 4%, transparent) !important;
+  border: 1px solid color-mix(in srgb, var(--foreground) 6%, transparent) !important;
+}
+.agent-msg-normal {
+  background: transparent !important;
+}
 
 .ide-agent-input-row { display: flex; padding: 10px 12px; flex-shrink: 0; }
 
@@ -462,4 +496,30 @@ textarea:focus {
 @keyframes modal-in {
   from { opacity: 0; transform: translateY(6px) scale(0.98); }
   to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ===== 地图标记入场动画 ===== */
+
+.marker-enter {
+  animation: marker-fade-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes marker-fade-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+/* ===== 地图层级切换动画 ===== */
+
+.map-level-enter {
+  animation: map-level-in 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes map-level-in {
+  from { opacity: 0; transform: scale(1.04); }
+  to { opacity: 1; transform: scale(1); }
 }

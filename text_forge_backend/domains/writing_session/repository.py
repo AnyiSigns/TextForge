@@ -19,7 +19,9 @@ class WritingSessionRepository(BaseRepository[WritingSession]):
         self.session = session
         super().__init__(WritingSession, session)
 
-    async def list_by_user_book(self, user_id: int, book_id: int, chapter_id: int | None = None):
+    async def list_by_user_book(
+        self, user_id: int, book_id: int, chapter_id: int | None = None
+    ):
         """查询用户书籍下的写作会话列表。
 
         Args:
@@ -40,25 +42,40 @@ class WritingSessionRepository(BaseRepository[WritingSession]):
         result = await self.session.execute(stmt)
         return result.scalars().all()
 
-    async def list_by_user_book_page(self, user_id: int, book_id: int, chapter_id: int | None = None, offset: int = 0, limit: int = 10) -> tuple[list[WritingSession], int]:
+    async def list_by_user_book_page(
+        self,
+        user_id: int,
+        book_id: int,
+        chapter_id: int | None = None,
+        offset: int = 0,
+        limit: int = 10,
+    ) -> tuple[list[WritingSession], int]:
         stmt = select(WritingSession).where(
             WritingSession.user_id == user_id,
             WritingSession.book_id == book_id,
         )
-        count_stmt = select(func.count()).select_from(WritingSession).where(
-            WritingSession.user_id == user_id,
-            WritingSession.book_id == book_id,
+        count_stmt = (
+            select(func.count())
+            .select_from(WritingSession)
+            .where(
+                WritingSession.user_id == user_id,
+                WritingSession.book_id == book_id,
+            )
         )
         if chapter_id is not None:
             stmt = stmt.where(WritingSession.chapter_id == chapter_id)
             count_stmt = count_stmt.where(WritingSession.chapter_id == chapter_id)
         total_result = await self.session.execute(count_stmt)
         total = total_result.scalar() or 0
-        stmt = stmt.order_by(WritingSession.started_at.desc()).offset(offset).limit(limit)
+        stmt = (
+            stmt.order_by(WritingSession.started_at.desc()).offset(offset).limit(limit)
+        )
         result = await self.session.execute(stmt)
         return result.scalars().all(), total
 
-    async def get_statistics(self, user_id: int, book_id: int, chapter_id: int | None = None):
+    async def get_statistics(
+        self, user_id: int, book_id: int, chapter_id: int | None = None
+    ):
         """获取写作统计信息。
 
         Args:
@@ -71,10 +88,21 @@ class WritingSessionRepository(BaseRepository[WritingSession]):
         """
         stmt = select(
             func.count(WritingSession.id).label("session_count"),
-            func.coalesce(func.sum(WritingSession.words_written), 0).label("total_words"),
-            func.coalesce(func.sum(WritingSession.duration_seconds), 0).label("total_duration_seconds"),
-            func.coalesce(func.avg(WritingSession.duration_seconds), 0).label("avg_duration_seconds"),
-            func.coalesce(func.avg(WritingSession.words_written), 0).label("avg_words_per_session"),
+            func.coalesce(func.sum(WritingSession.words_written), 0).label(
+                "total_words"
+            ),
+            func.coalesce(func.sum(WritingSession.duration_seconds), 0).label(
+                "total_duration_seconds"
+            ),
+            func.coalesce(func.avg(WritingSession.duration_seconds), 0).label(
+                "avg_duration_seconds"
+            ),
+            func.coalesce(func.avg(WritingSession.words_written), 0).label(
+                "avg_words_per_session"
+            ),
+            func.count(func.distinct(cast(WritingSession.started_at, Date))).label(
+                "active_days"
+            ),
         ).where(
             WritingSession.user_id == user_id,
             WritingSession.book_id == book_id,
@@ -90,10 +118,13 @@ class WritingSessionRepository(BaseRepository[WritingSession]):
                 "total_duration_seconds": 0,
                 "avg_duration_seconds": 0,
                 "avg_words_per_session": 0,
+                "active_days": 0,
             }
         return dict(row)
 
-    async def get_writing_trend(self, user_id: int, book_id: int, days: int = 30) -> list[dict[str, Any]]:
+    async def get_writing_trend(
+        self, user_id: int, book_id: int, days: int = 30
+    ) -> list[dict[str, Any]]:
         """获取写作趋势。
 
         Args:
@@ -110,7 +141,9 @@ class WritingSessionRepository(BaseRepository[WritingSession]):
                 cast(WritingSession.started_at, Date).label("date"),
                 func.count(WritingSession.id).label("session_count"),
                 func.coalesce(func.sum(WritingSession.words_written), 0).label("words"),
-                func.coalesce(func.sum(WritingSession.duration_seconds), 0).label("duration_seconds"),
+                func.coalesce(func.sum(WritingSession.duration_seconds), 0).label(
+                    "duration_seconds"
+                ),
             )
             .where(
                 WritingSession.user_id == user_id,
@@ -132,7 +165,9 @@ class WritingSessionRepository(BaseRepository[WritingSession]):
             for row in rows
         ]
 
-    async def get_character_frequency(self, user_id: int, book_id: int) -> list[dict[str, Any]]:
+    async def get_character_frequency(
+        self, user_id: int, book_id: int
+    ) -> list[dict[str, Any]]:
         """获取角色出现频率。
 
         Args:
@@ -150,10 +185,14 @@ class WritingSessionRepository(BaseRepository[WritingSession]):
         sessions = result.scalars().all()
         frequency: dict[int, dict[str, Any]] = {}
         for s in sessions:
-            for cid in (s.character_ids or []):
+            for cid in s.character_ids or []:
                 cid = int(cid)
                 if cid not in frequency:
-                    frequency[cid] = {"character_id": cid, "session_count": 0, "total_words": 0}
+                    frequency[cid] = {
+                        "character_id": cid,
+                        "session_count": 0,
+                        "total_words": 0,
+                    }
                 frequency[cid]["session_count"] += 1
                 frequency[cid]["total_words"] += s.words_written or 0
         return sorted(frequency.values(), key=lambda x: x["total_words"], reverse=True)
@@ -169,13 +208,16 @@ class WritingSessionRepository(BaseRepository[WritingSession]):
             进度信息字典。
         """
         from models.book import Chapter, Volume
+
         vol_stmt = select(Volume.id).where(Volume.book_id == book_id)
         vol_result = await self.session.execute(vol_stmt)
         vol_ids = [row[0] for row in vol_result.all()]
         total_chapters = 0
         chapter_progress = {}
         if vol_ids:
-            chapter_stmt = select(Chapter.id, Chapter.title, Chapter.summary).where(Chapter.volume_id.in_(vol_ids))
+            chapter_stmt = select(Chapter.id, Chapter.title, Chapter.summary).where(
+                Chapter.volume_id.in_(vol_ids)
+            )
             chapter_result = await self.session.execute(chapter_stmt)
             chapters = chapter_result.all()
             total_chapters = len(chapters)
@@ -186,22 +228,39 @@ class WritingSessionRepository(BaseRepository[WritingSession]):
                     "title": row[1],
                     "has_summary": bool((row[2] or "").strip()),
                 }
-        session_stats_stmt = select(
-            WritingSession.chapter_id,
-            func.count(WritingSession.id).label("session_count"),
-            func.coalesce(func.sum(WritingSession.words_written), 0).label("total_words"),
-        ).where(
-            WritingSession.user_id == user_id,
-            WritingSession.book_id == book_id,
-            WritingSession.chapter_id.isnot(None),
-        ).group_by(WritingSession.chapter_id)
+        session_stats_stmt = (
+            select(
+                WritingSession.chapter_id,
+                func.count(WritingSession.id).label("session_count"),
+                func.coalesce(func.sum(WritingSession.words_written), 0).label(
+                    "total_words"
+                ),
+            )
+            .where(
+                WritingSession.user_id == user_id,
+                WritingSession.book_id == book_id,
+                WritingSession.chapter_id.isnot(None),
+            )
+            .group_by(WritingSession.chapter_id)
+        )
         session_stats_result = await self.session.execute(session_stats_stmt)
-        session_stats = {row[0]: {"session_count": row[1], "total_words": row[2]} for row in session_stats_result.all()}
-        chapters_with_content = sum(1 for cid in chapter_progress if cid in session_stats and session_stats[cid]["total_words"] > 0)
+        session_stats = {
+            row[0]: {"session_count": row[1], "total_words": row[2]}
+            for row in session_stats_result.all()
+        }
+        chapters_with_content = sum(
+            1
+            for cid in chapter_progress
+            if cid in session_stats and session_stats[cid]["total_words"] > 0
+        )
         progress = {
             "total_chapters": total_chapters,
             "chapters_with_content": chapters_with_content,
-            "completion_rate": round(chapters_with_content / total_chapters, 4) if total_chapters else 0,
+            "completion_rate": (
+                round(chapters_with_content / total_chapters, 4)
+                if total_chapters
+                else 0
+            ),
             "chapter_details": [
                 {
                     "chapter_id": cid,

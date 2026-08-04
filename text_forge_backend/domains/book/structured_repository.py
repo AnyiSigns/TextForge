@@ -1,4 +1,4 @@
-from typing import Any
+﻿from typing import Any
 
 from models.book import (
     Book,
@@ -8,9 +8,8 @@ from models.book import (
     CreativeSetting,
     Foreshadowing,
     Location,
-    Outline,
     PlotThread,
-    TimelineEvent,
+    SceneEvent,
     Volume,
 )
 from sqlalchemy import select
@@ -26,10 +25,10 @@ class StructuredRepository:
         "chapter_content": ChapterContent,
         "chapter_summaries": Chapter,
         "recent_chapters": Chapter,
-        "outline_structure": Outline,
+        "outline_structure": Chapter,
         "volumes": Volume,
         "locations": Location,
-        "timeline_events": TimelineEvent,
+        "scene_events": SceneEvent,
         "foreshadowings": Foreshadowing,
         "plot_threads": PlotThread,
     }
@@ -184,7 +183,7 @@ class StructuredRepository:
             merged = []
             for ch in chapter_rows.values():
                 cc = content_map.get(ch.id)
-                ch.content = cc.content if cc else ""
+                ch.summary = cc.content if cc else ""
                 merged.append(ch)
             return merged
 
@@ -251,7 +250,7 @@ class StructuredRepository:
             rows = query_result.scalars().all()
             return rows
 
-        if field == "timeline_events":
+        if field == "scene_events":
             stmt = stmt.where(model.book_id == book_id)
             query_result = await self.session.execute(stmt)
             rows = query_result.scalars().all()

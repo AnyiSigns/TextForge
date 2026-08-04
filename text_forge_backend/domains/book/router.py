@@ -2,11 +2,18 @@ from typing import Annotated
 
 from core.auth import get_current
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
-from models.book import Book, Chapter, Outline, Volume
+from models.book import Book, Chapter, SceneEvent, Volume
 from schema.request.book import (
     BookRequest,
     CreativeSettingRequest,
     UpdateBookRequest,
+)
+from schema.response.book import (
+    BookResponse,
+    SceneEventResponse,
+    ChapterResponse,
+    CreativeSettingResponse,
+    VolumeResponse,
 )
 from schema.response.book import (
     BookDetailResponse,
@@ -158,29 +165,18 @@ async def book_chapters_volume_tree(
 
     tree = []
     for vol in volumes:
+        vol_data = VolumeResponse.model_validate(vol).model_dump(by_alias=True)
         ch_stmt = (
             select(Chapter)
             .where(Chapter.volume_id == vol.id)
             .order_by(Chapter.sort_order, Chapter.id)
         )
         ch_res = await session.execute(ch_stmt)
-        chapters = ch_res.scalars().all()
-        tree.append(
-            {
-                "id": vol.id,
-                "title": vol.title,
-                "summary": vol.summary,
-                "chapters": [
-                    {
-                        "id": c.id,
-                        "title": c.title,
-                        "summary": c.summary,
-                        "sort_order": c.sort_order,
-                    }
-                    for c in chapters
-                ],
-            }
-        )
+        vol_data["chapters"] = [
+            ChapterResponse.model_validate(c).model_dump(by_alias=True)
+            for c in ch_res.scalars().all()
+        ]
+        tree.append(vol_data)
     return {"volumes": tree}
 
 
@@ -209,28 +205,58 @@ async def book_outline_tree(
     if not res.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="书籍不存在或无权访问")
 
-    stmt = (
-        select(Outline)
-        .where(Outline.book_id == id)
-        .order_by(Outline.sort_order, Outline.id)
+    vol_stmt = select(Volume).where(Volume.book_id == id).order_by(Volume.sort_order, Volume.id)
+    v_res = await session.execute(vol_stmt)
+    volumes = []
+    for v in v_res.scalars().all():
+        volumes.append(VolumeResponse.model_validate(v).model_dump(by_alias=True))
+
+    ch_stmt = (
+        select(Chapter)
+        .where(Chapter.volume_id.in_([v["id"] for v in volumes]))
+        .order_by(Chapter.sort_order, Chapter.id)
     )
-    result = await session.execute(stmt)
-    rows = result.scalars().all()
+    ch_res = await session.execute(ch_stmt)
+    chapters = []
+    chapter_ids = []
+    for ch in ch_res.scalars().all():
+        chapters.append(ChapterResponse.model_validate(ch).model_dump(by_alias=True))
+        chapter_ids.append(ch.id)
+
     nodes = []
-    for r in rows:
-        nodes.append(
-            {
-                "id": r.id,
-                "node_type": r.node_type,
-                "title": r.title,
-                "content": r.content,
-                "parent_id": r.parent_id,
-                "target_volume_id": r.target_volume_id,
-                "target_chapter_id": r.target_chapter_id,
-                "sort_order": r.sort_order,
-            }
+    if chapter_ids:
+        node_stmt = (
+            select(SceneEvent)
+            .where(SceneEvent.chapter_id.in_(chapter_ids))
+            .order_by(SceneEvent.sort_order.id)
         )
-    return {"nodes": nodes}
+        node_res = await session.execute(node_stmt)
+        for n in node_res.scalars().all():
+            nodes.append(SceneEventResponse.model_validate(n).model_dump(by_alias=True))
+
+    return {"volumes": volumes, "chapters": chapters, "nodes": nodes}
+
+
+@router.patch("/{id}/chapters/{chapter_id}/lock")
+async def toggle_chapter_lock(
+    id: Annotated[int, Path(description="书籍ID")],
+    chapter_id: Annotated[int, Path(description="章节ID")],
+    user_id: Annotated[int, Depends(get_current)],
+    session: Annotated[AsyncSession, Depends(db_manager.get_db)],
+    body: Annotated[dict, Body(...)],
+):
+    stmt = select(Book).where(Book.id == id, Book.user_id == user_id)
+    res = await session.execute(stmt)
+    if not res.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="书籍不存在或无权访问")
+    ch_stmt = select(Chapter).where(Chapter.id == chapter_id)
+    ch_res = await session.execute(ch_stmt)
+    chapter = ch_res.scalar_one_or_none()
+    if not chapter:
+        raise HTTPException(status_code=404, detail="章节不存在")
+    chapter.locked = body.get("locked", not chapter.locked)
+    await session.commit()
+    return {"id": chapter_id, "locked": chapter.locked}
 
 
 @router.get("/{id}/context-config", response_model=dict)

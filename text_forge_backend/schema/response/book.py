@@ -40,6 +40,20 @@ class ChapterResponse(BaseModel):
     summary: str | None = None
     sort_order: int = Field(default=0, alias="sortOrder")
     character_ids: list[int] = Field(default=[], alias="characterIds")
+    locked: bool = Field(default=False)
+    created_at: datetime = Field(alias="createdAt")
+    updated_at: datetime = Field(alias="updatedAt")
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
+
+
+class SceneEventResponse(BaseModel):
+    id: int
+    chapter_id: int = Field(alias="chapterId")
+    title: str
+    content: str | None = None
+    sort_order: int = Field(default=0, alias="sortOrder")
+    character_ids: list[int] = Field(default=[], alias="characterIds")
+    locked: bool = Field(default=False)
     created_at: datetime = Field(alias="createdAt")
     updated_at: datetime = Field(alias="updatedAt")
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)

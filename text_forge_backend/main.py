@@ -2,13 +2,11 @@ from contextlib import asynccontextmanager
 
 from config.logging import get_logger
 from config.settings import settings
-from domains.agent.graphs.graph_lifecycle import compiled_all
 from domains.agent.router import router as agent_router
 from domains.auth.router import router as auth_router
 from domains.auth.user_router import router as user_router
 from domains.book.chapter_content_router import router as chapter_content_router
 from domains.book.chapter_router import router as chapter_router
-from domains.book.chapter_node_router import router as chapter_node_router
 from domains.book.character_router import router as character_router
 from domains.book.creative_settings_router import router as creative_settings_router
 from domains.book.export_router import router as export_router
@@ -24,7 +22,6 @@ from domains.system.health_router import router as health_router
 from domains.system.sync_router import router as sync_router
 from domains.workflow.router import router as workflow_router
 from domains.workflow.seed import seed_builtin_workflows
-from domains.wizard.router import router as wizard_router
 from domains.world.router import router as world_router
 from domains.writing_session.router import router as writing_session_router
 from fastapi import FastAPI
@@ -43,7 +40,6 @@ async def lifespan(_application: FastAPI):
     async with db_manager.with_db() as session:
         await seed_builtin_workflows(session)
     await graph_pool_manager.init()
-    await compiled_all(checkpointer=graph_pool_manager.checkpoint)
     try:
         await redis_client.ping()
         logger.info("Redis 连接正常")
@@ -97,7 +93,6 @@ app.include_router(user_router, prefix="/api")
 app.include_router(book_router, prefix="/api")
 app.include_router(volume_router, prefix="/api")
 app.include_router(chapter_router, prefix="/api")
-app.include_router(chapter_node_router, prefix="/api")
 app.include_router(chapter_content_router, prefix="/api")
 app.include_router(character_router, prefix="/api")
 app.include_router(creative_settings_router, prefix="/api")
@@ -113,4 +108,3 @@ app.include_router(sync_router, prefix="/api")
 app.include_router(lock_router, prefix="/api")
 app.include_router(cards_router, prefix="/api")
 app.include_router(sim_rooms_router, prefix="/api")
-app.include_router(wizard_router, prefix="/api")

@@ -1,233 +1,129 @@
+'use client';
+
 import { create } from 'zustand';
-import type { Book, Volume, Chapter, Character, Location, TimelineEvent, Foreshadowing, PlotThread, CreativeSetting, WritingStats, CharacterFrequency, PlotProgress } from '@/shared/api/types';
-import * as booksApi from '@/shared/api/books';
-import * as charactersApi from '@/shared/api/characters';
-import * as worldApi from '@/shared/api/world';
-import * as writingSessionsApi from '@/shared/api/writingSessions';
 
-export type CreativePhase = 'overview' | 'worldbuilding' | 'outlining' | 'drafting' | 'revising';
+interface AgentMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  type?: string;
+  token?: string;
+}
 
-export type AgentStatus =
-  | { kind: 'idle' }
-  | { kind: 'thinking' }
-  | { kind: 'working'; label: string }
-  | { kind: 'error'; message: string };
-
-export type PanelId = 'outline' | 'characters' | 'world';
-export type WorldSubTab = 'locations' | 'events' | 'foreshadowings' | 'plot-threads';
-export type TabId = 'overview' | 'outline' | 'settings' | 'characters' | 'world';
+interface AgentStatus {
+  kind: 'idle' | 'thinking' | 'working' | 'error';
+  message?: string;
+  label?: string;
+}
 
 interface BookDetailState {
   bookId: number;
-  book: Book | null;
-  volumes: Volume[];
-  chapters: (Volume & { chapters: Chapter[] })[];
-  characters: Character[];
-  locations: Location[];
-  timelineEvents: TimelineEvent[];
-  foreshadowings: Foreshadowing[];
-  plotThreads: PlotThread[];
-  creativeSetting: CreativeSetting | null;
-  writingStats: WritingStats | null;
-  writingTrend: { date: string; words: number }[];
-  characterFrequency: CharacterFrequency[];
-  plotProgress: PlotProgress | null;
+  book: { id: number; title: string } | null;
+  loading: boolean;
+  error: string | null;
+  activeTab: string;
+  creativePhase: string;
+  cardDrawOpen: boolean;
+  cardDrawPreset: Record<string, unknown> | null;
+  wizardMode: string | null;
+  creativeSetting: Record<string, unknown> | null;
+  characters: unknown[];
+  chapters: unknown[];
+  locations: unknown[];
 
-  activePanel: PanelId;
-  activeTab: TabId;
-  worldSubTab: WorldSubTab;
-  sidebarCollapsed: boolean;
-
-  creativePhase: CreativePhase;
-
-  agentMessages: { role: string; content: string; type?: string; token?: string }[];
+  agentOpen: boolean;
+  agentMessages: AgentMessage[];
   agentStreaming: boolean;
   agentStatus: AgentStatus;
   agentThreadId: string | null;
-  agentOpen: boolean;
-  cardDrawOpen: boolean;
-  cardDrawPreset: { characters?: string[]; locations?: string[]; storyDirection?: string } | null;
-  selectedChapterId: number | null;
   pendingReview: Record<string, unknown> | null;
-  pendingCards: unknown[] | null;
-  wizardMode: 'flow' | 'custom' | null;
 
-  loading: boolean;
-  error: string | null;
-
-  setActivePanel: (panel: PanelId) => void;
-  setActiveTab: (tab: TabId) => void;
-  setWorldSubTab: (subTab: WorldSubTab) => void;
-  toggleSidebar: () => void;
-  setCreativePhase: (phase: CreativePhase) => void;
-  autoDetectPhase: () => void;
-  selectChapter: (chapterId: number | null) => void;
-
+  setBookId: (id: number) => void;
   loadBook: (id: number) => Promise<void>;
   loadChapters: () => Promise<void>;
   loadCharacters: () => Promise<void>;
   loadWorld: () => Promise<void>;
   loadCreativeSetting: () => Promise<void>;
   loadWritingStats: () => Promise<void>;
-
-  setAgentThreadId: (threadId: string | null) => void;
-  toggleAgent: () => void;
-  setAgentOpen: (v: boolean) => void;
-  openCardDraw: (preset?: { characters?: string[]; locations?: string[]; storyDirection?: string }) => void;
-  closeCardDraw: () => void;
-  addAgentMessage: (msg: { role: string; content: string; type?: string; token?: string }) => void;
-  updateAgentStreamToken: (token: string) => void;
+  setActiveTab: (tab: string) => void;
+  setCreativePhase: (phase: string) => void;
+  setWizardMode: (mode: string | null) => void;
+  setAgentOpen: (open: boolean) => void;
+  openCardDraw: (preset?: Record<string, unknown>) => void;
+  setAgentThreadId: (id: string | null) => void;
   setAgentStreaming: (v: boolean) => void;
   setAgentStatus: (status: AgentStatus) => void;
   setPendingReview: (review: Record<string, unknown> | null) => void;
-  setPendingCards: (cards: unknown[] | null) => void;
-  setWizardMode: (mode: 'flow' | 'custom' | null) => void;
+  setAgentContext: (context: string) => void;
+  addAgentMessage: (msg: AgentMessage) => void;
+  updateAgentStreamToken: (token: string) => void;
+  closeCardDraw: () => void;
+  autoDetectPhase: () => void;
 }
 
-export const useBookDetailStore = create<BookDetailState>((set, get) => ({
+export const useBookDetailStore = create<BookDetailState>((set) => ({
   bookId: 0,
   book: null,
-  volumes: [],
-  chapters: [],
-  characters: [],
-  locations: [],
-  timelineEvents: [],
-  foreshadowings: [],
-  plotThreads: [],
-  creativeSetting: null,
-  writingStats: null,
-  writingTrend: [],
-  characterFrequency: [],
-  plotProgress: null,
-
-  activePanel: 'outline',
+  loading: false,
+  error: null,
   activeTab: 'overview',
-  worldSubTab: 'locations',
-  sidebarCollapsed: false,
   creativePhase: 'overview',
+  cardDrawOpen: false,
+  cardDrawPreset: null,
+  wizardMode: null,
+  creativeSetting: null,
+  characters: [],
+  chapters: [],
+  locations: [],
 
+  agentOpen: false,
   agentMessages: [],
   agentStreaming: false,
   agentStatus: { kind: 'idle' },
   agentThreadId: null,
-  agentOpen: false,
-  cardDrawOpen: false,
-  cardDrawPreset: null,
-  selectedChapterId: null,
   pendingReview: null,
-  pendingCards: null,
-  wizardMode: null,
 
-  loading: false,
-  error: null,
+  setBookId: (id) => set({ bookId: id }),
 
-  setActivePanel: (panel) => set({ activePanel: panel }),
+  loadBook: async () => {},
+  loadChapters: async () => {},
+  loadCharacters: async () => {},
+  loadWorld: async () => {},
+  loadCreativeSetting: async () => {},
+  loadWritingStats: async () => {},
+
   setActiveTab: (tab) => set({ activeTab: tab }),
-  setWorldSubTab: (subTab) => set({ worldSubTab: subTab }),
-  toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   setCreativePhase: (phase) => set({ creativePhase: phase }),
-  autoDetectPhase: () => {
-    const s = get();
-    const hasSetting = !!(s.creativeSetting && (s.creativeSetting.worldview || s.creativeSetting.tone));
-    const hasCharacters = s.characters.length > 0;
-    const hasOutline = s.chapters.some((v) => v.chapters.length > 0);
-    const hasChapters = false;
-
-    if (!hasSetting && !hasCharacters) {
-      set({ creativePhase: 'worldbuilding' });
-    } else if (!hasOutline && !hasChapters) {
-      set({ creativePhase: 'outlining' });
-    } else if (hasChapters) {
-      set({ creativePhase: 'drafting' });
-    } else {
-      set({ creativePhase: 'overview' });
-    }
-  },
-  // 根据书籍数据自动推断当前创作阶段
-  // worldbuilding: 缺少设定或角色
-  // outlining: 有设定/角色但缺少大纲和章节
-  // drafting: 已有章节
-  selectChapter: (chapterId) => set({ selectedChapterId: chapterId }),
-
-  loadBook: async (id) => {
-    set({ loading: true, error: null, bookId: id });
-    try {
-      const book = await booksApi.fetchBook(id);
-      set({ book, loading: false });
-    } catch (e) {
-      set({ error: '加载书籍失败', loading: false });
-    }
-  },
-
-  loadChapters: async () => {
-    const { bookId } = get();
-    try {
-      const chapters = await booksApi.fetchChaptersTree(bookId);
-      const volumes = await booksApi.fetchVolumes(bookId);
-      set({ chapters, volumes });
-    } catch { /* silent */ }
-  },
-
-  loadCharacters: async () => {
-    const { bookId } = get();
-    try {
-      const characters = await charactersApi.fetchCharacters(bookId);
-      set({ characters });
-    } catch { /* silent */ }
-  },
-
-  loadWorld: async () => {
-    const { bookId } = get();
-    try {
-      const [locations, timelineEvents, foreshadowings, plotThreads] = await Promise.all([
-        worldApi.fetchLocations(bookId),
-        worldApi.fetchTimelineEvents(bookId),
-        worldApi.fetchForeshadowings(bookId),
-        worldApi.fetchPlotThreads(bookId),
-      ]);
-      set({ locations, timelineEvents, foreshadowings, plotThreads });
-    } catch { /* silent */ }
-  },
-
-  loadCreativeSetting: async () => {
-    const { bookId } = get();
-    try {
-      const creativeSetting = await booksApi.fetchCreativeSetting(bookId);
-      set({ creativeSetting });
-    } catch { /* silent */ }
-  },
-
-  loadWritingStats: async () => {
-    const { bookId } = get();
-    try {
-      const [writingStats, writingTrend, characterFrequency, plotProgress] = await Promise.all([
-        booksApi.fetchWritingStats(bookId),
-        booksApi.fetchWritingTrend(bookId),
-        writingSessionsApi.fetchCharacterFrequency(bookId),
-        writingSessionsApi.fetchPlotProgress(bookId),
-      ]);
-      set({ writingStats, writingTrend, characterFrequency, plotProgress });
-    } catch { /* silent */ }
-  },
-
-  setAgentThreadId: (threadId) => set({ agentThreadId: threadId }),
-  toggleAgent: () => set((s) => ({ agentOpen: !s.agentOpen })),
-  setAgentOpen: (v) => set({ agentOpen: v }),
-  openCardDraw: (preset) => set({ cardDrawOpen: true, agentOpen: true, cardDrawPreset: preset || null }),
-  closeCardDraw: () => set({ cardDrawOpen: false, cardDrawPreset: null }),
-  addAgentMessage: (msg) => set((s) => ({ agentMessages: [...s.agentMessages, msg] })),
-  updateAgentStreamToken: (token) => {
-    const msgs = get().agentMessages;
-    const last = msgs[msgs.length - 1];
-    if (last && last.role === 'assistant' && last.type === 'streaming') {
-      set({ agentMessages: [...msgs.slice(0, -1), { ...last, content: token }] });
-    } else {
-      set({ agentMessages: [...msgs, { role: 'assistant', content: token, type: 'streaming' }] });
-    }
-  },
+  setWizardMode: (mode) => set({ wizardMode: mode }),
+  setAgentOpen: (open) => set({ agentOpen: open }),
+  openCardDraw: (preset) => set({ cardDrawOpen: true, cardDrawPreset: preset ?? null }),
+  setAgentThreadId: (id) => set({ agentThreadId: id }),
   setAgentStreaming: (v) => set({ agentStreaming: v }),
   setAgentStatus: (status) => set({ agentStatus: status }),
   setPendingReview: (review) => set({ pendingReview: review }),
-  setPendingCards: (cards) => set({ pendingCards: cards }),
-  setWizardMode: (mode) => set({ wizardMode: mode }),
+  setAgentContext: (context: string) => {
+    set((state) => ({
+      agentMessages: [...state.agentMessages, { role: 'user', content: context }],
+    }));
+  },
+
+  addAgentMessage: (msg) =>
+    set((state) => ({
+      agentMessages: [
+        ...state.agentMessages,
+        ...(msg.type === 'streaming' ? [] : [msg]),
+      ],
+    })),
+
+  updateAgentStreamToken: (token) =>
+    set((state) => {
+      const messages = [...state.agentMessages];
+      const lastIdx = messages.length - 1;
+      if (lastIdx >= 0 && messages[lastIdx].type === 'streaming') {
+        messages[lastIdx] = { ...messages[lastIdx], content: token };
+      }
+      return { agentMessages: messages };
+    }),
+
+  closeCardDraw: () => set({ cardDrawOpen: false }),
+  autoDetectPhase: () => {},
 }));

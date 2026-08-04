@@ -1,6 +1,9 @@
 
+from typing import Annotated
+
 from config.logging import get_logger
 from langchain_core.tools import tool
+from langgraph.prebuilt import InjectedState
 from sqlalchemy import select
 
 logger = get_logger(__name__)
@@ -8,8 +11,17 @@ logger = get_logger(__name__)
 
 def _build_feedback_tools(session_factory, model_config: dict | None = None):
     @tool
-    async def analyze_feedback_patterns(user_id: int, book_id: int | None = None, days: int = 30) -> dict:
-        """analyze_feedback_patterns tool."""
+    async def analyze_feedback_patterns(
+        days: Annotated[int, "分析最近多少天的反馈"] = 30,
+        user_id: Annotated[int, InjectedState("user_id")] = 0,
+        book_id: Annotated[int, InjectedState("active_book_id")] = 0,
+    ) -> dict:
+        """分析用户在指定天数内的反馈模式，识别问题和趋势。
+
+        Args:
+            days: 分析最近多少天内的反馈数据。
+        """
+        logger.debug(f"[tool] analyze_feedback_patterns  user_id={user_id}  book_id={book_id}  days={days}")
         async with session_factory() as session:
             from datetime import datetime, timedelta
 
@@ -20,8 +32,9 @@ def _build_feedback_tools(session_factory, model_config: dict | None = None):
                 AgentMemory.source == "user_feedback",
                 AgentMemory.created_at >= cutoff,
             )
-            if book_id is not None:
-                stmt = stmt.where(AgentMemory.book_id == book_id)
+            effective_book_id = book_id if book_id else None
+            if effective_book_id is not None:
+                stmt = stmt.where(AgentMemory.book_id == effective_book_id)
             result = await session.execute(stmt)
             memories = result.scalars().all()
             feedback_items = []
@@ -68,8 +81,16 @@ def _build_feedback_tools(session_factory, model_config: dict | None = None):
             return {"book_id": book_id, "patterns": patterns, "sample_feedback": feedback_items[:10]}
 
     @tool
-    async def get_proactive_suggestions(user_id: int, book_id: int) -> list[dict]:
-        """get_proactive_suggestions tool."""
+    async def get_proactive_suggestions(
+        user_id: Annotated[int, InjectedState("user_id")] = 0,
+        book_id: Annotated[int, InjectedState("active_book_id")] = 0,
+    ) -> list[dict]:
+        """获取当前书籍的主动建议，识别缺失摘要、未回收伏笔、停滞剧情等问题。
+
+        Returns:
+            建议列表，每项含 type、severity、message 及相关的 ID 列表。
+        """
+        logger.debug(f"[tool] get_proactive_suggestions  book_id={book_id}")
         async with session_factory() as session:
             from models.book import Chapter, Foreshadowing, PlotThread, Volume
             suggestions = []
@@ -143,4 +164,7 @@ def _build_feedback_tools(session_factory, model_config: dict | None = None):
                 logger.warning(f"get_proactive_suggestions 失败: {exc}")
             return suggestions
 
-    return [analyze_feedback_patterns, get_proactive_suggestions]
+    return {
+        "analyze_feedback_patterns": analyze_feedback_patterns,
+        "proactive_suggestions": get_proactive_suggestions,
+    }

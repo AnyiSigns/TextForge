@@ -2,14 +2,9 @@ from typing import Annotated
 
 from core.auth import get_current
 from fastapi import APIRouter, Depends, Path
-from fastapi.responses import StreamingResponse
-from schema.request.workflow import WorkflowRunRequest
 from schema.response.workflow import ListWorkflowsResponse, WorkflowDetailResponse
 from schema.workflow import Workflow
-from shared.database import db_manager
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from .executor import WorkflowExecutor
 from .service import WorkflowService, workflow_db
 
 router = APIRouter(prefix="/workflows", tags=["Workflow"])
@@ -55,21 +50,4 @@ async def delete_workflow(
     return {"ok": status}
 
 
-@router.post("/{id}/run")
-async def run_workflow(
-    id: Annotated[str, Path(description="流水线ID")],
-    request: WorkflowRunRequest,
-    user_id: Annotated[int, Depends(get_current)],
-    session: AsyncSession = Depends(db_manager.get_db),
-):
-    executor = WorkflowExecutor(session)
-    return StreamingResponse(
-        executor.run(
-            workflow_id=id,
-            user_id=user_id,
-            book_id=request.book_id,
-            thread_id=request.thread_id,
-            model_config=request.model_config_data or {},
-        ),
-        media_type="text/event-stream",
-    )
+

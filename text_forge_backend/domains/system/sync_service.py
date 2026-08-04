@@ -9,7 +9,7 @@ from models.book import (
     Foreshadowing,
     Location,
     PlotThread,
-    TimelineEvent,
+    SceneEvent,
     Volume,
 )
 from models.writing_session import WritingSession
@@ -67,11 +67,11 @@ class SyncService:
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def sync_world_timeline_events(self, since: datetime) -> list[TimelineEvent]:
+    async def sync_world_scene_events(self, since: datetime) -> list[SceneEvent]:
         stmt = (
-            select(TimelineEvent)
-            .join(Book, TimelineEvent.book_id == Book.id)
-            .where(Book.user_id == self.user_id, TimelineEvent.updated_at > since)
+            select(SceneEvent)
+            .join(Book, SceneEvent.book_id == Book.id)
+            .where(Book.user_id == self.user_id, SceneEvent.updated_at > since)
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())

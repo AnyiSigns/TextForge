@@ -5,13 +5,13 @@ from schema.request.world import (
     ForeshadowingRequest,
     LocationRequest,
     PlotThreadRequest,
-    TimelineEventRequest,
+    SceneEventRequest,
 )
 from schema.response.world import (
     ForeshadowingResponse,
     LocationResponse,
     PlotThreadResponse,
-    TimelineEventResponse,
+    SceneEventResponse,
 )
 from shared.database import db_manager
 from shared.pagination import PageParams, PageResult
@@ -69,46 +69,46 @@ async def delete_location(
     return {"ok": True}
 
 
-@router.get("/timeline-events", response_model=PageResult[TimelineEventResponse])
-async def list_timeline_events(
+@router.get("/timeline-events", response_model=PageResult[SceneEventResponse])
+async def list_scene_events(
     user_id=Depends(get_current),
     book_id: int = Query(...),
     page_params: PageParams = Depends(),
     service: WorldService = Depends(world_db),
 ):
-    return await service.list_timeline_events_page(book_id, page_params)
+    return await service.list_scene_events_page(book_id, page_params)
 
 
-@router.post("/timeline-events", response_model=TimelineEventResponse)
-async def create_timeline_event(
+@router.post("/timeline-events", response_model=SceneEventResponse)
+async def create_scene_event(
     user_id=Depends(get_current),
-    request: TimelineEventRequest = ...,
+    request: SceneEventRequest = ...,
     service: WorldService = Depends(world_db),
 ):
-    return await service.create_timeline_event(request.book_id, request.model_dump(by_alias=False))
+    return await service.create_scene_event(request.book_id, request.model_dump(by_alias=False))
 
 
-@router.put("/timeline-events/{event_id}", response_model=TimelineEventResponse)
-async def update_timeline_event(
+@router.put("/timeline-events/{event_id}", response_model=SceneEventResponse)
+async def update_scene_event(
     user_id=Depends(get_current),
     event_id: int = ...,
-    request: TimelineEventRequest = ...,
+    request: SceneEventRequest = ...,
     service: WorldService = Depends(world_db),
 ):
-    instance = await service.update_timeline_event(event_id, request.book_id, request.model_dump(by_alias=False))
+    instance = await service.update_scene_event(event_id, request.book_id, request.model_dump(by_alias=False))
     if not instance:
         raise HTTPException(status_code=404, detail="事件不存在")
     return instance
 
 
 @router.delete("/timeline-events/{event_id}")
-async def delete_timeline_event(
+async def delete_scene_event(
     user_id=Depends(get_current),
     event_id: int = ...,
     book_id: int = Query(...),
     service: WorldService = Depends(world_db),
 ):
-    await service.delete_timeline_event(event_id, book_id)
+    await service.delete_scene_event(event_id, book_id)
     return {"ok": True}
 
 

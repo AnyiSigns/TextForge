@@ -1,8 +1,8 @@
-from io import BytesIO
+﻿from io import BytesIO
 from typing import Any
 
 from config.logging import get_logger
-from models.book import Book, Chapter, ChapterContent, Character, Outline, Volume
+from models.book import Book, Chapter, ChapterContent, Character, Volume
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -55,9 +55,10 @@ class ExportService:
 
         outline = []
         if include_outline:
-            outline_stmt = select(Outline).where(Outline.book_id == book_id).order_by(Outline.sort_order)
-            outline_result = await self.session.execute(outline_stmt)
-            outline = [{"title": o.title, "content": o.content or "", "node_type": o.node_type} for o in outline_result.scalars().all()]
+            ch_vol_ids = [v.id for v in volumes]
+            ch_stmt = select(Chapter).where(Chapter.volume_id.in_(ch_vol_ids)).order_by(Chapter.sort_order, Chapter.id)
+            ch_result = await self.session.execute(ch_stmt)
+            outline = [{"title": c.title, "content": c.summary or ""} for c in ch_result.scalars().all()]
 
         if fmt == "md":
             return self._build_markdown(book, chapters, characters, outline)

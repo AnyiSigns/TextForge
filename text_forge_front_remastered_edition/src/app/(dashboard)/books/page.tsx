@@ -7,7 +7,7 @@ import { BookOpen, Plus, Search, Pin, PinOff, Trash2, ChevronRight, Pencil, Wand
 import { toast } from 'sonner';
 import * as booksApi from '@/shared/api/books';
 import type { Book } from '@/shared/api/types';
-import { hasProgress } from '@/app/(dashboard)/books/[id]/wizard/store';
+function hasProgress(_bookId: number): boolean { return false; }
 
 export default function BooksListPage() {
   const [books, setBooks] = useState<Book[]>([]);
@@ -23,6 +23,8 @@ export default function BooksListPage() {
   const [formGenre, setFormGenre] = useState('');
   const [formDesc, setFormDesc] = useState('');
   const [formGoal, setFormGoal] = useState<number | ''>('');
+  const [formTimeUnit, setFormTimeUnit] = useState('day');
+  const [formEpochLabel, setFormEpochLabel] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -36,6 +38,8 @@ export default function BooksListPage() {
     setFormGenre('');
     setFormDesc('');
     setFormGoal('');
+    setFormTimeUnit('day');
+    setFormEpochLabel('');
     setModalOpen(true);
   };
 
@@ -66,6 +70,8 @@ export default function BooksListPage() {
           title: formTitle.trim(),
           genre: formGenre.trim() || undefined,
           description: formDesc.trim() || undefined,
+          time_unit: formTimeUnit as 'day' | 'year' | 'hour',
+          epoch_label: formEpochLabel.trim() || undefined,
         });
         setBooks(prev => [...prev, { ...created, totalWordGoal: formGoal === '' ? undefined : Number(formGoal) }]);
         toast.success('已创建');
@@ -286,6 +292,29 @@ export default function BooksListPage() {
                   placeholder="留空表示无目标"
                   className="w-full h-8 px-3 rounded-md text-xs bg-background border border-border focus:outline-none"
                 />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium text-muted-foreground">时间单位</label>
+                  <select
+                    value={formTimeUnit}
+                    onChange={(e) => setFormTimeUnit(e.target.value)}
+                    className="w-full h-8 px-2 rounded-md text-xs bg-background border border-border focus:outline-none"
+                  >
+                    <option value="day">日</option>
+                    <option value="year">年</option>
+                    <option value="hour">时</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium text-muted-foreground">纪元名称</label>
+                  <input
+                    value={formEpochLabel}
+                    onChange={(e) => setFormEpochLabel(e.target.value)}
+                    placeholder="如：星历元年"
+                    className="w-full h-8 px-3 rounded-md text-xs bg-background border border-border focus:outline-none"
+                  />
+                </div>
               </div>
             </div>
             <div className="flex justify-end gap-2 px-5 h-14 border-t border-border/50">

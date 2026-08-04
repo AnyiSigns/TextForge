@@ -1,6 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
+  experimental: {
+    proxyTimeout: 300_000,
+  },
   rewrites: async () => [
     { source: '/api/:path*', destination: 'http://localhost:8000/api/:path*' },
     { source: '/static/:path*', destination: 'http://localhost:8000/static/:path*' },

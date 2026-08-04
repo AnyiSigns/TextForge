@@ -70,7 +70,7 @@ class SimBranch(Base):
     branch_type: Mapped[str] = mapped_column(String(30), nullable=False, comment="支线类型: backstory/relationship/plot-thread/foreshadow-fill/voice-test")
     related_character_ids: Mapped[list] = mapped_column(JSONB, default=[], comment="关联角色ID列表")
     related_location_id: Mapped[int] = mapped_column(ForeignKey("locations.id", ondelete="SET NULL"), nullable=True, comment="关联地点ID")
-    related_event_id: Mapped[int] = mapped_column(ForeignKey("timeline_events.id", ondelete="SET NULL"), nullable=True, comment="关联事件ID")
+    related_event_id: Mapped[int] = mapped_column(ForeignKey("scene_events.id", ondelete="SET NULL"), nullable=True, comment="关联事件ID")
     related_foreshadowing_id: Mapped[int] = mapped_column(ForeignKey("foreshadowings.id", ondelete="SET NULL"), nullable=True, comment="关联伏笔ID")
     compressed_context: Mapped[str] = mapped_column(Text, nullable=True, comment="压缩后的上下文（注入Agent用）")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), comment="创建时间")

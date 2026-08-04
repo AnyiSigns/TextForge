@@ -44,9 +44,9 @@ async def sync_data(
             d = model_to_dict(r)
             d["_type"] = "location"
             records.append(d)
-        for r in await service.sync_world_timeline_events(since_dt):
+        for r in await service.sync_world_scene_events(since_dt):
             d = model_to_dict(r)
-            d["_type"] = "timeline_event"
+            d["_type"] = "scene_event"
             records.append(d)
         for r in await service.sync_world_foreshadowings(since_dt):
             d = model_to_dict(r)

@@ -19,7 +19,7 @@ async def toggle_lock(
     user_id: Annotated[int, Depends(get_current)],
     session: Annotated[AsyncSession, Depends(db_manager.get_db)] = None,
 ):
-    valid_types = {"characters", "locations", "foreshadowings", "plot_threads", "timeline_events", "creative_settings"}
+    valid_types = {"characters", "locations", "foreshadowings", "plot_threads", "scene_events", "creative_settings"}
     if entity_type not in valid_types:
         raise HTTPException(status_code=400, detail=f"无效的实体类型: {entity_type}")
 

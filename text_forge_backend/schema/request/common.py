@@ -17,5 +17,6 @@ class CompressRequest(BaseModel):
 
 class ReviewActionRequest(BaseModel):
     thread_id: str
-    action: Literal["retry", "accept", "edit"]
+    action: Literal["retry", "accept", "edit", "terminate"]
     edited_content: str | None = None
+    chapter_id: int | None = None

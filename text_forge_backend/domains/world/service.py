@@ -28,21 +28,21 @@ class WorldService:
     async def delete_location(self, location_id: int, book_id: int):
         await self.repo.delete_location(location_id, book_id)
 
-    async def list_timeline_events_page(self, book_id: int, page_params: PageParams) -> PageResult:
-        items, total = await self.repo.list_timeline_events_page(book_id, offset=page_params.offset, limit=page_params.limit)
+    async def list_scene_events_page(self, book_id: int, page_params: PageParams) -> PageResult:
+        items, total = await self.repo.list_scene_events_page(book_id, offset=page_params.offset, limit=page_params.limit)
         return PageResult(items=items, total=total, page=page_params.page, page_size=page_params.page_size)
 
-    async def list_timeline_events(self, book_id: int) -> list[dict]:
-        return await self.repo.list_timeline_events(book_id)
+    async def list_scene_events(self, book_id: int) -> list[dict]:
+        return await self.repo.list_scene_events(book_id)
 
-    async def create_timeline_event(self, book_id: int, data: dict):
-        return await self.repo.create_timeline_event(book_id, data)
+    async def create_scene_event(self, book_id: int, data: dict):
+        return await self.repo.create_scene_event(book_id, data)
 
-    async def update_timeline_event(self, event_id: int, book_id: int, data: dict):
-        return await self.repo.update_timeline_event(event_id, book_id, data)
+    async def update_scene_event(self, event_id: int, book_id: int, data: dict):
+        return await self.repo.update_scene_event(event_id, book_id, data)
 
-    async def delete_timeline_event(self, event_id: int, book_id: int):
-        await self.repo.delete_timeline_event(event_id, book_id)
+    async def delete_scene_event(self, event_id: int, book_id: int):
+        await self.repo.delete_scene_event(event_id, book_id)
 
     async def list_foreshadowings_page(self, book_id: int, page_params: PageParams, status: str | None = None) -> PageResult:
         items, total = await self.repo.list_foreshadowings_page(book_id, offset=page_params.offset, limit=page_params.limit, status=status)
