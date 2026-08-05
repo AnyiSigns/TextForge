@@ -2,9 +2,9 @@ import { apiClient } from './client';
 import type { AgentMemory } from './types';
 
 export async function fetchAgentMemories(bookId?: number): Promise<AgentMemory[]> {
-  const url = bookId ? `/agent-memories/?book_id=${bookId}` : '/agent-memories/';
-  const { data } = await apiClient.get<{ memories: AgentMemory[] }>(url);
-  return data.memories ?? [];
+  const url = bookId ? `/agent-memories/?book_id=${bookId}&page_size=100` : '/agent-memories/?page_size=100';
+  const { data } = await apiClient.get<{ items: AgentMemory[] }>(url);
+  return data.items ?? [];
 }
 
 export async function createAgentMemory(body: Partial<AgentMemory>): Promise<AgentMemory> {
@@ -22,6 +22,6 @@ export async function deleteAgentMemory(memoryId: number): Promise<void> {
 }
 
 export async function searchAgentMemories(query: string, bookId?: number): Promise<AgentMemory[]> {
-  const { data } = await apiClient.post<{ results: AgentMemory[] }>('/agent-memories/search', { query, book_id: bookId });
-  return data.results ?? [];
+  const { data } = await apiClient.post<AgentMemory[]>('/agent-memories/search', { q: query, book_id: bookId });
+  return Array.isArray(data) ? data : [];
 }

@@ -41,21 +41,24 @@ apiClient.interceptors.response.use(
       if (ok) {
         const newToken = useAuthStore.getState().accessToken;
         if (newToken) {
+          // 保留原始请求头（含 multipart 的 Content-Type / boundary），仅刷新 Authorization
+          const headers: Record<string, string> = { ...(originalRequest.headers || {}) };
+          headers.Authorization = `Bearer ${newToken}`;
           const retryConfig = {
             method: originalRequest.method,
             url: originalRequest.url,
             data: originalRequest.data,
             params: originalRequest.params,
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${newToken}`,
-            },
+            headers,
             _retry: true,
           };
           return apiClient.request(retryConfig);
         }
       }
-      if (typeof window !== 'undefined') window.location.href = '/login';
+      // 仅在未处于登录页时跳转，避免刷新循环；会话过期本就需重新登录
+      if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(err);
   },

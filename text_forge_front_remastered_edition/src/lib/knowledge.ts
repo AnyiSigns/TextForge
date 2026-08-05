@@ -1,8 +1,9 @@
 // 知识库 / RAG 检索层
-// 个人库：端侧向量检索（本地 altor-vec + bge-zh）
-// 公共库：后端 pgvector GET /api/knowledge/search?scope=public&q=
+// 个人库：端侧向量检索（本地 altor-vec + bge-zh），纯客户端
+// 公共库：后端 pgvector POST /api/knowledge/search
 
 import { apiClient } from '@/shared/api/client';
+import { authFetch } from '@/shared/lib/authFetch';
 import { type RagChunk, putKbDoc, getKbDoc, getAllKbDocs, deleteKbDoc, type KbDocRecord } from '@/lib/storage/indexedDB';
 import { vectorSearch, indexDocument, removeDocumentChunks } from '@/lib/rag/vectorStore';
 import { downloadBlob } from '@/lib/utils/download';
@@ -21,8 +22,9 @@ export interface KbDocMeta {
 }
 
 async function backendPublicSearch(q: string): Promise<RagChunk[]> {
-  const { data } = await apiClient.get<{ chunks: RagChunk[] }>(
-    `/knowledge/search?scope=public&q=${encodeURIComponent(q)}`,
+  const { data } = await apiClient.post<{ chunks: RagChunk[] }>(
+    '/knowledge/search',
+    { query: q, scope: 'public', top_k: 3 },
   );
   return data.chunks ?? [];
 }
@@ -47,20 +49,10 @@ export const ragClient = {
     };
     await putKbDoc(rec);
     indexDocument(rec).catch(() => {});
-    const form = new FormData();
-    form.append('file', file);
-    form.append('doc_id', id);
-    apiClient.post('/knowledge/upload', form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    }).catch(() => {});
     return rec;
   },
 
   async listPersonal(): Promise<KbDocMeta[]> {
-    try {
-      const { data } = await apiClient.get<{ documents: KbDocMeta[] }>('/knowledge');
-      if (Array.isArray(data.documents)) return data.documents as KbDocMeta[];
-    } catch { /* fallback to local */ }
     return (await getAllKbDocs()).filter((d) => d.scope === 'personal');
   },
 
@@ -72,7 +64,6 @@ export const ragClient = {
   async removePersonal(id: string): Promise<void> {
     await deleteKbDoc(id);
     await removeDocumentChunks(id).catch(() => {});
-    try { await apiClient.delete(`/knowledge/${id}`); } catch { /* already local-deleted */ }
   },
 
   async listPublic(): Promise<KbDocMeta[]> {
@@ -92,12 +83,24 @@ export const ragClient = {
   },
 
   async downloadPublic(id: string, name: string): Promise<void> {
-    const res = await fetch(`/api/knowledge/${id}`, { credentials: 'include' });
+    const res = await authFetch(`/api/knowledge/public/${id}`);
     if (!res.ok) throw new Error('获取文档详情失败');
-    const { data } = await res.json().catch(() => ({}));
+    const data = await res.json().catch(() => ({}));
     const content = typeof data?.content === 'string' ? data.content : undefined;
     if (!content) throw new Error('文档内容为空');
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
     downloadBlob(blob, name);
+  },
+
+  async uploadPublic(file: File): Promise<void> {
+    const form = new FormData();
+    form.append('file', file);
+    await apiClient.post('/knowledge/upload', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+
+  async removePublic(id: string): Promise<void> {
+    await apiClient.delete(`/knowledge/${id}`);
   },
 };

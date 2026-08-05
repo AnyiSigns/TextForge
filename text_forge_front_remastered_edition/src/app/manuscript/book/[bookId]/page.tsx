@@ -13,14 +13,30 @@ export default function ManuscriptPage({ params }: { params: Promise<{ bookId: s
   const bookId = parseInt(bookIdStr, 10);
   const bookTitle = useManuscriptStore((s) => s.bookTitle);
   const chapters = useManuscriptStore((s) => s.chapters);
+  const loading = useManuscriptStore((s) => s.loading);
+  const error = useManuscriptStore((s) => s.error);
   const loadBook = useManuscriptStore((s) => s.loadBook);
 
   useEffect(() => { void loadBook(bookId); }, [bookId, loadBook]);
 
-  if (chapters.length === 0) {
+  if (loading || (!error && chapters.length === 0)) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-sm text-muted-foreground">加载中...</div>
+      </div>
+    );
+  }
+
+  if (error && chapters.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-3">
+        <div className="text-sm text-muted-foreground">{error}</div>
+        <button
+          onClick={() => loadBook(bookId)}
+          className="h-8 px-4 rounded-md text-xs font-medium bg-foreground text-background hover:opacity-90 border-none cursor-pointer"
+        >
+          重试
+        </button>
       </div>
     );
   }

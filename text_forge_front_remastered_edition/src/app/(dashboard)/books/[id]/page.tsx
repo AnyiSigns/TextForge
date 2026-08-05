@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect, use, useState } from 'react';
-import { seedMockData } from '@/mocks/seed';
 import { useEntityStore } from '@/features/map/stores/entityStore';
 import { useBookDetailStore } from './store';
 import { useMapStore } from '@/features/map/stores/mapStore';
 import { useTimelineStore } from '@/features/map/stores/timelineStore';
+import { useInitializerStore } from '@/features/map/stores/initializerStore';
 import { MapCanvas } from './MapCanvas';
 import { TimelineBar } from '@/features/map/TimelineBar/TimelineBar';
 import { FloatingEditor } from '@/features/map/FloatingEditor/FloatingEditor';
@@ -13,16 +13,20 @@ import { Initializer } from './Initializer';
 import { StoryFlow } from './StoryFlow';
 import { SimRoom } from './SimRoom';
 import { SidePanel } from '@/features/map/SidePanel/SidePanel';
-import { PanelLeftOpen, MessageCircle, Bot, PenLine } from 'lucide-react';
+import { PanelLeftOpen, MessageCircle, Bot, PenLine, Sparkles } from 'lucide-react';
 
 export default function MapPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const bookId = parseInt(id, 10);
+  if (isNaN(bookId)) {
+    return <div className="flex h-full items-center justify-center text-muted-foreground">无效的书籍 ID</div>;
+  }
   const setBookId = useBookDetailStore((s) => s.setBookId);
   const loadBook = useBookDetailStore((s) => s.loadBook);
   const setAgentContext = useBookDetailStore((s) => s.setAgentContext);
   const agentOpen = useBookDetailStore((s) => s.agentOpen);
   const setAgentOpen = useBookDetailStore((s) => s.setAgentOpen);
+  const openInitializer = useInitializerStore((s) => s.open);
   const characters = useEntityStore((s) => s.characters);
   const selectedCharacterId = useMapStore((s) => s.selectedCharacterId);
   const selectedEventId = useTimelineStore((s) => s.selectedEventId);
@@ -31,10 +35,7 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
 
   const [panelOpen, setPanelOpen] = useState(false);
   const [simRoomOpen, setSimRoomOpen] = useState(false);
-
-  useEffect(() => {
-    seedMockData();
-  }, []);
+  const loadFromApi = useEntityStore((s) => s.loadFromApi);
 
   useEffect(() => {
     setBookId(bookId);
@@ -43,6 +44,10 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
   useEffect(() => {
     void loadBook(bookId);
   }, [bookId, loadBook]);
+
+  useEffect(() => {
+    void loadFromApi(bookId);
+  }, [bookId, loadFromApi]);
 
   const handleAgentToggle = () => {
     const opening = !agentOpen;
@@ -115,6 +120,13 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
               >
                 <PenLine size={14} strokeWidth={1.5} />
               </a>
+              <button
+                onClick={() => openInitializer()}
+                className="w-8 h-8 flex items-center justify-center rounded-xl bg-card/90 backdrop-blur-sm border border-border/50 shadow-sm cursor-pointer text-muted-foreground/60 hover:text-foreground hover:bg-card transition-colors"
+                title="初始化器"
+              >
+                <Sparkles size={14} strokeWidth={1.5} />
+              </button>
             </div>
           )}
           <MapCanvas />

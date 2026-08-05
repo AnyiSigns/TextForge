@@ -250,13 +250,6 @@ export interface KnowledgeDoc {
   content?: string;
 }
 
-export interface CardSession {
-  cardId: string;
-  cardType: string;
-  title: string;
-  wsEndpoint: string;
-}
-
 export interface LockResult {
   entityType: string;
   entityId: number;
@@ -265,8 +258,8 @@ export interface LockResult {
 
 export interface SSEEvent {
   type: 'token' | 'think_start' | 'agent_think_end' | 'tool_start' | 'tool_end' | 'progress' |
-        'node_start' | 'node_stream' | 'node_end' |
-        'propose_cards' | 'review_card' | 'suggestions' | 'end' | 'error';
+        'node_start' | 'node_stream' | 'node_end' | 'node_fail' |
+        'propose_cards' | 'review_card' | 'suggestions' | 'extend_outline' | 'end' | 'error';
   token?: string;
   tool?: string;
   step?: string;
@@ -280,9 +273,19 @@ export interface SSEEvent {
   content?: string;
   elapsed?: number;
   user_id?: number;
+  tokens?: number;
+  output_preview?: string;
+  chapters_created?: number;
+  chapter_ids?: number[];
+  events_created?: number;
+  generation_batch?: number;
+  new_chapter_count?: number;
 }
 
 export interface BookContextConfig {
-  bookId: number;
-  contextIds: number[];
+  character_ids: number[];
+  chapter_content_ids: number[];
+  chapter_summary_ids: number[];
+  volume_ids: number[];
+  outline_node_ids: number[];
 }

@@ -236,7 +236,7 @@ class Character(Base):
     base_location_id: Mapped[int] = mapped_column(
         ForeignKey("locations.id", ondelete="SET NULL"),
         nullable=True,
-        comment="角色常驻地点",
+        comment="角色当前地点",
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), comment="创建时间"
@@ -299,12 +299,14 @@ class Location(Base):
 
     book: Mapped["Book"] = relationship(back_populates="locations")
     parent: Mapped[Optional["Location"]] = relationship(
-        back_populates="children", remote_side="Location.id",
-        foreign_keys="Location.parent_id"
+        back_populates="children",
+        remote_side="Location.id",
+        foreign_keys="Location.parent_id",
     )
     children: Mapped[list["Location"]] = relationship(
-        back_populates="parent", cascade="all,delete-orphan",
-        foreign_keys="Location.parent_id"
+        back_populates="parent",
+        cascade="all,delete-orphan",
+        foreign_keys="Location.parent_id",
     )
 
 
@@ -329,12 +331,8 @@ class SceneEvent(Base):
         comment="所属章节ID",
     )
     title: Mapped[str] = mapped_column(String(200), nullable=False, comment="事件标题")
-    content: Mapped[str] = mapped_column(
-        Text, nullable=True, comment="场景级摘要"
-    )
-    sort_order: Mapped[int] = mapped_column(
-        Integer, default=0, comment="章节内排序"
-    )
+    content: Mapped[str] = mapped_column(Text, nullable=True, comment="场景级摘要")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, comment="章节内排序")
     event_type: Mapped[str] = mapped_column(
         String(50), nullable=False, comment="scene / event / milestone"
     )
@@ -351,6 +349,9 @@ class SceneEvent(Base):
     )
     character_ids: Mapped[list] = mapped_column(
         JSONB, default=[], comment="关联角色ID列表"
+    )
+    plot_thread_ids: Mapped[list] = mapped_column(
+        JSONB, default=[], comment="关联情节线ID列表"
     )
     locked: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False, comment="是否锁定"

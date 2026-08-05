@@ -77,23 +77,6 @@ export async function deleteChapter(chapterId: number): Promise<void> {
   await apiClient.delete(`/chapters/${chapterId}`);
 }
 
-export async function createSceneEvent(
-  chapterId: number,
-  body: { title: string; content?: string; characterIds?: number[]; locked?: boolean },
-): Promise<SceneEvent> {
-  const { data } = await apiClient.post<SceneEvent>(`/scene-events/chapters/${chapterId}`, body);
-  return data;
-}
-
-export async function updateSceneEvent(nodeId: number, patch: Partial<SceneEvent>): Promise<SceneEvent> {
-  const { data } = await apiClient.put<SceneEvent>(`/scene-events/${nodeId}`, patch);
-  return data;
-}
-
-export async function deleteSceneEvent(nodeId: number): Promise<void> {
-  await apiClient.delete(`/scene-events/${nodeId}`);
-}
-
 export async function fetchCreativeSetting(bookId: number): Promise<CreativeSetting> {
   const { data } = await apiClient.get<CreativeSetting>(`/creative-settings/books/${bookId}`);
   return data;
@@ -109,8 +92,8 @@ export async function fetchBookContextConfig(bookId: number): Promise<BookContex
   return data;
 }
 
-export async function saveBookContextConfig(bookId: number, contextIds: number[]): Promise<BookContextConfig> {
-  const { data } = await apiClient.put<BookContextConfig>(`/books/${bookId}/context-config`, { contextIds });
+export async function saveBookContextConfig(bookId: number, config: Partial<BookContextConfig>): Promise<BookContextConfig> {
+  const { data } = await apiClient.put<BookContextConfig>(`/books/${bookId}/context-config`, config);
   return data;
 }
 

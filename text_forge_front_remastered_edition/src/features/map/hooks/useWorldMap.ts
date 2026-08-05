@@ -228,23 +228,7 @@ export function useWorldMap(
         ch.baseLocationId ??
         ch.spawnLocationId;
 
-      if (locId === null || locId === undefined) {
-        const spread = worldSpaceSpread(ch.id, visualFocusId, worldLocationsMap);
-        worldSpreads.set(ch.id, spread);
-        tier1.push({
-          character: ch,
-          screenX: 0,
-          screenY: 0,
-          worldX: spread.wx,
-          worldY: spread.wy,
-          tier: 1,
-          locationId: null,
-          isRepresentative: true,
-          clusterSize: 1,
-          clusterCharacters: [ch],
-        });
-        continue;
-      }
+      if (locId === null || locId === undefined) continue;
 
       const nearestVisible = findNearestVisibleAncestor(
         locId,

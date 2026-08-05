@@ -1,8 +1,9 @@
-﻿from typing import Annotated, Any
+from typing import Annotated, Any
 
 from config.logging import get_logger
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
+from langgraph.config import get_config
 
 from ..workflow_scheduler import execute_node as scheduler_execute_node
 from ..workflow_scheduler import run_workflow as scheduler_run_workflow
@@ -19,6 +20,7 @@ def build_workflow_tool(session_factory, model_config: dict | None = None):
         upstream_outputs: Annotated[dict | None, "上游节点的输出映射，格式为 {node_id: text}"] = None,
         user_id: Annotated[int, InjectedState("user_id")] = 0,
         book_id: Annotated[int, InjectedState("active_book_id")] = 0,
+        personal_rag_results: Annotated[list[dict] | None, InjectedState("personal_rag_results")] = None,
     ) -> dict:
         """执行工作流中的单个节点，委托给调度器执行。
 
@@ -59,6 +61,7 @@ def build_workflow_tool(session_factory, model_config: dict | None = None):
                 book_id=book_id,
                 upstream_outputs=upstream_outputs,
                 model_config=model_config,
+                personal_rag_results=personal_rag_results,
             )
 
             return {
@@ -77,6 +80,7 @@ def build_workflow_tool(session_factory, model_config: dict | None = None):
         instruction: Annotated[str | None, "额外的创作指令"] = None,
         user_id: Annotated[int, InjectedState("user_id")] = 0,
         book_id: Annotated[int, InjectedState("active_book_id")] = 0,
+        personal_rag_results: Annotated[list[dict] | None, InjectedState("personal_rag_results")] = None,
     ) -> dict:
         """执行完整工作流，按拓扑顺序自动运行所有节点。
 
@@ -94,6 +98,12 @@ def build_workflow_tool(session_factory, model_config: dict | None = None):
         def on_progress(event: dict[str, Any]):
             progress_events.append(event)
             logger.debug(f"[workflow-progress] {event.get('event')} {event.get('node_id')}")
+            try:
+                config = get_config()
+                if config and hasattr(config, 'dispatch_custom_event'):
+                    config.dispatch_custom_event(event.get("event", "progress"), event)
+            except Exception:
+                pass
 
         try:
             result = await scheduler_run_workflow(
@@ -101,6 +111,7 @@ def build_workflow_tool(session_factory, model_config: dict | None = None):
                 book_id=book_id,
                 model_config=model_config or {},
                 on_progress=on_progress,
+                personal_rag_results=personal_rag_results,
             )
         except Exception as exc:
             logger.exception(f"execute_workflow 失败")

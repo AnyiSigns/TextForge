@@ -19,6 +19,8 @@ interface ManuscriptState {
   bookTitle: string;
   volumes: (Volume & { chapters: Chapter[] })[];
   chapters: ChapterTreeItem[];
+  loading: boolean;
+  error: string | null;
 
   activeChapterId: number | null;
   activeChapterTitle: string;
@@ -48,6 +50,8 @@ export const useManuscriptStore = create<ManuscriptState>((set, get) => ({
   bookTitle: '',
   volumes: [],
   chapters: [],
+  loading: false,
+  error: null,
 
   activeChapterId: null,
   activeChapterTitle: '',
@@ -62,6 +66,7 @@ export const useManuscriptStore = create<ManuscriptState>((set, get) => ({
   diffState: null,
 
   loadBook: async (bookId) => {
+    set({ loading: true, error: null });
     try {
       const book = await booksApi.fetchBook(bookId);
       const vols = await booksApi.fetchChaptersTree(bookId);
@@ -72,8 +77,10 @@ export const useManuscriptStore = create<ManuscriptState>((set, get) => ({
           tree.push({ id: ch.id, title: ch.title, type: 'chapter', chapterId: ch.id, volumeId: v.id, sortOrder: ch.sortOrder });
         }
       }
-      set({ bookId, bookTitle: book.title, volumes: vols, chapters: tree });
-    } catch { /* silent */ }
+      set({ bookId, bookTitle: book.title, volumes: vols, chapters: tree, loading: false });
+    } catch {
+      set({ loading: false, error: '加载失败，请检查网络连接或登录状态' });
+    }
   },
 
   setActiveChapter: (chapterId) => {

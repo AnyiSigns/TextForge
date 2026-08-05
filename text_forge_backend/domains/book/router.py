@@ -1,5 +1,6 @@
 from typing import Annotated
 
+from config.logging import get_logger
 from core.auth import get_current
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
 from models.book import Book, Chapter, SceneEvent, Volume
@@ -29,6 +30,8 @@ from .context_config_repository import BookContextConfigRepository
 from .service import BookService, book_db
 from .volume_service import VolumeService, volume_db
 
+logger = get_logger(__name__)
+
 router = APIRouter(prefix="/books", tags=["Book"])
 
 
@@ -54,6 +57,8 @@ async def create_book(
             title=request.title,
             description=request.description,
             genre=request.genre,
+            time_unit=request.time_unit,
+            epoch_label=request.epoch_label,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -71,7 +76,7 @@ async def book_info(
     result = await book_service.book_detail(user_id, id)
     if not result:
         raise HTTPException(status_code=404, detail="书籍不存在")
-    return BookDetailResponse(book=result["book"], characters=result["characters"])
+    return {"book": result["book"], "characters": result["characters"]}
 
 
 @router.put("/{id}", response_model=BookResponse)
@@ -88,6 +93,10 @@ async def update_book(
         title=request.title,
         description=request.description,
         genre=request.genre,
+        total_word_goal=request.total_word_goal,
+        pinned=request.pinned,
+        time_unit=request.time_unit,
+        epoch_label=request.epoch_label,
     )
     if not instance:
         raise HTTPException(status_code=404, detail="书籍不存在")
@@ -115,7 +124,15 @@ async def book_characters(
     result, msg = await book_service.book_characters(user_id, id)
     if msg:
         raise HTTPException(status_code=404, detail=msg)
-    return ListCharactersResponse(characters=result)
+    logger.info(f"book_characters: user_id={user_id} book_id={id} count={len(result)}")
+    if result:
+        first = result[0]
+        logger.info(f"book_characters sample: id={first.id} name={first.name} aliases={first.aliases!r} status={first.status!r} custom_fields={first.custom_fields!r} created_at={first.created_at!r} updated_at={first.updated_at!r}")
+    try:
+        return ListCharactersResponse(characters=result)
+    except Exception as e:
+        logger.error(f"Pydantic 序列化 CharacterResponse 失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"角色数据序列化失败: {str(e)[:200]}")
 
 
 @router.get("/{id}/volumes", response_model=dict)
@@ -131,15 +148,7 @@ async def book_volumes(
         raise HTTPException(status_code=404, detail="书籍不存在或无权访问")
     items = await volume_service.list_volumes(id)
     return {
-        "volumes": [
-            {
-                "id": v.id,
-                "title": v.title,
-                "summary": v.summary,
-                "sort_order": v.sort_order,
-            }
-            for v in items
-        ]
+        "volumes": [VolumeResponse.model_validate(v).model_dump(by_alias=True) for v in items]
     }
 
 
@@ -180,20 +189,6 @@ async def book_chapters_volume_tree(
     return {"volumes": tree}
 
 
-@router.put("/{id}/creative-settings")
-async def book_creative_setting(
-    id: Annotated[int, Path],
-    setting: Annotated[CreativeSettingRequest, Body(embed=True)],
-    user_id: Annotated[int, Depends(get_current)],
-    book_service: Annotated[BookService, Depends(book_db)],
-):
-    data = setting.model_dump(by_alias=False, exclude_none=True)
-    status = await book_service.save_creative_setting(id, user_id, setting=data)
-    if not status:
-        raise HTTPException(status_code=404, detail="设定保存失败")
-    return {"ok": True}
-
-
 @router.get("/{id}/outline-tree", response_model=dict)
 async def book_outline_tree(
     id: Annotated[int, Path(description="书籍ID")],
@@ -228,7 +223,7 @@ async def book_outline_tree(
         node_stmt = (
             select(SceneEvent)
             .where(SceneEvent.chapter_id.in_(chapter_ids))
-            .order_by(SceneEvent.sort_order.id)
+            .order_by(SceneEvent.sort_order)
         )
         node_res = await session.execute(node_stmt)
         for n in node_res.scalars().all():

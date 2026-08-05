@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Users, MapPin, ListTree, Lightbulb, PanelLeftClose } from 'lucide-react';
+import { useEntityStore } from '@/features/map/stores/entityStore';
 import { CharacterList } from './CharacterList';
 import { LocationTree } from './LocationTree';
 import { OutlineTree } from './OutlineTree';
@@ -15,6 +16,7 @@ interface SidePanelProps {
 
 export function SidePanel({ onClose }: SidePanelProps) {
   const [activeTab, setActiveTab] = useState<Tab>('locations');
+  const bookId = useEntityStore((s) => s.book?.id ?? 1);
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'characters', label: '角色', icon: <Users size={15} strokeWidth={1.5} /> },
@@ -45,7 +47,7 @@ export function SidePanel({ onClose }: SidePanelProps) {
       <div className="flex-1 overflow-y-auto p-3">
         {activeTab === 'characters' && <CharacterList />}
         {activeTab === 'locations' && <LocationTree />}
-        {activeTab === 'outline' && <OutlineTree />}
+        {activeTab === 'outline' && <OutlineTree bookId={bookId} />}
         {activeTab === 'plot' && <EntityPanel />}
       </div>
 

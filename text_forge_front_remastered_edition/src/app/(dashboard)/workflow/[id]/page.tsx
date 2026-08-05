@@ -1,15 +1,112 @@
 'use client';
 
-import { useEffect, use, useState, useCallback } from 'react';
+import { useCallback, useEffect, useState, useRef, use } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Save, Plus, GripVertical, Trash2 } from 'lucide-react';
+import { ArrowLeft, Save, Play, X } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { cn } from '@/shared/lib/cn';
+import {
+  ReactFlow,
+  addEdge,
+  Controls,
+  MiniMap,
+  Background,
+  useNodesState,
+  useEdgesState,
+  type Connection,
+  type Node,
+  type Edge,
+  MarkerType,
+  BackgroundVariant,
+} from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
 import * as workflowApi from '@/shared/api/workflows';
-import type { Workflow, WorkflowNode } from '@/shared/api/workflows';
+import type { Workflow, WorkflowNode as WfNode } from '@/shared/api/workflows';
+import { RoleNode } from '../components/RoleNode';
+import { NodePalette } from '../components/NodePalette';
+import { InspectorPanel } from '../components/InspectorPanel';
+import { ExecutionPanel } from '../components/ExecutionPanel';
 
-function generateId() { return `node-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`; }
+const nodeTypes = { roleNode: RoleNode };
+
+let nodeCounter = Date.now();
+
+function makeNodeId() {
+  return `n${nodeCounter++}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function wfNodeToFlowNode(n: WfNode): Node {
+  return {
+    id: n.id,
+    type: 'roleNode',
+    position: { x: 0, y: 0 },
+    data: {
+      label: n.label,
+      executor: n.executor || 'main',
+      layer: getLayer(n.executor || 'main', n.label),
+    },
+  };
+}
+
+function getLayer(executor: string, label: string): 'decision' | 'execution' | 'audit' {
+  if (executor === 'audit') return 'audit';
+  if (label.includes('策划') || label.includes('分镜')) return 'decision';
+  return 'execution';
+}
+
+function layoutNodes(nodes: Node[], edges: Edge[]): Node[] {
+  if (nodes.length === 0) return nodes;
+  if (edges.length === 0) {
+    return nodes.map((n, i) => ({
+      ...n,
+      position: { x: 50, y: i * 90 + 20 },
+    }));
+  }
+
+  const adj: Record<string, string[]> = {};
+  const inDegree: Record<string, number> = {};
+  for (const n of nodes) {
+    adj[n.id] = [];
+    inDegree[n.id] = 0;
+  }
+  for (const e of edges) {
+    adj[e.source]?.push(e.target);
+    inDegree[e.target] = (inDegree[e.target] || 0) + 1;
+  }
+
+  const queue = Object.keys(inDegree).filter((id) => inDegree[id] === 0);
+  const levels: string[][] = [];
+  const visited = new Set<string>();
+  while (queue.length > 0) {
+    const level = [...queue];
+    levels.push(level);
+    queue.length = 0;
+    for (const id of level) {
+      visited.add(id);
+      for (const neighbor of adj[id] || []) {
+        if (visited.has(neighbor)) continue;
+        inDegree[neighbor]--;
+        if (inDegree[neighbor] === 0) queue.push(neighbor);
+      }
+    }
+  }
+
+  const positioned = new Map<string, { x: number; y: number }>();
+  for (let i = 0; i < levels.length; i++) {
+    const level = levels[i];
+    const startY = 20 + i * 90;
+    const totalWidth = level.length * 200;
+    const startX = Math.max(50, (800 - totalWidth) / 2);
+    level.forEach((id, j) => {
+      positioned.set(id, { x: startX + j * 200, y: startY });
+    });
+  }
+
+  return nodes.map((n) => ({
+    ...n,
+    position: positioned.get(n.id) || { x: 50, y: 0 },
+  }));
+}
 
 export default function WorkflowEditorPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -21,46 +118,124 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
   });
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [showExecution, setShowExecution] = useState(false);
+
+  const loadedRef = useRef(false);
 
   useEffect(() => {
-    if (!isNew) {
-      workflowApi.getWorkflow(id).then((wf) => { setWorkflow(wf); if (wf.nodes?.[0]) setSelectedNodeId(wf.nodes[0].id); }).catch(() => {});
-    } else {
-      setWorkflow({ id: generateId(), name: '未命名工作流', nodes: [], edges: [] });
+    if (isNew) {
+      const newId = makeNodeId();
+      setWorkflow({ id: newId, name: '未命名工作流', nodes: [], edges: [] });
+      loadedRef.current = true;
+      return;
     }
+    workflowApi.getWorkflow(id).then((wf) => {
+      setWorkflow(wf);
+      if (wf.nodes?.[0]) setSelectedNodeId(wf.nodes[0].id);
+      loadedRef.current = true;
+    }).catch(() => {});
   }, [id, isNew]);
+
+  const initialNodes = workflow.nodes.map(wfNodeToFlowNode);
+  const initialEdges = workflow.edges.map((e) => ({
+    id: `${e.from}->${e.to}`,
+    source: e.from,
+    target: e.to,
+    type: 'smoothstep',
+    style: { stroke: '#1c1b1a', strokeWidth: 1, opacity: 0.25 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: '#1c1b1a', width: 8, height: 8 },
+  }));
+
+  const [nodes, setNodes, onNodesChange] = useNodesState(layoutNodes(initialNodes, initialEdges));
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+
+  useEffect(() => {
+    if (!loadedRef.current) return;
+    const flowNodes = workflow.nodes.map(wfNodeToFlowNode);
+    const flowEdges = workflow.edges.map((e) => ({
+      id: `${e.from}->${e.to}`,
+      source: e.from,
+      target: e.to,
+      type: 'smoothstep',
+      style: { stroke: '#1c1b1a', strokeWidth: 1, opacity: 0.25 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#1c1b1a', width: 8, height: 8 },
+    }));
+    setNodes(layoutNodes(flowNodes, flowEdges));
+    setEdges(flowEdges);
+  }, [workflow.nodes, workflow.edges, setNodes, setEdges]);
+
+  const onConnect = useCallback(
+    (connection: Connection) => {
+      setEdges((eds) => addEdge(connection, eds) as typeof eds);
+      setWorkflow((w) => ({
+        ...w,
+        edges: [...w.edges, { from: connection.source!, to: connection.target! }],
+      }));
+    },
+    [setEdges],
+  );
+
+  const onNodeClick = useCallback(
+    (_: React.MouseEvent, node: Node) => {
+      setSelectedNodeId(node.id);
+    },
+    [],
+  );
+
+  const handleDragStart = useCallback(
+    (event: React.DragEvent, template: {
+      id: string; label: string; executor: string; systemPrompt: string; contextFields: string[];
+    }) => {
+      event.dataTransfer.setData('application/json', JSON.stringify(template));
+      event.dataTransfer.effectAllowed = 'move';
+    },
+    [],
+  );
+
+  const handleDrop = useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault();
+      const dataStr = event.dataTransfer.getData('application/json');
+      if (!dataStr) return;
+      const template = JSON.parse(dataStr);
+      const nodeId = makeNodeId();
+      const newNode: WfNode = {
+        id: nodeId,
+        label: template.label,
+        executor: template.executor,
+        systemPrompt: template.systemPrompt,
+        contextFields: template.contextFields,
+      };
+      const position = { x: event.clientX - 280, y: event.clientY - 200 };
+      const flowNode: Node = {
+        id: nodeId,
+        type: 'roleNode',
+        position,
+        data: {
+          label: template.label,
+          executor: template.executor,
+          layer: getLayer(template.executor, template.label),
+        },
+      };
+      setNodes((nds) => [...nds, flowNode]);
+      setWorkflow((w) => ({ ...w, nodes: [...w.nodes, newNode] }));
+      setSelectedNodeId(nodeId);
+    },
+    [setNodes],
+  );
+
+  const handleDragOver = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+  }, []);
 
   const selectedNode = workflow.nodes.find((n) => n.id === selectedNodeId) ?? null;
 
-  const addNode = () => {
-    const newNode: WorkflowNode = { id: generateId(), label: '新角色节点' };
-    setWorkflow((w) => ({ ...w, nodes: [...w.nodes, newNode] }));
-    setSelectedNodeId(newNode.id);
-  };
-
-  const updateNode = (nodeId: string, patch: Partial<WorkflowNode>) => {
+  const updateNode = (nodeId: string, patch: Partial<WfNode>) => {
     setWorkflow((w) => ({
       ...w,
-      nodes: w.nodes.map((n) => n.id === nodeId ? { ...n, ...patch } : n),
+      nodes: w.nodes.map((n) => (n.id === nodeId ? { ...n, ...patch } : n)),
     }));
-  };
-
-  const removeNode = (nodeId: string) => {
-    setWorkflow((w) => ({
-      ...w,
-      nodes: w.nodes.filter((n) => n.id !== nodeId),
-      edges: w.edges.filter((e) => e.from !== nodeId && e.to !== nodeId),
-    }));
-    if (selectedNodeId === nodeId) setSelectedNodeId(null);
-  };
-
-  const moveNode = (fromIndex: number, toIndex: number) => {
-    setWorkflow((w) => {
-      const nodes = [...w.nodes];
-      const [moved] = nodes.splice(fromIndex, 1);
-      nodes.splice(toIndex, 0, moved);
-      return { ...w, nodes };
-    });
   };
 
   const handleSave = async () => {
@@ -76,131 +251,87 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
   };
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 py-2 border-b border-border shrink-0">
+    <div className="flex flex-col h-full bg-[#faf9f7]">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-[#1c1b1a]/[0.06] shrink-0 bg-[#f4f3f0]">
         <div className="flex items-center gap-3">
-          <Link href="/workflow" className="text-muted-foreground hover:text-foreground"><ArrowLeft size={16} /></Link>
+          <Link href="/workflow" className="text-[#1c1b1a]/30 hover:text-[#1c1b1a]/60">
+            <ArrowLeft size={16} />
+          </Link>
           <input
             value={workflow.name}
             onChange={(e) => setWorkflow((w) => ({ ...w, name: e.target.value }))}
-            className="text-sm font-medium bg-transparent border-none outline-none min-w-[150px]"
+            className="text-sm font-medium bg-transparent border-none outline-none min-w-[150px] text-[#1c1b1a]"
             placeholder="工作流名称"
           />
-          <span className="text-[10px] text-muted-foreground">{workflow.nodes.length} 个节点</span>
+          <span className="text-[10px] text-[#1c1b1a]/25">
+            {workflow.nodes.length} 个节点 · {workflow.edges.length} 条连线
+          </span>
         </div>
-        <button onClick={handleSave} disabled={saving}
-          className="flex items-center gap-1 h-7 px-3 rounded-md bg-foreground text-background text-xs font-medium border-none cursor-pointer hover:opacity-90 disabled:opacity-50">
-          <Save size={12} /> {saving ? '保存中...' : '保存'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowExecution((v) => !v)}
+            className="flex items-center gap-1 h-7 px-3 rounded-md text-xs font-medium border border-[#1c1b1a]/[0.10] bg-white text-[#1c1b1a] cursor-pointer hover:bg-[#1c1b1a]/[0.02]"
+          >
+            <Play size={12} /> 运行
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex items-center gap-1 h-7 px-3 rounded-md bg-[#1c1b1a] text-[#f4f3f0] text-xs font-medium border-none cursor-pointer hover:opacity-90 disabled:opacity-50"
+          >
+            <Save size={12} /> {saving ? '保存中...' : '保存'}
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-1 min-h-0">
-        <div className="w-[180px] shrink-0 border-r border-border p-3 space-y-2">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">添加节点</div>
-          <button onClick={addNode}
-            className="flex items-center gap-1.5 w-full px-3 py-1.5 rounded-md text-xs bg-transparent border border-dashed border-border hover:border-foreground/20 hover:bg-muted cursor-pointer">
-            <Plus size={12} /> 新建角色节点
-          </button>
-          <div className="text-[10px] text-muted-foreground/60 pt-2">
-            角色节点代表工作流中的一个创作角色，每个节点包含独立的系统提示词和配置
-          </div>
+        <NodePalette onDragStart={handleDragStart} />
+
+        <div className="flex-1 relative" onDrop={handleDrop} onDragOver={handleDragOver}>
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            onNodeClick={onNodeClick}
+            nodeTypes={nodeTypes}
+            fitView
+            fitViewOptions={{ padding: 0.3 }}
+            className="bg-[#faf9f7]"
+            style={{ background: '#faf9f7' }}
+            defaultEdgeOptions={{
+              type: 'smoothstep',
+              style: { stroke: '#1c1b1a', strokeWidth: 1, opacity: 0.25 },
+              markerEnd: { type: MarkerType.ArrowClosed, color: '#1c1b1a', width: 8, height: 8 },
+            }}
+          >
+            <Controls
+              className="!bg-white !border-[#1c1b1a]/[0.08] !rounded-lg !shadow-sm [&>button]:!bg-white [&>button]:!border-[#1c1b1a]/[0.08] [&>button]:!text-[#1c1b1a]/40"
+            />
+            <MiniMap
+              nodeColor="#1c1b1a"
+              maskColor="rgba(28,27,26,0.02)"
+              className="!bg-[#f4f3f0] !border-[#1c1b1a]/[0.08] !rounded-lg !shadow-sm"
+            />
+            <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#1c1b1a" style={{ opacity: 0.04 }} />
+          </ReactFlow>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-1">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">节点编排</div>
-          {workflow.nodes.map((node, i) => (
-            <div key={node.id}
-              draggable
-              onDragStart={(e) => e.dataTransfer.setData('text/plain', String(i))}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => { const from = parseInt(e.dataTransfer.getData('text/plain'), 10); if (!isNaN(from)) moveNode(from, i); }}
-              onClick={() => setSelectedNodeId(node.id)}
-              className={cn(
-                'flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer transition-colors group',
-                selectedNodeId === node.id ? 'border-foreground/30 bg-foreground/5' : 'border-border/40 bg-card hover:bg-card/60',
-              )}
-            >
-              <GripVertical size={12} className="text-muted-foreground/30 shrink-0 opacity-0 group-hover:opacity-100 cursor-grab" />
-              <div className="w-7 h-7 rounded-md bg-muted flex items-center justify-center text-[10px] font-semibold shrink-0">
-                {node.label?.charAt(0) || '?'}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium truncate">{node.label || '未命名'}</div>
-                <div className="text-[10px] text-muted-foreground truncate">
-                  {node.executor || 'auto'} · {node.systemPrompt ? '已设提示词' : '无提示词'}
-                </div>
-              </div>
-              <button onClick={(e) => { e.stopPropagation(); removeNode(node.id); }}
-                className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive bg-transparent border-none cursor-pointer opacity-0 group-hover:opacity-100">
-                <Trash2 size={12} /></button>
-            </div>
-          ))}
-          {workflow.nodes.length === 0 && (
-            <div className="text-xs text-muted-foreground text-center py-8">点击左侧"新建角色节点"添加第一个节点</div>
-          )}
-        </div>
-
-        <div className="w-[300px] shrink-0 border-l border-border p-4 space-y-4 overflow-y-auto">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">节点属性</div>
-          {selectedNode ? (
-            <>
-              <div>
-                <label className="text-[11px] text-muted-foreground block mb-1">名称</label>
-                <input
-                  value={selectedNode.label}
-                  onChange={(e) => updateNode(selectedNode.id, { label: e.target.value })}
-                  className="w-full h-8 px-2 rounded-md text-xs bg-background border border-border focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="text-[11px] text-muted-foreground block mb-1">系统提示词</label>
-                <textarea
-                  value={selectedNode.systemPrompt || ''}
-                  onChange={(e) => updateNode(selectedNode.id, { systemPrompt: e.target.value })}
-                  placeholder="定义该角色节点的写作风格、视角、时态、节奏等要求..."
-                  className="w-full h-32 px-2 py-1 rounded-md text-xs bg-background border border-border focus:outline-none resize-none"
-                />
-              </div>
-              <div>
-                <label className="text-[11px] text-muted-foreground block mb-1">执行器</label>
-                <select
-                  value={selectedNode.executor || 'auto'}
-                  onChange={(e) => updateNode(selectedNode.id, { executor: e.target.value as WorkflowNode['executor'] })}
-                  className="w-full h-8 px-2 rounded-md text-xs bg-background border border-border focus:outline-none"
-                >
-                  <option value="auto">自动选择</option>
-                  <option value="main">主生成模型</option>
-                  <option value="audit">审核模型</option>
-                  <option value="tool">工具模型</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-[11px] text-muted-foreground block mb-1">精度档位</label>
-                <select
-                  value={selectedNode.tier || 'standard'}
-                  onChange={(e) => updateNode(selectedNode.id, { tier: e.target.value as WorkflowNode['tier'] })}
-                  className="w-full h-8 px-2 rounded-md text-xs bg-background border border-border focus:outline-none"
-                >
-                  <option value="standard">标准</option>
-                  <option value="cheap">轻量</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-[11px] text-muted-foreground block mb-1">RAG 检索条数</label>
-                <input
-                  type="number"
-                  min={1} max={10}
-                  value={selectedNode.ragTopK || 3}
-                  onChange={(e) => updateNode(selectedNode.id, { ragTopK: parseInt(e.target.value, 10) || 3 })}
-                  className="w-full h-8 px-2 rounded-md text-xs bg-background border border-border focus:outline-none"
-                />
-              </div>
-            </>
-          ) : (
-            <div className="text-xs text-muted-foreground text-center py-8">选择一个节点编辑属性</div>
-          )}
-        </div>
+        <InspectorPanel
+          node={selectedNode}
+          onChange={(patch: Partial<WfNode>) => selectedNode && updateNode(selectedNode.id, patch)}
+          onClose={() => setSelectedNodeId(null)}
+        />
       </div>
+
+      {showExecution && (
+        <ExecutionPanel
+          workflow={workflow}
+          bookId={undefined}
+          onClose={() => setShowExecution(false)}
+        />
+      )}
     </div>
   );
 }

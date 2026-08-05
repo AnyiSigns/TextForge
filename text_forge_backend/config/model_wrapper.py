@@ -188,7 +188,7 @@ class ModelWrapper:
     def _create_modelslab_vision(config: dict[str, Any]):
         try:
             import requests
-            from langchain.llms.base import LLM
+            from langchain_community.llms import LLM
 
             class ModelsLab(LLM):
                 api_key: str = ""
@@ -221,9 +221,9 @@ class ModelWrapper:
     @staticmethod
     def _create_pollinations_vision(config: dict[str, Any]):
         try:
-            from langchain_pollinations import PollinationsChat
+            from langchain_pollinations import ChatPollinations
 
-            return PollinationsChat(
+            return ChatPollinations(
                 model=config.get("model_id") or "flux",
             )
         except Exception as e:
@@ -233,7 +233,7 @@ class ModelWrapper:
     def _build_kwargs(provider: str, config: dict[str, Any]):
         base = {
             "model": config.get("model_id"),
-            "temperature": config.get("temperature", 0.7),
+            "temperature": config.get("temperature", 0.3),
             "max_tokens": config.get("max_tokens"),
         }
         base = {k: v for k, v in base.items() if v is not None}

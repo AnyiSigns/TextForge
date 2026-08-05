@@ -3,7 +3,7 @@ from typing import Annotated
 
 from config.logging import get_logger
 from core.auth import get_current
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Path, Query, UploadFile
 from schema.request.character import CharacterRequest, CharacterUpdateRequest
 from schema.response.book import (
     CharacterResponse,
@@ -91,7 +91,22 @@ async def get_character_avatar(
     character = await character_service.get_character(user_id=user_id, character_id=id)
     if not character:
         raise HTTPException(status_code=404, detail="角色不存在")
-    return {"avatar_url": character.avatar_url or ""}
+    return {"avatarUrl": character.avatar_url or ""}
+
+
+@router.post("/{id}/avatar")
+async def upload_character_avatar(
+    id: Annotated[int, Path(description="角色ID")],
+    user_id: Annotated[int, Depends(get_current)],
+    character_service: Annotated[CharacterService, Depends(character_db)],
+    file: UploadFile = File(...),
+):
+    character = await character_service.get_character(user_id=user_id, character_id=id)
+    if not character:
+        raise HTTPException(status_code=404, detail="角色不存在")
+    return await character_service.upload_character_avatar(
+        character_id=id, file=file
+    )
 
 
 @router.delete("/{id}/avatar")

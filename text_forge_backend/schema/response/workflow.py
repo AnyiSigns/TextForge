@@ -13,9 +13,3 @@ class WorkflowDetailResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)
 
     workflow: "Workflow"
-
-
-class WorkflowNodeSummary(BaseModel):
-    id: str
-    name: str
-    description: str | None = None

@@ -1,6 +1,6 @@
 from typing import Generic, TypeVar
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 T = TypeVar("T")
 
@@ -42,6 +42,7 @@ class PageResult(BaseModel, Generic[T]):
     page: int = Field(default=1, description="当前页码")
     page_size: int = Field(default=10, description="每页条目数")
 
+    @computed_field
     @property
     def total_pages(self) -> int:
         """计算总页数。"""
@@ -49,11 +50,13 @@ class PageResult(BaseModel, Generic[T]):
             return 0
         return (self.total + self.page_size - 1) // self.page_size
 
+    @computed_field
     @property
     def has_next(self) -> bool:
         """是否有下一页。"""
         return self.page < self.total_pages
 
+    @computed_field
     @property
     def has_prev(self) -> bool:
         """是否有上一页。"""

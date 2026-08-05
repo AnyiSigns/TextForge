@@ -158,7 +158,7 @@ export async function deleteConversation(id: number): Promise<void> {
 
 export async function searchAgentMemories(bookId: number, query: string): Promise<any[]> {
   try {
-    const { data } = await apiClient.get<any[]>(`/agent/memories/search?book_id=${bookId}&q=${encodeURIComponent(query)}`);
+    const { data } = await apiClient.post<any[]>('/agent-memories/search', { q: query, book_id: bookId });
     return Array.isArray(data) ? data : [];
   } catch {
     return [];

@@ -7,8 +7,8 @@ export async function fetchCharacters(bookId: number): Promise<Character[]> {
 }
 
 export async function fetchAllCharacters(): Promise<Character[]> {
-  const { data } = await apiClient.get<Character[]>('/characters/');
-  return Array.isArray(data) ? data : [];
+  const { data } = await apiClient.get<{ characters: Character[] }>('/characters/');
+  return data.characters ?? [];
 }
 
 export async function fetchCharacter(id: number): Promise<Character> {

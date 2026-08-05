@@ -156,18 +156,25 @@ async def room_websocket(websocket: WebSocket, room_id: int):
             await websocket.close(code=4004, reason="房间不存在")
             return
 
-        auth_header = websocket.headers.get("authorization", "")
-        if auth_header.startswith("Bearer "):
-            token = auth_header[len("Bearer "):]
-            payload = verify_token(token)
-            if not payload:
-                await websocket.close(code=4003)
-                return
-            token_user_id = int(payload.get("sub", 0))
-            if token_user_id != room.user_id:
-                await websocket.close(code=4003)
-                return
+        token = None
+        token_param = websocket.query_params.get("token")
+        if token_param:
+            token = token_param
         else:
+            auth_header = websocket.headers.get("authorization", "")
+            if auth_header.startswith("Bearer "):
+                token = auth_header[len("Bearer "):]
+
+        if not token:
+            await websocket.close(code=4003, reason="缺少认证")
+            return
+
+        payload = verify_token(token)
+        if not payload:
+            await websocket.close(code=4003)
+            return
+        token_user_id = int(payload.get("sub", 0))
+        if token_user_id != room.user_id:
             await websocket.close(code=4003)
             return
 

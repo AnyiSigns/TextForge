@@ -1,3 +1,4 @@
+import { apiClient } from './client';
 import { getItem, setItem } from '@/lib/storage/indexedDB';
 
 const MODEL_CONFIG_KEY = 'tf_model_config';
@@ -30,14 +31,6 @@ export async function testModelConnection(body: {
   api_key: string;
   model_id: string;
 }): Promise<{ ok: boolean; content?: string }> {
-  const res = await fetch('/api/models/test', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || `HTTP ${res.status}`);
-  }
-  return res.json();
+  const { data } = await apiClient.post<{ ok: boolean; content?: string }>('/models/test', body);
+  return data;
 }

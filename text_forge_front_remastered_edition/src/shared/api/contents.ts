@@ -32,8 +32,8 @@ export async function saveContent(chapterId: number, content: string): Promise<C
 }
 
 export async function fetchContentVersions(chapterId: number): Promise<ChapterVersion[]> {
-  const { data } = await apiClient.get<ChapterVersion[]>(`/chapter-contents/chapters/${chapterId}`);
-  return Array.isArray(data) ? data : [];
+  const { data } = await apiClient.get<{ contents: ChapterVersion[] }>(`/chapter-contents/chapters/${chapterId}`);
+  return data.contents ?? [];
 }
 
 export async function fetchVersionDiff(
@@ -42,7 +42,7 @@ export async function fetchVersionDiff(
   toVersion: number,
 ): Promise<DiffResult> {
   const { data } = await apiClient.get<DiffResult>(
-    `/chapter-contents/chapters/${chapterId}/diff?fromVersion=${fromVersion}&toVersion=${toVersion}`,
+    `/chapter-contents/chapters/${chapterId}/diff?from_version=${fromVersion}&to_version=${toVersion}`,
   );
   return data;
 }

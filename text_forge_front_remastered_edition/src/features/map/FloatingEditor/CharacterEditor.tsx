@@ -28,6 +28,8 @@ export function CharacterEditor({ characterId, isNew, onClose }: CharacterEditor
   const [avatarUrl, setAvatarUrl] = useState('');
   const [aliases, setAliases] = useState<string[]>([]);
   const [aliasInput, setAliasInput] = useState('');
+  const [customFieldKey, setCustomFieldKey] = useState('');
+  const [customFieldValue, setCustomFieldValue] = useState('');
   const [relationshipChain, setRelationshipChain] = useState<Array<{ targetId: number; type: string; description: string }>>([]);
   const [customFields, setCustomFields] = useState<Record<string, unknown>>({});
   const [locked, setLocked] = useState(false);
@@ -79,6 +81,8 @@ export function CharacterEditor({ characterId, isNew, onClose }: CharacterEditor
         relationshipChain,
         customFields,
         locked,
+        spawnLocationId: spawnLocationId || null,
+        baseLocationId: baseLocationId || null,
       });
     }
     onClose();
@@ -121,43 +125,34 @@ export function CharacterEditor({ characterId, isNew, onClose }: CharacterEditor
         </div>
       </div>
 
-      {isNew ? (
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1.5">
-            <label className="text-[11px] font-medium text-muted-foreground">首次出场地点 ID</label>
-            <input
-              type="number"
-              value={spawnLocationId || ''}
-              onChange={(e) => setSpawnLocationId(parseInt(e.target.value) || 0)}
-              className="w-full h-8 px-3 rounded-md text-sm bg-background border border-border focus:outline-none focus:border-foreground/20"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-[11px] font-medium text-muted-foreground">当前所在地点 ID</label>
-            <input
-              type="number"
-              value={baseLocationId || ''}
-              onChange={(e) => setBaseLocationId(parseInt(e.target.value) || 0)}
-              className="w-full h-8 px-3 rounded-md text-sm bg-background border border-border focus:outline-none focus:border-foreground/20"
-            />
-          </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <label className="text-[11px] font-medium text-muted-foreground">首次出场地点</label>
+          <select
+            value={spawnLocationId || ''}
+            onChange={(e) => setSpawnLocationId(e.target.value ? parseInt(e.target.value) : 0)}
+            className="w-full h-8 px-2 rounded-md text-sm bg-background border border-border focus:outline-none focus:border-foreground/20"
+          >
+            <option value="">未设置</option>
+            {locations.map((l) => (
+              <option key={l.id} value={l.id}>{l.name}</option>
+            ))}
+          </select>
         </div>
-      ) : (
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1.5">
-            <label className="text-[11px] font-medium text-muted-foreground">首次出场地点</label>
-            <div className="text-sm text-muted-foreground/70 pt-2">
-              {spawnLocation?.name ?? '未设置'}
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-[11px] font-medium text-muted-foreground">当前所在地点</label>
-            <div className="text-sm text-muted-foreground/70 pt-2">
-              {baseLocation?.name ?? '未设置'}
-            </div>
-          </div>
+        <div className="space-y-1.5">
+          <label className="text-[11px] font-medium text-muted-foreground">当前所在地点</label>
+          <select
+            value={baseLocationId || ''}
+            onChange={(e) => setBaseLocationId(e.target.value ? parseInt(e.target.value) : 0)}
+            className="w-full h-8 px-2 rounded-md text-sm bg-background border border-border focus:outline-none focus:border-foreground/20"
+          >
+            <option value="">未设置</option>
+            {locations.map((l) => (
+              <option key={l.id} value={l.id}>{l.name}</option>
+            ))}
+          </select>
         </div>
-      )}
+      </div>
 
       <div className="space-y-1.5">
         <label className="text-[11px] font-medium text-muted-foreground">角色描述</label>
@@ -256,6 +251,66 @@ export function CharacterEditor({ characterId, isNew, onClose }: CharacterEditor
             onKeyDown={(e) => { if (e.key === 'Enter' && aliasInput.trim()) { setAliases([...aliases, aliasInput.trim()]); setAliasInput(''); e.preventDefault(); } }}
             className="flex-1 h-7 px-2 rounded-md text-xs bg-background border border-border focus:outline-none"
             placeholder="输入后按 Enter 添加"
+          />
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between">
+          <label className="text-[11px] font-medium text-muted-foreground">自定义字段</label>
+          <button
+            onClick={() => {
+              if (customFieldKey.trim()) {
+                setCustomFields({ ...customFields, [customFieldKey.trim()]: customFieldValue });
+                setCustomFieldKey('');
+                setCustomFieldValue('');
+              }
+            }}
+            className="text-[10px] text-muted-foreground/50 hover:text-foreground/60 bg-transparent border-none cursor-pointer"
+          >
+            + 添加
+          </button>
+        </div>
+        {Object.keys(customFields).length > 0 && (
+          <div className="space-y-1 mb-1">
+            {Object.entries(customFields).map(([k, v]) => (
+              <div key={k} className="flex items-center gap-1">
+                <span className="text-[10px] font-medium text-muted-foreground/60 w-[80px] truncate flex-shrink-0">{k}</span>
+                <span className="flex-1 text-[10px] text-foreground/60 truncate">{String(v)}</span>
+                <button
+                  onClick={() => {
+                    const next = { ...customFields };
+                    delete next[k];
+                    setCustomFields(next);
+                  }}
+                  className="w-4 h-4 flex items-center justify-center rounded text-muted-foreground/30 hover:text-destructive bg-transparent border-none cursor-pointer"
+                >
+                  <X size={10} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex gap-1">
+          <input
+            value={customFieldKey}
+            onChange={(e) => setCustomFieldKey(e.target.value)}
+            className="w-[80px] h-7 px-2 rounded-md text-xs bg-background border border-border focus:outline-none flex-shrink-0"
+            placeholder="键"
+          />
+          <input
+            value={customFieldValue}
+            onChange={(e) => setCustomFieldValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && customFieldKey.trim()) {
+                setCustomFields({ ...customFields, [customFieldKey.trim()]: customFieldValue });
+                setCustomFieldKey('');
+                setCustomFieldValue('');
+                e.preventDefault();
+              }
+            }}
+            className="flex-1 h-7 px-2 rounded-md text-xs bg-background border border-border focus:outline-none"
+            placeholder="值 (Enter 添加)"
           />
         </div>
       </div>

@@ -16,6 +16,7 @@ export function SceneEditor({ eventId, isNew, onClose }: SceneEditorProps) {
   const updateSceneEvent = useEntityStore((s) => s.updateSceneEvent);
   const addSceneEvent = useEntityStore((s) => s.addSceneEvent);
   const chapters = useEntityStore((s) => s.chapters);
+  const plotThreads = useEntityStore((s) => s.plotThreads);
   const bookId = useEntityStore((s) => s.book?.id ?? 1);
   const openStoryFlow = useStoryFlowStore((s) => s.open);
 
@@ -27,6 +28,9 @@ export function SceneEditor({ eventId, isNew, onClose }: SceneEditorProps) {
   const [eventType, setEventType] = useState<string>('scene');
   const [chapterId, setChapterId] = useState<number | null>(null);
   const [storyTs, setStoryTs] = useState<string>('');
+  const [locationId, setLocationId] = useState<number | null>(null);
+  const [characterIds, setCharacterIds] = useState<number[]>([]);
+  const [plotThreadIds, setPlotThreadIds] = useState<number[]>([]);
 
   useEffect(() => {
     if (isNew) return;
@@ -37,6 +41,9 @@ export function SceneEditor({ eventId, isNew, onClose }: SceneEditorProps) {
     setEventType(event.eventType);
     setChapterId(event.chapterId);
     setStoryTs(String(event.storyTs));
+    setLocationId(event.locationId);
+    setCharacterIds(event.characterIds || []);
+    setPlotThreadIds(event.plotThreadIds || []);
   }, [event, isNew]);
 
   if (!isNew && !event) return null;
@@ -51,11 +58,12 @@ export function SceneEditor({ eventId, isNew, onClose }: SceneEditorProps) {
         title: title || '新场景',
         content,
         sortOrder: sceneEvents.length + 1,
-        eventType: (eventType as 'scene' | 'event' | 'milestone') || 'scene',
+            eventType: (eventType as 'scene' | 'milestone') || 'scene',
         storyTs: storyTs ? parseInt(storyTs) : 0,
         storyLabel: storyLabel || null,
         locationId: null,
         characterIds: [],
+        plotThreadIds: [],
         locked: false,
       });
     } else if (eventId !== null) {
@@ -63,8 +71,12 @@ export function SceneEditor({ eventId, isNew, onClose }: SceneEditorProps) {
         title,
         content,
         storyLabel: storyLabel || null,
-        eventType: eventType as 'scene' | 'event' | 'milestone',
+        eventType: eventType as 'scene' | 'milestone',
         chapterId,
+        storyTs: parseFloat(storyTs) || 0,
+        locationId,
+        characterIds,
+        plotThreadIds,
       });
     }
     onClose();
@@ -75,7 +87,7 @@ export function SceneEditor({ eventId, isNew, onClose }: SceneEditorProps) {
   return (
     <div className="space-y-5">
       <div className="space-y-1.5">
-        <label className="text-[11px] font-medium text-muted-foreground">事件标题</label>
+        <label className="text-[11px] font-medium text-muted-foreground">场景标题</label>
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
@@ -85,14 +97,13 @@ export function SceneEditor({ eventId, isNew, onClose }: SceneEditorProps) {
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <label className="text-[11px] font-medium text-muted-foreground">事件类型</label>
+          <label className="text-[11px] font-medium text-muted-foreground">场景类型</label>
           <select
             value={eventType}
             onChange={(e) => setEventType(e.target.value)}
             className="w-full h-8 px-2 rounded-md text-sm bg-background border border-border focus:outline-none focus:border-foreground/20"
           >
             <option value="scene">场景</option>
-            <option value="event">事件</option>
             <option value="milestone">里程碑</option>
           </select>
         </div>
@@ -110,7 +121,7 @@ export function SceneEditor({ eventId, isNew, onClose }: SceneEditorProps) {
         <input
           value={storyLabel}
           onChange={(e) => setStoryLabel(e.target.value)}
-          placeholder={event?.storyLabel ?? (event ? `星历${event.storyTs}天` : '输入时间标签')}
+          placeholder={'第1天清晨'}
           className="w-full h-8 px-3 rounded-md text-sm bg-background border border-border focus:outline-none focus:border-foreground/20"
         />
       </div>
@@ -129,7 +140,7 @@ export function SceneEditor({ eventId, isNew, onClose }: SceneEditorProps) {
       )}
 
       <div className="space-y-1.5">
-        <label className="text-[11px] font-medium text-muted-foreground">场景内容</label>
+        <label className="text-[11px] font-medium text-muted-foreground">场景摘要</label>
         <textarea
           value={content}
           onChange={(e) => setContent(e.target.value)}
@@ -137,6 +148,24 @@ export function SceneEditor({ eventId, isNew, onClose }: SceneEditorProps) {
           className="w-full px-3 py-2 rounded-md text-sm leading-relaxed bg-background border border-border focus:outline-none focus:border-foreground/20 resize-none"
           placeholder="输入场景摘要或正文..."
         />
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-[11px] font-medium text-muted-foreground">关联情节线</label>
+        <div className="max-h-[120px] overflow-y-auto space-y-0.5">
+          {plotThreads.map((pt) => (
+            <label key={pt.id} className="flex items-center gap-2 px-1 py-0.5 rounded cursor-pointer hover:bg-[#1c1b1a]/[0.02]">
+              <input
+                type="checkbox"
+                checked={plotThreadIds.includes(pt.id)}
+                onChange={() => setPlotThreadIds(plotThreadIds.includes(pt.id) ? plotThreadIds.filter((id) => id !== pt.id) : [...plotThreadIds, pt.id])}
+                className="w-3 h-3 rounded border-[#1c1b1a]/[0.15]"
+              />
+              <span className="text-[11px] text-[#1c1b1a]/60 truncate">{pt.name}</span>
+            </label>
+          ))}
+          {plotThreads.length === 0 && <span className="text-[10px] text-muted-foreground/40">暂无情节线</span>}
+        </div>
       </div>
 
       <div className="flex justify-between items-center pt-2">

@@ -4,6 +4,8 @@ import { useEffect, useState, useRef } from 'react';
 import { Plus, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/shared/lib/cn';
+import { authFetch } from '@/shared/lib/authFetch';
+import { useAuthStore } from '@/shared/stores/authStore';
 import * as booksApi from '@/shared/api/books';
 
 interface Room {
@@ -39,8 +41,8 @@ export default function SimRoomsPage() {
 
   useEffect(() => {
     if (!selectedBookId) return;
-    fetch(`/api/sim-rooms/?bookId=${selectedBookId}`, { credentials: 'include' })
-      .then((r) => r.json()).then((d) => setRooms(d.rooms || [])).catch(() => {});
+    authFetch(`/api/sim-rooms/?bookId=${selectedBookId}`)
+      .then((r) => r.json()).then((d) => setRooms(d.items || d.rooms || [])).catch(() => {});
   }, [selectedBookId]);
 
   useEffect(() => {
@@ -64,13 +66,15 @@ export default function SimRoomsPage() {
 
   const enterRoom = async (roomId: number) => {
     if (wsRef.current) wsRef.current.close();
-    const res = await fetch(`/api/sim-rooms/${roomId}`, { credentials: 'include' });
+    const res = await authFetch(`/api/sim-rooms/${roomId}`);
     const data = await res.json();
     const detail: RoomDetail = data.room;
     setActiveRoom(detail);
 
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${proto}//${location.host}/api/sim-rooms/${roomId}/ws`);
+    const token = useAuthStore.getState().accessToken;
+    const wsUrl = `${proto}//${location.host}/api/sim-rooms/${roomId}/ws${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+    const ws = new WebSocket(wsUrl);
     ws.onopen = () => setWsConnected(true);
     ws.onmessage = (e) => {
       const msg = JSON.parse(e.data);
@@ -123,10 +127,8 @@ export default function SimRoomsPage() {
   const createRoom = async () => {
     if (!selectedBookId || !newRoomName.trim()) return;
     try {
-      const res = await fetch('/api/sim-rooms/', {
+      const res = await authFetch('/api/sim-rooms/', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ bookId: selectedBookId, name: newRoomName, setting: newRoomSetting, participantIds: [], participantTypes: [] }),
       });
       const data = await res.json();

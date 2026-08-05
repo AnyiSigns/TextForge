@@ -3,7 +3,7 @@ from typing import Annotated
 from core.auth import get_current
 from fastapi import APIRouter, Depends, HTTPException, Path
 from models.book import Book, Volume
-from schema.request.book import ChapterRequest
+from schema.request.book import ChapterRequest, ChapterUpdate
 from schema.response.book import ChapterResponse
 from shared.database import db_manager
 from sqlalchemy import select
@@ -59,7 +59,7 @@ async def create_chapter(
 @router.put("/{chapter_id}", response_model=ChapterResponse)
 async def update_chapter(
     chapter_id: Annotated[int, Path],
-    request: ChapterRequest,
+    request: ChapterUpdate,
     user_id: Annotated[int, Depends(get_current)],
     chapter_service: Annotated[ChapterService, Depends(chapter_db)],
     session: Annotated[AsyncSession, Depends(db_manager.get_db)],
@@ -68,13 +68,8 @@ async def update_chapter(
     if not item:
         raise HTTPException(status_code=404, detail="章节不存在")
     await _assert_volume_owner(item.volume_id, user_id, session)
-    item = await chapter_service.update_chapter(
-        chapter_id,
-        title=request.title,
-        summary=request.summary,
-        character_ids=request.character_ids,
-        locked=request.locked,
-    )
+    data = request.model_dump(by_alias=False, exclude_unset=True)
+    item = await chapter_service.update_chapter(chapter_id, **data)
     if not item:
         raise HTTPException(status_code=404, detail="章节不存在")
     return ChapterResponse.model_validate(item)

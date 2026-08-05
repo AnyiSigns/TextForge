@@ -30,6 +30,7 @@ class AgentMemoryRepository:
         self.session.add(memory)
         await self.session.flush()
         await self.session.refresh(memory)
+        await self.session.commit()
         return memory
 
     async def get(self, memory_id: int):
@@ -113,7 +114,7 @@ class AgentMemoryRepository:
         """
         stmt = sqla_delete(AgentMemory).where(AgentMemory.id == memory_id)
         await self.session.execute(stmt)
-        await self.session.flush()
+        await self.session.commit()
 
     async def search_fulltext(self, user_id: int, query: str, book_id: int | None = None, memory_type: str | None = None) -> list[AgentMemory]:
         """全文检索记忆。

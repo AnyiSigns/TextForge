@@ -110,5 +110,5 @@ class KnowledgeService:
         """
         stmt = sqla_delete(Document).where(Document.id == doc_id, Document.scope == "public")
         await self.session.execute(stmt)
-        await self.session.flush()
+        await self.session.commit()
         await delete_rag_cache("rag:*")

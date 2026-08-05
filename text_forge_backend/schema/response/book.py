@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class BookResponse(BaseModel):
@@ -10,17 +10,14 @@ class BookResponse(BaseModel):
     genre: str | None = None
     description: str | None = None
     pinned: bool | None = False
-    workflow_id: str | None = Field(alias="workflowId")
+    workflow_id: str | None = Field(default=None, alias="workflowId")
     total_word_goal: int | None = Field(default=0, alias="totalWordGoal")
     current_word_count: int | None = Field(default=0, alias="currentWordCount")
+    time_unit: str | None = Field(default=None, alias="timeUnit")
+    epoch_label: str | None = Field(default=None, alias="epochLabel")
     created_at: datetime = Field(alias="createdAt")
     updated_at: datetime = Field(alias="updatedAt")
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)
-
-
-class BookVersionResponse(BaseModel):
-    book: BookResponse
-    version: int | None
 
 
 class VolumeResponse(BaseModel):
@@ -41,6 +38,7 @@ class ChapterResponse(BaseModel):
     sort_order: int = Field(default=0, alias="sortOrder")
     character_ids: list[int] = Field(default=[], alias="characterIds")
     locked: bool = Field(default=False)
+    generation_batch: int = Field(default=1, alias="generationBatch")
     created_at: datetime = Field(alias="createdAt")
     updated_at: datetime = Field(alias="updatedAt")
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)
@@ -53,6 +51,7 @@ class SceneEventResponse(BaseModel):
     content: str | None = None
     sort_order: int = Field(default=0, alias="sortOrder")
     character_ids: list[int] = Field(default=[], alias="characterIds")
+    plot_thread_ids: list[int] = Field(default=[], alias="plotThreadIds")
     locked: bool = Field(default=False)
     created_at: datetime = Field(alias="createdAt")
     updated_at: datetime = Field(alias="updatedAt")
@@ -91,9 +90,17 @@ class CharacterResponse(BaseModel):
     relationship_chain: list[dict[str, Any]] | None = Field(default=None, alias="relationshipChain")
     locked: bool = Field(default=False)
     custom_fields: dict[str, Any] = Field(default={}, alias="customFields")
+    spawn_location_id: int | None = Field(default=None, alias="spawnLocationId")
+    base_location_id: int | None = Field(default=None, alias="baseLocationId")
     created_at: datetime = Field(alias="createdAt")
     updated_at: datetime = Field(alias="updatedAt")
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    @field_validator('custom_fields', mode='before')
+    @classmethod
+    def _coerce_none_to_empty_dict(cls, v: Any) -> Any:
+        """将 None 转为空字典，兼容数据库 NULL 值。"""
+        return v if v is not None else {}
 
 
 class ListCharactersResponse(BaseModel):

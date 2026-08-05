@@ -1,15 +1,6 @@
 import { fetchModelConfig } from './models';
 import { apiClient } from './client';
 
-export type StepType =
-  | 'creative_setting'
-  | 'locations'
-  | 'characters'
-  | 'character_relations'
-  | 'timeline_foreshadowing'
-  | 'plot_threads'
-  | 'outline';
-
 export interface CardField {
   key: string;
   value: string | string[];
@@ -21,27 +12,15 @@ export interface Card {
   card_type?: string;
 }
 
-export interface CardEvent {
-  type: 'card';
-  step: StepType;
-  card_index: number;
-  total: number;
-  card: Card;
+export interface WizardCard {
+  title: string;
+  fields: Array<{ key: string; value: string }>;
 }
 
-export interface DoneEvent {
-  type: 'done';
-  step: StepType;
-  total: number;
+export interface WizardGenerateResponse {
+  step: number;
+  cards: WizardCard[];
 }
-
-export interface ErrorEvent {
-  type: 'error';
-  step: StepType;
-  message: string;
-}
-
-export type WizardSSEEvent = CardEvent | DoneEvent | ErrorEvent;
 
 async function getModelConfigData() {
   try {
@@ -61,75 +40,24 @@ async function getModelConfigData() {
   }
 }
 
-export async function streamWizard(
-  endpoint: string,
-  body: Record<string, unknown>,
-  onCard: (card: Card, index: number, total: number) => void,
-  onDone: (total: number) => void,
-  onError: (msg: string) => void,
-  abortSignal?: AbortSignal,
-): Promise<void> {
+/**
+ * 调用后端 AI 为初始化向导生成候选卡片。
+ * Step 0: 返回表单填充数据（前端取第一项填入表单）。
+ * Step 1-6: 返回候选卡片列表。
+ */
+export async function generateWizardCards(
+  bookId: number,
+  step: number,
+  previousCards?: Array<{ step: number; title: string; fields: Array<{ key: string; value: string }> }>,
+  excludeTitles?: string[],
+): Promise<WizardCard[]> {
   const modelConfigData = await getModelConfigData();
-  
-  const res = await fetch(apiClient.defaults.baseURL + endpoint, {
-    method: 'POST',
-    headers: apiClient.defaults.headers as Record<string, string>,
-    body: JSON.stringify({ ...body, model_config_data: modelConfigData }),
-    signal: abortSignal,
+  const { data } = await apiClient.post<WizardGenerateResponse>('/wizard/generate', {
+    book_id: bookId,
+    step,
+    previous_cards: previousCards || [],
+    exclude_titles: excludeTitles || [],
+    model_config_data: modelConfigData,
   });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || `HTTP ${res.status}`);
-  }
-
-  const reader = res.body?.getReader();
-  if (!reader) return;
-
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          try {
-            const event: WizardSSEEvent = JSON.parse(line.slice(6));
-            if (event.type === 'card') {
-              onCard(event.card, event.card_index, event.total);
-            } else if (event.type === 'done') {
-              onDone(event.total);
-              return;
-            } else if (event.type === 'error') {
-              onError(event.message);
-              return;
-            }
-          } catch {
-            // 跳过解析失败的行
-          }
-        }
-      }
-    }
-  } finally {
-    reader.releaseLock();
-  }
-}
-
-export async function generateCards(endpoint: string, body: Record<string, unknown>): Promise<{ cards: Card[] }> {
-  const modelConfigData = await getModelConfigData();
-  const res = await apiClient.post(endpoint, { ...body, model_config_data: modelConfigData });
-  console.log(`[wizard] ${endpoint} 返回:`, res.data);
-  return res.data;
-}
-
-export async function batchCreate(step: StepType, bookId: number, entities: Record<string, unknown>[]): Promise<{ created: Record<string, unknown[]> }> {
-  const res = await apiClient.post('/wizard/batch-create', { step, book_id: bookId, entities });
-  return res.data;
+  return data.cards ?? [];
 }

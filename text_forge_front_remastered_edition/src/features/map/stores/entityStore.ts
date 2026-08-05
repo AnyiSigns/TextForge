@@ -1,15 +1,6 @@
 import { create } from 'zustand';
+import { toast } from 'sonner';
 import { useMapStore } from './mapStore';
-import {
-  MOCK_BOOK,
-  MOCK_VOLUMES,
-  MOCK_CHAPTERS,
-  MOCK_SCENE_EVENTS,
-  MOCK_LOCATIONS,
-  MOCK_CHARACTERS,
-  MOCK_FORESHADOWINGS,
-  MOCK_PLOT_THREADS,
-} from '@/mocks/data';
 import type {
   MockBook,
   MockVolume,
@@ -34,7 +25,6 @@ interface EntityState {
   error: string | null;
   creativeSetting: { tone: string; worldview: string; writingTaboos: string; customDimensions: Record<string, unknown> } | null;
 
-  seed: () => void;
   loadFromApi: (bookId: number) => Promise<void>;
   reset: () => void;
   clearError: () => void;
@@ -67,7 +57,7 @@ interface EntityState {
   updateCreativeSetting: (data: { tone: string; worldview: string; writingTaboos: string; customDimensions: Record<string, unknown> }) => void;
 }
 
-const EMPTY_STATE: Omit<EntityState, 'seed' | 'reset' | 'updateSceneEvent' | 'updateLocation' | 'updateCharacter' | 'addLocation' | 'addCharacter' | 'addSceneEvent' | 'addPlotThread' | 'addForeshadowing' | 'addChapter' | 'addVolume' | 'removeLocation' | 'removeCharacter' | 'removeSceneEvent' | 'removeForeshadowing' | 'removePlotThread' | 'removeVolume' | 'removeChapter' | 'loadFromApi' | 'clearError' | 'updateCreativeSetting' | 'updateForeshadowing' | 'updatePlotThread' | 'updateVolume' | 'updateChapter'> = {
+const EMPTY_STATE: Omit<EntityState, 'loadFromApi' | 'clearError' | 'updateCreativeSetting' | 'updateSceneEvent' | 'updateLocation' | 'updateCharacter' | 'addLocation' | 'addCharacter' | 'addSceneEvent' | 'addPlotThread' | 'addForeshadowing' | 'addChapter' | 'addVolume' | 'removeLocation' | 'removeCharacter' | 'removeSceneEvent' | 'removeForeshadowing' | 'removePlotThread' | 'removeVolume' | 'removeChapter' | 'updateForeshadowing' | 'updatePlotThread' | 'updateVolume' | 'updateChapter' | 'reset'> = {
   book: null as unknown as MockBook,
   volumes: [],
   chapters: [],
@@ -78,7 +68,7 @@ const EMPTY_STATE: Omit<EntityState, 'seed' | 'reset' | 'updateSceneEvent' | 'up
   plotThreads: [],
   loading: false,
   error: null,
-  creativeSetting: { tone: '史诗奇墨', worldview: '一个由星辰之力驱动的奇墨世界', writingTaboos: '', customDimensions: {} },
+  creativeSetting: null,
 };
 
 export const useEntityStore = create<EntityState>((set, get) => ({
@@ -86,63 +76,71 @@ export const useEntityStore = create<EntityState>((set, get) => ({
 
   loadFromApi: async (bookId) => {
     set({ loading: true, error: null });
-    try {
-      const { fetchBook, fetchChaptersTree } = await import('@/shared/api/books');
-      const { fetchSceneEvents, fetchLocations, fetchForeshadowings, fetchPlotThreads } = await import('@/shared/api/world');
-      const { fetchCharacters } = await import('@/shared/api/characters');
-      const [book, characters, locations, sceneEvents, foreshadowings, plotThreads, volsAndChapters] = await Promise.all([
-        fetchBook(bookId),
-        fetchCharacters(bookId),
-        fetchLocations(bookId),
-        fetchSceneEvents(bookId),
-        fetchForeshadowings(bookId),
-        fetchPlotThreads(bookId),
-        fetchChaptersTree(bookId),
-      ]);
-      set({
-        book: {
-          id: book.id,
-          userId: 1,
-          title: book.title,
-          description: book.description || '',
-          genre: book.genre || '',
-          pinned: book.pinned || false,
-          workflowId: book.workflowId || null,
-          totalWordGoal: book.totalWordGoal || 0,
-          currentWordCount: book.currentWordCount || 0,
-          timeUnit: (book.timeUnit as 'day' | 'year' | 'hour') || 'day',
-          epochLabel: (book.epochLabel as any) || "",
-        },
-        volumes: volsAndChapters.map((v: any) => ({ id: v.id, bookId: 1, title: v.title, summary: v.summary || '', sortOrder: v.sortOrder })) as any,
-        chapters: (volsAndChapters as any[]).flatMap((v: any) => (v.chapters || []).map((ch: any) => ({ id: ch.id, volumeId: ch.volumeId, title: ch.title, summary: ch.summary || '', sortOrder: ch.sortOrder, characterIds: [], locked: ch.locked || false }))) as any,
-        sceneEvents: sceneEvents as any,
-        locations: locations as any,
-        characters: characters as any,
-        foreshadowings: foreshadowings as any,
-        plotThreads: plotThreads as any,
-        loading: false,
-        error: null,
-      });
-    } catch (e) {
-      set({
-        loading: false,
-        error: e instanceof Error ? e.message : '加载失败，请检查网络连接',
-      });
-    }
-  },
+    const { fetchBook, fetchChaptersTree, fetchCreativeSetting } = await import('@/shared/api/books');
+    const { fetchSceneEvents, fetchLocations, fetchForeshadowings, fetchPlotThreads } = await import('@/shared/api/world');
+    const { fetchCharacters } = await import('@/shared/api/characters');
 
-  seed: () => {
+    const safe = <T>(p: Promise<T>) => p.catch(() => null as T | null);
+
+    const results = await Promise.allSettled([
+      safe(fetchBook(bookId)),
+      safe(fetchCharacters(bookId)),
+      safe(fetchLocations(bookId)),
+      safe(fetchSceneEvents(bookId)),
+      safe(fetchForeshadowings(bookId)),
+      safe(fetchPlotThreads(bookId)),
+      safe(fetchChaptersTree(bookId)),
+      safe(fetchCreativeSetting(bookId)),
+    ]);
+
+    const rb = results as PromiseSettledResult<any>[];
+    const book = rb[0].status === 'fulfilled' ? (rb[0].value as MockBook | null) : null;
+    const characters = rb[1].status === 'fulfilled' ? (rb[1].value as MockCharacter[] | null) : null;
+    const locations = rb[2].status === 'fulfilled' ? (rb[2].value as MockLocation[] | null) : null;
+    const sceneEvents = rb[3].status === 'fulfilled' ? (rb[3].value as MockSceneEvent[] | null) : null;
+    const foreshadowings = rb[4].status === 'fulfilled' ? (rb[4].value as MockForeshadowing[] | null) : null;
+    const plotThreads = rb[5].status === 'fulfilled' ? (rb[5].value as MockPlotThread[] | null) : null;
+    const volsAndChapters = rb[6].status === 'fulfilled' ? (rb[6].value as MockVolume[] | null) : null;
+    const creativeSetting = rb[7].status === 'fulfilled' ? (rb[7].value as { tone?: string; worldview?: string; writingTaboos?: string; customDimensions?: Record<string, unknown> } | null) : null;
+
+    const errors = results
+      .filter((r) => r.status === 'rejected')
+      .map((r, i) => `[${['book','characters','locations','events','foreshadowings','plotThreads','chapters','creativeSetting'][i]}] ` + ((r as PromiseRejectedResult).reason instanceof Error ? (r as PromiseRejectedResult).reason.message : String((r as PromiseRejectedResult).reason)))
+      .filter(Boolean);
+
     set({
-      book: { ...MOCK_BOOK },
-      volumes: [...MOCK_VOLUMES],
-      chapters: [...MOCK_CHAPTERS],
-      sceneEvents: [...MOCK_SCENE_EVENTS],
-      locations: [...MOCK_LOCATIONS],
-      characters: [...MOCK_CHARACTERS],
-      foreshadowings: [...MOCK_FORESHADOWINGS],
-      plotThreads: [...MOCK_PLOT_THREADS],
+      book: book
+        ? {
+            id: book.id,
+            userId: 1,
+            title: book.title,
+            description: book.description || '',
+            genre: book.genre || '',
+            pinned: book.pinned || false,
+            workflowId: book.workflowId || null,
+            totalWordGoal: book.totalWordGoal || 0,
+            currentWordCount: book.currentWordCount || 0,
+            timeUnit: (book.timeUnit as 'day' | 'year' | 'hour') || 'day',
+            epochLabel: (book.epochLabel as any) || '',
+          }
+        : get().book,
+      volumes: volsAndChapters ? (volsAndChapters.map((v: any) => ({ id: v.id, bookId: 1, title: v.title, summary: v.summary || '', sortOrder: v.sortOrder })) as any) : get().volumes,
+      chapters: volsAndChapters ? ((volsAndChapters as any[]).flatMap((v: any) => (v.chapters || []).map((ch: any) => ({ id: ch.id, volumeId: ch.volumeId, title: ch.title, summary: ch.summary || '', sortOrder: ch.sortOrder, characterIds: [], locked: ch.locked || false }))) as any) : get().chapters,
+      sceneEvents: (sceneEvents as any) ?? get().sceneEvents,
+      locations: (locations as any) ?? get().locations,
+      characters: (characters as any) ?? get().characters,
+      foreshadowings: (foreshadowings as any) ?? get().foreshadowings,
+      plotThreads: (plotThreads as any) ?? get().plotThreads,
+      creativeSetting: creativeSetting
+        ? {
+            tone: creativeSetting.tone || '',
+            worldview: creativeSetting.worldview || '',
+            writingTaboos: creativeSetting.writingTaboos || '',
+            customDimensions: creativeSetting.customDimensions || {},
+          }
+        : get().creativeSetting,
       loading: false,
-      error: null,
+      error: errors.length > 0 ? errors.join('; ') : null,
     });
   },
 
@@ -158,6 +156,9 @@ export const useEntityStore = create<EntityState>((set, get) => ({
         e.id === id ? { ...e, ...patch } : e,
       ),
     }));
+    import('@/shared/api/world').then(({ updateSceneEvent: apiUpdate }) =>
+      apiUpdate(id, patch as any, get().book?.id).catch(() => toast.error('事件更新失败'))
+    );
   },
 
   updateLocation: (id, patch) => {
@@ -166,6 +167,9 @@ export const useEntityStore = create<EntityState>((set, get) => ({
         l.id === id ? { ...l, ...patch } : l,
       ),
     }));
+    import('@/shared/api/world').then(({ updateLocation: apiUpdate }) =>
+      apiUpdate(id, patch as any, get().book?.id).catch(() => toast.error('地点更新失败'))
+    );
   },
 
   updateCharacter: (id, patch) => {
@@ -174,6 +178,9 @@ export const useEntityStore = create<EntityState>((set, get) => ({
         c.id === id ? { ...c, ...patch } : c,
       ),
     }));
+    import('@/shared/api/characters').then(({ updateCharacter: apiUpdate }) =>
+      apiUpdate(id, patch as any).catch(() => toast.error('保存失败'))
+    );
   },
 
   updateForeshadowing: (id, patch) => {
@@ -182,6 +189,9 @@ export const useEntityStore = create<EntityState>((set, get) => ({
         f.id === id ? { ...f, ...patch } : f,
       ),
     }));
+    import('@/shared/api/world').then(({ updateForeshadowing: apiUpdate }) =>
+      apiUpdate(id, patch as any, get().book?.id).catch(() => toast.error('伏笔更新失败'))
+    );
   },
 
   updatePlotThread: (id, patch) => {
@@ -190,6 +200,9 @@ export const useEntityStore = create<EntityState>((set, get) => ({
         p.id === id ? { ...p, ...patch } : p,
       ),
     }));
+    import('@/shared/api/world').then(({ updatePlotThread: apiUpdate }) =>
+      apiUpdate(id, patch as any, get().book?.id).catch(() => toast.error('情节脉络更新失败'))
+    );
   },
 
   updateVolume: (id, patch) => {
@@ -198,6 +211,9 @@ export const useEntityStore = create<EntityState>((set, get) => ({
         v.id === id ? { ...v, ...patch } : v,
       ),
     }));
+    import('@/shared/api/books').then(({ updateVolume: apiUpdate }) =>
+      apiUpdate(id, patch as any).catch(() => toast.error('保存失败'))
+    );
   },
 
   updateChapter: (id, patch) => {
@@ -206,41 +222,116 @@ export const useEntityStore = create<EntityState>((set, get) => ({
         ch.id === id ? { ...ch, ...patch } : ch,
       ),
     }));
+    import('@/shared/api/books').then(({ updateChapter: apiUpdate }) =>
+      apiUpdate(id, patch as any).catch(() => toast.error('保存失败'))
+    );
   },
 
   addLocation: (loc) => {
+    const tempId = loc.id;
     set((state) => ({ locations: [...state.locations, loc] }));
+    const bookId = get().book?.id;
+    import('@/shared/api/world').then(({ createLocation }) =>
+      createLocation({ ...loc, bookId: bookId ?? loc.bookId } as any).then((real) => {
+        set((state) => ({
+          locations: state.locations.map((l) =>
+            l.id === tempId ? { ...(real as any), id: real.id ?? tempId } : l,
+          ),
+        }));
+      }).catch(() => toast.error('保存失败'))
+    );
   },
 
   addCharacter: (ch) => {
+    const tempId = ch.id;
     set((state) => ({ characters: [...state.characters, ch] }));
+    import('@/shared/api/characters').then(({ createCharacter }) =>
+      createCharacter(ch as any).then((real) => {
+        set((state) => ({
+          characters: state.characters.map((c) =>
+            c.id === tempId ? { ...(real as any), id: real.id ?? tempId } : c,
+          ),
+        }));
+      }).catch(() => toast.error('保存失败'))
+    );
   },
 
   addSceneEvent: (ev) => {
+    const tempId = ev.id;
     set((state) => ({ sceneEvents: [...state.sceneEvents, ev] }));
+    import('@/shared/api/world').then(({ createSceneEvent }) =>
+      createSceneEvent(ev as any).then((real) => {
+        set((state) => ({
+          sceneEvents: state.sceneEvents.map((e) =>
+            e.id === tempId ? { ...(real as any), id: real.id ?? tempId } : e,
+          ),
+        }));
+      }).catch(() => toast.error('保存失败'))
+    );
   },
 
   addPlotThread: (pt) => {
+    const tempId = pt.id;
     set((state) => ({ plotThreads: [...state.plotThreads, pt] }));
+    import('@/shared/api/world').then(({ createPlotThread }) =>
+      createPlotThread(pt as any).then((real) => {
+        set((state) => ({
+          plotThreads: state.plotThreads.map((p) =>
+            p.id === tempId ? { ...(real as any), id: real.id ?? tempId } : p,
+          ),
+        }));
+      }).catch(() => toast.error('保存失败'))
+    );
   },
 
   addForeshadowing: (fw) => {
+    const tempId = fw.id;
     set((state) => ({ foreshadowings: [...state.foreshadowings, fw] }));
+    import('@/shared/api/world').then(({ createForeshadowing }) =>
+      createForeshadowing(fw as any).then((real) => {
+        set((state) => ({
+          foreshadowings: state.foreshadowings.map((f) =>
+            f.id === tempId ? { ...(real as any), id: real.id ?? tempId } : f,
+          ),
+        }));
+      }).catch(() => toast.error('保存失败'))
+    );
   },
 
   addChapter: (ch) => {
+    const tempId = ch.id;
     set((state) => ({ chapters: [...state.chapters, ch] }));
+    import('@/shared/api/books').then(({ createChapter }) =>
+      createChapter(ch.volumeId, { title: ch.title, summary: ch.summary, characterIds: ch.characterIds || [], locked: ch.locked || false }).then((real) => {
+        set((state) => ({
+          chapters: state.chapters.map((c) =>
+            c.id === tempId ? { ...(real as any), id: real.id ?? tempId } : c,
+          ),
+        }));
+      }).catch(() => toast.error('保存失败'))
+    );
   },
 
   addVolume: (vol) => {
+    const tempId = vol.id;
     set((state) => ({ volumes: [...state.volumes, vol] }));
+    const bookId = get().book?.id ?? vol.bookId;
+    import('@/shared/api/books').then(({ createVolume }) =>
+      createVolume(bookId, vol.title, vol.summary).then((real) => {
+        set((state) => ({
+          volumes: state.volumes.map((v) =>
+            v.id === tempId ? { ...(real as any), id: real.id ?? tempId } : v,
+          ),
+        }));
+      }).catch(() => toast.error('保存失败'))
+    );
   },
 
   removeLocation: async (id) => {
     try {
       const { deleteLocation } = await import('@/shared/api/world');
       await deleteLocation(id, get().book?.id ?? 1);
-    } catch { /* API may not exist, fallback to local only */ }
+    } catch { toast.error('地点删除失败'); }
     set((state) => ({
       locations: state.locations.filter((l) => l.id !== id),
       characters: state.characters.map((c) => ({
@@ -259,7 +350,7 @@ export const useEntityStore = create<EntityState>((set, get) => ({
     try {
       const { deleteCharacter } = await import('@/shared/api/characters');
       await deleteCharacter(id);
-    } catch { /* fallback */ }
+    } catch { toast.error('删除失败'); }
     set((state) => ({
       characters: state.characters.filter((c) => c.id !== id),
       sceneEvents: state.sceneEvents.map((e) => ({
@@ -274,7 +365,7 @@ export const useEntityStore = create<EntityState>((set, get) => ({
     try {
       const { deleteSceneEvent } = await import('@/shared/api/world');
       await deleteSceneEvent(id, get().book?.id ?? 1);
-    } catch { /* fallback */ }
+    } catch { toast.error('删除失败'); }
     set((state) => ({
       sceneEvents: state.sceneEvents.filter((e) => e.id !== id),
     }));
@@ -284,7 +375,7 @@ export const useEntityStore = create<EntityState>((set, get) => ({
     try {
       const { deleteForeshadowing } = await import('@/shared/api/world');
       await deleteForeshadowing(id, get().book?.id ?? 1);
-    } catch { /* fallback */ }
+    } catch { toast.error('删除失败'); }
     set((state) => ({
       foreshadowings: state.foreshadowings.filter((f) => f.id !== id),
     }));
@@ -294,7 +385,7 @@ export const useEntityStore = create<EntityState>((set, get) => ({
     try {
       const { deletePlotThread } = await import('@/shared/api/world');
       await deletePlotThread(id, get().book?.id ?? 1);
-    } catch { /* fallback */ }
+    } catch { toast.error('删除失败'); }
     set((state) => ({
       plotThreads: state.plotThreads.filter((p) => p.id !== id),
     }));
@@ -304,7 +395,7 @@ export const useEntityStore = create<EntityState>((set, get) => ({
     try {
       const { deleteVolume } = await import('@/shared/api/books');
       await deleteVolume(id);
-    } catch { /* fallback */ }
+    } catch { toast.error('删除失败'); }
     set((state) => {
       const removedChapterIds = new Set(
         state.chapters.filter((ch) => ch.volumeId === id).map((ch) => ch.id),
@@ -321,14 +412,20 @@ export const useEntityStore = create<EntityState>((set, get) => ({
     try {
       const { deleteChapter } = await import('@/shared/api/books');
       await deleteChapter(id);
-    } catch { /* fallback */ }
+    } catch { toast.error('删除失败'); }
     set((state) => ({
       chapters: state.chapters.filter((ch) => ch.id !== id),
       sceneEvents: state.sceneEvents.filter((e) => e.chapterId !== id),
     }));
   },
 
-  updateCreativeSetting: (data) => {
+  updateCreativeSetting: async (data) => {
+    const bookId = get().book?.id;
     set({ creativeSetting: data });
+    if (!bookId) return;
+    try {
+      const { updateCreativeSetting } = await import('@/shared/api/books');
+      await updateCreativeSetting(bookId, data);
+    } catch { toast.error('创意设定保存失败'); }
   },
 }));

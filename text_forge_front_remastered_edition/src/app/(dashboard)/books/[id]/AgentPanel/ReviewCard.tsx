@@ -1,12 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { Check, X, Pencil, AlertTriangle } from 'lucide-react';
+import { Check, X, Pencil, AlertTriangle, FileText } from 'lucide-react';
 import { cn } from '@/shared/lib/cn';
 
 interface ReviewCardProps {
   data: Record<string, unknown>;
-  onAction: (action: 'accept' | 'retry' | 'edit', editedContent?: string) => void;
+  onAction: (action: 'accept' | 'retry' | 'edit' | 'terminate', editedContent?: string) => void;
 }
 
 export function ReviewCard({ data, onAction }: ReviewCardProps) {
@@ -51,27 +51,31 @@ export function ReviewCard({ data, onAction }: ReviewCardProps) {
           </div>
         </div>
       ) : (
-        <div className="flex gap-2">
-          <button
-            onClick={() => onAction('accept')}
-            className={cn(
-              'flex-1 h-7 rounded-md text-xs font-medium border-none cursor-pointer flex items-center justify-center gap-1',
-              'bg-foreground text-background hover:opacity-90',
-            )}
+        <div className="space-y-1.5">
+          <div className="flex gap-2">
+            <button onClick={() => onAction('accept')}
+              className={cn(
+                'flex-1 h-7 rounded-md text-xs font-medium border-none cursor-pointer flex items-center justify-center gap-1',
+                'bg-foreground text-background hover:opacity-90',
+              )}
+            >
+              <Check size={12} /> 接受
+            </button>
+            <button onClick={() => onAction('retry')}
+              className="flex-1 h-7 rounded-md bg-destructive/10 text-destructive text-xs font-medium border-none cursor-pointer hover:bg-destructive/20 flex items-center justify-center gap-1"
+            >
+              <X size={12} /> 拒绝重试
+            </button>
+            <button onClick={() => { setEditText(outputPreview); setEditing(true); }}
+              className="flex-1 h-7 rounded-md border border-border text-xs cursor-pointer bg-transparent hover:bg-muted flex items-center justify-center gap-1"
+            >
+              <Pencil size={12} /> 自定义
+            </button>
+          </div>
+          <button onClick={() => onAction('terminate')}
+            className="w-full h-7 rounded-md border border-destructive/40 bg-transparent text-muted-foreground text-xs cursor-pointer hover:bg-destructive/10 hover:text-destructive flex items-center justify-center gap-1"
           >
-            <Check size={12} /> 接受
-          </button>
-          <button
-            onClick={() => onAction('retry')}
-            className="flex-1 h-7 rounded-md bg-destructive/10 text-destructive text-xs font-medium border-none cursor-pointer hover:bg-destructive/20 flex items-center justify-center gap-1"
-          >
-            <X size={12} /> 拒绝重试
-          </button>
-          <button
-            onClick={() => { setEditText(outputPreview); setEditing(true); }}
-            className="flex-1 h-7 rounded-md border border-border text-xs cursor-pointer bg-transparent hover:bg-muted flex items-center justify-center gap-1"
-          >
-            <Pencil size={12} /> 自定义
+            <FileText size={12} /> 终止并生成正文
           </button>
         </div>
       )}

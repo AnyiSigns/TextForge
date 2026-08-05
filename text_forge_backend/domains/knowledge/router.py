@@ -81,6 +81,42 @@ async def list_public_documents(
     ]
 
 
+@router.get("/public")
+async def list_public_documents_summary(
+    user_id: Annotated[int, Depends(get_current)],
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    session: AsyncSession = Depends(db_manager.get_db),
+):
+    service = KnowledgeService(session)
+    items = await service.list_public(page=page, page_size=page_size)
+    return {"documents": [
+        {
+            "id": str(item.id),
+            "name": item.file_name,
+            "file_type": item.file_type,
+            "file_size": item.file_size,
+            "scope": item.scope,
+            "createdAt": item.created_at.isoformat() if item.created_at else None,
+        }
+        for item in items
+    ]}
+
+
+@router.get("/public/{doc_id}")
+async def get_public_document_content(
+    user_id: Annotated[int, Depends(get_current)],
+    doc_id: int,
+    session: AsyncSession = Depends(db_manager.get_db),
+):
+    service = KnowledgeService(session)
+    doc = await service.get_public(doc_id)
+    if not doc or doc.scope != "public":
+        raise HTTPException(status_code=404, detail="文档不存在")
+    content = doc.metadatas.get("content", "") if doc.metadatas else ""
+    return {"content": content}
+
+
 @router.get("/{doc_id}")
 async def get_public_document(
     user_id: Annotated[int, Depends(get_current)],
@@ -111,5 +147,7 @@ async def delete_public_document(
     doc = await service.get_public(doc_id)
     if not doc or doc.scope != "public":
         raise HTTPException(status_code=404, detail="文档不存在")
+    if doc.user_id != user_id:
+        raise HTTPException(status_code=403, detail="无权删除该文档")
     await service.delete_public(doc_id)
     return {"ok": True}

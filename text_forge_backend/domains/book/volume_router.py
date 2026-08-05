@@ -2,7 +2,7 @@ from typing import Annotated
 
 from core.auth import get_current
 from fastapi import APIRouter, Depends, HTTPException, Path
-from schema.request.book import VolumeRequest
+from schema.request.book import VolumeRequest, VolumeUpdate
 from schema.response.book import VolumeResponse
 from shared.database import db_manager
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,7 +45,7 @@ async def create_volume(
 @router.put("/{volume_id}", response_model=VolumeResponse)
 async def update_volume(
     volume_id: Annotated[int, Path],
-    request: VolumeRequest,
+    request: VolumeUpdate,
     user_id: Annotated[int, Depends(get_current)],
     volume_service: Annotated[VolumeService, Depends(volume_db)],
     session: Annotated[AsyncSession, Depends(db_manager.get_db)],
@@ -54,9 +54,8 @@ async def update_volume(
     if not item:
         raise HTTPException(status_code=404, detail="卷不存在")
     await assert_book_owner(item.book_id, user_id, session)
-    item = await volume_service.update_volume(
-        volume_id, title=request.title, summary=request.summary
-    )
+    data = request.model_dump(by_alias=False, exclude_unset=True)
+    item = await volume_service.update_volume(volume_id, **data)
     if not item:
         raise HTTPException(status_code=404, detail="卷不存在")
     return VolumeResponse.model_validate(item)

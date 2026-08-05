@@ -56,6 +56,7 @@ class WorldRepository:
         self.session.add(location)
         await self.session.flush()
         await self.session.refresh(location)
+        await self.session.commit()
         return location
 
     async def update_location(self, location_id: int, book_id: int, data: dict) -> Location | None:
@@ -88,7 +89,7 @@ class WorldRepository:
         """
         stmt = sqla_delete(Location).where(Location.id == location_id, Location.book_id == book_id)
         await self.session.execute(stmt)
-        await self.session.flush()
+        await self.session.commit()
 
     async def list_scene_events(self, book_id: int) -> list[SceneEvent]:
         """查询书籍时间线事件列表。
@@ -127,6 +128,7 @@ class WorldRepository:
         self.session.add(event)
         await self.session.flush()
         await self.session.refresh(event)
+        await self.session.commit()
         return event
 
     async def update_scene_event(self, event_id: int, book_id: int, data: dict) -> SceneEvent | None:
@@ -159,7 +161,7 @@ class WorldRepository:
         """
         stmt = sqla_delete(SceneEvent).where(SceneEvent.id == event_id, SceneEvent.book_id == book_id)
         await self.session.execute(stmt)
-        await self.session.flush()
+        await self.session.commit()
 
     async def list_foreshadowings(self, book_id: int, status: str | None = None) -> list[Foreshadowing]:
         """查询伏笔列表。
@@ -205,6 +207,7 @@ class WorldRepository:
         self.session.add(item)
         await self.session.flush()
         await self.session.refresh(item)
+        await self.session.commit()
         return item
 
     async def update_foreshadowing(self, item_id: int, book_id: int, data: dict) -> Foreshadowing | None:
@@ -237,7 +240,7 @@ class WorldRepository:
         """
         stmt = sqla_delete(Foreshadowing).where(Foreshadowing.id == item_id, Foreshadowing.book_id == book_id)
         await self.session.execute(stmt)
-        await self.session.flush()
+        await self.session.commit()
 
     async def list_plot_threads(self, book_id: int) -> list[PlotThread]:
         """查询情节脉络列表。
@@ -276,6 +279,7 @@ class WorldRepository:
         self.session.add(item)
         await self.session.flush()
         await self.session.refresh(item)
+        await self.session.commit()
         return item
 
     async def update_plot_thread(self, item_id: int, book_id: int, data: dict) -> PlotThread | None:
@@ -308,4 +312,4 @@ class WorldRepository:
         """
         stmt = sqla_delete(PlotThread).where(PlotThread.id == item_id, PlotThread.book_id == book_id)
         await self.session.execute(stmt)
-        await self.session.flush()
+        await self.session.commit()

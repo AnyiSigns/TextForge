@@ -24,6 +24,7 @@ export function MapCanvas() {
   const allLocations = useEntityStore((s) => s.locations);
   const allCharacters = useEntityStore((s) => s.characters);
   const allSceneEvents = useEntityStore((s) => s.sceneEvents);
+  const bookId = useEntityStore((s) => s.book?.id ?? 1);
   const loading = useEntityStore((s) => s.loading);
   const error = useEntityStore((s) => s.error);
   const clearError = useEntityStore((s) => s.clearError);
@@ -58,7 +59,7 @@ export function MapCanvas() {
     for (const loc of allLocations) {
       let d = 0;
       let current: MockLocation | null = loc;
-      while (current?.parentId !== null) {
+      while (current != null && current.parentId != null) {
         d++;
         current = allLocations.find((l) => l.id === current!.parentId) ?? null;
         if (d > 20) break;
@@ -164,7 +165,7 @@ export function MapCanvas() {
         height={dimensions.height}
       />
 
-      <BreadcrumbNav focusedLocationId={focusedLocationId} />
+      <BreadcrumbNav focusedLocationId={focusedLocation?.id ?? focusedLocationId} />
 
       <div
         ref={containerRef}
@@ -273,7 +274,7 @@ export function MapCanvas() {
       {creativeSettingOpen && (
         <div className="absolute top-0 right-0 z-50 h-full">
           <CreativeSettingSidebar
-            bookId={allLocations[0]?.bookId ?? 1}
+            bookId={bookId}
             onClose={() => setCreativeSettingOpen(false)}
           />
         </div>

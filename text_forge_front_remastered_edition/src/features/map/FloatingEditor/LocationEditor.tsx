@@ -62,8 +62,9 @@ export function LocationEditor({ locationId, isNew, onClose }: LocationEditorPro
     } else if (locationId !== null) {
       updateLocation(locationId, {
         name,
-        type,
+        type: type || '地点',
         description,
+        parentId: parentId || null,
         backgroundUrl: backgroundUrl || null,
         positionX: positionX ? parseFloat(positionX) : null,
         positionY: positionY ? parseFloat(positionY) : null,
@@ -86,21 +87,20 @@ export function LocationEditor({ locationId, isNew, onClose }: LocationEditorPro
       {isNew ? (
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
+            <label className="text-[11px] font-medium text-muted-foreground">地点类型</label>
+            <input
+              value={type}
+              onChange={(e) => setType(e.target.value)}
+              className="w-full h-8 px-3 rounded-md text-sm bg-background border border-border focus:outline-none focus:border-foreground/20"
+            />
+          </div>
+          <div className="space-y-1.5">
             <label className="text-[11px] font-medium text-muted-foreground">父级地点 ID</label>
             <input
               type="number"
               value={parentId || ''}
               onChange={(e) => setParentId(parseInt(e.target.value) || 0)}
               className="w-full h-8 px-3 rounded-md text-sm bg-background border border-border focus:outline-none focus:border-foreground/20"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-[11px] font-medium text-muted-foreground">X 坐标 (0-1)</label>
-            <input
-              value={positionX}
-              onChange={(e) => setPositionX(e.target.value)}
-              placeholder="0.5"
-              className="w-full h-8 px-3 rounded-md text-sm bg-background border border-border focus:outline-none focus:border-foreground/20 font-mono tabular-nums"
             />
           </div>
         </div>
@@ -117,9 +117,16 @@ export function LocationEditor({ locationId, isNew, onClose }: LocationEditorPro
             </div>
             <div className="space-y-1.5">
               <label className="text-[11px] font-medium text-muted-foreground">父级地点</label>
-              <div className="text-sm text-muted-foreground/70 pt-2">
-                {parent?.name ?? '根节点'}
-              </div>
+              <select
+                value={parentId || ''}
+                onChange={(e) => setParentId(e.target.value ? parseInt(e.target.value) : 0)}
+                className="w-full h-8 px-2 rounded-md text-sm bg-background border border-border focus:outline-none focus:border-foreground/20"
+              >
+                <option value="">根节点</option>
+                {locations.filter((l) => !isNew || l.id !== locationId).map((l) => (
+                  <option key={l.id} value={l.id}>{l.name}</option>
+                ))}
+              </select>
             </div>
           </div>
 

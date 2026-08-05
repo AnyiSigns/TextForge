@@ -1,6 +1,7 @@
 from schema.request.model import TestConnectionRequest
 from config.logging import get_logger
-from fastapi import APIRouter, Body, HTTPException
+from core.auth import get_current
+from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import Response
 import httpx
 
@@ -14,7 +15,10 @@ _client = httpx.AsyncClient(follow_redirects=True, timeout=60)
 
 
 @router.post("/test")
-async def test_model_connection(body: TestConnectionRequest):
+async def test_model_connection(
+    body: TestConnectionRequest,
+    user_id: int = Depends(get_current),
+):
     try:
         from core.model_factory import ModelWrapper
 
@@ -34,6 +38,9 @@ async def test_model_connection(body: TestConnectionRequest):
 
 @router.get("/proxy/{path:path}")
 async def proxy_hf_model(path: str):
+    # 仅允许代理到固定的 HuggingFace 镜像，禁止路径中的协议/主机注入
+    if path.startswith("http://") or path.startswith("https://") or "://" in path or path.startswith("//"):
+        raise HTTPException(status_code=400, detail="非法的代理路径")
     urls = []
     if path.startswith("api/"):
         urls.append(f"{HF_BASE}/{path}")

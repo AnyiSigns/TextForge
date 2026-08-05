@@ -1,11 +1,16 @@
 
 from core.auth import get_current
+from domains.book._owner_check import assert_book_owner
 from fastapi import APIRouter, Depends, HTTPException, Query
 from schema.request.world import (
     ForeshadowingRequest,
+    ForeshadowingUpdate,
     LocationRequest,
+    LocationUpdate,
     PlotThreadRequest,
+    PlotThreadUpdate,
     SceneEventRequest,
+    SceneEventUpdate,
 )
 from schema.response.world import (
     ForeshadowingResponse,
@@ -42,6 +47,7 @@ async def create_location(
     request: LocationRequest = ...,
     service: WorldService = Depends(world_db),
 ):
+    await assert_book_owner(request.book_id, user_id, service.repo.session)
     return await service.create_location(request.book_id, request.model_dump(by_alias=False))
 
 
@@ -49,10 +55,12 @@ async def create_location(
 async def update_location(
     user_id=Depends(get_current),
     location_id: int = ...,
-    request: LocationRequest = ...,
+    book_id: int = Query(...),
+    request: LocationUpdate = ...,
     service: WorldService = Depends(world_db),
 ):
-    instance = await service.update_location(location_id, request.book_id, request.model_dump(by_alias=False))
+    await assert_book_owner(book_id, user_id, service.repo.session)
+    instance = await service.update_location(location_id, book_id, request.model_dump(by_alias=False, exclude_unset=True))
     if not instance:
         raise HTTPException(status_code=404, detail="地点不存在")
     return instance
@@ -65,6 +73,7 @@ async def delete_location(
     book_id: int = Query(...),
     service: WorldService = Depends(world_db),
 ):
+    await assert_book_owner(book_id, user_id, service.repo.session)
     await service.delete_location(location_id, book_id)
     return {"ok": True}
 
@@ -85,6 +94,7 @@ async def create_scene_event(
     request: SceneEventRequest = ...,
     service: WorldService = Depends(world_db),
 ):
+    await assert_book_owner(request.book_id, user_id, service.repo.session)
     return await service.create_scene_event(request.book_id, request.model_dump(by_alias=False))
 
 
@@ -92,10 +102,11 @@ async def create_scene_event(
 async def update_scene_event(
     user_id=Depends(get_current),
     event_id: int = ...,
-    request: SceneEventRequest = ...,
+    book_id: int = Query(...),
+    request: SceneEventUpdate = ...,
     service: WorldService = Depends(world_db),
 ):
-    instance = await service.update_scene_event(event_id, request.book_id, request.model_dump(by_alias=False))
+    instance = await service.update_scene_event(event_id, book_id, request.model_dump(by_alias=False, exclude_unset=True))
     if not instance:
         raise HTTPException(status_code=404, detail="事件不存在")
     return instance
@@ -129,6 +140,7 @@ async def create_foreshadowing(
     request: ForeshadowingRequest = ...,
     service: WorldService = Depends(world_db),
 ):
+    await assert_book_owner(request.book_id, user_id, service.repo.session)
     return await service.create_foreshadowing(request.book_id, request.model_dump(by_alias=False))
 
 
@@ -136,10 +148,11 @@ async def create_foreshadowing(
 async def update_foreshadowing(
     user_id=Depends(get_current),
     item_id: int = ...,
-    request: ForeshadowingRequest = ...,
+    book_id: int = Query(...),
+    request: ForeshadowingUpdate = ...,
     service: WorldService = Depends(world_db),
 ):
-    instance = await service.update_foreshadowing(item_id, request.book_id, request.model_dump(by_alias=False))
+    instance = await service.update_foreshadowing(item_id, book_id, request.model_dump(by_alias=False, exclude_unset=True))
     if not instance:
         raise HTTPException(status_code=404, detail="伏笔不存在")
     return instance
@@ -172,6 +185,7 @@ async def create_plot_thread(
     request: PlotThreadRequest = ...,
     service: WorldService = Depends(world_db),
 ):
+    await assert_book_owner(request.book_id, user_id, service.repo.session)
     return await service.create_plot_thread(request.book_id, request.model_dump(by_alias=False))
 
 
@@ -179,10 +193,11 @@ async def create_plot_thread(
 async def update_plot_thread(
     user_id=Depends(get_current),
     item_id: int = ...,
-    request: PlotThreadRequest = ...,
+    book_id: int = Query(...),
+    request: PlotThreadUpdate = ...,
     service: WorldService = Depends(world_db),
 ):
-    instance = await service.update_plot_thread(item_id, request.book_id, request.model_dump(by_alias=False))
+    instance = await service.update_plot_thread(item_id, book_id, request.model_dump(by_alias=False, exclude_unset=True))
     if not instance:
         raise HTTPException(status_code=404, detail="情节脉络不存在")
     return instance

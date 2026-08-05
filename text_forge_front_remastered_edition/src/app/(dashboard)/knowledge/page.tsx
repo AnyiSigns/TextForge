@@ -20,8 +20,10 @@ export default function KnowledgePage() {
   const [viewing, setViewing] = useState<{ name: string; content: string } | null>(null);
   const [personalSearch, setPersonalSearch] = useState('');
   const [publicSearch, setPublicSearch] = useState('');
+  const [publicUploading, setPublicUploading] = useState(false);
   const [reindexing, setReindexing] = useState(false);
   const personalInputRef = useRef<HTMLInputElement>(null);
+  const publicInputRef = useRef<HTMLInputElement>(null);
 
   const embedTierId = useEmbedTier();
   const downloadedIds = useEmbedDownloaded();
@@ -108,6 +110,27 @@ export default function KnowledgePage() {
   const openPublic = async (doc: KbDocMeta) => {
     const content = await ragClient.getPublicContent(doc.id);
     setViewing({ name: doc.name, content: content ?? '（暂无内容）' });
+  };
+
+  const handlePublicUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPublicUploading(true);
+    try {
+      await ragClient.uploadPublic(file);
+      toast.success('已上传到公共文档库');
+      await refresh();
+    } catch { toast.error('上传失败'); }
+    finally { setPublicUploading(false); e.target.value = ''; }
+  };
+
+  const handlePublicDelete = async (doc: KbDocMeta) => {
+    if (!confirm('确定从公共文档库删除该文档吗？')) return;
+    try {
+      await ragClient.removePublic(doc.id);
+      toast.success('已删除');
+      await refresh();
+    } catch { toast.error('删除失败'); }
   };
 
   return (
@@ -218,6 +241,15 @@ export default function KnowledgePage() {
             公共文档库存于服务端，所有用户创作时均可检索引用。请勿上传违规内容。
           </div>
 
+          <div className="flex items-center gap-3">
+            <button onClick={() => publicInputRef.current?.click()} disabled={publicUploading}
+              className="flex items-center gap-1.5 h-8 px-3 rounded-md border border-border bg-transparent text-xs hover:bg-muted cursor-pointer">
+              <Upload size={14} /> {publicUploading ? '上传中...' : '上传文档'}
+            </button>
+            <input ref={publicInputRef} type="file" accept=".txt,.md,.markdown,.json,.csv" className="hidden" onChange={handlePublicUpload} />
+            <p className="text-[11px] text-muted-foreground">支持 TXT, Markdown, JSON, CSV</p>
+          </div>
+
           <div className="relative w-56">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input value={publicSearch} onChange={(e) => setPublicSearch(e.target.value)}
@@ -237,6 +269,7 @@ export default function KnowledgePage() {
                 <div className="flex items-center gap-1">
                   <button onClick={() => openPublic(doc)} className="p-1.5 rounded hover:bg-muted bg-transparent border-none cursor-pointer text-muted-foreground"><Eye size={14} /></button>
                   <button onClick={() => ragClient.downloadPublic(doc.id, doc.name)} className="p-1.5 rounded hover:bg-muted bg-transparent border-none cursor-pointer text-muted-foreground"><Download size={14} /></button>
+                  <button onClick={() => handlePublicDelete(doc)} className="p-1.5 rounded hover:bg-destructive/10 bg-transparent border-none cursor-pointer text-muted-foreground hover:text-destructive"><Trash2 size={14} /></button>
                 </div>
               </div>
             ))}

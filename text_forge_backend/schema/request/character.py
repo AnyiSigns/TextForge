@@ -16,6 +16,8 @@ class CharacterRequest(BaseModel):
     relationship_chain: list[dict[str, Any]] | None = Field(default=None, alias="relationshipChain")
     locked: bool | None = Field(default=None)
     custom_fields: dict[str, Any] | None = Field(default=None, alias="customFields")
+    spawn_location_id: int | None = Field(default=None, alias="spawnLocationId")
+    base_location_id: int | None = Field(default=None, alias="baseLocationId")
 
 
 class CharacterUpdateRequest(BaseModel):
@@ -31,3 +33,5 @@ class CharacterUpdateRequest(BaseModel):
     relationship_chain: list[dict[str, Any]] | None = Field(default=None, alias="relationshipChain")
     locked: bool | None = Field(default=None)
     custom_fields: dict[str, Any] | None = Field(default=None, alias="customFields")
+    spawn_location_id: int | None = Field(default=None, alias="spawnLocationId")
+    base_location_id: int | None = Field(default=None, alias="baseLocationId")

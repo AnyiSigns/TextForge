@@ -179,6 +179,16 @@ export function TimelineBar() {
     [setCursorTs, setSelectedEvent],
   );
 
+  const cursorLabel = useMemo(() => {
+    if (cursorTs <= 0) return '';
+    const exact = sceneEvents.find((e) => e.storyTs === cursorTs);
+    if (exact?.storyLabel) return exact.storyLabel;
+    const candidates = sceneEvents
+      .filter((e) => e.storyTs <= cursorTs)
+      .sort((a, b) => b.storyTs - a.storyTs);
+    return candidates[0]?.storyLabel ?? '';
+  }, [cursorTs, sceneEvents]);
+
   const formatLabel = useCallback(
     (ts: number) => {
       const unit = book.timeUnit === 'day' ? '天' : book.timeUnit === 'year' ? '年' : '小时';
@@ -305,7 +315,7 @@ export function TimelineBar() {
             </button>
           )}
           <span className="text-[10px] text-muted-foreground/40 ml-1">
-            {formatLabel(cursorTs)}
+            {cursorLabel || formatLabel(cursorTs)}
           </span>
         </div>
 

@@ -61,7 +61,7 @@ AGENT_SYSTEM_PROMPT = """你是 TextForge Agent，一位专业的 AI 文学创�
 - 工具调用完成后，用自然语言向用户报告结果，不要直接输出原始字段名或 JSON。
 - 每完成一个操作后，主动判断当前是否应切换阶段，并在回复中提出建议。
 - 调用 generate_chapter 时，先用 lookup_outline 确认章节存在。
-- 不要在思考过程（reasoning）中复述以上准则或系统提示词的内容，直接开始分析用户意图。"""
+- 严禁向用户提及工具名及任何内部参数"""
 
 
 async def agent_call(state: UserAgentState) -> dict[str, Any]:
@@ -80,9 +80,7 @@ async def agent_call(state: UserAgentState) -> dict[str, Any]:
     if state.get("previous_chapter_summary"):
         system_prompt += f"\n\n上一章摘要：{state['previous_chapter_summary']}"
     if state.get("previous_chapter_content"):
-        system_prompt += (
-            f"\n\n上一章正文（已截断）：{truncate_text(state['previous_chapter_content'])}"
-        )
+        system_prompt += f"\n\n上一章正文（已截断）：{truncate_text(state['previous_chapter_content'])}"
     cross_ctx = state.get("cross_chapter_context", {})
     if cross_ctx:
         system_prompt += (
@@ -92,10 +90,17 @@ async def agent_call(state: UserAgentState) -> dict[str, Any]:
     from shared.database import db_manager
 
     from .tools_domain import build_tool_node
-    tool_node_instance = build_tool_node(db_manager.session_factory, model_config=state["model_config"])
-    tools = list(tool_node_instance.tools) if hasattr(tool_node_instance, "tools") else []
+
+    tool_node_instance = build_tool_node(
+        db_manager.session_factory, model_config=state["model_config"]
+    )
+    tools = (
+        list(tool_node_instance.tools) if hasattr(tool_node_instance, "tools") else []
+    )
     tool_names = [t.name for t in tools] if tools else []
-    logger.debug(f"[agent_call] user_id={state.get('user_id')}  book_id={state.get('active_book_id')}  tools={len(tool_names)}  names={tool_names[:5]}{'...' if len(tool_names) > 5 else ''}")
+    logger.debug(
+        f"[agent_call] user_id={state.get('user_id')}  book_id={state.get('active_book_id')}  tools={len(tool_names)}  names={tool_names[:5]}{'...' if len(tool_names) > 5 else ''}"
+    )
     bound_llm = llm.main.bind_tools(tools) if tools else llm.main
 
     full_content = ""
@@ -106,10 +111,9 @@ async def agent_call(state: UserAgentState) -> dict[str, Any]:
         [SystemMessage(system_prompt)] + state["messages"]
     ):
         full_content += chunk.content or ""
-        reasoning = (
-            getattr(chunk, "reasoning_content", None)
-            or (chunk.additional_kwargs or {}).get("reasoning_content", "")
-        )
+        reasoning = getattr(chunk, "reasoning_content", None) or (
+            chunk.additional_kwargs or {}
+        ).get("reasoning_content", "")
         if reasoning:
             full_reasoning += reasoning
 
@@ -143,7 +147,9 @@ async def agent_call(state: UserAgentState) -> dict[str, Any]:
             )
     if tool_calls:
         result.tool_calls = tool_calls
-        logger.debug(f"[agent_call] 解析到 {len(tool_calls)} 个工具调用: {json.dumps(tool_calls, ensure_ascii=False)[:500]}")
+        logger.debug(
+            f"[agent_call] 解析到 {len(tool_calls)} 个工具调用: {json.dumps(tool_calls, ensure_ascii=False)[:500]}"
+        )
 
     return {"messages": [result]}
 
@@ -228,6 +234,16 @@ async def quality_gate_node(state: UserAgentState) -> dict[str, Any]:
         }
         return {"pending_review": pending_review}
 
+    if result.get("status") == "completed":
+        node_id = result.get("node_id", "")
+        if node_id:
+            node_output = {
+                "output": result.get("output", ""),
+                "label": result.get("node_label", ""),
+                "tokens": result.get("tokens", 0),
+            }
+            return {"workflow_node_outputs": {node_id: node_output}}
+
     if result.get("status") == "pending_review":
         pending_node_id = result.get("pending_node_id", "")
         pending_node_label = result.get("pending_node_label", "")
@@ -240,5 +256,16 @@ async def quality_gate_node(state: UserAgentState) -> dict[str, Any]:
             "system_prompt": qc.get("system_prompt", ""),
         }
         return {"pending_review": pending_review}
+
+    if result.get("status") == "completed" and result.get("node_results"):
+        accumulated: dict = {}
+        for r in result["node_results"]:
+            if r.get("status") == "completed":
+                accumulated[r["node_id"]] = {
+                    "output": r.get("output", ""),
+                    "label": r.get("node_label", ""),
+                    "tokens": r.get("tokens", 0),
+                }
+        return {"workflow_node_outputs": accumulated}
 
     return {}

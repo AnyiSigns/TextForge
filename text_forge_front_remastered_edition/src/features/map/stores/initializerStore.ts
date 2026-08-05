@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import { useEntityStore } from './entityStore';
-import type { MockLocation, MockCharacter, MockSceneEvent } from '@/mocks/data';
 
 interface Candidate {
   id: string;
@@ -9,7 +8,7 @@ interface Candidate {
 }
 
 const STEP_LABELS = [
-  '世界观', '地点', '角色', '大纲', '事件', '情节线', '伏笔',
+  '世界观', '地点', '角色', '情节线', '大纲', '事件', '伏笔',
 ];
 
 interface InitializerState {
@@ -18,15 +17,21 @@ interface InitializerState {
   candidates: Candidate[][];
   lockedIds: Set<string>;
   confirmedIds: Set<string>;
+  saving: boolean;
+  error: string | null;
+  generating: boolean;
+  creativeForm: { name: string; tone: string; worldview: string; taboos: string; customFields: Array<{ key: string; value: string }> };
 
   open: () => void;
   close: () => void;
-  nextStep: () => void;
+  nextStep: () => Promise<void>;
   prevStep: () => void;
   toggleLock: (step: number, candidateId: string) => void;
   toggleConfirm: (step: number, candidateId: string) => void;
-  regenerateCandidates: () => void;
-  finish: () => void;
+  setCreativeForm: (data: Partial<InitializerState['creativeForm']>) => void;
+  regenerateCandidates: () => Promise<void>;
+  finish: () => Promise<void>;
+  clearError: () => void;
 }
 
 function generateCandidates(step: number): Candidate[] {
@@ -90,6 +95,17 @@ function generateCandidates(step: number): Candidate[] {
       ];
     case 3:
       return [
+        { id: 'p1', title: '主角成长线', fields: [
+          { key: '类型', value: '主线' },
+          { key: '描述', value: '从孤儿少年成长为星辰之主。关键节点：觉醒→学府修炼→星门启程→决战觉醒→统治星域。' },
+        ]},
+        { id: 'p2', title: '暗影阴谋线', fields: [
+          { key: '类型', value: '暗线' },
+          { key: '描述', value: '暗影组织的渗透计划。揭示黑曜与主角之间的深层关联，以及暗影组织的真实目的。' },
+        ]},
+      ];
+    case 4:
+      return [
         { id: 'o1', title: '三卷结构', fields: [
           { key: '大纲', value: '卷一：觉醒篇 - 主角发现星辰之力，进入星辰学府学习\n卷二：成长篇 - 在修行中逐渐揭开身世之谜\n卷三：决战篇 - 光明与暗影的最终对决' },
         ]},
@@ -100,7 +116,7 @@ function generateCandidates(step: number): Candidate[] {
           { key: '大纲', value: '第一章：星辰初现 - 主角意外觉醒\n第二章：入学试炼 - 进入星辰学府\n第三章：星门之谜 - 发现远古遗迹\n第四章：暗影浮现 - 暗影组织现身' },
         ]},
       ];
-    case 4:
+    case 5:
       return [
         { id: 'e1', title: '星辰觉醒', fields: [
           { key: '时间', value: 'Day 1' },
@@ -121,17 +137,6 @@ function generateCandidates(step: number): Candidate[] {
           { key: '时间', value: 'Day 60' },
           { key: '地点', value: '星辰学府' },
           { key: '描述', value: '暗影组织袭击星辰学府，主角在战斗中觉醒了完整的星辰之力。' },
-        ]},
-      ];
-    case 5:
-      return [
-        { id: 'p1', title: '主角成长线', fields: [
-          { key: '类型', value: '主线' },
-          { key: '描述', value: '从孤儿少年成长为星辰之主。关键节点：觉醒→学府修炼→星门启程→决战觉醒→统治星域。' },
-        ]},
-        { id: 'p2', title: '暗影阴谋线', fields: [
-          { key: '类型', value: '暗线' },
-          { key: '描述', value: '暗影组织的渗透计划。揭示黑曜与主角之间的深层关联，以及暗影组织的真实目的。' },
         ]},
       ];
     case 6:
@@ -157,20 +162,144 @@ function generateCandidates(step: number): Candidate[] {
   }
 }
 
+interface InitError extends Error {
+  step?: string;
+}
+
+/**
+ * 将锁定的卡片批量写入后端。
+ */
+async function saveLockedCards(
+  bookId: number,
+  step: number,
+  cards: Candidate[],
+): Promise<void> {
+  console.log(`[wizard:store] saveLockedCards step=${step} count=${cards.length}`);
+  if (step === 1) {
+    // 地点
+    const { createLocation } = await import('@/shared/api/world');
+    const results = await Promise.all(cards.map(async (c) => {
+      const type = c.fields.find((f) => f.key === '类型')?.value ?? '城镇';
+      const desc = c.fields.find((f) => f.key === '描述')?.value ?? '';
+      const body = { bookId, name: c.title, type, description: desc };
+      console.log(`[wizard:store] createLocation body=`, body);
+      const result = await createLocation(body as Parameters<typeof createLocation>[0]);
+      console.log(`[wizard:store] createLocation result=`, result);
+      return result;
+    }));
+    console.log(`[wizard:store] saveLockedCards locations done`, results);
+  } else if (step === 2) {
+    // 角色
+    const { createCharacter } = await import('@/shared/api/characters');
+    await Promise.all(cards.map((c) => {
+      const roleType = c.fields.find((f) => f.key === '角色类型')?.value ?? '配角';
+      const desc = c.fields.find((f) => f.key === '描述')?.value ?? '';
+      return createCharacter({ bookId, name: c.title, description: desc, roleType, status: '活跃' } as Parameters<typeof createCharacter>[0]);
+    }));
+  } else if (step === 3) {
+    // 情节线
+    const { createPlotThread } = await import('@/shared/api/world');
+    await Promise.all(cards.map((c) => {
+      const type = c.fields.find((f) => f.key === '类型')?.value ?? '支线';
+      const desc = c.fields.find((f) => f.key === '描述')?.value ?? '';
+      return createPlotThread({ bookId, name: c.title, description: desc, status: '进行中', type } as Parameters<typeof createPlotThread>[0]);
+    }));
+  } else if (step === 4) {
+    // 大纲 → 卷+章
+    const { createVolume, createChapter } = await import('@/shared/api/books');
+    for (const c of cards) {
+      const text = c.fields.find((f) => f.key === '大纲')?.value ?? '';
+      const volMatches = text.match(/卷[一二三四五六七八九十\d]+[：:][^\n]+/g) || [];
+      for (let vi = 0; vi < volMatches.length; vi++) {
+        const volTitle = volMatches[vi].replace(/[\n\r]/g, ' ').slice(0, 100);
+        const createdVol = await createVolume(bookId, volTitle, '');
+        const chMatches = text.match(/第[一二三四五六七八九十\d]+章[：:][^\n]+/g) || [];
+        const chPerVol = Math.max(1, Math.ceil(chMatches.length / Math.max(1, volMatches.length)));
+        const volChapters = chMatches.slice(vi * chPerVol, (vi + 1) * chPerVol);
+        await Promise.all(volChapters.map((chTitle) =>
+          createChapter(createdVol.id, { title: chTitle.replace(/[\n\r]/g, ' ').slice(0, 200), summary: '' } as Parameters<typeof createChapter>[1]),
+        ));
+      }
+    }
+  } else if (step === 5) {
+    // 事件
+    const { createSceneEvent } = await import('@/shared/api/world');
+    await Promise.all(cards.map((c) => {
+      const desc = c.fields.find((f) => f.key === '描述')?.value ?? '';
+      return createSceneEvent({ bookId, title: c.title, content: desc, eventType: 'scene', sortOrder: 0 } as Parameters<typeof createSceneEvent>[0]);
+    }));
+  } else if (step === 6) {
+    // 伏笔
+    const { createForeshadowing } = await import('@/shared/api/world');
+    await Promise.all(cards.map((c) => {
+      const desc = c.fields.find((f) => f.key === '内容')?.value ?? c.title;
+      const revealType = c.fields.find((f) => f.key === '伏笔类型')?.value ?? '身份谜团';
+      return createForeshadowing({ bookId, description: desc, status: 'planted', revealType } as Parameters<typeof createForeshadowing>[0]);
+    }));
+  }
+}
+
 export const useInitializerStore = create<InitializerState>((set, get) => ({
   isOpen: false,
   currentStep: 0,
   candidates: Array.from({ length: 7 }, (_, i) => generateCandidates(i)),
   lockedIds: new Set<string>(),
   confirmedIds: new Set<string>(),
+  saving: false,
+  error: null,
+  generating: false,
+  creativeForm: { name: '', tone: '', worldview: '', taboos: '', customFields: [{ key: '战力体系', value: '' }, { key: '势力', value: '' }, { key: '交易单位', value: '' }] },
 
-  open: () => set({ isOpen: true, currentStep: 0 }),
+  open: () => set({ isOpen: true, currentStep: 0, saving: false, error: null }),
 
-  close: () => set({ isOpen: false }),
+  close: () => set({ isOpen: false, saving: false, error: null }),
 
-  nextStep: () => {
-    const { currentStep, candidates, lockedIds } = get();
+  nextStep: async () => {
+    const { currentStep, candidates, lockedIds, creativeForm } = get();
     if (currentStep < 6) {
+      // Step 0 → Step 1: 后台保存创意设定（不阻塞 UI）
+      if (currentStep === 0) {
+        const bookId = (await import('@/app/(dashboard)/books/[id]/store')).useBookDetailStore.getState().bookId;
+        if (bookId && creativeForm.worldview) {
+          const { updateCreativeSetting } = await import('@/shared/api/books');
+          updateCreativeSetting(bookId, {
+            tone: creativeForm.tone,
+            worldview: creativeForm.worldview,
+            writingTaboos: creativeForm.taboos,
+            customDimensions: Object.fromEntries(
+              creativeForm.customFields.filter((f) => f.key && f.value).map((f) => [f.key, f.value]),
+            ),
+          }).catch(() => {});
+        }
+      }
+
+      // 卡片步骤（1-6）：锁定卡片写入后端
+      if (currentStep >= 1 && currentStep <= 6) {
+        const lockedCards = candidates[currentStep].filter((c) => lockedIds.has(c.id));
+        console.log(`[wizard:store] nextStep step=${currentStep} lockedCards=${lockedCards.length}`, lockedCards.map(c => c.title));
+        if (lockedCards.length > 0) {
+          const bookId = (await import('@/app/(dashboard)/books/[id]/store')).useBookDetailStore.getState().bookId;
+          console.log(`[wizard:store] nextStep saving bookId=${bookId}`);
+          if (bookId) {
+            try {
+              await saveLockedCards(bookId, currentStep, lockedCards);
+              console.log(`[wizard:store] nextStep save OK, reloading entityStore`);
+              await useEntityStore.getState().loadFromApi(bookId);
+            } catch (e) {
+              console.error(`[wizard:store] nextStep save FAILED`, e);
+            }
+            // 保存后移除已入库卡片，回退再前进不会重复
+            const savedIds = new Set(lockedCards.map((c) => c.id));
+            const newCandidates = [...get().candidates];
+            newCandidates[currentStep] = newCandidates[currentStep].filter((c) => !savedIds.has(c.id));
+            // 同时清理 lockedIds
+            const newLocked = new Set(get().lockedIds);
+            savedIds.forEach((id) => newLocked.delete(id));
+            set({ candidates: newCandidates, lockedIds: newLocked });
+          }
+        }
+      }
+
       const confirmedInStep = candidates[currentStep]
         .filter((c) => lockedIds.has(c.id))
         .map((c) => c.id);
@@ -205,98 +334,123 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
     set({ confirmedIds: newConfirmed });
   },
 
-  regenerateCandidates: () => {
-    const { currentStep } = get();
-    const newCandidates = [...get().candidates];
-    newCandidates[currentStep] = generateCandidates(currentStep);
-    set({ candidates: newCandidates });
+  setCreativeForm: (data) => {
+    set((s) => ({ creativeForm: { ...s.creativeForm, ...data } }));
   },
 
-  finish: () => {
-    const { candidates, lockedIds, confirmedIds } = get();
-    const entityStore = useEntityStore.getState();
-
-    // Step 1: 世界观 → 暂无直接实体，作为 book description
-    const wCandidates = candidates[0].filter((c) => lockedIds.has(c.id) || confirmedIds.has(c.id));
-    if (wCandidates.length > 0 && entityStore.book) {
-      const summary = wCandidates.map((c) => c.fields.map((f) => f.value).join('\n')).join('\n\n');
-      // Books don't have a formal worldview field, store in description for now
+  regenerateCandidates: async () => {
+    const { currentStep, candidates, lockedIds, confirmedIds, creativeForm } = get();
+    const { useBookDetailStore } = await import('@/app/(dashboard)/books/[id]/store');
+    const bookId = useBookDetailStore.getState().bookId;
+    if (!bookId) {
+      set({ error: '未找到当前书籍' });
+      return;
     }
 
-    // Step 1: 地点 → addLocation
-    const lCandidates = candidates[1].filter((c) => lockedIds.has(c.id) || confirmedIds.has(c.id));
-    let nextLocId = entityStore.locations.length + 1;
-    for (const c of lCandidates) {
-      const type = c.fields.find((f) => f.key === '类型')?.value ?? '城镇';
-      const desc = c.fields.find((f) => f.key === '描述')?.value ?? '';
-      const loc: MockLocation = {
-        id: nextLocId++,
-        bookId: 1,
-        name: c.title,
-        type,
-        description: desc,
-        parentId: 1, // attach to root
-        positionX: 0.3 + Math.random() * 0.4,
-        positionY: 0.3 + Math.random() * 0.4,
-        backgroundUrl: null,
-        alternateOfId: null,
-        mapIcon: null,
-        attributes: {},
-        locked: false,
-      };
-      entityStore.addLocation(loc);
+    // 收集前序步骤中 locked/confirmed 的卡片
+    const previousCards: Array<{ step: number; title: string; fields: Array<{ key: string; value: string }> }> = [];
+    for (let s = 0; s < currentStep; s++) {
+      for (const c of candidates[s]) {
+        if (lockedIds.has(c.id) || confirmedIds.has(c.id)) {
+          previousCards.push({ step: s, title: c.title, fields: c.fields });
+        }
+      }
     }
 
-    // Step 2: 角色 → addCharacter
-    const cCandidates = candidates[2].filter((c) => lockedIds.has(c.id) || confirmedIds.has(c.id));
-    let nextChId = entityStore.characters.length + 1;
-    for (const c of cCandidates) {
-      const roleType = c.fields.find((f) => f.key === '角色类型')?.value ?? '配角';
-      const desc = c.fields.find((f) => f.key === '描述')?.value ?? '';
-      const ch: MockCharacter = {
-        id: nextChId++,
-        bookId: 1,
-        name: c.title,
-        aliases: [],
-        description: desc,
-        roleType,
-        status: '活跃',
-        relationshipChain: [],
-        locked: false,
-        avatarUrl: null,
-        role_type: roleType,
-        spawnLocationId: null,
-        baseLocationId: null,
-        customFields: {},
-        userId: 1,
-      };
-      entityStore.addCharacter(ch);
-    }
+    console.log(`[wizard:store] step=${currentStep} previousCards=${JSON.stringify(previousCards.map(p => ({ step: p.step, title: p.title })))}`);
 
-    // Step 4: 事件 → addSceneEvent
-    const eCandidates = candidates[4].filter((c) => lockedIds.has(c.id) || confirmedIds.has(c.id));
-    let nextEvId = entityStore.sceneEvents.length + 1;
-    for (const c of eCandidates) {
-      const desc = c.fields.find((f) => f.key === '描述')?.value ?? '';
-      const timeStr = c.fields.find((f) => f.key === '时间')?.value?.replace('Day ', '') ?? `${60 + nextEvId * 10}`;
-      const ev: MockSceneEvent = {
-        id: nextEvId++,
-        bookId: 1,
-        chapterId: null,
+    // 当前步已锁定的标题，传给后端避免重复生成
+    const excludeTitles = candidates[currentStep]
+      .filter((c) => lockedIds.has(c.id) || confirmedIds.has(c.id))
+      .map((c) => c.title);
+
+    set({ generating: true, error: null });
+    try {
+      const { generateWizardCards } = await import('@/shared/api/wizard');
+      const cards = await generateWizardCards(bookId, currentStep, previousCards, excludeTitles);
+
+      // Step 0: 取第一个卡片填入表单
+      if (currentStep === 0 && cards.length > 0) {
+        const first = cards[0];
+        const form = get().creativeForm;
+        const name = first.title || '';
+        const tone = first.fields.find((f) => f.key === '文风基调')?.value ?? '';
+        const worldview = first.fields.find((f) => f.key === '世界观')?.value ?? '';
+        const taboos = first.fields.find((f) => f.key === '写作禁忌')?.value ?? '';
+        const customRaw = first.fields.find((f) => f.key === '自定义维度')?.value ?? '';
+
+        let customFields: Array<{ key: string; value: string }> = [];
+        try {
+          const parsed = JSON.parse(customRaw);
+          if (Array.isArray(parsed)) {
+            customFields = parsed.map((x: Record<string, string>) => ({ key: x.key || '', value: x.value || '' }));
+          }
+        } catch {
+          // 文本格式："键：值" 每行
+          customFields = customRaw
+            .split('\n')
+            .map((line) => {
+              const idx = line.indexOf('：') >= 0 ? line.indexOf('：') : line.indexOf(':');
+              if (idx >= 0) return { key: line.slice(0, idx).trim(), value: line.slice(idx + 1).trim() };
+              return null;
+            })
+            .filter((x): x is { key: string; value: string } => x !== null && x.key.length > 0);
+        }
+        set({
+          generating: false,
+          creativeForm: { name, tone, worldview, taboos, customFields: customFields.length > 0 ? customFields : form.customFields },
+        });
+        return;
+      }
+
+      const mapped: Candidate[] = cards.map((c, i) => ({
+        id: `${currentStep}-ai-${Date.now()}-${i}`,
         title: c.title,
-        content: desc,
-        sortOrder: nextEvId,
-        eventType: 'scene',
-        storyTs: parseFloat(timeStr) || 100,
-        storyLabel: timeStr.includes('Day') ? `第${timeStr}天` : null,
-        locationId: null,
-        characterIds: [],
-        locked: false,
-      };
-      entityStore.addSceneEvent(ev);
+        fields: c.fields,
+      }));
+
+      const newCandidates = [...get().candidates];
+      // 保留已锁定/确认的卡片，新生成的追加到末尾
+      const kept = newCandidates[currentStep].filter(
+        (c) => lockedIds.has(c.id) || confirmedIds.has(c.id),
+      );
+      newCandidates[currentStep] = [...kept, ...mapped];
+      set({ candidates: newCandidates, generating: false });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'AI 生成失败，请检查模型配置后重试';
+      set({ generating: false, error: msg });
+    }
+  },
+
+  clearError: () => set({ error: null }),
+
+  finish: async () => {
+    const { candidates, lockedIds, confirmedIds, currentStep } = get();
+    const { useBookDetailStore } = await import('@/app/(dashboard)/books/[id]/store');
+    const bookId = useBookDetailStore.getState().bookId;
+
+    if (!bookId) {
+      set({ error: '未找到当前书籍' });
+      return;
     }
 
-    set({ isOpen: false });
+    set({ saving: true, error: null });
+
+    try {
+      // 保存当前步骤剩余的锁定卡片（之前步骤已在 nextStep 中保存）
+      const lockedCards = candidates[currentStep].filter(
+        (c) => lockedIds.has(c.id) || confirmedIds.has(c.id),
+      );
+      if (lockedCards.length > 0) {
+        await saveLockedCards(bookId, currentStep, lockedCards);
+      }
+
+      await useEntityStore.getState().loadFromApi(bookId);
+      set({ isOpen: false, saving: false });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '保存失败';
+      set({ saving: false, error: msg });
+    }
   },
 }));
 

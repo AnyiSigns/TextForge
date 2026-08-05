@@ -6,6 +6,8 @@ import { useEditorStore } from '@/features/map/stores/editorStore';
 import { SceneEditor } from './SceneEditor';
 import { LocationEditor } from './LocationEditor';
 import { CharacterEditor } from './CharacterEditor';
+import { ForeshadowingEditor } from './ForeshadowingEditor';
+import { PlotThreadEditor } from './PlotThreadEditor';
 
 const PANEL_LABELS: Record<string, string> = {
   scene: '场景编辑',
@@ -64,7 +66,9 @@ export function FloatingEditor() {
       case 'character':
         return <CharacterEditor characterId={entityId} isNew={isNew} onClose={close} />;
       case 'foreshadowing':
+        return <ForeshadowingEditor foreshadowingId={entityId} isNew={isNew} onClose={close} />;
       case 'plot-thread':
+        return <PlotThreadEditor plotThreadId={entityId} isNew={isNew} onClose={close} />;
       case 'chapter':
       case 'volume':
         return <SceneEditor eventId={entityId} isNew={isNew} onClose={close} />;

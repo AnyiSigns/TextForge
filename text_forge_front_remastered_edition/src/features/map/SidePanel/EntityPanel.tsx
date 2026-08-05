@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Plus, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Lock } from 'lucide-react';
 import { useEntityStore } from '@/features/map/stores/entityStore';
 import { useEditorStore } from '@/features/map/stores/editorStore';
 import { ConfirmDialog } from '@/features/map/components/ConfirmDialog';
@@ -10,6 +10,9 @@ import { cn } from '@/shared/lib/cn';
 export function EntityPanel() {
   const foreshadowings = useEntityStore((s) => s.foreshadowings);
   const plotThreads = useEntityStore((s) => s.plotThreads);
+  const chapters = useEntityStore((s) => s.chapters);
+  const characters = useEntityStore((s) => s.characters);
+  const sceneEvents = useEntityStore((s) => s.sceneEvents);
   const removeForeshadowing = useEntityStore((s) => s.removeForeshadowing);
   const removePlotThread = useEntityStore((s) => s.removePlotThread);
   const openEditor = useEditorStore((s) => s.open);
@@ -55,7 +58,12 @@ export function EntityPanel() {
           </div>
         ) : (
           <div className="space-y-1.5">
-            {foreshadowings.map((f) => (
+            {foreshadowings.map((f) => {
+              const plantedCh = chapters.find((c) => c.id === f.plantedAtChapterId);
+              const resolvedCh = chapters.find((c) => c.id === f.resolvedAtChapterId);
+              const relatedEv = sceneEvents.find((e) => e.id === f.relatedEventId);
+              const relatedChars = characters.filter((c) => f.relatedCharacterIds?.includes(c.id));
+              return (
               <div
                 key={`f-${f.id}`}
                 className="px-2 py-2 rounded-lg border border-border/30 bg-card/50 group transition-all duration-200 hover:scale-[1.02] hover:bg-foreground/[0.02]"
@@ -64,20 +72,36 @@ export function EntityPanel() {
                   <p className="text-[11px] leading-relaxed text-foreground/70 flex-1">
                     {f.description}
                   </p>
-                  <span className={cn('text-[9px] flex-shrink-0', statusColor(f.status))}>
-                    {statusLabel(f.status)}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between mt-1.5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[9px] text-muted-foreground/40">
-                      揭示: {f.revealType === 'gradual' ? '逐步' : f.revealType === 'twist' ? '反转' : f.revealType}
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    {f.locked && <Lock size={9} className="text-muted-foreground/30" />}
+                    <span className={cn('text-[9px]', statusColor(f.status))}>
+                      {statusLabel(f.status)}
                     </span>
-                    {f.notes && (
-                      <span className="text-[9px] text-muted-foreground/30 truncate">{f.notes}</span>
-                    )}
                   </div>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                </div>
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1.5">
+                  {plantedCh && (
+                    <span className="text-[9px] text-muted-foreground/40">埋下: {plantedCh.title}</span>
+                  )}
+                  {resolvedCh && (
+                    <span className="text-[9px] text-muted-foreground/40">回收: {resolvedCh.title}</span>
+                  )}
+                  <span className="text-[9px] text-muted-foreground/40">
+                    揭示: {f.revealType === 'gradual' ? '逐步' : f.revealType === 'twist' ? '反转' : f.revealType === 'sudden' ? '突然' : f.revealType}
+                  </span>
+                  {relatedEv && (
+                    <span className="text-[9px] text-muted-foreground/40">事件: {relatedEv.title}</span>
+                  )}
+                </div>
+                {relatedChars.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {relatedChars.map((ch) => (
+                      <span key={ch.id} className="text-[8px] px-1 py-0.5 rounded bg-foreground/[0.04] text-foreground/50">{ch.name}</span>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center justify-end mt-1 opacity-0 group-hover:opacity-100 transition-all">
+                  <div className="flex items-center gap-1">
                     <button
                       onClick={() => openEditor('foreshadowing', f.id)}
                       className="w-3.5 h-3.5 flex items-center justify-center rounded text-muted-foreground/40 hover:text-foreground/60 hover:scale-110 transition-all bg-transparent border-none cursor-pointer"
@@ -95,7 +119,7 @@ export function EntityPanel() {
                   </div>
                 </div>
               </div>
-            ))}
+            )})}
           </div>
         )}
       </div>

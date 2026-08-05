@@ -53,7 +53,9 @@ class CreativeSettingRepository(BaseRepository[CreativeSetting]):
         return instance
 
     async def save_setting(self, book_id: int, setting: dict):
-        instance = await self.get(book_id)
+        stmt = select(CreativeSetting).where(CreativeSetting.book_id == book_id)
+        result = await self.session.execute(stmt)
+        instance = result.scalar_one_or_none()
         if not instance:
             instance = await self.add_setting(book_id, setting)
             return instance
@@ -65,4 +67,6 @@ class CreativeSettingRepository(BaseRepository[CreativeSetting]):
         return instance
 
     async def get_setting(self, book_id: int):
-        return await self.get(book_id)
+        stmt = select(CreativeSetting).where(CreativeSetting.book_id == book_id)
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()

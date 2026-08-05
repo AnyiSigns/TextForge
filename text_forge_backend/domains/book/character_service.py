@@ -1,6 +1,9 @@
+import os
+import uuid
+
 from config.logging import get_logger
 from core.exceptions import AppException
-from fastapi import Depends
+from fastapi import Depends, HTTPException, UploadFile
 from models.book import Character
 from shared.database import db_manager
 from sqlalchemy import select
@@ -130,6 +133,34 @@ class CharacterService:
         except Exception:
             logger.error("删除角色失败", exc_info=True)
             raise AppException(status_code=500, detail="删除角色失败", error_code="DELETE_CHARACTER_FAILED")
+
+    async def upload_character_avatar(self, character_id: int, file: UploadFile):
+        if not file.content_type or not file.content_type.startswith("image/"):
+            raise HTTPException(status_code=400, detail="请上传图片文件")
+
+        ext = os.path.splitext(file.filename or "")[1].lower()
+        if ext not in (".png", ".jpg", ".jpeg", ".gif", ".webp"):
+            ext = ".png"
+
+        filename = f"char_{character_id}_{uuid.uuid4().hex[:8]}{ext}"
+        save_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
+            "static",
+            "avatars",
+        )
+        os.makedirs(save_dir, exist_ok=True)
+        save_path = os.path.join(save_dir, filename)
+
+        content = await file.read()
+        with open(save_path, "wb") as f:
+            f.write(content)
+
+        avatar_url = f"/static/avatars/{filename}"
+        instance = await self.character_repo.get(character_id)
+        instance.avatar_url = avatar_url
+        await self.session.commit()
+        await self.session.refresh(instance)
+        return {"avatarUrl": avatar_url}
 
     async def delete_character_avatar(self, user_id: int, character_id: int):
         """删除角色头像，校验所有权。

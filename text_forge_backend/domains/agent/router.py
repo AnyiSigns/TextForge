@@ -205,6 +205,30 @@ async def list_messages(
     return [MessagesResponse.model_validate(m) for m in messages]
 
 
+@router.delete("/conversations/{conv_id}")
+async def delete_conversation(
+    conv_id: int,
+    user_id: Annotated[int, Depends(get_current)],
+    session: Annotated[AsyncSession, Depends(db_manager.get_db)] = None,
+):
+    from sqlalchemy import delete as sqla_delete
+
+    conv_stmt = select(Conversation).where(
+        Conversation.id == conv_id, Conversation.user_id == user_id
+    )
+    conv_result = await session.execute(conv_stmt)
+    conversation = conv_result.scalar_one_or_none()
+    if not conversation:
+        raise HTTPException(status_code=404, detail="会话不存在")
+
+    await session.execute(
+        sqla_delete(Message).where(Message.conversation_id == conv_id)
+    )
+    await session.delete(conversation)
+    await session.commit()
+    return {"ok": True}
+
+
 @router.post("/start")
 async def start_agent_session(
     user_id: Annotated[int, Depends(get_current)],
@@ -661,7 +685,7 @@ async def manual_compress(
                 "memory_type": "context_summary",
                 "content": summary,
                 "source": "manual_compress",
-                "metadata": {
+                "meta": {
                     "thread_id": body.thread_id,
                     "compressed_at": datetime.now(timezone.utc).isoformat(),
                 },
@@ -704,6 +728,9 @@ async def patch_state(
     if not checkpoint:
         raise HTTPException(status_code=503, detail="Checkpointer 未就绪")
 
+    ALLOWED_STATE_KEYS = {'personal_rag_results', 'active_workflow_id', 'workflow_node_outputs'}
+    filtered = {k: v for k, v in body.items() if k in ALLOWED_STATE_KEYS}
+
     config = {"configurable": {"thread_id": thread_id}}
     state_snapshot = await checkpoint.aget(config)
     if not state_snapshot:
@@ -714,7 +741,7 @@ async def patch_state(
         model_config={},
         checkpointer=checkpoint,
     )
-    await graph.aupdate_state(config, values=body)
+    await graph.aupdate_state(config, values=filtered)
     return {"status": "ok", "thread_id": thread_id}
 
 

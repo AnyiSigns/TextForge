@@ -18,7 +18,7 @@ export async function changePasswordByEmail(code: string, newPassword: string): 
 }
 
 export async function sendCode(): Promise<void> {
-  await apiClient.post('/user/send-code');
+  await apiClient.post('/user/send-code', {});
 }
 
 export async function uploadAvatar(file: File): Promise<{ avatar: string }> {

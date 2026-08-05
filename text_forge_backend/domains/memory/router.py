@@ -62,7 +62,7 @@ async def update_memory(
     memory = await service.update_memory(user_id=user_id, memory_id=memory_id, data=payload)
     if not memory:
         raise HTTPException(status_code=404, detail="记忆不存在")
-    return AgentMemoryResponse(**memory)
+    return AgentMemoryResponse(**service._to_dict(memory))
 
 
 @router.delete("/{memory_id}")

@@ -237,7 +237,7 @@ def build_extend_outline_tool(session_factory, model_config: dict | None = None)
                 response = await llm.main.ainvoke(messages)
                 raw_text = response.content if hasattr(response, "content") else str(response)
                 import re
-                json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+                json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', raw_text, re.DOTALL)
                 if json_match:
                     import json as json_lib
                     result_data = json_lib.loads(json_match.group())
@@ -256,7 +256,20 @@ def build_extend_outline_tool(session_factory, model_config: dict | None = None)
             created_chapters = []
             created_events = []
 
-            base_sort_order = await _get_last_sort_order(session, last_volume.id)
+            chapter_count_in_last_vol = sum(1 for c in existing_chapters if c.volume_id == last_volume.id)
+            if chapter_count_in_last_vol >= 20:
+                max_sort = max((v.sort_order for v in volumes), default=0)
+                new_vol = Volume(
+                    book_id=book_id,
+                    title=f"第{max_sort + 1}卷",
+                    sort_order=max_sort + 1,
+                )
+                session.add(new_vol)
+                await session.flush()
+                last_volume = new_vol
+                base_sort_order = 0
+            else:
+                base_sort_order = await _get_last_sort_order(session, last_volume.id)
 
             for i, ch_data in enumerate(chapters_data):
                 title = ch_data.get("title", f"第{len(existing_chapters) + i + 1}章")
@@ -287,6 +300,7 @@ def build_extend_outline_tool(session_factory, model_config: dict | None = None)
                         story_label=se_data.get("story_label", ""),
                         location_id=se_data.get("location_id"),
                         character_ids=se_data.get("character_ids", []),
+                        plot_thread_ids=se_data.get("plot_thread_ids", []),
                     )
                     session.add(new_event)
                     created_events.append(new_event)

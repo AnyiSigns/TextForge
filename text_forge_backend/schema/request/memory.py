@@ -11,8 +11,6 @@ class AgentMemoryRequest(BaseModel):
     priority: int | None = Field(default=5)
     source: str | None = "user_manual"
     meta: dict | None = Field(default=None)
-    mode: str | None = "fulltext"
-    query: str | None = None
 
     model_config = ConfigDict(populate_by_name=True)
 
