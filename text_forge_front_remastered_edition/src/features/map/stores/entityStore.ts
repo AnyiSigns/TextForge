@@ -2,25 +2,25 @@ import { create } from 'zustand';
 import { toast } from 'sonner';
 import { useMapStore } from './mapStore';
 import type {
-  MockBook,
-  MockVolume,
-  MockChapter,
-  MockSceneEvent,
-  MockLocation,
-  MockCharacter,
-  MockForeshadowing,
-  MockPlotThread,
-} from '@/mocks/data';
+  Book,
+  Volume,
+  Chapter,
+  SceneEvent,
+  Location,
+  Character,
+  Foreshadowing,
+  PlotThread,
+} from '@/shared/api/types';
 
 interface EntityState {
-  book: MockBook;
-  volumes: MockVolume[];
-  chapters: MockChapter[];
-  sceneEvents: MockSceneEvent[];
-  locations: MockLocation[];
-  characters: MockCharacter[];
-  foreshadowings: MockForeshadowing[];
-  plotThreads: MockPlotThread[];
+  book: Book;
+  volumes: Volume[];
+  chapters: Chapter[];
+  sceneEvents: SceneEvent[];
+  locations: Location[];
+  characters: Character[];
+  foreshadowings: Foreshadowing[];
+  plotThreads: PlotThread[];
   loading: boolean;
   error: string | null;
   creativeSetting: { tone: string; worldview: string; writingTaboos: string; customDimensions: Record<string, unknown> } | null;
@@ -29,17 +29,17 @@ interface EntityState {
   reset: () => void;
   clearError: () => void;
 
-  updateSceneEvent: (id: number, patch: Partial<MockSceneEvent>) => void;
-  updateLocation: (id: number, patch: Partial<MockLocation>) => void;
-  updateCharacter: (id: number, patch: Partial<MockCharacter>) => void;
+  updateSceneEvent: (id: number, patch: Partial<SceneEvent>) => void;
+  updateLocation: (id: number, patch: Partial<Location>) => void;
+  updateCharacter: (id: number, patch: Partial<Character>) => void;
 
-  addLocation: (loc: MockLocation) => void;
-  addCharacter: (ch: MockCharacter) => void;
-  addSceneEvent: (ev: MockSceneEvent) => void;
-  addPlotThread: (pt: MockPlotThread) => void;
-  addForeshadowing: (fw: MockForeshadowing) => void;
-  addChapter: (ch: MockChapter) => void;
-  addVolume: (vol: MockVolume) => void;
+  addLocation: (loc: Location) => void;
+  addCharacter: (ch: Character) => void;
+  addSceneEvent: (ev: SceneEvent) => void;
+  addPlotThread: (pt: PlotThread) => void;
+  addForeshadowing: (fw: Foreshadowing) => void;
+  addChapter: (ch: Chapter) => void;
+  addVolume: (vol: Volume) => void;
 
   removeLocation: (id: number) => Promise<void>;
   removeCharacter: (id: number) => Promise<void>;
@@ -49,16 +49,16 @@ interface EntityState {
   removeVolume: (id: number) => Promise<void>;
   removeChapter: (id: number) => Promise<void>;
 
-  updateForeshadowing: (id: number, patch: Partial<MockForeshadowing>) => void;
-  updatePlotThread: (id: number, patch: Partial<MockPlotThread>) => void;
-  updateVolume: (id: number, patch: Partial<MockVolume>) => void;
-  updateChapter: (id: number, patch: Partial<MockChapter>) => void;
+  updateForeshadowing: (id: number, patch: Partial<Foreshadowing>) => void;
+  updatePlotThread: (id: number, patch: Partial<PlotThread>) => void;
+  updateVolume: (id: number, patch: Partial<Volume>) => void;
+  updateChapter: (id: number, patch: Partial<Chapter>) => void;
 
   updateCreativeSetting: (data: { tone: string; worldview: string; writingTaboos: string; customDimensions: Record<string, unknown> }) => void;
 }
 
 const EMPTY_STATE: Omit<EntityState, 'loadFromApi' | 'clearError' | 'updateCreativeSetting' | 'updateSceneEvent' | 'updateLocation' | 'updateCharacter' | 'addLocation' | 'addCharacter' | 'addSceneEvent' | 'addPlotThread' | 'addForeshadowing' | 'addChapter' | 'addVolume' | 'removeLocation' | 'removeCharacter' | 'removeSceneEvent' | 'removeForeshadowing' | 'removePlotThread' | 'removeVolume' | 'removeChapter' | 'updateForeshadowing' | 'updatePlotThread' | 'updateVolume' | 'updateChapter' | 'reset'> = {
-  book: null as unknown as MockBook,
+  book: null as unknown as Book,
   volumes: [],
   chapters: [],
   sceneEvents: [],
@@ -94,13 +94,13 @@ export const useEntityStore = create<EntityState>((set, get) => ({
     ]);
 
     const rb = results as PromiseSettledResult<any>[];
-    const book = rb[0].status === 'fulfilled' ? (rb[0].value as MockBook | null) : null;
-    const characters = rb[1].status === 'fulfilled' ? (rb[1].value as MockCharacter[] | null) : null;
-    const locations = rb[2].status === 'fulfilled' ? (rb[2].value as MockLocation[] | null) : null;
-    const sceneEvents = rb[3].status === 'fulfilled' ? (rb[3].value as MockSceneEvent[] | null) : null;
-    const foreshadowings = rb[4].status === 'fulfilled' ? (rb[4].value as MockForeshadowing[] | null) : null;
-    const plotThreads = rb[5].status === 'fulfilled' ? (rb[5].value as MockPlotThread[] | null) : null;
-    const volsAndChapters = rb[6].status === 'fulfilled' ? (rb[6].value as MockVolume[] | null) : null;
+    const book = rb[0].status === 'fulfilled' ? (rb[0].value as Book | null) : null;
+    const characters = rb[1].status === 'fulfilled' ? (rb[1].value as Character[] | null) : null;
+    const locations = rb[2].status === 'fulfilled' ? (rb[2].value as Location[] | null) : null;
+    const sceneEvents = rb[3].status === 'fulfilled' ? (rb[3].value as SceneEvent[] | null) : null;
+    const foreshadowings = rb[4].status === 'fulfilled' ? (rb[4].value as Foreshadowing[] | null) : null;
+    const plotThreads = rb[5].status === 'fulfilled' ? (rb[5].value as PlotThread[] | null) : null;
+    const volsAndChapters = rb[6].status === 'fulfilled' ? (rb[6].value as Volume[] | null) : null;
     const creativeSetting = rb[7].status === 'fulfilled' ? (rb[7].value as { tone?: string; worldview?: string; writingTaboos?: string; customDimensions?: Record<string, unknown> } | null) : null;
 
     const errors = results
@@ -112,12 +112,11 @@ export const useEntityStore = create<EntityState>((set, get) => ({
       book: book
         ? {
             id: book.id,
-            userId: 1,
             title: book.title,
             description: book.description || '',
             genre: book.genre || '',
             pinned: book.pinned || false,
-            workflowId: book.workflowId || null,
+            workflowId: book.workflowId ?? undefined,
             totalWordGoal: book.totalWordGoal || 0,
             currentWordCount: book.currentWordCount || 0,
             timeUnit: (book.timeUnit as 'day' | 'year' | 'hour') || 'day',
@@ -302,7 +301,7 @@ export const useEntityStore = create<EntityState>((set, get) => ({
     const tempId = ch.id;
     set((state) => ({ chapters: [...state.chapters, ch] }));
     import('@/shared/api/books').then(({ createChapter }) =>
-      createChapter(ch.volumeId, { title: ch.title, summary: ch.summary, characterIds: ch.characterIds || [], locked: ch.locked || false }).then((real) => {
+      createChapter(ch.volumeId, { title: ch.title, summary: ch.summary ?? undefined, characterIds: ch.characterIds || [], locked: ch.locked || false }).then((real) => {
         set((state) => ({
           chapters: state.chapters.map((c) =>
             c.id === tempId ? { ...(real as any), id: real.id ?? tempId } : c,

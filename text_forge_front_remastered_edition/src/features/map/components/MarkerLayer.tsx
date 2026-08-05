@@ -3,19 +3,19 @@
 import { useMemo, useCallback } from 'react';
 import { LocationMarker } from './LocationMarker';
 import { CharacterAvatar } from './CharacterAvatar';
-import type { MockLocation, MockCharacter } from '@/mocks/data';
+import type { Location, Character } from '@/shared/api/types';
 import { useEntityStore } from '@/features/map/stores/entityStore';
 import { useMapStore } from '@/features/map/stores/mapStore';
 
 interface VisibleCharInfo {
-  character: MockCharacter;
+  character: Character;
   x: number;
   y: number;
   locationId: number;
 }
 
 interface MarkerLayerProps {
-  children: MockLocation[];
+  children: Location[];
   d3Transform: { x: number; y: number; k: number };
   onEnterChild: (id: number) => void;
   onEditLocation: (id: number) => void;
@@ -47,7 +47,7 @@ export function MarkerLayer({
     return map;
   }, [allLocations]);
 
-  const getPosition = useCallback((loc: MockLocation) => {
+  const getPosition = useCallback((loc: Location) => {
     const x = loc.positionX ?? 0.5;
     const y = loc.positionY ?? 0.5;
     return { x, y, hasPosition: loc.positionX !== null && loc.positionY !== null };

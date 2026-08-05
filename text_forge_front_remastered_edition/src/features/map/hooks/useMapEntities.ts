@@ -4,13 +4,13 @@ import { useMemo } from 'react';
 import { useEntityStore } from '@/features/map/stores/entityStore';
 import { useMapStore } from '@/features/map/stores/mapStore';
 import { useTimelineStore } from '@/features/map/stores/timelineStore';
-import type { MockLocation, MockCharacter, MockSceneEvent } from '@/mocks/data';
+import type { Location, Character, SceneEvent } from '@/shared/api/types';
 
 interface VisibleEntities {
-  locations: MockLocation[];
-  characters: MockCharacter[];
-  events: MockSceneEvent[];
-  currentLocation: MockLocation | null;
+  locations: Location[];
+  characters: Character[];
+  events: SceneEvent[];
+  currentLocation: Location | null;
   depth: number;
 }
 
@@ -39,7 +39,7 @@ export function useMapEntities(): VisibleEntities {
         charLocMap.set(ch.id, lastEvent.locationId);
       } else {
         // 回退到 base_location_id
-        charLocMap.set(ch.id, ch.baseLocationId ?? ch.spawnLocationId);
+        charLocMap.set(ch.id, ch.baseLocationId ?? ch.spawnLocationId ?? null);
       }
     }
 
@@ -74,10 +74,10 @@ export function useMapEntities(): VisibleEntities {
   }, [locations, characters, sceneEvents, focusedLocationId, cursorTs]);
 }
 
-function getDepth(loc: MockLocation | null, locations: MockLocation[]): number {
+function getDepth(loc: Location | null, locations: Location[]): number {
   if (!loc) return 0;
   let depth = 0;
-  let current: MockLocation | null = loc;
+  let current: Location | null = loc;
   while (current?.parentId !== null) {
     current = locations.find((l) => l.id === current!.parentId) ?? null;
     depth++;
@@ -85,9 +85,9 @@ function getDepth(loc: MockLocation | null, locations: MockLocation[]): number {
   return depth;
 }
 
-function isAncestorOf(ancestorId: number, descendantId: number | null, locations: MockLocation[]): boolean {
+function isAncestorOf(ancestorId: number, descendantId: number | null, locations: Location[]): boolean {
   if (!descendantId) return false;
-  let current: MockLocation | null = locations.find((l) => l.id === descendantId) ?? null;
+  let current: Location | null = locations.find((l) => l.id === descendantId) ?? null;
   while (current) {
     if (current.parentId === ancestorId) return true;
     if (current.parentId === null) return false;

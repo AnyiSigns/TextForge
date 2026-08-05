@@ -1,10 +1,10 @@
 'use client';
 
 import { cn } from '@/shared/lib/cn';
-import type { MockCharacter } from '@/mocks/data';
+import type { Character } from '@/shared/api/types';
 
 interface CharacterAvatarProps {
-  character: MockCharacter;
+  character: Character;
   x: number;
   y: number;
   isSelected: boolean;

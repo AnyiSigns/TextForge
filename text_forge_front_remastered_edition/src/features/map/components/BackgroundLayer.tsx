@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useEffect } from 'react';
-import type { MockLocation } from '@/mocks/data';
+import type { Location } from '@/shared/api/types';
 
 const DEPTH_GRADIENTS: Record<number, { from: string; to: string }> = {
   0: { from: '#0d0d1a', to: '#1a1a2e' },
@@ -14,7 +14,7 @@ const DEPTH_GRADIENTS: Record<number, { from: string; to: string }> = {
 };
 
 interface BackgroundLayerProps {
-  location: MockLocation | null;
+  location: Location | null;
   depth: number;
   width: number;
   height: number;

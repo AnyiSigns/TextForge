@@ -6,9 +6,9 @@ import { useEntityStore } from '@/features/map/stores/entityStore';
 import { useMapStore } from '@/features/map/stores/mapStore';
 import { useEditorStore } from '@/features/map/stores/editorStore';
 import { ConfirmDialog } from '@/features/map/components/ConfirmDialog';
-import type { MockLocation } from '@/mocks/data';
+import type { Location } from '@/shared/api/types';
 
-function findVisibleRoot(locId: number, locations: MockLocation[]): MockLocation | null {
+function findVisibleRoot(locId: number, locations: Location[]): Location | null {
   let current = locations.find((l) => l.id === locId) ?? null;
   while (current?.parentId) {
     const parent = locations.find((l) => l.id === current!.parentId);

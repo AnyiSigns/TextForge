@@ -1,13 +1,13 @@
 'use client';
 
 import { useRef, useEffect } from 'react';
-import type { MockCharacter, MockLocation } from '@/mocks/data';
+import type { Character, Location } from '@/shared/api/types';
 
 interface RelationshipLinesProps {
-  selectedCharacter: MockCharacter | null;
-  relatedCharacters: MockCharacter[];
+  selectedCharacter: Character | null;
+  relatedCharacters: Character[];
   characterPositions: Map<number, { x: number; y: number }>;
-  locations: MockLocation[];
+  locations: Location[];
   width: number;
   height: number;
 }
@@ -50,7 +50,7 @@ export function RelationshipLines({
       const toY = toPos.y * height;
 
       // 查找关系类型
-      const rel = selectedCharacter.relationshipChain.find(
+      const rel = selectedCharacter.relationshipChain?.find(
         (r) => r.targetId === target.id,
       );
 

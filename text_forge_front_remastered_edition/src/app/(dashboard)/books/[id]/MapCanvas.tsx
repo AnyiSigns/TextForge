@@ -15,7 +15,7 @@ import { CharacterTooltip } from '@/features/map/components/CharacterTooltip';
 import { BreadcrumbNav } from '@/features/map/components/BreadcrumbNav';
 import { CreativeSettingSidebar } from '@/features/map/components/CreativeSettingSidebar';
 import { Palette } from 'lucide-react';
-import type { MockLocation } from '@/mocks/data';
+import type { Location } from '@/shared/api/types';
 
 export function MapCanvas() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -58,7 +58,7 @@ export function MapCanvas() {
     let max = 0;
     for (const loc of allLocations) {
       let d = 0;
-      let current: MockLocation | null = loc;
+      let current: Location | null = loc;
       while (current != null && current.parentId != null) {
         d++;
         current = allLocations.find((l) => l.id === current!.parentId) ?? null;
@@ -76,7 +76,7 @@ export function MapCanvas() {
 
     if (event.locationId === focusedLocation.id) return null;
 
-    let current: MockLocation | null = allLocations.find((l) => l.id === event.locationId) ?? null;
+    let current: Location | null = allLocations.find((l) => l.id === event.locationId) ?? null;
     while (current) {
       if (current.id === focusedLocation.id) return null;
       if (!current.parentId) break;
@@ -110,7 +110,7 @@ export function MapCanvas() {
 
   const relatedCharacters = useMemo(() => {
     if (!selectedCharacter) return [];
-    const targetIds = selectedCharacter.relationshipChain.map((r) => r.targetId);
+    const targetIds = selectedCharacter.relationshipChain?.map((r) => r.targetId) ?? [];
     return allCharacters.filter((c) => targetIds.includes(c.id) && characterPositions.has(c.id));
   }, [selectedCharacter, allCharacters, characterPositions]);
 

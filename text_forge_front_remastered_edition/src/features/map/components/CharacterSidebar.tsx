@@ -6,7 +6,7 @@ import { cn } from '@/shared/lib/cn';
 import { useMapStore } from '@/features/map/stores/mapStore';
 import { useEditorStore } from '@/features/map/stores/editorStore';
 import { useEntityStore } from '@/features/map/stores/entityStore';
-import type { MockCharacter } from '@/mocks/data';
+import type { Character } from '@/shared/api/types';
 
 export function CharacterSidebar() {
   const [expanded, setExpanded] = useState(false);
@@ -64,7 +64,7 @@ export function CharacterSidebar() {
     );
   }, [relevantCharacters, search]);
 
-  const handleCharacterClick = (ch: MockCharacter) => {
+  const handleCharacterClick = (ch: Character) => {
     const locId = ch.baseLocationId ?? ch.spawnLocationId;
     if (locId) {
       let current = locations.find((l) => l.id === locId) ?? null;

@@ -7,10 +7,10 @@ import { useEntityStore } from '@/features/map/stores/entityStore';
 import { useTimelineStore } from '@/features/map/stores/timelineStore';
 import { getWorldCoords, getWorldCoordsMap } from '@/features/map/utils/coordinates';
 import type { WorldCoords } from '@/features/map/utils/coordinates';
-import type { MockCharacter, MockSceneEvent } from '@/mocks/data';
+import type { Character, SceneEvent } from '@/shared/api/types';
 
 export interface CharacterPlacement {
-  character: MockCharacter;
+  character: Character;
   screenX: number;
   screenY: number;
   worldX: number;
@@ -19,7 +19,7 @@ export interface CharacterPlacement {
   locationId: number | null;
   isRepresentative: boolean;
   clusterSize: number;
-  clusterCharacters: MockCharacter[];
+  clusterCharacters: Character[];
   overflowCount?: number;
 }
 
@@ -46,7 +46,7 @@ function isVisible(c: WorldCoords, k: number): boolean {
 
 function deriveLocationFromEvents(
   charId: number,
-  sceneEvents: MockSceneEvent[],
+  sceneEvents: SceneEvent[],
   cursorTs: number,
 ): number | null {
   const eventsForChar = sceneEvents
@@ -217,7 +217,7 @@ export function useWorldMap(
 
     const clusters = new Map<
       number,
-      { ch: MockCharacter[]; loc: WorldCoords }
+      { ch: Character[]; loc: WorldCoords }
     >();
     const tier1: CharacterPlacement[] = [];
     const worldSpreads = new Map<number, { wx: number; wy: number }>();

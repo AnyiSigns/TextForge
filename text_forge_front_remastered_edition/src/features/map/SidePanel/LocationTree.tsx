@@ -7,7 +7,7 @@ import { useEntityStore } from '@/features/map/stores/entityStore';
 import { useMapStore } from '@/features/map/stores/mapStore';
 import { useEditorStore } from '@/features/map/stores/editorStore';
 import { ConfirmDialog } from '@/features/map/components/ConfirmDialog';
-import type { MockLocation } from '@/mocks/data';
+import type { Location } from '@/shared/api/types';
 
 export function LocationTree() {
   const locations = useEntityStore((s) => s.locations);
@@ -36,7 +36,7 @@ export function LocationTree() {
     });
   };
 
-  const renderNode = (loc: MockLocation, depth: number) => {
+  const renderNode = (loc: Location, depth: number) => {
     const children = getChildren(loc.id);
     const hasChildren = children.length > 0;
     const isExpanded = expandedIds.has(loc.id);

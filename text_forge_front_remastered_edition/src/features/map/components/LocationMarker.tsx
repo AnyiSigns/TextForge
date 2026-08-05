@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import type { MockLocation } from '@/mocks/data';
+import type { Location } from '@/shared/api/types';
 import { cn } from '@/shared/lib/cn';
 
 const TYPE_ICONS: Record<string, string> = {
@@ -17,7 +17,7 @@ const TYPE_ICONS: Record<string, string> = {
 };
 
 interface LocationMarkerProps {
-  location: MockLocation;
+  location: Location;
   x: number;
   y: number;
   hasChildren: boolean;

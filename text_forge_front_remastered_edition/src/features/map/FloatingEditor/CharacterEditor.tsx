@@ -64,11 +64,9 @@ export function CharacterEditor({ characterId, isNew, onClose }: CharacterEditor
         relationshipChain: relationshipChain,
         locked,
         avatarUrl: avatarUrl || null,
-        role_type: roleType,
         spawnLocationId: spawnLocationId || null,
         baseLocationId: baseLocationId || null,
         customFields,
-        userId: 1,
       });
     } else if (characterId !== null) {
       updateCharacter(characterId, {

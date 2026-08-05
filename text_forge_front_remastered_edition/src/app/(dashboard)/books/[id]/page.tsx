@@ -32,6 +32,7 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
   const selectedEventId = useTimelineStore((s) => s.selectedEventId);
   const sceneEvents = useEntityStore((s) => s.sceneEvents);
   const locations = useEntityStore((s) => s.locations);
+  const book = useEntityStore((s) => s.book);
 
   const [panelOpen, setPanelOpen] = useState(false);
   const [simRoomOpen, setSimRoomOpen] = useState(false);
@@ -139,7 +140,11 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
       <Initializer />
       <StoryFlow />
       {simRoomOpen && (
-        <SimRoom onClose={() => setSimRoomOpen(false)} />
+        <SimRoom
+          bookId={bookId}
+          bookTitle={book?.title}
+          onClose={() => setSimRoomOpen(false)}
+        />
       )}
     </div>
   );

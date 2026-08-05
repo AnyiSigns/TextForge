@@ -2,10 +2,10 @@
 
 import { useMemo } from 'react';
 import { cn } from '@/shared/lib/cn';
-import type { MockSceneEvent } from '@/mocks/data';
+import type { SceneEvent } from '@/shared/api/types';
 
 interface EventDotProps {
-  event: MockSceneEvent;
+  event: SceneEvent;
   x: number;
   isSelected: boolean;
   isActive: boolean;

@@ -68,7 +68,7 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
     try {
       await characterApi.deleteCharacterAvatar(character.id);
       setAvatarPreview(null);
-      setCharacter({ ...character, avatarUrl: undefined });
+      setCharacter({ ...character, avatarUrl: null });
       toast.success('头像已删除');
     } catch { toast.error('删除失败'); }
   };

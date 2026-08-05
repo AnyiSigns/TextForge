@@ -9,8 +9,8 @@ export interface Book {
   currentWordCount?: number;
   timeUnit?: string;
   epochLabel?: string;
-  createdAt: string;
-  updatedAt: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Volume {
@@ -19,7 +19,7 @@ export interface Volume {
   title: string;
   summary?: string;
   sortOrder: number;
-  createdAt: string;
+  createdAt?: string;
 }
 
 export interface Chapter {
@@ -30,10 +30,9 @@ export interface Chapter {
   sortOrder: number;
   characterIds: number[];
   locked: boolean;
-  createdAt: string;
-  updatedAt: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
-
 
 export interface SceneEvent {
   id: number;
@@ -47,9 +46,10 @@ export interface SceneEvent {
   storyLabel: string | null;
   locationId: number | null;
   characterIds: number[];
+  plotThreadIds?: number[];
   locked: boolean;
-  createdAt: string;
-  updatedAt: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface ChapterNode {
@@ -60,8 +60,8 @@ export interface ChapterNode {
   sortOrder: number;
   characterIds: number[];
   locked: boolean;
-  createdAt: string;
-  updatedAt: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Character {
@@ -69,17 +69,17 @@ export interface Character {
   bookId?: number;
   name: string;
   description: string;
-  avatarUrl?: string;
+  avatarUrl: string | null;
   aliases?: string[];
-  roleType?: string;
-  status?: string;
-  relationshipChain?: Record<string, unknown>[];
+  roleType: string;
+  status: string;
+  relationshipChain?: Array<{ targetId: number; type: string; description: string }>;
   locked: boolean;
   spawnLocationId?: number | null;
   baseLocationId?: number | null;
   customFields: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Location {
@@ -87,12 +87,12 @@ export interface Location {
   bookId: number;
   name: string;
   type: string;
-  description?: string;
-  parentId?: number;
-  positionX?: number | null;
-  positionY?: number | null;
+  description: string;
+  parentId: number | null;
+  positionX: number | null;
+  positionY: number | null;
   backgroundUrl?: string | null;
-  alternateOfId?: number | null;
+  alternateOfId: number | null;
   mapIcon?: string | null;
   attributes: Record<string, unknown>;
   locked: boolean;
@@ -117,10 +117,10 @@ export interface Foreshadowing {
   bookId: number;
   description: string;
   status: string;
-  plantedAtChapterId?: number;
-  resolvedAtChapterId?: number;
+  plantedAtChapterId?: number | null;
+  resolvedAtChapterId?: number | null;
   relatedCharacterIds: number[];
-  relatedEventId?: number;
+  relatedEventId?: number | null;
   revealType?: string;
   notes?: string;
   locked: boolean;
@@ -132,11 +132,11 @@ export interface PlotThread {
   name: string;
   description?: string;
   status: string;
-  parentThreadId?: number;
+  parentThreadId?: number | null;
   type: string;
   relatedCharacterIds: number[];
-  startChapterId?: number;
-  endChapterId?: number;
+  startChapterId?: number | null;
+  endChapterId?: number | null;
   progressNote?: string;
   locked: boolean;
   children?: PlotThread[];
