@@ -56,8 +56,10 @@ export function useAgentSender() {
           thinkingStartRef.current = 0;
           break;
         case 'tool_start':
-          pushToolLog({ status: 'start' });
           commitStreamingMessage();
+          replyBufferRef.current = '';
+          addAgentMessage({ role: 'assistant', content: '', type: 'streaming' });
+          pushToolLog({ status: 'start' });
           currentToolRef.current.add(event.tool || '');
           break;
         case 'tool_end':
@@ -106,6 +108,13 @@ export function useAgentSender() {
           break;
         case 'suggestions':
           break;
+        case 'title_update':
+          if ((event as any).thread_id && (event as any).title) {
+            window.dispatchEvent(new CustomEvent('textforge:agent-title', {
+              detail: { threadId: (event as any).thread_id, title: (event as any).title },
+            }));
+          }
+          break;
       }
     },
     [addAgentMessage, updateAgentStreamToken, setPendingReview, setAgentStatus, setCreativePhase, pushToolLog, clearToolLog, commitStreamingMessage],
@@ -125,6 +134,7 @@ export function useAgentSender() {
           const session = await agentApi.startAgentSession(bookId || undefined);
           threadId = session.thread_id;
           setAgentThreadId(threadId);
+          window.dispatchEvent(new CustomEvent('textforge:refresh-agent-sessions'));
         } catch {
           addAgentMessage({ role: 'assistant', content: '启动 Agent 会话失败，请重试。', type: 'error' });
           return;

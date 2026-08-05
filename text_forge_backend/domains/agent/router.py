@@ -29,6 +29,37 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/agent", tags=["Agent"])
 
 
+async def _generate_title(model_config: dict, user_msg: str, reply: str) -> str | None:
+    """根据首条用户消息与 AI 回复，调用主模型生成 5-10 字的会话标题。
+
+    仅用于会话第一条消息结束后自动命名；生成失败或结果异常时返回 None，
+    由调用方保留默认标题，不影响主流程。
+    """
+    try:
+        from langchain_core.messages import HumanMessage
+
+        model = ModelFactory(model_config).main
+        prompt = (
+            "请用一句话（5 到 10 个汉字）概括以下用户与 AI 的第一次对话主题，"
+            "只输出标题本身，不要引号、标点或任何解释。\n"
+            f"用户：{user_msg[:200]}\n"
+            f"AI：{reply[:200]}"
+        )
+        res = await model.ainvoke([HumanMessage(content=prompt)])
+        text = getattr(res, "content", "") or ""
+        text = text.strip().strip('"').strip("'").strip()
+        text = text.split("\n")[0].strip()
+        text = text.replace('"', "").replace("'", "")
+        if not text:
+            return None
+        if len(text) > 10:
+            text = text[:10]
+        return text
+    except Exception as exc:
+        logger.warning(f"生成会话标题失败: {exc}")
+        return None
+
+
 async def _get_conversation(
     session: AsyncSession, thread_id: str, user_id: int
 ) -> Conversation | None:
@@ -637,6 +668,20 @@ async def stream_agent(
                         except Exception as exc:
                             logger.warning(f"SSE 推送建议失败: {exc}")
                         yield f"data: {json.dumps({'type': 'end', 'reply': reply}, ensure_ascii=False)}\n\n"
+                        # 首条消息结束后生成会话标题（5-10 字），放在 end 事件之后，
+                        # 避免阻塞主回复流结束导致前端长时间显示「生成中」指示器。
+                        if not is_resume and conversation.title == "新对话":
+                            try:
+                                generated = await _generate_title(
+                                    model_config, body.message, reply
+                                )
+                                if generated:
+                                    conversation.title = generated
+                                    await session.commit()
+                                    yield f"data: {json.dumps({'type': 'title_update', 'thread_id': thread_id, 'title': generated}, ensure_ascii=False)}\n\n"
+                            except Exception as exc:
+                                logger.warning(f"自动生成会话标题失败: {exc}")
+
                         break
             except openai.APIStatusError as e:
                 logger.error(
@@ -688,22 +733,22 @@ async def manual_compress(
     config = {"configurable": {"thread_id": body.thread_id}}
     state_snapshot = await checkpoint.aget(config)
     if not state_snapshot:
-        return {"summary": "", "removed_count": 0, "remaining_count": 0}
+        async def _empty():
+            yield f"data: {json.dumps({'type': 'compress_done', 'summary': '', 'removed_count': 0, 'remaining_count': 0}, ensure_ascii=False)}\n\n"
+        return StreamingResponse(_empty(), media_type="text/event-stream", headers={"Cache-Control": "no-cache, no-transform", "Connection": "keep-alive", "X-Accel-Buffering": "no"})
 
     state_data = state_snapshot.get("channel_values", {})
     messages = state_data.get("messages", [])
-
     if not messages:
-        return {"summary": "", "removed_count": 0, "remaining_count": 0}
+        async def _empty():
+            yield f"data: {json.dumps({'type': 'compress_done', 'summary': '', 'removed_count': 0, 'remaining_count': 0}, ensure_ascii=False)}\n\n"
+        return StreamingResponse(_empty(), media_type="text/event-stream", headers={"Cache-Control": "no-cache, no-transform", "Connection": "keep-alive", "X-Accel-Buffering": "no"})
 
     model_config = state_data.get("model_config", {})
     if not model_config or not model_config.get("main_config"):
-        return {
-            "summary": "",
-            "removed_count": 0,
-            "remaining_count": len(messages),
-            "error": "未找到模型配置",
-        }
+        async def _err():
+            yield f"data: {json.dumps({'type': 'error', 'message': '未找到模型配置'}, ensure_ascii=False)}\n\n"
+        return StreamingResponse(_err(), media_type="text/event-stream", headers={"Cache-Control": "no-cache, no-transform", "Connection": "keep-alive", "X-Accel-Buffering": "no"})
 
     llm = ModelFactory(model_config)
     from langchain_core.messages import HumanMessage, SystemMessage
@@ -719,59 +764,68 @@ async def manual_compress(
         f"请详细总结以下对话，保留所有关键决策、用户偏好、创作设定和重要信息。"
         f"这份摘要将替代历史消息成为 Agent 的长期记忆：\n\n{combined[:12000]}"
     )
-    try:
-        result = await llm.main.ainvoke(
-            [
-                SystemMessage(content="你是专业的对话摘要助手。"),
-                HumanMessage(content=prompt),
-            ]
-        )
-        summary = result.content if hasattr(result, "content") else str(result)
-    except Exception as exc:
-        logger.error(f"manual_compress LLM 调用失败: {exc}", exc_info=True)
-        raise HTTPException(status_code=500, detail="摘要生成失败")
 
-    try:
-        from domains.memory.repository import AgentMemoryRepository
+    async def event_generator():
+        summary = ""
+        try:
+            async for chunk in llm.main.astream(
+                [
+                    SystemMessage(content="你是专业的对话摘要助手。"),
+                    HumanMessage(content=prompt),
+                ]
+            ):
+                text = chunk.content if hasattr(chunk, "content") else str(chunk)
+                if text:
+                    summary += text
+                    yield f"data: {json.dumps({'type': 'token', 'token': text}, ensure_ascii=False)}\n\n"
+        except Exception as exc:
+            logger.error(f"manual_compress LLM 调用失败: {exc}", exc_info=True)
+            yield f"data: {json.dumps({'type': 'error', 'message': '摘要生成失败'}, ensure_ascii=False)}\n\n"
+            return
 
-        memory_repo = AgentMemoryRepository(session)
-        await memory_repo.create(
-            user_id=user_id,
-            data={
-                "memory_type": "context_summary",
-                "content": summary,
-                "source": "manual_compress",
-                "meta": {
-                    "thread_id": body.thread_id,
-                    "compressed_at": datetime.now(timezone.utc).isoformat(),
+        try:
+            from domains.memory.repository import AgentMemoryRepository
+
+            memory_repo = AgentMemoryRepository(session)
+            await memory_repo.create(
+                user_id=user_id,
+                data={
+                    "book_id": conversation.book_id,
+                    "memory_type": "context_summary",
+                    "content": summary,
+                    "source": "manual_compress",
+                    "meta": {
+                        "thread_id": body.thread_id,
+                        "compressed_at": datetime.now(timezone.utc).isoformat(),
+                    },
                 },
+            )
+        except Exception as exc:
+            logger.warning(f"保存压缩摘要到 AgentMemory 失败: {exc}")
+
+        kept_messages = messages[-20:]
+        graph = build_user_agent_graph(
+            db_manager.with_db,
+            model_config=model_config,
+            checkpointer=checkpoint,
+        )
+        await graph.aupdate_state(
+            config,
+            values={
+                "messages": kept_messages,
+                "compressed_context": summary,
+                "message_count_at_compress": len(messages),
             },
         )
-    except Exception as exc:
-        logger.warning(f"保存压缩摘要到 AgentMemory 失败: {exc}")
 
-    kept_messages = messages[-20:]  # 压缩后保留最近20条消息
-    graph = build_user_agent_graph(
-        db_manager.with_db,
-        model_config=model_config,
-        checkpointer=checkpoint,
+        removed_count = len(messages) - len(kept_messages)
+        yield f"data: {json.dumps({'type': 'compress_done', 'summary': summary, 'removed_count': removed_count, 'remaining_count': len(kept_messages)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache, no-transform", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
     )
-    await graph.aupdate_state(
-        config,
-        values={
-            "messages": kept_messages,
-            "compressed_context": summary,
-            "message_count_at_compress": len(messages),
-        },
-    )
-
-    removed_count = len(messages) - len(kept_messages)
-    return {
-        "summary": summary,
-        "removed_count": removed_count,
-        "remaining_count": len(kept_messages),
-    }
-
 
 @router.patch("/state/{thread_id}")
 async def patch_state(

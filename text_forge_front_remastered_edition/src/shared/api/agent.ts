@@ -82,7 +82,8 @@ export async function streamAgent(
 
             if (event.type === 'end') {
               onDone(event.reply || '');
-              return;
+              // 不立即返回，继续读取后续事件（如 title_update），流结束自然退出，
+              // 以免丢失 end 之后推送的会话标题更新。
             }
             if (event.type === 'error') {
               onError(event.message || '未知错误');
@@ -165,8 +166,47 @@ export async function searchAgentMemories(bookId: number, query: string): Promis
   }
 }
 
-export async function compressAgentContext(threadId: string): Promise<{ summary: string; removed_count: number; remaining_count: number }> {
-  const { data } = await apiClient.post<{ summary: string; removed_count: number; remaining_count: number }>('/agent/compress', { thread_id: threadId });
-  return data;
+export async function streamCompress(
+  threadId: string,
+  onEvent: (event: SSEEvent) => void,
+): Promise<void> {
+  const token = getAccessToken();
+  const modelConfigData = await getModelConfigData();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(`/api/agent/compress`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ thread_id: threadId, model_config_data: modelConfigData }),
+  });
+  if (!res.ok) throw new Error('Agent 请求失败');
+
+  const reader = res.body?.getReader();
+  if (!reader) return;
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const event: SSEEvent = JSON.parse(line.slice(6));
+            onEvent(event);
+          } catch {
+            // skip malformed JSON
+          }
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
 }
 

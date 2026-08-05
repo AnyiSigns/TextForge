@@ -370,6 +370,9 @@ textarea:focus {
 }
 
 .agent-session-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: 6px 8px;
   border-radius: 6px;
   cursor: pointer;

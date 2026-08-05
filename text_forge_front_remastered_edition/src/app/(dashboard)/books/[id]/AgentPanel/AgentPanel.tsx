@@ -52,8 +52,10 @@ function MarkdownContent({ children }: { children: string }) {
 }
 
 function relativeTime(dateStr: string): string {
+  const s = dateStr.trim();
+  const normalized = /[zZ]$|[+-]\d{2}:?\d{2}$/.test(s) ? s : `${s}Z`;
   const now = Date.now();
-  const diff = now - new Date(dateStr).getTime();
+  const diff = now - new Date(normalized).getTime();
   const minutes = Math.floor(diff / 60000);
   if (minutes < 1) return '刚刚';
   if (minutes < 60) return `${minutes}分钟前`;
@@ -110,6 +112,24 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
   useEffect(() => {
     void fetchSessions();
   }, [fetchSessions, bookId]);
+
+  useEffect(() => {
+    const onRefreshSessions = () => { void fetchSessions(); };
+    window.addEventListener('textforge:refresh-agent-sessions', onRefreshSessions);
+    return () => window.removeEventListener('textforge:refresh-agent-sessions', onRefreshSessions);
+  }, [fetchSessions]);
+
+  useEffect(() => {
+    const onTitleUpdate = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { threadId?: string; title?: string } | undefined;
+      if (!detail?.threadId || !detail.title) return;
+      setSessions((prev) =>
+        prev.map((s) => (s.threadId === detail.threadId ? { ...s, title: detail.title as string } : s)),
+      );
+    };
+    window.addEventListener('textforge:agent-title', onTitleUpdate);
+    return () => window.removeEventListener('textforge:agent-title', onTitleUpdate);
+  }, []);
 
   useEffect(() => {
     workflowApi.listWorkflows().then(setWorkflowList).catch(() => {});
@@ -187,13 +207,14 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
       });
     }
     setAgentThreadId(null);
-    useBookDetailStore.setState((state) => ({
-      agentMessages: state.agentMessages.filter((m) => m.type !== 'streaming'),
+    useBookDetailStore.setState({
+      agentMessages: [],
       agentToolLog: [],
-    }));
+    });
     setAgentStreaming(false);
     setAgentStatus({ kind: 'idle' });
     setInput('');
+    void fetchSessions();
   };
 
   const handleSelectSession = async (s: AgentConversation) => {
@@ -228,14 +249,40 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
   };
 
   const handleManualCompress = async () => {
-    if (!agentThreadId) return;
+    if (!agentThreadId || agentStreaming) return;
+    setAgentStreaming(true);
+    setAgentStatus({ kind: 'working', label: '压缩上下文中…' });
+    addAgentMessage({ role: 'assistant', content: '', type: 'streaming' });
+    let buffer = '';
     try {
-      const res = await agentApi.compressAgentContext(agentThreadId);
-      if (res.summary) {
-        addAgentMessage({ role: 'assistant', content: `上下文压缩完成：\n\n${res.summary}`, type: 'system' });
-      }
-    } catch {
-      addAgentMessage({ role: 'assistant', content: '上下文压缩失败', type: 'error' });
+      await agentApi.streamCompress(agentThreadId, (event) => {
+        if (event.type === 'token') {
+          buffer += (event as { token?: string }).token || '';
+          updateAgentStreamToken(buffer);
+        } else if (event.type === 'compress_done') {
+          useBookDetailStore.setState((state) => ({
+            agentMessages: state.agentMessages.map((m) =>
+              m.type === 'streaming'
+                ? { ...m, type: 'system', content: `上下文压缩完成：\n\n${m.content}` }
+                : m,
+            ),
+          }));
+        } else if (event.type === 'error') {
+          throw new Error((event as { message?: string }).message || '压缩失败');
+        }
+      });
+    } catch (e) {
+      useBookDetailStore.setState((s) => ({
+        agentMessages: s.agentMessages.filter((m) => m.type !== 'streaming'),
+      }));
+      addAgentMessage({
+        role: 'assistant',
+        content: `上下文压缩失败：${(e as Error)?.message || ''}`,
+        type: 'error',
+      });
+    } finally {
+      setAgentStreaming(false);
+      setAgentStatus({ kind: 'idle' });
     }
   };
 
@@ -268,23 +315,25 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
       return cardData ? <ProposeCards key={key} data={cardData as Record<string, unknown>} /> : null;
     }
     if (msg.type === 'streaming') {
-      const isLastStreaming = msg.type === 'streaming';
+      const hasContent = !!msg.content;
+      const isThinking = agentStreaming && agentStatus.kind === 'thinking';
       return (
         <div key={key} className="flex justify-start">
           <div className="max-w-[88%] px-3 py-2 border-l-2 border-foreground/10 text-[13px] leading-relaxed">
-            {msg.content ? (
-              <MarkdownContent>{msg.content}</MarkdownContent>
-            ) : isLastStreaming && agentStreaming ? (
-              agentStatus.kind === 'thinking' ? (
-                <span className="thinking-shimmer-text">正在酝酿</span>
-              ) : (
-                <span className="inline-flex gap-0.5">
-                  <span className="w-1 h-1 rounded-full bg-foreground/30 animate-pulse" style={{ animationDelay: '0ms' }} />
-                  <span className="w-1 h-1 rounded-full bg-foreground/30 animate-pulse" style={{ animationDelay: '200ms' }} />
-                  <span className="w-1 h-1 rounded-full bg-foreground/30 animate-pulse" style={{ animationDelay: '400ms' }} />
-                </span>
-              )
-            ) : null}
+            {hasContent && <MarkdownContent>{msg.content}</MarkdownContent>}
+            {agentStreaming && (
+              <div className={cn('flex', hasContent && 'mt-1.5')}>
+                {isThinking ? (
+                  <span className="thinking-shimmer-text">正在酝酿</span>
+                ) : (
+                  <span className="inline-flex gap-0.5">
+                    <span className="w-1 h-1 rounded-full bg-foreground/30 animate-pulse" style={{ animationDelay: '0ms' }} />
+                    <span className="w-1 h-1 rounded-full bg-foreground/30 animate-pulse" style={{ animationDelay: '200ms' }} />
+                    <span className="w-1 h-1 rounded-full bg-foreground/30 animate-pulse" style={{ animationDelay: '400ms' }} />
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
       );
@@ -319,7 +368,7 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
           <button onClick={handleNewSession} className="agent-icon-btn" title="新建会话">
             <Plus size={14} strokeWidth={1.8} />
           </button>
-          <button onClick={handleManualCompress} className="agent-icon-btn" title="压缩上下文" disabled={!agentThreadId}>
+          <button onClick={handleManualCompress} className="agent-icon-btn" title="压缩上下文" disabled={!agentThreadId || agentStreaming}>
             <Shrink size={12} strokeWidth={1.8} />
           </button>
           {!sessionsExpanded && (
@@ -401,11 +450,14 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
               return (
                 <div className="mx-1 mb-1 flex items-center gap-2 rounded-lg border border-border/40 bg-background/40 px-3 py-1.5 text-[11px]">
                   {running ? (
-                    <span className="thinking-shimmer-text">工具调用中</span>
+                    <>
+                      <span className="thinking-shimmer-text">请求外援中</span>
+                      <span className="ml-auto inline-block h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-foreground/30 border-t-foreground/70" />
+                    </>
                   ) : (
                     <>
-                      <span className="text-foreground/60">✓</span>
-                      <span>工具调用完成</span>
+                      <span className="text-foreground/60">外援已找到</span>
+                      <span className="ml-auto text-foreground/70">✓</span>
                     </>
                   )}
                 </div>

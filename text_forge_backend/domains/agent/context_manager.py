@@ -92,11 +92,11 @@ async def auto_compress_node(state: UserAgentState, session_factory=None) -> dic
                 await AgentMemoryRepository(session).create(
                     user_id=state.get("user_id", 0),
                     data={
+                        "book_id": state.get("active_book_id"),
                         "memory_type": "context_summary",
                         "content": summary,
                         "source": "auto_compress",
                         "meta": {
-                            "book_id": state.get("active_book_id"),
                             "compressed_at": datetime.now(timezone.utc).isoformat(),
                             "trimmed_count": len(old_messages),
                         },

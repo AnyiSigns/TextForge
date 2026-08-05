@@ -259,7 +259,7 @@ export interface LockResult {
 export interface SSEEvent {
   type: 'token' | 'think_start' | 'agent_think_end' | 'tool_start' | 'tool_end' | 'progress' |
         'node_start' | 'node_stream' | 'node_end' | 'node_fail' |
-        'propose_cards' | 'review_card' | 'suggestions' | 'extend_outline' | 'end' | 'error';
+        'propose_cards' | 'review_card' | 'suggestions' | 'extend_outline' | 'title_update' | 'compress_done' | 'end' | 'error';
   token?: string;
   tool?: string;
   step?: string;
@@ -280,6 +280,11 @@ export interface SSEEvent {
   events_created?: number;
   generation_batch?: number;
   new_chapter_count?: number;
+  thread_id?: string;
+  title?: string;
+  summary?: string;
+  removed_count?: number;
+  remaining_count?: number;
 }
 
 export interface BookContextConfig {
