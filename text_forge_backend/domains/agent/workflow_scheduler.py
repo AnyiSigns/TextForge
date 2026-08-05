@@ -1,21 +1,22 @@
 from collections import deque
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
+
+from langchain_core.messages import HumanMessage, SystemMessage
+from langgraph.config import get_stream_writer
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.logging import get_logger
 from core.model_factory import ModelFactory
-from langchain_core.messages import HumanMessage, SystemMessage
-from shared.database import db_manager
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from domains.book.context_config_repository import BookContextConfigRepository
 from domains.book.structured_repository import StructuredRepository
+from shared.database import db_manager
 
 logger = get_logger(__name__)
 
 
 class WorkflowCycleError(ValueError):
     """工作流存在循环依赖时抛出。"""
-    pass
 
 
 CONTEXT_FIELD_MAP = {
@@ -441,6 +442,8 @@ async def execute_node(
     model_config: dict | None = None,
     personal_rag_results: list[dict] | None = None,
     on_token: Callable[[str], None] | None = None,
+    node_id: str = "",
+    on_progress: Callable[[dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
     """执行单个工作流节点。
 
@@ -489,6 +492,25 @@ async def execute_node(
     full_content = ""
     token_count = 0
     try:
+        stream_writer = get_stream_writer()
+    except Exception:
+        stream_writer = None
+    try:
+        if on_progress:
+            on_progress({
+                "event": "node_start",
+                "node_id": node_id,
+                "label": node_def.get("label") or node_def.get("name") or node_id,
+            })
+        if stream_writer is not None:
+            try:
+                stream_writer({
+                    "event": "node_start",
+                    "node_id": node_id,
+                    "label": node_def.get("label") or node_def.get("name") or node_id,
+                })
+            except Exception:
+                pass
         async for chunk in model.astream(messages):
             token = chunk.content if hasattr(chunk, "content") else str(chunk)
             if token:
@@ -496,8 +518,25 @@ async def execute_node(
                 token_count += 1
                 if on_token:
                     on_token(token)
+                if on_progress:
+                    on_progress({
+                        "event": "node_stream",
+                        "node_id": node_id,
+                        "token": token,
+                        "index": token_count,
+                    })
+                if stream_writer is not None:
+                    try:
+                        stream_writer({
+                            "event": "node_stream",
+                            "node_id": node_id,
+                            "token": token,
+                            "index": token_count,
+                        })
+                    except Exception:
+                        pass
     except Exception:
-        logger.exception(f"execute_node LLM 调用失败")
+        logger.exception("execute_node LLM 调用失败")
         return {
             "success": False,
             "output": "",
@@ -521,6 +560,24 @@ async def execute_node(
     qc = await audit_node_output(full_content, system_prompt, model_config or {})
     needs_review = not qc.get("passed", True)
 
+    if on_progress:
+        on_progress({
+            "event": "node_end",
+            "node_id": node_id,
+            "output_preview": full_content[:500],
+            "tokens": token_count,
+        })
+    if stream_writer is not None:
+        try:
+            stream_writer({
+                "event": "node_end",
+                "node_id": node_id,
+                "output_preview": full_content[:500],
+                "tokens": token_count,
+            })
+        except Exception:
+            pass
+
     return {
         "success": True,
         "output": full_content,
@@ -536,6 +593,7 @@ async def run_workflow(
     model_config: dict,
     on_progress: Callable[[dict[str, Any]], None],
     personal_rag_results: list[dict] | None = None,
+    node_id: str = "",
 ) -> dict[str, Any]:
     """执行完整工作流，按拓扑顺序逐个执行节点。
 
@@ -549,8 +607,9 @@ async def run_workflow(
     Returns:
         {"status": "completed"/"pending_review"/"error", "node_results": [...], ...}
     """
-    from models.workflow import Workflow
     from sqlalchemy import select
+
+    from models.workflow import Workflow
 
     async with db_manager.with_db() as session:
         wf_stmt = select(Workflow).where(Workflow.id == workflow_id)
@@ -603,6 +662,8 @@ async def run_workflow(
             upstream_outputs=node_upstream,
             model_config=model_config,
             personal_rag_results=personal_rag_results,
+            node_id=node_id,
+            on_progress=on_progress,
         )
 
         if result.get("needs_review"):

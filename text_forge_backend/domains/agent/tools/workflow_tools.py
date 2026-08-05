@@ -1,9 +1,10 @@
 from typing import Annotated, Any
 
-from config.logging import get_logger
 from langchain_core.tools import tool
+from langgraph.config import get_stream_writer
 from langgraph.prebuilt import InjectedState
-from langgraph.config import get_config
+
+from config.logging import get_logger
 
 from ..workflow_scheduler import execute_node as scheduler_execute_node
 from ..workflow_scheduler import run_workflow as scheduler_run_workflow
@@ -32,8 +33,9 @@ def build_workflow_tool(session_factory, model_config: dict | None = None):
         """
         logger.debug(f"[tool] execute_workflow_node  book_id={book_id}  workflow_id={workflow_id}  node_id={node_id}")
         async with session_factory() as session:
-            from models.workflow import Workflow
             from sqlalchemy import select
+
+            from models.workflow import Workflow
 
             wf_stmt = select(Workflow).where(Workflow.id == workflow_id)
             wf_result = await session.execute(wf_stmt)
@@ -56,12 +58,26 @@ def build_workflow_tool(session_factory, model_config: dict | None = None):
                     if len(text) > 3000:
                         upstream_outputs[uid] = text[:3000] + "\n…（已截断）"
 
+            stream_events: list[dict[str, Any]] = []
+            stream_writer = get_stream_writer()
+
+            def _on_progress(event: dict[str, Any]):
+                event_type = event.get("event")
+                if event_type == "node_stream":
+                    stream_events.append(event)
+                    try:
+                        stream_writer(event)
+                    except Exception:
+                        logger.warning("[workflow] stream_writer(node_stream) 失败", exc_info=True)
+
             result = await scheduler_execute_node(
                 node_def=node,
                 book_id=book_id,
                 upstream_outputs=upstream_outputs,
                 model_config=model_config,
                 personal_rag_results=personal_rag_results,
+                node_id=node_id,
+                on_progress=_on_progress,
             )
 
             return {
@@ -98,12 +114,11 @@ def build_workflow_tool(session_factory, model_config: dict | None = None):
         def on_progress(event: dict[str, Any]):
             progress_events.append(event)
             logger.debug(f"[workflow-progress] {event.get('event')} {event.get('node_id')}")
-            try:
-                config = get_config()
-                if config and hasattr(config, 'dispatch_custom_event'):
-                    config.dispatch_custom_event(event.get("event", "progress"), event)
-            except Exception:
-                pass
+            if event.get("event") == "node_stream":
+                try:
+                    get_stream_writer()(event)
+                except Exception:
+                    logger.warning("[workflow] stream_writer(node_stream) 失败", exc_info=True)
 
         try:
             result = await scheduler_run_workflow(
@@ -114,7 +129,7 @@ def build_workflow_tool(session_factory, model_config: dict | None = None):
                 personal_rag_results=personal_rag_results,
             )
         except Exception as exc:
-            logger.exception(f"execute_workflow 失败")
+            logger.exception("execute_workflow 失败")
             return {
                 "status": "error",
                 "message": f"工作流执行失败: {exc}",

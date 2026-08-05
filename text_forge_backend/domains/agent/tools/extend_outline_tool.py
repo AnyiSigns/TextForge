@@ -1,14 +1,14 @@
 from typing import Annotated
 
-from config.logging import get_logger
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 
-from models.book import Book, Chapter, CreativeSetting, Volume
+from config.logging import get_logger
 from domains.book.repository import CharacterRepository
 from domains.world.repository import WorldRepository
+from models.book import Book, Chapter, CreativeSetting, Volume
 
 logger = get_logger(__name__)
 
@@ -124,12 +124,12 @@ def build_extend_outline_tool(session_factory, model_config: dict | None = None)
             foreshadowings = await world_repo.list_foreshadowings(book_id)
             open_foreshadowings = [
                 f for f in foreshadowings
-                if f.status == "埋下" and not f.resolved_at_chapter_id
+                if f.status == "planted" and not f.resolved_at_chapter_id
             ]
             plot_threads = await world_repo.list_plot_threads(book_id)
             active_threads = [
                 t for t in plot_threads
-                if t.status == "进行中" and not t.end_chapter_id
+                if t.status == "active" and not t.end_chapter_id
             ]
 
             vol_stmt = select(Volume).where(Volume.book_id == book_id).order_by(Volume.sort_order, Volume.id)
@@ -197,7 +197,7 @@ def build_extend_outline_tool(session_factory, model_config: dict | None = None)
 
             if open_foreshadowings:
                 fores_text = "\n".join([
-                    f"- [{f.id}] {f.description[:200]}（埋于第{f.planted_at_chapter_id}章）"
+                    f"- [{f.id}] {f.description[:200]}（planted at chapter {f.planted_at_chapter_id}）"
                     for f in open_foreshadowings
                 ])
                 context_parts.append(f"未回收的伏笔：\n{fores_text}")
@@ -311,7 +311,7 @@ def build_extend_outline_tool(session_factory, model_config: dict | None = None)
                         for t in plot_threads:
                             if t.id == tid:
                                 t.end_chapter_id = new_chapter.id
-                                t.status = "已完成"
+                                t.status = "completed"
 
                 for fu in ch_data.get("foreshadowing_updates", []):
                     fid = fu.get("foreshadowing_id")
@@ -319,7 +319,7 @@ def build_extend_outline_tool(session_factory, model_config: dict | None = None)
                         for f in foreshadowings:
                             if f.id == fid:
                                 f.resolved_at_chapter_id = new_chapter.id
-                                f.status = "已回收"
+                                f.status = "resolved"
 
             await session.commit()
 

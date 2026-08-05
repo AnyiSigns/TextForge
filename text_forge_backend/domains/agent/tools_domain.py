@@ -1,16 +1,29 @@
-import json
-from typing import Annotated
+from typing import Annotated, Any
+
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.output_parsers import JsonOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.tools import tool
+from langgraph.prebuilt import InjectedState
+from sqlalchemy import func, select
 
 from config.logging import get_logger
 from core.model_factory import ModelFactory
-from langchain_core.tools import tool
-from langgraph.prebuilt import InjectedState
-from models.book import Book, Chapter, Volume
-from sqlalchemy import select
-
 from domains.book.repository import CharacterRepository
 from domains.knowledge.repository import VectorRepository
+from domains.memory.service import AgentMemoryService
+from domains.world.constants import (
+    normalize_foreshadowing_status,
+    normalize_plot_thread_status,
+)
 from domains.world.repository import WorldRepository
+from models.book import (
+    Book,
+    Chapter,
+    ChapterContent,
+    Character,
+    Volume,
+)
 
 from .web_search_service import WebSearchService
 
@@ -129,13 +142,13 @@ def _build_lookup_tools(session_factory):
                         logger.warning(f"过滤 timeline 事件 chapter_id 转换失败: {exc}")
                 events = filtered
             if query:
-                events = [ev for ev in events if query in (ev.name or "") or query in (ev.description or "")]
+                events = [ev for ev in events if query in (ev.title or "") or query in (ev.content or "")]
             return [
                 {
-                    "id": ev.id, "name": ev.name, "description": ev.description,
+                    "id": ev.id, "title": ev.title, "content": ev.content,
                     "sort_order": ev.sort_order, "chapter_id": ev.chapter_id,
-                    "event_type": ev.event_type, "related_character_ids": ev.related_character_ids or [],
-                    "related_location_id": ev.related_location_id, "locked": ev.locked,
+                    "event_type": ev.event_type, "character_ids": ev.character_ids or [],
+                    "location_id": ev.location_id, "locked": ev.locked,
                 }
                 for ev in events[:limit]
             ]
@@ -154,7 +167,7 @@ def _build_lookup_tools(session_factory):
         """
         logger.debug(f"[tool] lookup_foreshadowing  book_id={book_id}  status={status}")
         async with session_factory() as session:
-            items = await WorldRepository(session).list_foreshadowings(book_id, status=status)
+            items = await WorldRepository(session).list_foreshadowings(book_id, status=_normalize_status(status))
             if query:
                 items = [item for item in items if query in (item.description or "")]
             return [
@@ -185,7 +198,8 @@ def _build_lookup_tools(session_factory):
         async with session_factory() as session:
             items = await WorldRepository(session).list_plot_threads(book_id)
             if status:
-                items = [item for item in items if item.status == status]
+                target = _normalize_status(status)
+                items = [item for item in items if item.status == target]
             if query:
                 items = [item for item in items if query in (item.name or "") or query in (item.description or "")]
             return [
@@ -209,157 +223,60 @@ def _build_lookup_tools(session_factory):
     ]
 
 
+def _normalize_status(value: str | None) -> str | None:
+    """兼容中英文状态词：前端 initializerStore 可能写入 '进行中'/'已埋下' 等中文值。"""
+    if not value:
+        return value
+    aliases = {
+        "埋下": "planted", "已埋下": "planted", "已回收": "resolved", "已放弃": "abandoned",
+        "进行中": "active", "已完成": "completed", "已暂停": "paused", "已中断": "abandoned",
+    }
+    return aliases.get(value, value)
+
+
+async def _extract_entities_from_text(model_config, content: str) -> dict:
+    """从原始文本一次性抽取人物/地点/事件，供 create_entities 的 source_text 模式使用。
+
+    Args:
+        model_config: 模型配置（用于初始化 LLM）。
+        content: 待抽取的原始文本。
+
+    Returns:
+        含 characters/locations/scene_events 的字典；失败返回空字典。
+    """
+    if not content or not content.strip():
+        return {}
+    llm = None
+    if model_config:
+        try:
+            llm = ModelFactory(model_config)
+        except Exception as exc:
+            logger.warning(f"_extract_entities_from_text 初始化模型失败: {exc}")
+    if llm is None:
+        return {}
+    prompt = ChatPromptTemplate.from_messages([
+        SystemMessage(content="""你是实体提取助手。从给定文本中提取人物、地点、事件三类实体。
+
+输出 JSON：{"characters":[{"name":"","description":"","role_type":""}],"locations":[{"name":"","type":"","description":""}],"scene_events":[{"title":"","content":"","event_type":""}]}
+
+规则：
+- 只输出 JSON，不要其他内容
+- 忽略泛指群体（如"众人""士兵们"）
+- description 简明扼要
+- event_type 取 冲突/转折/揭示/过渡/日常 之一"""),
+        ("human", "{content}"),
+    ])
+    try:
+        chain = prompt | llm.main | JsonOutputParser()
+        result = await chain.ainvoke({"content": content[:4000]})
+    except Exception as exc:
+        logger.warning(f"_extract_entities_from_text 提取失败: {exc}")
+        return {}
+    return result if isinstance(result, dict) else {}
+
+
 def _build_agent_tools(session_factory, model_config: dict | None = None):
-    from .tools.memory_tools import (
-        forget_memory,
-        list_memories_by_type,
-        recall_memory,
-        save_memory,
-        update_memory,
-    )
     lookup_tools = _build_lookup_tools(session_factory)
-
-    @tool
-    async def search_public_docs(
-        query: Annotated[str, "搜索关键词"],
-        target_book_id: Annotated[int | None, "目标书籍ID，为空则跨全部公开文档搜索"] = None,
-        top_k: Annotated[int, "返回结果数量"] = 5,
-        book_id: Annotated[int, InjectedState("active_book_id")] = 0,
-    ) -> list[dict]:
-        """搜索公开文档内容，使用语义检索。
-
-        Args:
-            query: 搜索关键词。
-            target_book_id: 限定在指定书籍ID的文档中搜索，为空则跨全部文档。
-            top_k: 返回结果数量上限。
-        """
-        logger.debug(f"[tool] search_public_docs  book_id={book_id}  query={query}  target={target_book_id}")
-        async with session_factory() as session:
-            vector_repo = VectorRepository(session)
-            embedding = None
-            if model_config:
-                try:
-                    llm = ModelFactory(model_config)
-                    embedding = await llm.embedding.aembed_query(query)
-                except Exception as exc:
-                    logger.warning(f"search_public_docs embedding 失败: {exc}")
-            if embedding is None:
-                return []
-            rag_filter = {"query": query}
-            if target_book_id is not None:
-                rag_filter["doc_ids"] = [str(target_book_id)]
-            items = await vector_repo.search_external_books(
-                query_embedding=embedding,
-                rag_filter=rag_filter,
-                top_k=top_k,
-            )
-            return [
-                {
-                    "doc_id": item.get("doc_id"),
-                    "doc_title": item.get("doc_title"),
-                    "doc_author": item.get("doc_author"),
-                    "content": item.get("content"),
-                    "score": 1 - float(item.get("distance", 0) or 0),
-                }
-                for item in items
-            ]
-
-    @tool
-    async def personal_rag_search(
-        query: Annotated[str, "搜索关键词"],
-        top_k: Annotated[int, "返回结果数量"] = 5,
-        user_id: Annotated[int, InjectedState("user_id")] = 0,
-    ) -> list[dict]:
-        """搜索用户的个人知识库文档，使用语义检索。
-
-        Args:
-            query: 搜索关键词。
-            top_k: 返回结果数量上限。
-        """
-        logger.debug(f"[tool] personal_rag_search  user_id={user_id}  query={query}")
-        async with session_factory() as session:
-            vector_repo = VectorRepository(session)
-            embedding = None
-            if model_config:
-                try:
-                    llm = ModelFactory(model_config)
-                    embedding = await llm.embedding.aembed_query(query)
-                except Exception as exc:
-                    logger.warning(f"personal_rag_search embedding 失败: {exc}")
-            if embedding is None:
-                return [{"title": "检索失败", "snippet": "embedding 模型不可用", "url": ""}]
-            try:
-                from models.document import Document
-                from sqlalchemy import select as sa_select
-                doc_stmt = sa_select(Document.id, Document.file_name).where(Document.user_id == user_id, Document.scope == "personal")
-                doc_result = await session.execute(doc_stmt)
-                doc_rows = doc_result.all()
-                doc_id_map = {str(row.id): row.file_name for row in doc_rows}
-                doc_ids = list(doc_id_map.keys())
-                if not doc_ids:
-                    return []
-                items = await vector_repo.search_external_books(
-                    query_embedding=embedding,
-                    rag_filter={"doc_ids": doc_ids},
-                    top_k=top_k,
-                )
-                return [
-                    {
-                        "title": doc_id_map.get(str(item.get("doc_id")), ""),
-                        "snippet": item.get("content", ""),
-                        "url": "",
-                        "score": 1 - float(item.get("distance", 0) or 0),
-                    }
-                    for item in items
-                    if str(item.get("doc_id")) in doc_id_map
-                ]
-            except Exception as exc:
-                logger.warning(f"personal_rag_search 失败: {exc}")
-                return [{"title": "检索失败", "snippet": "内部错误", "url": ""}]
-
-    @tool
-    async def web_search(
-        query: Annotated[str, "搜索关键词"],
-        top_k: Annotated[int, "返回结果数量"] = 5,
-    ) -> list[dict]:
-        """联网搜索，获取最新信息。
-
-        Args:
-            query: 搜索关键词。
-            top_k: 返回结果数量上限。
-        """
-        logger.debug(f"[tool] web_search  query={query}")
-        async with session_factory() as session:
-            api_key = ""
-            if model_config:
-                api_key = (((model_config or {}).get("search_config") or {}).get("api_key") or "")
-            if not api_key:
-                return [{"error": "未配置 search_config.api_key", "query": query}]
-            service = WebSearchService(session)
-            return await service.search(query=query, api_key=api_key, top_k=top_k, use_cache=True)
-
-    @tool
-    async def list_user_books(
-        user_id: Annotated[int, InjectedState("user_id")] = 0,
-    ) -> list[dict]:
-        """列出当前用户的所有书籍。
-
-        Returns:
-            书籍列表，每项包含 id、title、genre、字数统计等信息。
-        """
-        logger.debug(f"[tool] list_user_books  user_id={user_id}")
-        async with session_factory() as session:
-            stmt = select(Book).where(Book.user_id == user_id).order_by(Book.id)
-            result = await session.execute(stmt)
-            books = result.scalars().all()
-            return [
-                {
-                    "id": b.id, "title": b.title, "genre": b.genre,
-                    "description": b.description, "pinned": b.pinned,
-                    "total_word_goal": b.total_word_goal, "current_word_count": b.current_word_count,
-                }
-                for b in books
-            ]
 
     @tool
     async def get_book_context(
@@ -373,19 +290,15 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
         """
         logger.debug(f"[tool] get_book_context  user_id={user_id}  book_id={book_id}")
         async with session_factory() as session:
-            from models.book import Book as BookModel, Character, Volume as VolumeModel
-            from sqlalchemy import select as sa_select
-            book_stmt = sa_select(BookModel).where(BookModel.id == book_id, BookModel.user_id == user_id)
+            book_stmt = select(Book).where(Book.id == book_id, Book.user_id == user_id)
             book_result = await session.execute(book_stmt)
             book = book_result.scalar_one_or_none()
             if not book:
                 return {"error": "书籍不存在或无权访问"}
-            char_stmt = sa_select(Character).where(Character.book_id == book_id).order_by(Character.id)
-            char_result = await session.execute(char_stmt)
-            characters = char_result.scalars().all()
-            vol_stmt = sa_select(VolumeModel).where(VolumeModel.book_id == book_id).order_by(VolumeModel.sort_order, VolumeModel.id)
-            vol_result = await session.execute(vol_stmt)
-            volumes = vol_result.scalars().all()
+            char_stmt = select(Character).where(Character.book_id == book_id).order_by(Character.id)
+            characters = (await session.execute(char_stmt)).scalars().all()
+            vol_stmt = select(Volume).where(Volume.book_id == book_id).order_by(Volume.sort_order, Volume.id)
+            volumes = (await session.execute(vol_stmt)).scalars().all()
             return {
                 "book": {
                     "id": book.id, "title": book.title,
@@ -404,564 +317,375 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
                 ],
             }
 
+    TEXT_MODE_PROMPTS = {
+        "polish": "你是专业的文字润色助手。改进文本的表达、节奏和可读性，保持原意不变。直接输出润色后的文本。",
+        "rewrite": "你是专业的改写助手。根据用户指令改写文本，保持核心含义但改变表达方式。直接输出改写后的文本。",
+        "expand": "你是专业的扩写助手。在保持原意和风格的基础上，丰富细节、描写和对话，使文本更加生动。直接输出扩写后的文本。",
+        "summarize": "你是专业的摘要助手。请简洁地总结文本内容，保留关键信息和核心情节。",
+        "alternatives": "你是写作建议助手。针对给定文本，提供多个不同风格的改写建议。",
+    }
+
     @tool
-    async def extract_characters(
-        content: Annotated[str, "需要提取人物的文本内容"],
-        user_id: Annotated[int, InjectedState("user_id")] = 0,
+    async def transform_text(
+        text: Annotated[str, "需要加工的文本"],
+        mode: Annotated[str, "加工模式：polish(润色)/rewrite(改写)/expand(扩写)/summarize(摘要)/alternatives(替代表达)"] = "polish",
+        instruction: Annotated[str, "润色/改写的具体要求（polish/rewrite 使用）"] = "",
+        target_length: Annotated[int | None, "扩写目标字数（expand 使用）"] = None,
+        max_length: Annotated[int | None, "摘要最大字数（summarize 使用）"] = None,
+        count: Annotated[int, "建议条数（alternatives 使用）"] = 3,
+    ) -> dict:
+        """对文本进行统一加工：润色、改写、扩写、摘要或生成替代表达。纯函数，不落库。"""
+        logger.debug(f"[tool] transform_text  mode={mode}  text_len={len(text)}")
+        if not text.strip():
+            return {"error": "文本为空"}
+        mode = mode or "polish"
+        if mode not in TEXT_MODE_PROMPTS:
+            return {"error": f"不支持的 mode: {mode}"}
+        if mode == "polish":
+            human = f"请润色以下文本：\n{text}\n润色要求：{instruction or '优化表达'}"
+        elif mode == "rewrite":
+            human = f"请改写以下文本：\n{text}\n改写要求：{instruction or '换个角度重写'}"
+        elif mode == "expand":
+            human = f"请扩写以下文本，目标字数约 {target_length or len(text) * 3} 字：\n{text}"
+        elif mode == "summarize":
+            human = f"请将以下文本总结为 {max_length or 200} 字以内的摘要：\n{text}"
+        else:
+            human = f"请提供 {count} 种不同风格的改写建议：\n{text}"
+        llm = None
+        if model_config:
+            try:
+                llm = ModelFactory(model_config)
+            except Exception as exc:
+                logger.warning(f"transform_text 初始化模型失败: {exc}")
+        if llm is None:
+            return {"error": "模型未配置，无法加工文本"}
+        system = SystemMessage(content=TEXT_MODE_PROMPTS[mode])
+        human_msg = HumanMessage(content=human[:6000])
+        try:
+            result = await llm.main.ainvoke([system, human_msg])
+            out = result.content if hasattr(result, "content") else str(result)
+        except Exception as exc:
+            logger.error(f"transform_text 失败: {exc}", exc_info=True)
+            return {"error": f"加工失败: {exc}"}
+        key_map = {
+            "polish": "polished_text", "rewrite": "rewritten_text",
+            "expand": "expanded_text", "summarize": "summary", "alternatives": "alternatives",
+        }
+        return {"mode": mode, "original_length": len(text), "result_length": len(out), key_map[mode]: out}
+
+    @tool
+    async def review_text(
+        mode: Annotated[str, "检查模式：grammar(语法)/consistency(一致性)"] = "grammar",
+        text: Annotated[str | None, "直接提供待检查文本（grammar 必填）"] = None,
+        chapter_id: Annotated[int | None, "一致性检查的目标章节ID，为空则检查当前活跃章节最新内容"] = None,
         book_id: Annotated[int, InjectedState("active_book_id")] = 0,
     ) -> dict:
-        """从文本中自动提取人物实体，用于辅助构建角色设定。
-
-        仅提取人物，不提取地点或事件。每项包含 name、description、role_type。
-
-        Args:
-            content: 需要分析的文本内容（如章节正文、设定描述等）。
-        """
-        logger.debug(f"[tool] extract_characters  book_id={book_id}  content_len={len(content)}")
+        """检查文本：grammar 检查语法错误，consistency 检查正文与设定（人物/地点/时间线）的一致性。"""
+        logger.debug(f"[tool] review_text  mode={mode}  book_id={book_id}  chapter_id={chapter_id}")
+        if mode not in ("grammar", "consistency"):
+            return {"error": f"不支持的 mode: {mode}"}
+        content = text or ""
+        characters = locations = scene_events = None
+        if mode == "consistency":
+            async with session_factory() as session:
+                book_stmt = select(Book).where(Book.id == book_id)
+                book = (await session.execute(book_stmt)).scalar_one_or_none()
+                if not book:
+                    return {"error": "书籍不存在"}
+                characters = await CharacterRepository(session).book_character_detail(user_id=book.user_id, book_id=book_id)
+                locations = await WorldRepository(session).list_locations(book_id)
+                scene_events = await WorldRepository(session).list_scene_events(book_id)
+                if chapter_id:
+                    cc_stmt = select(ChapterContent).where(ChapterContent.chapter_id == chapter_id).order_by(ChapterContent.version.desc()).limit(1)
+                    cc = (await session.execute(cc_stmt)).scalar_one_or_none()
+                    content = cc.content or "" if cc else ""
+                if not content:
+                    return {"error": "无正文内容可检查"}
         if not content.strip():
-            return {"book_id": book_id, "characters": [], "message": "内容为空，无需提取"}
-        llm = None
-        if model_config:
-            try:
-                llm = ModelFactory(model_config)
-            except Exception as exc:
-                logger.warning(f"extract_characters 初始化模型失败: {exc}")
-        if llm is None:
-            return {"book_id": book_id, "characters": [], "message": "模型未配置，跳过提取"}
-        from langchain_core.messages import SystemMessage
-        from langchain_core.output_parsers import JsonOutputParser
-        from langchain_core.prompts import ChatPromptTemplate
-        prompt = ChatPromptTemplate.from_messages([
-            SystemMessage(content="""你是人物提取助手。从给定文本中提取所有人物实体。
-
-输出 JSON 格式：{"characters": [{"name": "姓名", "description": "外貌/性格/背景描述", "role_type": "主角/配角/反派/路人"}]}
-
-规则：
-- 只提取有明确姓名或身份的人物，忽略泛指的群体（如"众人""士兵们"）
-- description 要包含该人物在文本中体现的外貌、性格、背景等关键信息
-- role_type 根据文本中的重要性判断，可留空
-- 只输出 JSON，不要其他内容。"""),
-            ("human", "{content}"),
-        ])
-        try:
-            chain = prompt | llm.main | JsonOutputParser()
-            result = await chain.ainvoke({"content": content[:4000]})
-        except Exception as exc:
-            logger.warning(f"extract_characters 提取失败: {exc}")
-            return {"book_id": book_id, "characters": [], "message": f"提取失败: {exc}"}
-        characters = result.get("characters", []) if isinstance(result, dict) else []
-        return {"book_id": book_id, "characters": characters}
-
-    @tool
-    async def extract_locations(
-        content: Annotated[str, "需要提取地点的文本内容"],
-        user_id: Annotated[int, InjectedState("user_id")] = 0,
-        book_id: Annotated[int, InjectedState("active_book_id")] = 0,
-    ) -> dict:
-        """从文本中自动提取地点实体，用于辅助构建世界观场景。
-
-        仅提取地点，不提取人物或事件。每项包含 name、type、description。
-
-        Args:
-            content: 需要分析的文本内容（如章节正文、设定描述等）。
-        """
-        logger.debug(f"[tool] extract_locations  book_id={book_id}  content_len={len(content)}")
-        if not content.strip():
-            return {"book_id": book_id, "locations": [], "message": "内容为空，无需提取"}
-        llm = None
-        if model_config:
-            try:
-                llm = ModelFactory(model_config)
-            except Exception as exc:
-                logger.warning(f"extract_locations 初始化模型失败: {exc}")
-        if llm is None:
-            return {"book_id": book_id, "locations": [], "message": "模型未配置，跳过提取"}
-        from langchain_core.messages import SystemMessage
-        from langchain_core.output_parsers import JsonOutputParser
-        from langchain_core.prompts import ChatPromptTemplate
-        prompt = ChatPromptTemplate.from_messages([
-            SystemMessage(content="""你是地点提取助手。从给定文本中提取所有地点/场景实体。
-
-输出 JSON 格式：{"locations": [{"name": "地点名", "type": "城市/建筑/自然/室内/场所", "description": "环境特征和氛围描述"}]}
-
-规则：
-- 提取所有有具体名称或明确描述的场景地点
-- type 根据地点特征分类：城市、建筑、自然景观、室内空间、场所等
-- description 要包含该地点在文中体现的环境特征、氛围、功能等信息
-- 只输出 JSON，不要其他内容。"""),
-            ("human", "{content}"),
-        ])
-        try:
-            chain = prompt | llm.main | JsonOutputParser()
-            result = await chain.ainvoke({"content": content[:4000]})
-        except Exception as exc:
-            logger.warning(f"extract_locations 提取失败: {exc}")
-            return {"book_id": book_id, "locations": [], "message": f"提取失败: {exc}"}
-        locations = result.get("locations", []) if isinstance(result, dict) else []
-        return {"book_id": book_id, "locations": locations}
-
-    @tool
-    async def extract_events(
-        content: Annotated[str, "需要提取事件的文本内容"],
-        user_id: Annotated[int, InjectedState("user_id")] = 0,
-        book_id: Annotated[int, InjectedState("active_book_id")] = 0,
-    ) -> dict:
-        """从文本中自动提取事件/情节节点，用于辅助构建时间线。
-
-        仅提取事件，不提取人物或地点。每项包含 name、description、event_type。
-
-        Args:
-            content: 需要分析的文本内容（如章节正文、设定描述等）。
-        """
-        logger.debug(f"[tool] extract_events  book_id={book_id}  content_len={len(content)}")
-        if not content.strip():
-            return {"book_id": book_id, "events": [], "message": "内容为空，无需提取"}
-        llm = None
-        if model_config:
-            try:
-                llm = ModelFactory(model_config)
-            except Exception as exc:
-                logger.warning(f"extract_events 初始化模型失败: {exc}")
-        if llm is None:
-            return {"book_id": book_id, "events": [], "message": "模型未配置，跳过提取"}
-        from langchain_core.messages import SystemMessage
-        from langchain_core.output_parsers import JsonOutputParser
-        from langchain_core.prompts import ChatPromptTemplate
-        prompt = ChatPromptTemplate.from_messages([
-            SystemMessage(content="""你是事件提取助手。从给定文本中提取所有关键情节事件。
-
-输出 JSON 格式：{"events": [{"name": "事件名", "description": "事件简述", "event_type": "冲突/转折/揭示/过渡/日常"}]}
-
-规则：
-- 提取文本中的关键情节节点，如冲突爆发、信息揭示、关系变化、场景转换等
-- event_type 分类：冲突（对立/斗争）、转折（情节方向改变）、揭示（信息公开/发现）、过渡（场景切换/时间推移）、日常（人物日常互动）
-- description 简明扼要，一句话概括事件核心
-- 只输出 JSON，不要其他内容。"""),
-            ("human", "{content}"),
-        ])
-        try:
-            chain = prompt | llm.main | JsonOutputParser()
-            result = await chain.ainvoke({"content": content[:4000]})
-        except Exception as exc:
-            logger.warning(f"extract_events 提取失败: {exc}")
-            return {"book_id": book_id, "events": [], "message": f"提取失败: {exc}"}
-        events = result.get("events", []) if isinstance(result, dict) else []
-        return {"book_id": book_id, "events": events}
-
-    @tool
-    async def create_character(
-        name: Annotated[str, "角色名称"],
-        description: Annotated[str, "角色描述"],
-        role_type: Annotated[str | None, "角色类型：主角/配角/反派/路人等"] = None,
-        user_id: Annotated[int, InjectedState("user_id")] = 0,
-        book_id: Annotated[int, InjectedState("active_book_id")] = 0,
-    ) -> dict:
-        """创建一个新角色，用于构建书籍的人物设定。
-
-        Args:
-            name: 角色名称，必填。
-            description: 角色描述，可包含外貌、性格、背景等信息。
-            role_type: 角色类型，如主角、配角、反派、路人等。
-        """
-        logger.debug(f"[tool] create_character  book_id={book_id}  name={name}")
-        async with session_factory() as session:
-            try:
-                from models.book import Character
-                instance = Character(
-                    user_id=user_id,
-                    book_id=book_id,
-                    name=name,
-                    description=description,
-                    role_type=role_type,
-                )
-                session.add(instance)
-                await session.commit()
-                return {"id": instance.id, "name": instance.name, "message": "角色创建成功"}
-            except Exception as exc:
-                await session.rollback()
-                logger.warning(f"create_character 失败: {exc}")
-                return {"message": f"创建失败: {exc}"}
-
-    @tool
-    async def create_location(
-        name: Annotated[str, "地点名称"],
-        type: Annotated[str, "地点类型：城市/建筑/自然/室内/场所等"],
-        description: Annotated[str, "地点描述"],
-        parent_id: Annotated[int | None, "父地点ID，用于建立地点层级关系"] = None,
-        book_id: Annotated[int, InjectedState("active_book_id")] = 0,
-    ) -> dict:
-        """创建一个新地点/场景，用于构建世界观地理设定。
-
-        Args:
-            name: 地点名称，必填。
-            type: 地点类型，如城市、建筑、自然景观、室内空间、场所等。
-            description: 地点描述，包含环境特征、氛围、功能等信息。
-            parent_id: 父地点ID，如果该地点属于某个更大的地点（如"大殿"属于"皇宫"）。
-        """
-        logger.debug(f"[tool] create_location  book_id={book_id}  name={name}")
-        async with session_factory() as session:
-            repo = WorldRepository(session)
-            try:
-                data = {"name": name, "type": type, "description": description}
-                if parent_id is not None:
-                    data["parent_id"] = parent_id
-                instance = await repo.create_location(book_id, data)
-                return {"id": instance.id, "name": instance.name, "message": "地点创建成功"}
-            except Exception as exc:
-                logger.warning(f"create_location 失败: {exc}")
-                return {"message": f"创建失败: {exc}"}
-
-    @tool
-    async def create_scene_event(
-        name: Annotated[str, "事件名称"],
-        description: Annotated[str, "事件描述"],
-        event_type: Annotated[str | None, "事件类型：冲突/转折/揭示/过渡/日常等"] = None,
-        chapter_id: Annotated[int | None, "关联的章节ID"] = None,
-        book_id: Annotated[int, InjectedState("active_book_id")] = 0,
-    ) -> dict:
-        """创建一个时间线事件，用于记录故事中的关键情节节点。
-
-        Args:
-            name: 事件名称，必填。
-            description: 事件描述，简明扼要地说明事件内容。
-            event_type: 事件类型，如冲突、转折、揭示、过渡、日常等。
-            chapter_id: 关联的章节ID，表示事件发生在该章节中。
-        """
-        logger.debug(f"[tool] create_scene_event  book_id={book_id}  name={name}")
-        async with session_factory() as session:
-            repo = WorldRepository(session)
-            try:
-                data = {"name": name, "description": description}
-                if event_type is not None:
-                    data["event_type"] = event_type
-                if chapter_id is not None:
-                    data["chapter_id"] = chapter_id
-                instance = await repo.create_scene_event(book_id, data)
-                return {"id": instance.id, "name": instance.name, "message": "时间线事件创建成功"}
-            except Exception as exc:
-                logger.warning(f"create_scene_event 失败: {exc}")
-                return {"message": f"创建失败: {exc}"}
-
-    @tool
-    async def update_foreshadowing(
-        item_id: Annotated[int, "伏笔ID"],
-        data: Annotated[dict, "要更新的字段，支持 description/status/resolved_at_chapter_id/notes"],
-        book_id: Annotated[int, InjectedState("active_book_id")] = 0,
-    ) -> dict:
-        """更新伏笔信息。
-
-        Args:
-            item_id: 伏笔ID。
-            data: 要更新的字段字典，可包含 description、status、resolved_at_chapter_id、notes 等。
-        """
-        logger.debug(f"[tool] update_foreshadowing  book_id={book_id}  item_id={item_id}")
-        async with session_factory() as session:
-            instance = await WorldRepository(session).update_foreshadowing(item_id, book_id, data)
-            if not instance:
-                return {"error": "伏笔不存在", "item_id": item_id}
-            return {"id": instance.id, "description": instance.description, "status": instance.status, "resolved_at_chapter_id": instance.resolved_at_chapter_id}
-
-    @tool
-    async def update_plot_thread(
-        item_id: Annotated[int, "剧情线索ID"],
-        data: Annotated[dict, "要更新的字段，支持 name/description/status/progress_note"],
-        book_id: Annotated[int, InjectedState("active_book_id")] = 0,
-    ) -> dict:
-        """更新剧情线索信息。
-
-        Args:
-            item_id: 剧情线索ID。
-            data: 要更新的字段字典，可包含 name、description、status、progress_note 等。
-        """
-        logger.debug(f"[tool] update_plot_thread  book_id={book_id}  item_id={item_id}")
-        async with session_factory() as session:
-            instance = await WorldRepository(session).update_plot_thread(item_id, book_id, data)
-            if not instance:
-                return {"error": "情节脉络不存在", "item_id": item_id}
-            return {"id": instance.id, "name": instance.name, "status": instance.status, "progress_note": instance.progress_note}
-
-    @tool
-    async def update_timeline(
-        item_id: Annotated[int, "时间线事件ID"],
-        data: Annotated[dict, "要更新的字段，支持 name/description/event_type"],
-        book_id: Annotated[int, InjectedState("active_book_id")] = 0,
-    ) -> dict:
-        """更新时间线事件信息。
-
-        Args:
-            item_id: 时间线事件ID。
-            data: 要更新的字段字典，可包含 name、description、event_type 等。
-        """
-        logger.debug(f"[tool] update_timeline  book_id={book_id}  item_id={item_id}")
-        async with session_factory() as session:
-            instance = await WorldRepository(session).update_scene_event(item_id, book_id, data)
-            if not instance:
-                return {"error": "时间线事件不存在", "item_id": item_id}
-            return {"id": instance.id, "name": instance.name, "description": instance.description, "event_type": instance.event_type}
-
-    @tool
-    async def polish_text(
-        text: Annotated[str, "需要润色的文本"],
-        instruction: Annotated[str, "润色要求，如'更简洁'、'更有文采'、'调整节奏'"] = "",
-    ) -> dict:
-        """润色文本，改进表达、节奏和可读性，保持原意不变。
-
-        Args:
-            text: 需要润色的原始文本。
-            instruction: 润色要求，用自然语言描述期望的效果。
-        """
-        logger.debug(f"[tool] polish_text  text_len={len(text)}  instruction={instruction}")
-        if not text.strip():
             return {"error": "文本为空"}
         llm = None
         if model_config:
             try:
                 llm = ModelFactory(model_config)
             except Exception as exc:
-                logger.warning(f"polish_text 初始化模型失败: {exc}")
+                logger.warning(f"review_text 初始化模型失败: {exc}")
         if llm is None:
-            return {"error": "模型未配置，无法润色"}
-        from langchain_core.messages import HumanMessage, SystemMessage
-        system = SystemMessage(content="你是专业的文字润色助手。改进文本的表达、节奏和可读性，保持原意不变。直接输出润色后的文本。")
-        human = HumanMessage(content=f"请润色以下文本：\n{text[:4000]}\n润色要求：{instruction or '优化表达'}")
-        try:
-            result = await llm.main.ainvoke([system, human])
-            polished = result.content if hasattr(result, "content") else str(result)
-            return {"original_length": len(text), "polished_length": len(polished), "polished_text": polished}
-        except Exception as exc:
-            logger.error(f"polish_text 失败: {exc}", exc_info=True)
-            return {"error": f"润色失败: {exc}"}
-
-    @tool
-    async def rewrite_paragraph(
-        text: Annotated[str, "需要改写的文本"],
-        instruction: Annotated[str, "改写要求，如'换个角度'、'更口语化'、'增加紧张感'"] = "",
-    ) -> dict:
-        """改写文本段落，保持核心含义但改变表达方式。
-
-        Args:
-            text: 需要改写的原始文本。
-            instruction: 改写要求，用自然语言描述期望的方向。
-        """
-        logger.debug(f"[tool] rewrite_paragraph  text_len={len(text)}")
-        if not text.strip():
-            return {"error": "文本为空"}
-        llm = None
-        if model_config:
-            try:
-                llm = ModelFactory(model_config)
-            except Exception as exc:
-                logger.warning(f"rewrite_paragraph 初始化模型失败: {exc}")
-        if llm is None:
-            return {"error": "模型未配置，无法改写"}
-        from langchain_core.messages import HumanMessage, SystemMessage
-        system = SystemMessage(content="你是专业的改写助手。根据用户指令改写文本，保持核心含义但改变表达方式。直接输出改写后的文本。")
-        human = HumanMessage(content=f"请改写以下文本：\n{text[:4000]}\n改写要求：{instruction or '换个角度重写'}")
-        try:
-            result = await llm.main.ainvoke([system, human])
-            rewritten = result.content if hasattr(result, "content") else str(result)
-            return {"original_length": len(text), "rewritten_length": len(rewritten), "rewritten_text": rewritten}
-        except Exception as exc:
-            logger.error(f"rewrite_paragraph 失败: {exc}", exc_info=True)
-            return {"error": f"改写失败: {exc}"}
-
-    @tool
-    async def expand_text(
-        text: Annotated[str, "需要扩写的文本"],
-        target_length: Annotated[int | None, "目标字数，默认为原文的三倍"] = None,
-    ) -> dict:
-        """扩写文本，丰富细节、描写和对话，使内容更加生动。
-
-        Args:
-            text: 需要扩写的原始文本。
-            target_length: 目标字数，不指定则自动设为原文三倍。
-        """
-        logger.debug(f"[tool] expand_text  text_len={len(text)}  target={target_length}")
-        if not text.strip():
-            return {"error": "文本为空"}
-        llm = None
-        if model_config:
-            try:
-                llm = ModelFactory(model_config)
-            except Exception as exc:
-                logger.warning(f"expand_text 初始化模型失败: {exc}")
-        if llm is None:
-            return {"error": "模型未配置，无法扩写"}
-        from langchain_core.messages import HumanMessage, SystemMessage
-        target = target_length or len(text) * 3
-        system = SystemMessage(content="你是专业的扩写助手。在保持原意和风格的基础上，丰富细节、描写和对话，使文本更加生动。直接输出扩写后的文本。")
-        human = HumanMessage(content=f"请扩写以下文本，目标字数约 {target} 字：\n{text[:4000]}")
-        try:
-            result = await llm.main.ainvoke([system, human])
-            expanded = result.content if hasattr(result, "content") else str(result)
-            return {"original_length": len(text), "expanded_length": len(expanded), "expanded_text": expanded}
-        except Exception as exc:
-            logger.error(f"expand_text 失败: {exc}", exc_info=True)
-            return {"error": f"扩写失败: {exc}"}
-
-    @tool
-    async def summarize_selected(
-        text: Annotated[str, "需要总结的文本"],
-        max_length: Annotated[int | None, "摘要最大字数，默认200字"] = None,
-    ) -> dict:
-        """总结文本内容，保留关键信息和核心情节。
-
-        Args:
-            text: 需要总结的原始文本。
-            max_length: 摘要的最大字数，不指定则默认200字。
-        """
-        logger.debug(f"[tool] summarize_selected  text_len={len(text)}  max={max_length}")
-        if not text.strip():
-            return {"error": "文本为空"}
-        llm = None
-        if model_config:
-            try:
-                llm = ModelFactory(model_config)
-            except Exception as exc:
-                logger.warning(f"summarize_selected 初始化模型失败: {exc}")
-        if llm is None:
-            return {"error": "模型未配置，无法总结"}
-        from langchain_core.messages import HumanMessage, SystemMessage
-        target = max_length or 200
-        system = SystemMessage(content="你是专业的摘要助手。请简洁地总结文本内容，保留关键信息和核心情节。")
-        human = HumanMessage(content=f"请将以下文本总结为 {target} 字以内的摘要：\n{text[:6000]}")
-        try:
-            result = await llm.main.ainvoke([system, human])
-            summary = result.content if hasattr(result, "content") else str(result)
-            return {"original_length": len(text), "summary_length": len(summary), "summary": summary}
-        except Exception as exc:
-            logger.error(f"summarize_selected 失败: {exc}", exc_info=True)
-            return {"error": f"总结失败: {exc}"}
-
-    @tool
-    async def suggest_alternatives(
-        text: Annotated[str, "需要生成改写建议的文本"],
-        position: Annotated[int | None, "指定文本中某个位置，对该位置附近生成建议"] = None,
-        count: Annotated[int, "生成的建议数量"] = 3,
-    ) -> dict:
-        """为给定文本生成多种改写建议。
-
-        Args:
-            text: 原始文本。
-            position: 文本中的字符位置（可选），聚焦该位置的改写建议。
-            count: 生成建议的数量。
-        """
-        logger.debug(f"[tool] suggest_alternatives  text_len={len(text)}  count={count}")
-        if not text.strip():
-            return {"error": "文本为空"}
-        llm = None
-        if model_config:
-            try:
-                llm = ModelFactory(model_config)
-            except Exception as exc:
-                logger.warning(f"suggest_alternatives 初始化模型失败: {exc}")
-        if llm is None:
-            return {"error": "模型未配置，无法生成建议"}
-        from langchain_core.messages import HumanMessage, SystemMessage
-        system = SystemMessage(content="你是写作建议助手。针对给定文本，提供多个不同风格的改写建议。")
-        pos_hint = f"请针对文本中第{position}个字符附近的位置，" if position is not None else "请"
-        human = HumanMessage(content=f"{pos_hint}提供 {count} 种不同风格的改写建议：\n{text[:4000]}")
-        try:
-            result = await llm.main.ainvoke([system, human])
-            alternatives = result.content if hasattr(result, "content") else str(result)
-            return {"alternatives": alternatives, "count": count}
-        except Exception as exc:
-            logger.error(f"suggest_alternatives 失败: {exc}", exc_info=True)
-            return {"error": f"生成建议失败: {exc}"}
-
-    @tool
-    async def check_consistency(
-        chapter_id: Annotated[int | None, "要检查的章节ID，为空则检查当前活跃章节"] = None,
-        book_id: Annotated[int, InjectedState("active_book_id")] = 0,
-    ) -> dict:
-        """检查章节正文与设定的一致性（人物、地点、时间线）。
-
-        Args:
-            chapter_id: 要检查的章节ID，不指定则检查最新章节。
-        """
-        logger.debug(f"[tool] check_consistency  book_id={book_id}  chapter_id={chapter_id}")
-        async with session_factory() as session:
-            from models.book import ChapterContent
-            book_stmt = select(Book).where(Book.id == book_id)
-            book_result = await session.execute(book_stmt)
-            book = book_result.scalar_one_or_none()
-            if not book:
-                return {"error": "书籍不存在"}
-            characters = await CharacterRepository(session).book_character_detail(user_id=book.user_id, book_id=book_id)
-            locations = await WorldRepository(session).list_locations(book_id)
-            scene_events = await WorldRepository(session).list_scene_events(book_id)
-            content = ""
-            if chapter_id:
-                content_stmt = select(ChapterContent).where(ChapterContent.chapter_id == chapter_id).order_by(ChapterContent.version.desc()).limit(1)
-                content_result = await session.execute(content_stmt)
-                content_obj = content_result.scalar_one_or_none()
-                if content_obj:
-                    content = content_obj.content or ""
-            if not content:
-                return {"error": "无正文内容可检查"}
-            llm = None
-            if model_config:
-                try:
-                    llm = ModelFactory(model_config)
-                except Exception as exc:
-                    logger.warning(f"check_consistency 初始化模型失败: {exc}")
-            if llm is None:
-                return {"error": "模型未配置，无法检查一致性"}
-            from langchain_core.messages import HumanMessage, SystemMessage
+            return {"error": "模型未配置，无法检查"}
+        if mode == "grammar":
+            system = SystemMessage(content="你是语法检查助手。检查文本中的语法、拼写和标点错误，列出问题并给出修正建议。")
+            human = f"请检查以下文本的语法错误：\n{content[:4000]}"
+        else:
             system = SystemMessage(content="你是 consistency 检查助手。检查正文中的人物、地点、时间线是否与设定一致。列出不一致的地方。")
-            human = HumanMessage(content=f"书籍：{book.title}\n人物：{[c.name for c in characters]}\n地点：{[loc.name for loc in locations]}\n时间线：{[ev.name for ev in scene_events]}\n\n请检查以下正文中的一致性：\n{content[:4000]}")
-            try:
-                result = await llm.main.ainvoke([system, human])
-                issues = result.content if hasattr(result, "content") else str(result)
-                return {"chapter_id": chapter_id, "issues": issues, "checked_length": len(content)}
-            except Exception as exc:
-                logger.error(f"check_consistency 失败: {exc}", exc_info=True)
-                return {"error": f"检查失败: {exc}"}
-
-    @tool
-    async def check_grammar(
-        text: Annotated[str, "需要检查的文本"],
-    ) -> dict:
-        """检查文本的语法、拼写和标点错误，列出问题和修正建议。
-
-        Args:
-            text: 需要检查的文本内容。
-        """
-        logger.debug(f"[tool] check_grammar  text_len={len(text)}")
-        if not text.strip():
-            return {"error": "文本为空"}
-        llm = None
-        if model_config:
-            try:
-                llm = ModelFactory(model_config)
-            except Exception as exc:
-                logger.warning(f"check_grammar 初始化模型失败: {exc}")
-        if llm is None:
-            return {"error": "模型未配置，无法检查语法"}
-        from langchain_core.messages import HumanMessage, SystemMessage
-        system = SystemMessage(content="你是语法检查助手。检查文本中的语法、拼写和标点错误，列出问题并给出修正建议。")
-        human = HumanMessage(content=f"请检查以下文本的语法错误：\n{text[:4000]}")
+            human = (
+                f"书籍：{book.title}\n"
+                f"人物：{[c.name for c in characters]}\n"
+                f"地点：{[loc.name for loc in locations]}\n"
+                f"时间线：{[ev.title for ev in scene_events]}\n\n"
+                f"请检查以下正文中的一致性：\n{content[:4000]}"
+            )
         try:
-            result = await llm.main.ainvoke([system, human])
+            result = await llm.main.ainvoke([system, HumanMessage(content=human)])
             issues = result.content if hasattr(result, "content") else str(result)
-            return {"checked_length": len(text), "issues": issues}
         except Exception as exc:
-            logger.error(f"check_grammar 失败: {exc}", exc_info=True)
+            logger.error(f"review_text 失败: {exc}", exc_info=True)
             return {"error": f"检查失败: {exc}"}
+        return {"mode": mode, "checked_length": len(content), "issues": issues}
 
     @tool
-    async def search_across_books(
-        query: Annotated[str, "搜索关键词"],
-        top_k: Annotated[int, "返回结果数量"] = 5,
+    async def create_entities(
+        characters: Annotated[list | None, "角色列表，每项 {name, description, role_type?, aliases?, status?, relationship_chain?, locked?}"] = None,
+        locations: Annotated[list | None, "地点列表，每项 {name, type, description, parent_id?}"] = None,
+        scene_events: Annotated[list | None, "时间线事件列表，每项 {title, content, event_type?, chapter_id?, character_ids?, location_id?, plot_thread_ids?, story_label?, story_ts?}"] = None,
+        foreshadowings: Annotated[list | None, "伏笔列表，每项 {description, status?, planted_at_chapter_id?, related_character_ids?, notes?}"] = None,
+        plot_threads: Annotated[list | None, "情节线索列表，每项 {name, description, type?, status?, progress_note?}"] = None,
+        source_text: Annotated[str | None, "可选：提供原始文本，由模型一次性抽取人物/地点/事件后直接落库（替代逐条传入）"] = None,
         user_id: Annotated[int, InjectedState("user_id")] = 0,
-    ) -> list[dict]:
-        """跨书籍搜索用户所有文档，使用语义检索。
+        book_id: Annotated[int, InjectedState("active_book_id")] = 0,
+    ) -> dict:
+        """批量创建世界观实体（角色/地点/时间线事件/伏笔/情节线索）。可传结构化列表，或提供 source_text 由模型抽取后落库。"""
+        logger.debug(f"[tool] create_entities  book_id={book_id}  src_len={len(source_text or '')}")
+        if source_text and source_text.strip():
+            extracted = await _extract_entities_from_text(model_config, source_text)
+            if extracted:
+                characters = (characters or []) + (extracted.get("characters") or [])
+                locations = (locations or []) + (extracted.get("locations") or [])
+                scene_events = (scene_events or []) + (extracted.get("scene_events") or [])
+        created_ids: dict = {"characters": [], "locations": [], "scene_events": [], "foreshadowings": [], "plot_threads": []}
+        errors: list = []
+        async with session_factory() as session:
+            repo = WorldRepository(session)
+            for c in (characters or []):
+                if not isinstance(c, dict) or not c.get("name"):
+                    continue
+                try:
+                    char = Character(
+                        user_id=user_id, book_id=book_id, name=c["name"],
+                        description=c.get("description", ""), role_type=c.get("role_type"),
+                        aliases=c.get("aliases", []), status=c.get("status"),
+                        relationship_chain=c.get("relationship_chain", []), locked=bool(c.get("locked", False)),
+                    )
+                    session.add(char)
+                    await session.flush()
+                    created_ids["characters"].append(char.id)
+                except Exception as exc:
+                    errors.append({"kind": "character", "name": c.get("name"), "error": str(exc)})
+            for l in (locations or []):
+                if not isinstance(l, dict) or not l.get("name"):
+                    continue
+                try:
+                    data = {"name": l["name"], "type": l.get("type", "场所"), "description": l.get("description", "")}
+                    if l.get("parent_id") is not None:
+                        data["parent_id"] = l["parent_id"]
+                    inst = await repo.create_location(book_id, data)
+                    created_ids["locations"].append(inst.id)
+                except Exception as exc:
+                    errors.append({"kind": "location", "name": l.get("name"), "error": str(exc)})
+            for ev in (scene_events or []):
+                if not isinstance(ev, dict) or not ev.get("title"):
+                    continue
+                try:
+                    data = {"title": ev["title"], "content": ev.get("content", "")}
+                    for k in ("event_type", "chapter_id", "character_ids", "location_id", "plot_thread_ids", "story_label", "story_ts"):
+                        if ev.get(k) is not None:
+                            data[k] = ev[k]
+                    inst = await repo.create_scene_event(book_id, data)
+                    created_ids["scene_events"].append(inst.id)
+                except Exception as exc:
+                    errors.append({"kind": "scene_event", "title": ev.get("title"), "error": str(exc)})
+            for f in (foreshadowings or []):
+                if not isinstance(f, dict) or not f.get("description"):
+                    continue
+                try:
+                    data = {"description": f["description"], "status": normalize_foreshadowing_status(f.get("status")) or "planted"}
+                    for k in ("planted_at_chapter_id", "related_character_ids", "notes", "related_event_id"):
+                        if f.get(k) is not None:
+                            data[k] = f[k]
+                    inst = await repo.create_foreshadowing(book_id, data)
+                    created_ids["foreshadowings"].append(inst.id)
+                except Exception as exc:
+                    errors.append({"kind": "foreshadowing", "error": str(exc)})
+            for p in (plot_threads or []):
+                if not isinstance(p, dict) or not p.get("name"):
+                    continue
+                try:
+                    data = {"name": p["name"], "description": p.get("description", ""), "status": normalize_plot_thread_status(p.get("status")) or "active"}
+                    if p.get("type") is not None:
+                        data["type"] = p["type"]
+                    if p.get("progress_note") is not None:
+                        data["progress_note"] = p["progress_note"]
+                    inst = await repo.create_plot_thread(book_id, data)
+                    created_ids["plot_threads"].append(inst.id)
+                except Exception as exc:
+                    errors.append({"kind": "plot_thread", "name": p.get("name"), "error": str(exc)})
+            await session.commit()
+        return {"book_id": book_id, "created_ids": created_ids, "errors": errors}
 
-        Args:
-            query: 搜索关键词。
-            top_k: 返回结果数量上限。
-        """
-        logger.debug(f"[tool] search_across_books  user_id={user_id}  query={query}")
+    UPDATABLE_FIELDS = {
+        "foreshadowing": {"description", "status", "planted_at_chapter_id", "resolved_at_chapter_id", "related_character_ids", "notes", "related_event_id"},
+        "plot_thread": {"name", "description", "status", "progress_note", "type", "start_chapter_id", "end_chapter_id", "parent_thread_id"},
+        "timeline": {"title", "content", "event_type", "chapter_id", "character_ids", "location_id", "plot_thread_ids", "story_label", "story_ts"},
+        "chapter": {"title", "summary", "character_ids"},
+        "character": {"name", "description", "role_type", "aliases", "status", "relationship_chain", "locked"},
+        "location": {"name", "type", "description", "parent_id", "attributes", "locked"},
+    }
+
+    @tool
+    async def update_entity(
+        kind: Annotated[str, "实体类型：foreshadowing/plot_thread/timeline/chapter/character/location"],
+        item_id: Annotated[int, "要更新的实体ID"],
+        data: Annotated[dict, "要更新的字段字典（仅接受该类型允许的字段，无效字段被忽略）"],
+        book_id: Annotated[int, InjectedState("active_book_id")] = 0,
+    ) -> dict:
+        """按类型更新世界观实体。字段按类型白名单过滤；chapter 类型在 locked=True 时拒绝。"""
+        logger.debug(f"[tool] update_entity  kind={kind}  item_id={item_id}")
+        allowed = UPDATABLE_FIELDS.get(kind)
+        if allowed is None:
+            return {"error": f"不支持的 kind: {kind}"}
+        if not isinstance(data, dict):
+            return {"error": "data 必须是字典"}
+        payload = {k: v for k, v in data.items() if k in allowed}
+        if not payload:
+            return {"error": "没有可更新的有效字段", "allowed": sorted(allowed)}
+        async with session_factory() as session:
+            if kind in ("foreshadowing", "plot_thread", "timeline"):
+                repo = WorldRepository(session)
+                if kind == "foreshadowing":
+                    if "status" in payload:
+                        payload["status"] = normalize_foreshadowing_status(payload["status"]) or "planted"
+                    inst = await repo.update_foreshadowing(item_id, book_id, payload)
+                elif kind == "plot_thread":
+                    if "status" in payload:
+                        payload["status"] = normalize_plot_thread_status(payload["status"]) or "active"
+                    inst = await repo.update_plot_thread(item_id, book_id, payload)
+                else:
+                    inst = await repo.update_scene_event(item_id, book_id, payload)
+                if not inst:
+                    return {"error": f"{kind} 不存在", "item_id": item_id}
+                return {"id": inst.id, "kind": kind, "updated": payload}
+            if kind == "chapter":
+                inst = (await session.execute(select(Chapter).where(Chapter.id == item_id))).scalar_one_or_none()
+                if not inst:
+                    return {"error": "章节不存在", "item_id": item_id}
+                if inst.locked:
+                    return {"error": "章节已锁定，无法更新", "item_id": item_id}
+                for k, v in payload.items():
+                    setattr(inst, k, v)
+                await session.commit()
+                return {"id": inst.id, "kind": "chapter", "updated": payload}
+            if kind == "location":
+                inst = await WorldRepository(session).update_location(item_id, book_id, payload)
+                if not inst:
+                    return {"error": "地点不存在", "item_id": item_id}
+                return {"id": inst.id, "kind": "location", "updated": payload}
+            if kind == "character":
+                inst = (await session.execute(select(Character).where(Character.id == item_id, Character.book_id == book_id))).scalar_one_or_none()
+                if not inst:
+                    return {"error": "角色不存在", "item_id": item_id}
+                for k, v in payload.items():
+                    setattr(inst, k, v)
+                await session.commit()
+                return {"id": inst.id, "kind": "character", "updated": payload}
+            return {"error": f"不支持的 kind: {kind}"}
+
+    @tool
+    async def create_outline(
+        mode: Annotated[str, "创建类型：volume(卷)/chapter(章节)"],
+        title: Annotated[str, "卷或章节的标题"],
+        summary: Annotated[str | None, "可选：卷简介或章节摘要（由 Agent 注入）"] = None,
+        volume_id: Annotated[int | None, "目标卷ID（mode=chapter 必填）"] = None,
+        sort_order: Annotated[int | None, "排序位置，缺省则追加到末尾"] = None,
+        book_id: Annotated[int, InjectedState("active_book_id")] = 0,
+    ) -> dict:
+        """创建大纲结构：volume 建卷（可带简介），chapter 在指定卷下建章节（可带摘要）。"""
+        logger.debug(f"[tool] create_outline  mode={mode}  book_id={book_id}  title={title}")
+        if not title or not title.strip():
+            return {"error": "title 不能为空"}
+        async with session_factory() as session:
+            if mode == "volume":
+                vols = (await session.execute(select(Volume).where(Volume.book_id == book_id).order_by(Volume.sort_order.desc()))).scalars().all()
+                order = sort_order if sort_order is not None else (vols[0].sort_order + 1 if vols else 1)
+                vol = Volume(book_id=book_id, title=title.strip(), summary=summary or "", sort_order=order)
+                session.add(vol)
+                await session.flush()
+                await session.commit()
+                return {"kind": "volume", "id": vol.id, "title": vol.title, "summary": vol.summary, "sort_order": vol.sort_order}
+            if mode == "chapter":
+                if not volume_id:
+                    return {"error": "mode=chapter 需要 volume_id"}
+                vol = (await session.execute(select(Volume).where(Volume.id == volume_id, Volume.book_id == book_id))).scalar_one_or_none()
+                if not vol:
+                    return {"error": "卷不存在", "volume_id": volume_id}
+                chs = (await session.execute(select(Chapter).where(Chapter.volume_id == volume_id).order_by(Chapter.sort_order.desc()))).scalars().all()
+                order = sort_order if sort_order is not None else (chs[0].sort_order + 1 if chs else 1)
+                ch = Chapter(volume_id=volume_id, title=title.strip(), summary=summary or "", sort_order=order, locked=False, generation_batch=1)
+                session.add(ch)
+                await session.flush()
+                await session.commit()
+                return {"kind": "chapter", "id": ch.id, "volume_id": volume_id, "title": ch.title, "summary": ch.summary, "sort_order": ch.sort_order}
+            return {"error": f"不支持的 mode: {mode}"}
+
+    @tool
+    async def read_chapter_content(
+        chapter_id: Annotated[int, "章节ID"],
+        version: Annotated[int | None, "指定版本号，缺省取最新版本"] = None,
+        max_chars: Annotated[int, "返回内容的最大字符数"] = 8000,
+        book_id: Annotated[int, InjectedState("active_book_id")] = 0,
+    ) -> dict:
+        """读取章节正文内容（缺省最新版本），解决 lookup_outline 的 content 恒为空问题。"""
+        logger.debug(f"[tool] read_chapter_content  chapter_id={chapter_id}  book_id={book_id}")
+        async with session_factory() as session:
+            stmt = select(ChapterContent).where(ChapterContent.chapter_id == chapter_id)
+            if version is not None:
+                stmt = stmt.where(ChapterContent.version == version)
+            stmt = stmt.order_by(ChapterContent.version.desc()).limit(1)
+            content = (await session.execute(stmt)).scalar_one_or_none()
+            if not content:
+                return {"error": "章节无正文内容", "chapter_id": chapter_id}
+            text = content.content or ""
+            truncated = len(text) > max_chars
+            return {
+                "chapter_id": chapter_id, "version": content.version,
+                "word_count": len(text), "truncated": truncated,
+                "content": text[:max_chars] if truncated else text,
+            }
+
+    @tool
+    async def write_chapter_content(
+        chapter_id: Annotated[int, "章节ID"],
+        content: Annotated[str, "要写入的正文内容"],
+        book_id: Annotated[int, InjectedState("active_book_id")] = 0,
+    ) -> dict:
+        """写入章节正文：一律新增一个 ChapterContent 版本（version=最新+1），不覆盖旧版本；章节 locked=True 时拒绝。"""
+        logger.debug(f"[tool] write_chapter_content  chapter_id={chapter_id}  book_id={book_id}")
+        async with session_factory() as session:
+            ch = (await session.execute(select(Chapter).where(Chapter.id == chapter_id))).scalar_one_or_none()
+            if not ch:
+                return {"error": "章节不存在", "chapter_id": chapter_id}
+            if ch.locked:
+                return {"error": "章节已锁定，无法写入", "chapter_id": chapter_id}
+            max_ver = (await session.execute(func.max(ChapterContent.version).where(ChapterContent.chapter_id == chapter_id))).scalar() or 0
+            new_content = ChapterContent(chapter_id=chapter_id, content=content, version=max_ver + 1)
+            session.add(new_content)
+            await session.commit()
+            return {"chapter_id": chapter_id, "version": new_content.version, "word_count": len(content)}
+
+    @tool
+    async def search(
+        query: Annotated[str, "搜索关键词"],
+        mode: Annotated[str, "检索模式：docs(公开文档语义RAG)/web(联网搜索)"] = "docs",
+        top_k: Annotated[int, "返回结果数量"] = 5,
+        doc_ids: Annotated[list | None, "限定文档ID列表（mode=docs 时），对应 documents.id"] = None,
+        book_id: Annotated[int, InjectedState("active_book_id")] = 0,
+    ) -> list[dict]:
+        """统一检索入口：mode=docs 语义检索公开文档库，mode=web 联网搜索。"""
+        logger.debug(f"[tool] search  mode={mode}  query={query}  book_id={book_id}")
+        if mode == "web":
+            async with session_factory() as session:
+                api_key = (((model_config or {}).get("search_config") or {}).get("api_key") or "")
+                if not api_key:
+                    return [{"error": "未配置 search_config.api_key", "query": query}]
+                service = WebSearchService(session)
+                return await service.search(query=query, api_key=api_key, top_k=top_k, use_cache=True)
         async with session_factory() as session:
             vector_repo = VectorRepository(session)
             embedding = None
@@ -970,80 +694,139 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
                     llm = ModelFactory(model_config)
                     embedding = await llm.embedding.aembed_query(query)
                 except Exception as exc:
-                    logger.warning(f"search_across_books embedding 失败: {exc}")
+                    logger.warning(f"search embedding 失败: {exc}")
             if embedding is None:
-                return [{"error": "embedding 模型不可用", "query": query}]
-            try:
-                from models.document import Document
-                from sqlalchemy import select as sa_select
-                doc_stmt = sa_select(Document.id, Document.file_name).where(Document.user_id == user_id)
-                doc_result = await session.execute(doc_stmt)
-                doc_rows = doc_result.all()
-                doc_ids = [str(row.id) for row in doc_rows]
-                if not doc_ids:
-                    return []
-                items = await vector_repo.search_external_books(
-                    query_embedding=embedding,
-                    rag_filter={"doc_ids": doc_ids, "query": query},
-                    top_k=top_k,
+                return []
+            rag_filter = {"query": query}
+            if doc_ids:
+                rag_filter["doc_ids"] = [str(d) for d in doc_ids]
+            elif book_id:
+                rag_filter["book_id"] = book_id
+            items = await vector_repo.search_external_books(query_embedding=embedding, rag_filter=rag_filter, top_k=top_k)
+            return [
+                {
+                    "source": "docs",
+                    "doc_id": item.get("doc_id"),
+                    "doc_title": item.get("doc_title"),
+                    "doc_author": item.get("doc_author"),
+                    "content": item.get("content"),
+                    "score": 1 - float(item.get("distance", 0) or 0),
+                }
+                for item in items
+            ]
+
+    @tool
+    async def manage_memory(
+        mode: Annotated[str, "操作：save/recall/list/forget/update"],
+        content: Annotated[str | None, "记忆内容（save 必填）"] = None,
+        memory_type: Annotated[str, "记忆类型：preference/character/plot/world"] = "preference",
+        memory_id: Annotated[int | None, "记忆ID（recall 按类型筛选/list 按类型/forget/update 必填）"] = None,
+        query: Annotated[str | None, "检索文本（recall 必填）"] = None,
+        top_k: Annotated[int, "返回数量"] = 5,
+        priority: Annotated[int, "优先级"] = 5,
+        meta: Annotated[dict | None, "附加元数据"] = None,
+        related_character_ids: Annotated[list | None, "关联角色ID"] = None,
+        related_chapter_id: Annotated[int | None, "关联章节ID"] = None,
+        user_id: Annotated[int, InjectedState("user_id")] = 0,
+        book_id: Annotated[int, InjectedState("active_book_id")] = 0,
+    ) -> Any:
+        """统一管理 Agent 长期记忆：保存/检索/列出/删除/更新。recall 先语义后全文回退。"""
+        logger.debug(f"[tool] manage_memory  mode={mode}  book_id={book_id}")
+        effective_book_id = book_id or None
+        if mode == "save":
+            if not content:
+                return {"error": "save 需要 content"}
+            async with session_factory() as session:
+                svc = AgentMemoryService(session)
+                mem = await svc.save_memory(
+                    user_id=user_id, book_id=effective_book_id, memory_type=memory_type,
+                    content=content, related_chapter_id=related_chapter_id,
+                    related_character_ids=related_character_ids or [], priority=priority,
+                    source="agent_self_reflection", meta=meta or {},
                 )
-                doc_map = {str(row.id): row.file_name for row in doc_rows}
-                return [
-                    {
-                        "doc_id": item.get("doc_id"),
-                        "doc_title": doc_map.get(str(item.get("doc_id")), ""),
-                        "content": item.get("content"),
-                        "score": 1 - float(item.get("distance", 0) or 0),
-                    }
-                    for item in items
-                ]
-            except Exception as exc:
-                logger.warning(f"search_across_books 失败: {exc}")
-                return [{"error": "搜索异常", "query": query}]
+                return {"memory_id": mem.id}
+        if mode == "recall":
+            if not query:
+                return {"error": "recall 需要 query"}
+            async with session_factory() as session:
+                svc = AgentMemoryService(session)
+                results = await svc.search_memories(
+                    user_id=user_id, mode="semantic", query=query, book_id=effective_book_id,
+                    memory_type=memory_type, top_k=top_k, model_config=model_config,
+                )
+                if not results:
+                    results = await svc.search_memories(
+                        user_id=user_id, mode="fulltext", query=query, book_id=effective_book_id,
+                        memory_type=memory_type, top_k=top_k, model_config=None,
+                    )
+                return results
+        if mode == "list":
+            async with session_factory() as session:
+                return await AgentMemoryService(session).list_memories(user_id=user_id, book_id=effective_book_id, memory_type=memory_type)
+        if mode == "forget":
+            if not memory_id:
+                return {"error": "forget 需要 memory_id"}
+            async with session_factory() as session:
+                svc = AgentMemoryService(session)
+                mem = await svc.get_memory(user_id=user_id, memory_id=memory_id)
+                if not mem:
+                    return {"ok": False, "detail": "记忆不存在"}
+                await svc.delete_memory(user_id=user_id, memory_id=memory_id)
+                return {"ok": True}
+        if mode == "update":
+            if not memory_id:
+                return {"error": "update 需要 memory_id"}
+            async with session_factory() as session:
+                svc = AgentMemoryService(session)
+                payload = {k: v for k, v in {"memory_type": memory_type, "content": content, "priority": priority, "meta": meta}.items() if v is not None}
+                mem = await svc.update_memory(user_id=user_id, memory_id=memory_id, data=payload)
+                if not mem:
+                    return {"ok": False, "detail": "记忆不存在"}
+                return {"ok": True, "memory_id": memory_id}
+        return {"error": f"不支持的 mode: {mode}"}
 
     return lookup_tools + [
-        search_public_docs,
-        personal_rag_search,
-        web_search,
-        list_user_books,
         get_book_context,
-        save_memory,
-        recall_memory,
-        list_memories_by_type,
-        forget_memory,
-        update_memory,
-        extract_characters,
-        extract_locations,
-        extract_events,
-        create_character,
-        create_location,
-        create_scene_event,
-        update_foreshadowing,
-        update_plot_thread,
-        update_timeline,
-        polish_text,
-        rewrite_paragraph,
-        expand_text,
-        summarize_selected,
-        suggest_alternatives,
-        check_consistency,
-        check_grammar,
-        search_across_books,
+        transform_text,
+        review_text,
+        create_entities,
+        update_entity,
+        create_outline,
+        read_chapter_content,
+        write_chapter_content,
+        search,
+        manage_memory,
     ]
 
 
-def build_tool_node(session_factory, model_config: dict | None = None):
-    from langgraph.prebuilt import ToolNode
+def build_tools(session_factory, model_config: dict | None = None) -> list:
+    """构建并返回全部 Agent 工具列表（供 bind_tools 与 ToolNode 共用）。
 
+    Args:
+        session_factory: 数据库会话工厂。
+        model_config: 模型配置。
+
+    Returns:
+        工具实例列表。
+    """
+    from .tools.extend_outline_tool import build_extend_outline_tool
     from .tools.feedback_tools import _build_feedback_tools
     from .tools.generate_chapter_tool import build_generate_chapter_tool
-    from .tools.workflow_tools import build_workflow_tool
-    from .tools.extend_outline_tool import build_extend_outline_tool
+    from .tools.workflow_bridge_tools import build_workflow_bridge_tools
 
     tools = _build_agent_tools(session_factory, model_config=model_config)
     tools.append(build_generate_chapter_tool(session_factory, model_config=model_config))
-    tools.extend(build_workflow_tool(session_factory, model_config=model_config))
+    tools.extend(build_workflow_bridge_tools(session_factory, model_config=model_config))
     tools.append(build_extend_outline_tool(session_factory, model_config=model_config))
     tools.extend(_build_feedback_tools(session_factory, model_config=model_config).values())
+    return tools
+
+
+def build_tool_node(session_factory, model_config: dict | None = None, extra_tools=None):
+    from langgraph.prebuilt import ToolNode
+
+    tools = build_tools(session_factory, model_config=model_config)
+    if extra_tools:
+        tools.extend(extra_tools)
     logger.debug(f"[tool_node] 注册了 {len(tools)} 个工具")
     return ToolNode(tools)

@@ -1,9 +1,10 @@
 ﻿from typing import Annotated, Any
 
-from config.logging import get_logger
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
 from sqlalchemy import select
+
+from config.logging import get_logger
 
 from ..chapter_context import get_previous_chapter_context
 from ..subgraphs.generate_chapter_graph import (
@@ -27,15 +28,14 @@ def build_generate_chapter_tool(session_factory, model_config: dict | None = Non
         if instruction_hint:
             instruction = f"{instruction}\n\n创作提示：{instruction_hint}"
         async with session_factory() as session:
+            from domains.book.repository import CharacterRepository
+            from domains.world.repository import WorldRepository
             from models.book import (
                 Book,
                 Chapter,
                 ChapterContent,
                 Volume,
             )
-
-            from domains.book.repository import CharacterRepository
-            from domains.world.repository import WorldRepository
 
             book_stmt = select(Book).where(Book.id == book_id)
             book_result = await session.execute(book_stmt)
@@ -110,7 +110,7 @@ def build_generate_chapter_tool(session_factory, model_config: dict | None = Non
             plot_threads = await world_repo.list_plot_threads(book_id)
             active_threads = [
                 t for t in plot_threads
-                if t.status == "进行中"
+                if t.status == "active"
                 and (
                     t.start_chapter_id is None
                     or t.start_chapter_id <= chapter_id
@@ -145,7 +145,7 @@ def build_generate_chapter_tool(session_factory, model_config: dict | None = Non
                     "时间线：\n"
                     + "\n".join(
                         [
-                            f"- {ev.name}({ev.event_type}):{ev.description or ''}"
+                            f"- {ev.title}({ev.event_type}):{ev.content or ''}"
                             for ev in scene_events[:10]
                         ]
                     )

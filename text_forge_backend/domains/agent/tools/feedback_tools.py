@@ -1,9 +1,10 @@
 from typing import Annotated
 
-from config.logging import get_logger
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
 from sqlalchemy import select
+
+from config.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -151,7 +152,7 @@ def _build_feedback_tools(session_factory, model_config: dict | None = None):
                         {
                             "type": "foreshadowing_due",
                             "severity": "low",
-                            "message": f"{len(planted)} 个伏笔已埋下，建议安排回收",
+                            "message": f"{len(planted)} 个伏笔已埋下(planted)，建议安排回收",
                             "count": len(planted),
                         }
                     )

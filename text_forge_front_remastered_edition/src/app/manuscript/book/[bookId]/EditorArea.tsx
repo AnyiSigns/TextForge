@@ -11,6 +11,31 @@ export function EditorArea() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [wordCount, setWordCount] = useState(0);
+  const [selectedText, setSelectedText] = useState('');
+
+  const updateSelection = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    const start = el.selectionStart ?? 0;
+    const end = el.selectionEnd ?? 0;
+    setSelectedText(start === end ? '' : el.value.substring(start, end));
+  }, []);
+
+  const dispatchTransform = useCallback((mode: string) => {
+    if (!selectedText.trim()) return;
+    window.dispatchEvent(
+      new CustomEvent('textforge:transform-selection', { detail: { text: selectedText, mode } }),
+    );
+    setSelectedText('');
+  }, [selectedText]);
+
+  const dispatchReview = useCallback((mode: string) => {
+    if (!selectedText.trim()) return;
+    window.dispatchEvent(
+      new CustomEvent('textforge:review-selection', { detail: { text: selectedText, mode } }),
+    );
+    setSelectedText('');
+  }, [selectedText]);
 
   const {
     activeChapterId, activeChapterTitle, content, version,
@@ -81,20 +106,52 @@ export function EditorArea() {
           >
             <History size={12} /> 版本
           </button>
+          {activeChapterId && (
+            <>
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent('textforge:chapter-agent', { detail: { chapterId: activeChapterId, action: 'read' } }))}
+                className="flex items-center gap-1 h-7 px-3 rounded-md text-xs font-medium border border-border cursor-pointer bg-transparent hover:bg-muted"
+              >
+                让 Agent 接管本章
+              </button>
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent('textforge:chapter-agent', { detail: { chapterId: activeChapterId, action: 'write' } }))}
+                className="flex items-center gap-1 h-7 px-3 rounded-md text-xs font-medium border border-border cursor-pointer bg-transparent hover:bg-muted"
+              >
+                写入本章
+              </button>
+            </>
+          )}
         </div>
       </div>
 
       <div className="flex flex-1 min-h-0">
-        <div className={cn('flex-1 flex', showVersions && 'border-r border-border')}>
+        <div className={cn('relative flex-1 flex', showVersions && 'border-r border-border')}>
           <textarea
             ref={textareaRef}
             defaultValue={content}
             onChange={handleChange}
+            onSelect={updateSelection}
+            onMouseUp={updateSelection}
+            onKeyUp={updateSelection}
             placeholder="在此创作…"
             className="flex-1 w-full resize-none outline-none border-none p-6 text-[15px] leading-relaxed font-[var(--font-serif),serif] bg-background"
             spellCheck={false}
           />
         </div>
+
+        {selectedText.trim() && (
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 shadow-md">
+            <button onClick={() => dispatchTransform('polish')} className="h-6 px-2 rounded text-[11px] border-none cursor-pointer bg-transparent hover:bg-muted">润色</button>
+            <button onClick={() => dispatchTransform('expand')} className="h-6 px-2 rounded text-[11px] border-none cursor-pointer bg-transparent hover:bg-muted">扩写</button>
+            <button onClick={() => dispatchTransform('rewrite')} className="h-6 px-2 rounded text-[11px] border-none cursor-pointer bg-transparent hover:bg-muted">改写</button>
+            <button onClick={() => dispatchTransform('summarize')} className="h-6 px-2 rounded text-[11px] border-none cursor-pointer bg-transparent hover:bg-muted">摘要</button>
+            <button onClick={() => dispatchTransform('alternatives')} className="h-6 px-2 rounded text-[11px] border-none cursor-pointer bg-transparent hover:bg-muted">替代表达</button>
+            <span className="mx-0.5 h-3 w-px bg-border" />
+            <button onClick={() => dispatchReview('grammar')} className="h-6 px-2 rounded text-[11px] border-none cursor-pointer bg-transparent hover:bg-muted">语法</button>
+            <button onClick={() => dispatchReview('consistency')} className="h-6 px-2 rounded text-[11px] border-none cursor-pointer bg-transparent hover:bg-muted">一致性</button>
+          </div>
+        )}
 
         {showVersions && (
           <div className="w-[300px] shrink-0 overflow-y-auto">

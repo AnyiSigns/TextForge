@@ -202,7 +202,7 @@ async function saveLockedCards(
     await Promise.all(cards.map((c) => {
       const type = c.fields.find((f) => f.key === '类型')?.value ?? '支线';
       const desc = c.fields.find((f) => f.key === '描述')?.value ?? '';
-      return createPlotThread({ bookId, name: c.title, description: desc, status: '进行中', type } as Parameters<typeof createPlotThread>[0]);
+      return createPlotThread({ bookId, name: c.title, description: desc, status: 'active', type } as Parameters<typeof createPlotThread>[0]);
     }));
   } else if (step === 4) {
     // 大纲 → 卷+章

@@ -1,14 +1,18 @@
+import asyncio
 import json
 import uuid
 from datetime import datetime, timezone
 from typing import Annotated
 
 import openai
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from config.logging import get_logger
 from core.auth import get_current
 from core.model_factory import ModelFactory
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import StreamingResponse
 from models.book import Book, Chapter, Volume
 from models.conversation import Conversation, Message
 from schema.request.common import ChatRequest, CompressRequest, ReviewActionRequest
@@ -16,8 +20,6 @@ from schema.response.chat import HistoryResponse, MessagesResponse
 from shared.database import db_manager
 from shared.graph_store import graph_pool_manager
 from shared.redis import redis_client
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from .agent_state import UserAgentState
 from .graphs.agent_graph import build_user_agent_graph
@@ -431,16 +433,50 @@ async def stream_agent(
         config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 100}
 
         async def event_generator():
+            custom_queue: asyncio.Queue = asyncio.Queue()
+            custom_task = None
+
+            async def _pump_custom():
+                try:
+                    async for chunk in graph.astream(
+                        state, config=config, stream_mode="custom"
+                    ):
+                        data = chunk[1] if isinstance(chunk, tuple) else chunk
+                        if isinstance(data, dict):
+                            await custom_queue.put(data)
+                except Exception as exc:
+                    logger.warning(f"[custom-stream] 捕获工作流流式事件失败: {exc}")
+                finally:
+                    await custom_queue.put(None)
+
             try:
+                custom_task = asyncio.create_task(_pump_custom())
+
                 yield ":\n\n"
                 final_reply = ""
                 tool_called_this_turn = False
                 agent_think_buffer: list[str] = []
                 think_phase = True
                 think_started = False
+
+                def _drain_custom():
+                    out = []
+                    while not custom_queue.empty():
+                        item = custom_queue.get_nowait()
+                        if item is None:
+                            continue
+                        etype = item.get("event")
+                        if etype in ("node_start", "node_stream", "node_end", "node_fail"):
+                            out.append(
+                                f"data: {json.dumps({'type': etype, **item}, ensure_ascii=False)}\n\n"
+                            )
+                    return out
+
                 async for event in graph.astream_events(
                     state, config=config, version="v2"
                 ):
+                    for sse in _drain_custom():
+                        yield sse
                     event_type = event.get("event")
                     if event_type == "on_chat_model_stream":
                         chunk = event.get("data", {}).get("chunk")
@@ -487,6 +523,8 @@ async def stream_agent(
                             yield f"data: {json.dumps({'type': 'extend_outline', 'step': 'extend_outline', 'n': 0, 'total': 1}, ensure_ascii=False)}\n\n"
                         yield f"data: {json.dumps({'type': 'tool_start', 'tool': tool_name}, ensure_ascii=False)}\n\n"
                     elif event_type == "on_tool_end":
+                        for sse in _drain_custom():
+                            yield sse
                         tool_name = event.get("name", "")
                         output = event.get("data", {}).get("output", {})
                         if tool_name == "generate_chapter" and isinstance(output, dict):
@@ -496,10 +534,7 @@ async def stream_agent(
                         if tool_name == "generate_outline_extension" and isinstance(output, dict):
                             yield f"data: {json.dumps({'type': 'extend_outline', **output}, ensure_ascii=False)}\n\n"
                         if tool_name == "execute_workflow" and isinstance(output, dict):
-                            progress_events = output.get("progress_events", [])
-                            for prog in progress_events:
-                                event_name = prog.get("event", "progress")
-                                yield f"data: {json.dumps({'type': event_name, **{k: v for k, v in prog.items() if k != 'event'}}, ensure_ascii=False)}\n\n"
+                            # node_start/node_stream/node_end 已由自定义事件流实时推送，此处仅处理审核卡
                             if output.get("status") == "pending_review":
                                 node_results = output.get("node_results", [])
                                 if node_results:
@@ -514,17 +549,13 @@ async def stream_agent(
                                         "system_prompt": qc.get("system_prompt", ""),
                                     }
                                     yield f"data: {json.dumps(pending_review_data, ensure_ascii=False)}\n\n"
-                        if tool_name == "execute_workflow_node" and isinstance(
-                            output, dict
-                        ):
-                            node_id = output.get("node_id", "")
-                            node_label = output.get("node_label", "")
-                            yield f"data: {json.dumps({'type': 'node_start', 'node_id': node_id, 'label': node_label}, ensure_ascii=False)}\n\n"
-                            for se in output.get("stream_events", []):
-                                yield f"data: {json.dumps({'type': 'node_stream', 'node_id': se.get('node_id', ''), 'token': se.get('token', ''), 'index': se.get('index', 0)}, ensure_ascii=False)}\n\n"
-                            yield f"data: {json.dumps({'type': 'node_end', 'node_id': node_id, 'output_preview': output.get('output', '')[:500]}, ensure_ascii=False)}\n\n"
+                        if tool_name == "execute_workflow_node" and isinstance(output, dict):
+                            # node 生命周期事件已由自定义事件流实时推送
+                            pass
                         yield f"data: {json.dumps({'type': 'tool_end'}, ensure_ascii=False)}\n\n"
                     elif event_type == "on_chain_end":
+                        for sse in _drain_custom():
+                            yield sse
                         output = event.get("data", {}).get("output", {})
                         if isinstance(output, dict):
                             pending_review = output.get("pending_review")
@@ -540,6 +571,8 @@ async def stream_agent(
 
                         from langchain_core.messages import (
                             AIMessage as _AIMsg,
+                        )
+                        from langchain_core.messages import (
                             ToolMessage as _TMsg,
                         )
 
@@ -599,6 +632,12 @@ async def stream_agent(
                 logger.exception("stream agent 失败")
                 yield f"data: {json.dumps({'type': 'error', 'message': '服务器内部错误'}, ensure_ascii=False)}\n\n"
             finally:
+                if custom_task is not None:
+                    custom_task.cancel()
+                    try:
+                        await custom_task
+                    except (asyncio.CancelledError, Exception):
+                        pass
                 await cleanup()
 
         return StreamingResponse(

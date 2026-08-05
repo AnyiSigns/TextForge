@@ -7,6 +7,8 @@ interface AgentMessage {
   content: string;
   type?: string;
   token?: string;
+  label?: string;
+  note?: string;
 }
 
 interface AgentStatus {

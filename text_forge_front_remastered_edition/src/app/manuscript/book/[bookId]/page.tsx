@@ -7,6 +7,7 @@ import { cn } from '@/shared/lib/cn';
 import { useManuscriptStore } from './store';
 import { ChapterTree } from './ChapterTree';
 import { EditorArea } from './EditorArea';
+import { AgentDock } from '@/features/agent/AgentDock';
 
 export default function ManuscriptPage({ params }: { params: Promise<{ bookId: string }> }) {
   const { bookId: bookIdStr } = use(params);
@@ -58,6 +59,7 @@ export default function ManuscriptPage({ params }: { params: Promise<{ bookId: s
           <EditorArea />
         </main>
       </div>
+      <AgentDock />
     </div>
   );
 }

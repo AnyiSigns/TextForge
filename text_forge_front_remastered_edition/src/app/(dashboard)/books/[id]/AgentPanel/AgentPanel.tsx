@@ -5,9 +5,10 @@ import { ArrowUp, CircleStop, Plus, Shrink, BookOpen, PanelRightOpen, PanelRight
 import Link from 'next/link';
 import { cn } from '@/shared/lib/cn';
 import { useBookDetailStore } from '../store';
+import { useAgentSender } from '@/features/agent/useAgentSender';
 import * as agentApi from '@/shared/api/agent';
 import * as workflowApi from '@/shared/api/workflows';
-import type { SSEEvent, AgentConversation, AgentMessage } from '@/shared/api/types';
+import type { AgentConversation, AgentMessage } from '@/shared/api/types';
 import { ReviewCard } from './ReviewCard';
 import { ProposeCards } from './ProposeCards';
 import { AgentMemoryManager } from './AgentMemoryManager';
@@ -77,22 +78,8 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
   const [workflowList, setWorkflowList] = useState<workflowApi.Workflow[]>([]);
   const [sessionSearch, setSessionSearch] = useState('');
   const [draftByThreadId, setDraftByThreadId] = useState<Map<string, string>>(new Map());
-  const thinkingStartRef = useRef(0);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const abortRef = useRef<AbortController | null>(null);
-  const currentToolRef = useRef<Set<string>>(new Set());
-  const replyBufferRef = useRef('');
-
-  function notifyOutlineRefresh() {
-    if (currentToolRef.current.size === 0) return;
-    const hasOutline = Array.from(currentToolRef.current).some(
-      (t) => t.toLowerCase().includes('outline'),
-    );
-    if (hasOutline) {
-      window.dispatchEvent(new CustomEvent('textforge:refresh-outlines'));
-    }
-  }
+  const { sendMessage, abort, resume, messagesEndRef } = useAgentSender();
 
   const bookId = useBookDetailStore((s) => s.bookId);
   const book = useBookDetailStore((s) => s.book);
@@ -128,137 +115,6 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
   }, []);
 
   const showWorkflowSuggestions = input.trim().startsWith('用') && workflowList.length > 0;
-
-  const nearBottomRef = useRef(true);
-
-  useEffect(() => {
-    const el = messagesEndRef.current?.parentElement;
-    if (!el) return;
-    const onScroll = () => {
-      nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-    };
-    el.addEventListener('scroll', onScroll, { passive: true });
-    return () => el.removeEventListener('scroll', onScroll);
-  }, []);
-
-  useEffect(() => {
-    if (!nearBottomRef.current) return;
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [agentMessages, agentStatus]);
-
-  const handleSSEEvent = useCallback(
-    (event: SSEEvent) => {
-      switch (event.type) {
-        case 'think_start':
-          thinkingStartRef.current = Date.now();
-          setAgentStatus({ kind: 'thinking' });
-          break;
-        case 'token':
-          replyBufferRef.current += event.token || '';
-          updateAgentStreamToken(replyBufferRef.current);
-          break;
-        case 'agent_think_end':
-          setAgentStatus({ kind: 'idle' });
-          thinkingStartRef.current = 0;
-          break;
-        case 'tool_start':
-          setAgentStatus({ kind: 'working', label: '使用工具中...' });
-          currentToolRef.current.add(event.tool || '');
-          break;
-        case 'tool_end':
-          setAgentStatus({ kind: 'idle' });
-          break;
-        case 'node_start':
-          setAgentStatus({ kind: 'working', label: `正在执行: ${(event as any).label || (event as any).node_id || ''}` });
-          break;
-        case 'node_stream':
-          replyBufferRef.current += event.token || '';
-          updateAgentStreamToken(replyBufferRef.current);
-          break;
-        case 'node_end':
-          break;
-        case 'node_fail':
-          break;
-        case 'extend_outline':
-          setAgentStatus({ kind: 'working', label: '追加章节大纲中...' });
-          break;
-        case 'progress':
-          setAgentStatus({ kind: 'working', label: '生成章节中...' });
-          break;
-        case 'propose_cards':
-          setPendingReview(null);
-          setAgentStatus({ kind: 'working', label: '提议卡片中...' });
-          addAgentMessage({ role: 'assistant', content: '', type: 'propose-cards', token: JSON.stringify({ card_types: event.card_types, reason: event.reason, cards: event.cards }) });
-          if (event.card_types?.includes('world_setup') || event.card_types?.includes('character_intro')) {
-            setCreativePhase('worldbuilding');
-          } else if (event.card_types?.includes('plot_direction')) {
-            setCreativePhase('outlining');
-          }
-          break;
-        case 'review_card':
-          setAgentStatus({ kind: 'working', label: '等待审核...' });
-          setPendingReview(event as unknown as Record<string, unknown>);
-          addAgentMessage({ role: 'assistant', content: '', type: 'review-card', token: JSON.stringify(event) });
-          break;
-        case 'suggestions':
-          break;
-      }
-    },
-    [addAgentMessage, updateAgentStreamToken, setPendingReview, setAgentStatus, setCreativePhase],
-  );
-
-  const sendMessage = useCallback(async (msg: string) => {
-    if (!msg.trim() || agentStreaming) return;
-
-    addAgentMessage({ role: 'user', content: msg });
-    nearBottomRef.current = true;
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-
-    let threadId = agentThreadId;
-    if (!threadId) {
-      try {
-        const session = await agentApi.startAgentSession(bookId || undefined);
-        threadId = session.thread_id;
-        setAgentThreadId(threadId);
-      } catch {
-        addAgentMessage({ role: 'assistant', content: '启动 Agent 会话失败，请重试。', type: 'error' });
-        return;
-      }
-    }
-
-    setAgentStreaming(true);
-    const abort = new AbortController();
-    abortRef.current = abort;
-    replyBufferRef.current = '';
-
-    addAgentMessage({ role: 'assistant', content: '', type: 'streaming' });
-    currentToolRef.current.clear();
-
-    try {
-      await agentApi.streamAgent(
-        threadId,
-        msg,
-        (event: SSEEvent) => handleSSEEvent(event),
-        (reply) => {
-          if (reply) {
-            replyBufferRef.current = reply;
-            updateAgentStreamToken(reply);
-          }
-          setAgentStreaming(false);
-          setAgentStatus({ kind: 'idle' });
-          notifyOutlineRefresh();
-        },
-        (err) => {
-          addAgentMessage({ role: 'assistant', content: err, type: 'error' });
-          setAgentStreaming(false);
-          setAgentStatus({ kind: 'error', message: err });
-        },
-        abort.signal,
-      );
-    } catch {
-      setAgentStreaming(false);
-    }
-  }, [agentStreaming, book, agentThreadId, bookId, addAgentMessage, setAgentStreaming, setAgentThreadId, handleSSEEvent]);
 
   const handleSend = useCallback(() => {
     const msg = input.trim();
@@ -311,7 +167,7 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
   }, [sendMessage]);
 
   const handleAbort = () => {
-    abortRef.current?.abort();
+    abort();
     setAgentStreaming(false);
     setAgentStatus({ kind: 'idle' });
     useBookDetailStore.setState((state) => ({
@@ -386,21 +242,7 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
     setPendingReview(null);
     try {
       await agentApi.submitReviewAction(agentThreadId, action, editedContent);
-      setAgentStreaming(true);
-      const abort = new AbortController();
-      abortRef.current = abort;
-      addAgentMessage({ role: 'assistant', content: '', type: 'streaming' });
-      currentToolRef.current.clear();
-      await agentApi.resumeAgent(
-        agentThreadId,
-        (event) => handleSSEEvent(event),
-        () => {
-          setAgentStreaming(false);
-          notifyOutlineRefresh();
-        },
-        (err) => { addAgentMessage({ role: 'assistant', content: err, type: 'error' }); setAgentStreaming(false); },
-        abort.signal,
-      );
+      await resume();
     } catch {
       setAgentStreaming(false);
     }
@@ -462,24 +304,33 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
                   {book ? `正在创作《${book.title}》` : '输入消息开始对话'}
                 </div>
                 {book && (
-                  <div className="flex flex-wrap justify-center gap-1.5">
-                    {SUGGESTIONS.map((s) => (
-                      <button
-                        key={s}
-                        onClick={() => {
-                          if (s === '分析创作状态并提议卡片') {
-                            void sendMessage('请分析当前书籍的创作状态，判断当前处于哪个创作阶段（initializing/worldbuilding/outlining/drafting/revising），并提议需要创建的卡片类型（world_setup/plot_direction/character_intro/location_card/foreshadow_card/char_dialogue）。输出JSON格式：{"phase":"...","proposals":[{"type":"...","reason":"..."}]}');
-                          } else {
-                            setInput(s);
-                            inputRef.current?.focus();
-                          }
-                        }}
-                        className="text-[11px] px-2.5 py-1 rounded-full border border-border bg-transparent text-muted-foreground hover:text-foreground hover:border-foreground/30 cursor-pointer transition-colors"
-                      >
-                        {s}
-                      </button>
-                    ))}
-                  </div>
+                  <>
+                    <div className="flex flex-wrap justify-center gap-1.5">
+                      {SUGGESTIONS.map((s) => (
+                        <button
+                          key={s}
+                          onClick={() => {
+                            if (s === '分析创作状态并提议卡片') {
+                              void sendMessage('请分析当前书籍的创作状态，判断当前处于哪个创作阶段（initializing/worldbuilding/outlining/drafting/revising），并提议需要创建的卡片类型（world_setup/plot_direction/character_intro/location_card/foreshadow_card/char_dialogue）。输出JSON格式：{"phase":"...","proposals":[{"type":"...","reason":"..."}]}');
+                            } else {
+                              setInput(s);
+                              inputRef.current?.focus();
+                            }
+                          }}
+                          className="text-[11px] px-2.5 py-1 rounded-full border border-border bg-transparent text-muted-foreground hover:text-foreground hover:border-foreground/30 cursor-pointer transition-colors"
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex flex-wrap justify-center gap-1.5">
+                      <button onClick={() => void sendMessage('请调用 search 工具（mode="web"）联网搜索，获取最新外部信息。')} className="text-[11px] px-2.5 py-1 rounded-full border border-border bg-transparent text-muted-foreground hover:text-foreground hover:border-foreground/30 cursor-pointer transition-colors">联网搜索</button>
+                      <button onClick={() => void sendMessage('请调用 search 工具（mode="docs"）在公开文档库中做语义检索，寻找相关资料。')} className="text-[11px] px-2.5 py-1 rounded-full border border-border bg-transparent text-muted-foreground hover:text-foreground hover:border-foreground/30 cursor-pointer transition-colors">检索知识库</button>
+                      <button onClick={() => void sendMessage('请调用 manage_memory 工具（mode="save"）保存本次创作中值得沉淀的偏好/设定要点作为长期记忆。')} className="text-[11px] px-2.5 py-1 rounded-full border border-border bg-transparent text-muted-foreground hover:text-foreground hover:border-foreground/30 cursor-pointer transition-colors">保存记忆</button>
+                      <button onClick={() => void sendMessage('请调用 manage_memory 工具（mode="recall"）调取与本作品相关的长期记忆。')} className="text-[11px] px-2.5 py-1 rounded-full border border-border bg-transparent text-muted-foreground hover:text-foreground hover:border-foreground/30 cursor-pointer transition-colors">调取记忆</button>
+                      <button onClick={() => void sendMessage('请调用 update_entity 工具（kind="timeline"）更新时间线事件。')} className="text-[11px] px-2.5 py-1 rounded-full border border-border bg-transparent text-muted-foreground hover:text-foreground hover:border-foreground/30 cursor-pointer transition-colors">更新时间线</button>
+                    </div>
+                  </>
                 )}
               </div>
             )}

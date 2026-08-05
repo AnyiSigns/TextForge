@@ -1,6 +1,7 @@
 from typing import Annotated, TypedDict
 
 from langgraph.graph import add_messages
+
 from shared.utils import merge_dicts as _merge_dicts
 
 
@@ -22,3 +23,4 @@ class UserAgentState(TypedDict):
     workflow_node_outputs: Annotated[dict, _merge_dicts]
     personal_rag_results: list | None
     terminate_chapter_id: int | None
+    pending_workflow: dict | None  # 由 execute_workflow/execute_workflow_node 工具写入，交由原生 workflow_runner 节点执行
