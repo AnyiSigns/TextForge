@@ -86,6 +86,7 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
   const agentMessages = useBookDetailStore((s) => s.agentMessages);
   const agentStreaming = useBookDetailStore((s) => s.agentStreaming);
   const agentStatus = useBookDetailStore((s) => s.agentStatus);
+  const agentToolLog = useBookDetailStore((s) => s.agentToolLog);
   const agentThreadId = useBookDetailStore((s) => s.agentThreadId);
   const pendingReview = useBookDetailStore((s) => s.pendingReview);
   const addAgentMessage = useBookDetailStore((s) => s.addAgentMessage);
@@ -188,6 +189,7 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
     setAgentThreadId(null);
     useBookDetailStore.setState((state) => ({
       agentMessages: state.agentMessages.filter((m) => m.type !== 'streaming'),
+      agentToolLog: [],
     }));
     setAgentStreaming(false);
     setAgentStatus({ kind: 'idle' });
@@ -203,7 +205,7 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
       });
     }
     setAgentThreadId(s.threadId);
-    useBookDetailStore.setState({ agentMessages: [], agentStreaming: false, agentStatus: { kind: 'idle' } });
+    useBookDetailStore.setState({ agentMessages: [], agentStreaming: false, agentStatus: { kind: 'idle' }, agentToolLog: [] });
     setInput(draftByThreadId.get(s.threadId) || '');
     try {
       const msgs = await agentApi.fetchAgentMessages(s.id);
@@ -253,6 +255,58 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
   );
 
   const placeholderText = book ? '输入创作指令…' : '输入消息…';
+
+  const renderAgentMessage = (msg: (typeof agentMessages)[number], key: number) => {
+    if (msg.type === 'review-card' && msg.token) {
+      const reviewData = safeParseJSON(msg.token);
+      return reviewData ? (
+        <ReviewCard key={key} data={reviewData as Record<string, unknown>} onAction={handleReviewAction} />
+      ) : null;
+    }
+    if (msg.type === 'propose-cards' && msg.token) {
+      const cardData = safeParseJSON(msg.token);
+      return cardData ? <ProposeCards key={key} data={cardData as Record<string, unknown>} /> : null;
+    }
+    if (msg.type === 'streaming') {
+      const isLastStreaming = msg.type === 'streaming';
+      return (
+        <div key={key} className="flex justify-start">
+          <div className="max-w-[88%] px-3 py-2 border-l-2 border-foreground/10 text-[13px] leading-relaxed">
+            {msg.content ? (
+              <MarkdownContent>{msg.content}</MarkdownContent>
+            ) : isLastStreaming && agentStreaming ? (
+              agentStatus.kind === 'thinking' ? (
+                <span className="thinking-shimmer-text">正在酝酿</span>
+              ) : (
+                <span className="inline-flex gap-0.5">
+                  <span className="w-1 h-1 rounded-full bg-foreground/30 animate-pulse" style={{ animationDelay: '0ms' }} />
+                  <span className="w-1 h-1 rounded-full bg-foreground/30 animate-pulse" style={{ animationDelay: '200ms' }} />
+                  <span className="w-1 h-1 rounded-full bg-foreground/30 animate-pulse" style={{ animationDelay: '400ms' }} />
+                </span>
+              )
+            ) : null}
+          </div>
+        </div>
+      );
+    }
+    if (msg.type === 'error') {
+      return (
+        <div key={key} className="text-[11px] text-destructive/80 px-3 py-1.5 bg-destructive/[0.04] border border-destructive/10">{msg.content}</div>
+      );
+    }
+    return (
+      <div key={key} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+        <div className={cn(
+          'max-w-[88%] text-[13px] leading-relaxed',
+          msg.role === 'user'
+            ? 'rounded-2xl bg-[color-mix(in_srgb,var(--foreground)_12%,transparent)] text-foreground/85 backdrop-blur-sm px-3.5 py-1.5'
+            : 'px-3 py-2 border-l-2 border-foreground/10 agent-markdown',
+        )}>
+          {msg.role === 'user' ? msg.content : <MarkdownContent>{msg.content}</MarkdownContent>}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="ide-agent">
@@ -335,61 +389,35 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
               </div>
             )}
 
-            {agentMessages.map((msg, i) => {
-              if (msg.type === 'review-card' && msg.token) {
-                const reviewData = safeParseJSON(msg.token);
-                return reviewData ? (
-                  <ReviewCard key={i} data={reviewData as Record<string, unknown>} onAction={handleReviewAction} />
-                ) : null;
-              }
-              if (msg.type === 'propose-cards' && msg.token) {
-                const cardData = safeParseJSON(msg.token);
-                return cardData ? (
-                  <ProposeCards key={i} data={cardData as Record<string, unknown>} />
-                ) : null;
-              }
-              if (msg.type === 'streaming') {
-                const isLastStreaming = i === agentMessages.length - 1;
-                return (
-                  <div key={i} className="flex justify-start">
-                    <div className="max-w-[88%] px-3 py-2 border-l-2 border-foreground/10 text-[13px] leading-relaxed">
-                      {msg.content ? (
-                        <MarkdownContent>{msg.content}</MarkdownContent>
-                      ) : isLastStreaming && agentStreaming && agentStatus.kind !== 'thinking' ? (
-                        <span className="inline-flex gap-0.5">
-                          <span className="w-1 h-1 rounded-full bg-foreground/30 animate-pulse" style={{ animationDelay: '0ms' }} />
-                          <span className="w-1 h-1 rounded-full bg-foreground/30 animate-pulse" style={{ animationDelay: '200ms' }} />
-                          <span className="w-1 h-1 rounded-full bg-foreground/30 animate-pulse" style={{ animationDelay: '400ms' }} />
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-                );
-              }
-              if (msg.type === 'error') {
-                return (
-                  <div key={i} className="text-[11px] text-destructive/80 px-3 py-1.5 bg-destructive/[0.04] border border-destructive/10">{msg.content}</div>
-                );
-              }
+            {agentMessages
+              .filter((m) => m.type !== 'streaming')
+              .map((msg, idx) => renderAgentMessage(msg, idx))}
+            {agentToolLog.length > 0 && (() => {
+              const toolsPending =
+                agentToolLog.filter((e) => e.status === 'start').length -
+                  agentToolLog.filter((e) => e.status === 'end').length >
+                0;
+              const running = agentStreaming && toolsPending;
               return (
-                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={cn(
-                    'max-w-[88%] text-[13px] leading-relaxed',
-                    msg.role === 'user'
-                      ? 'rounded-2xl bg-[color-mix(in_srgb,var(--foreground)_12%,transparent)] text-foreground/85 backdrop-blur-sm px-3.5 py-1.5'
-                      : 'px-3 py-2 border-l-2 border-foreground/10 agent-markdown',
-                  )}>
-                    {msg.role === 'user' ? msg.content : <MarkdownContent>{msg.content}</MarkdownContent>}
-                  </div>
+                <div className="mx-1 mb-1 flex items-center gap-2 rounded-lg border border-border/40 bg-background/40 px-3 py-1.5 text-[11px]">
+                  {running ? (
+                    <span className="thinking-shimmer-text">工具调用中</span>
+                  ) : (
+                    <>
+                      <span className="text-foreground/60">✓</span>
+                      <span>工具调用完成</span>
+                    </>
+                  )}
                 </div>
               );
-            })}
+            })()}
+            {agentMessages
+              .filter((m) => m.type === 'streaming')
+              .map((msg, idx) => renderAgentMessage(msg, idx))}
             <div ref={messagesEndRef} />
-            {(agentStatus.kind === 'thinking' || agentStatus.kind === 'working') && (
+            {agentStatus.kind === 'working' && agentStatus.label && (
               <div className="px-3 py-1.5 text-[11px]">
-                <span className="thinking-shimmer-text">
-                  {agentStatus.kind === 'thinking' ? '正在酝酿' : agentStatus.label}
-                </span>
+                <span className="thinking-shimmer-text">{agentStatus.label}</span>
               </div>
             )}
             {agentStatus.kind === 'error' && (

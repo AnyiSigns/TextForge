@@ -9,7 +9,7 @@ from core.model_factory import ModelFactory
 from shared.utils import truncate_text
 
 from .agent_state import UserAgentState
-from .context_manager import COMPRESS_THRESHOLD
+from .context_manager import _should_compress
 
 logger = get_logger(__name__)
 
@@ -92,7 +92,10 @@ async def agent_call(state: UserAgentState) -> dict[str, Any]:
 
     compressed = state.get("compressed_context")
     if compressed:
-        system_prompt += f"\n\n历史对话压缩摘要：{truncate_text(compressed)}"
+        system_prompt += (
+            f"\n\n历史对话压缩摘要：{truncate_text(compressed)}"
+            f"（仅供你内部参考，严禁原样转述或展示给用户）"
+        )
 
     if state.get("previous_chapter_summary"):
         system_prompt += f"\n\n上一章摘要：{state['previous_chapter_summary']}"
@@ -117,11 +120,15 @@ async def agent_call(state: UserAgentState) -> dict[str, Any]:
 
     full_content = ""
     full_reasoning = ""
-    tool_call_data: list[dict] = []
+    # 累积 AIMessageChunk，由 langchain 原生合并并解析 tool_calls，
+    # 避免手动拼接 args 字符串在流式分片时被截断成空字典
+    # （导致必填参数缺失、触发 "mode/title: Field required" 并陷入工具死循环）。
+    accumulated = None
 
     async for chunk in bound_llm.astream(
         [SystemMessage(system_prompt)] + state["messages"]
     ):
+        accumulated = chunk if accumulated is None else accumulated + chunk
         full_content += chunk.content or ""
         reasoning = getattr(chunk, "reasoning_content", None) or (
             chunk.additional_kwargs or {}
@@ -129,34 +136,25 @@ async def agent_call(state: UserAgentState) -> dict[str, Any]:
         if reasoning:
             full_reasoning += reasoning
 
-        if hasattr(chunk, "tool_call_chunks") and chunk.tool_call_chunks:
-            for tc in chunk.tool_call_chunks:
-                idx = tc.get("index", 0)
-                while len(tool_call_data) <= idx:
-                    tool_call_data.append({"name": "", "args": "", "id": None})
-                if tc.get("name"):
-                    tool_call_data[idx]["name"] += tc["name"]
-                if tc.get("args"):
-                    tool_call_data[idx]["args"] += tc["args"]
-                if tc.get("id"):
-                    tool_call_data[idx]["id"] = tc["id"]
-
     additional_kwargs: dict = {}
     if full_reasoning:
         additional_kwargs["reasoning_content"] = full_reasoning
 
-    result = AIMessage(content=full_content, additional_kwargs=additional_kwargs)
-
+    # 优先使用 langchain 原生解析出的 tool_calls（args 已是正确的 dict，不再手动 json.loads）
     tool_calls: list[dict] = []
-    for tc in tool_call_data:
-        if tc["name"] and tc["args"]:
+    raw_tool_calls = getattr(accumulated, "tool_calls", None) or []
+    for tc in raw_tool_calls:
+        name = tc.get("name")
+        args = tc.get("args")
+        if isinstance(args, str):
             try:
-                parsed_args = json.loads(tc["args"])
+                args = json.loads(args) if args.strip() else {}
             except (json.JSONDecodeError, TypeError):
-                parsed_args = {}
-            tool_calls.append(
-                {"name": tc["name"], "args": parsed_args, "id": tc["id"] or ""}
-            )
+                args = {}
+        if name and isinstance(args, dict):
+            tool_calls.append({"name": name, "args": args, "id": tc.get("id") or ""})
+
+    result = AIMessage(content=full_content, additional_kwargs=additional_kwargs)
     if tool_calls:
         result.tool_calls = tool_calls
         logger.debug(
@@ -190,7 +188,7 @@ def agent_router(state: UserAgentState) -> str:
 
 
 def quality_gate_router(state: UserAgentState) -> str:
-    """工具执行后路由：检查是否需要质量审核或上下文压缩。
+    """工具执行后路由：检查是否需要质量审核、是否陷入工具失败死循环，或是否需要上下文压缩。
 
     Args:
         state: Agent 状态。
@@ -201,9 +199,44 @@ def quality_gate_router(state: UserAgentState) -> str:
     pending_review = state.get("pending_review")
     if pending_review:
         return END
-    if len(state.get("messages", [])) > COMPRESS_THRESHOLD:
+
+    # 工具连续失败保护：空参数/报错会导致模型无限重试并不断触发上下文压缩，
+    # 连续 3 次工具失败直接终止本次图执行，避免死循环与无意义压缩。
+    messages = state.get("messages", [])
+    fail_streak = 0
+    for msg in reversed(messages):
+        if isinstance(msg, ToolMessage):
+            if _is_tool_error(msg):
+                fail_streak += 1
+            else:
+                break
+        else:
+            break
+    if fail_streak >= 3:
+        logger.warning(f"[quality_gate_router] 检测到连续 3 次工具失败，终止循环以防止无限压缩")
+        return END
+
+    if _should_compress(state):
         return "compress"
     return "agent"
+
+
+def _is_tool_error(msg: ToolMessage) -> bool:
+    """判断 ToolMessage 是否代表工具执行失败。
+
+    Args:
+        msg: 工具返回的 ToolMessage。
+
+    Returns:
+        是否失败。
+    """
+    content = msg.content
+    if isinstance(content, dict):
+        return bool(content.get("error"))
+    if isinstance(content, str):
+        low = content.lower()
+        return "error" in low or "field required" in low or "could not find tool" in low
+    return False
 
 
 async def quality_gate_node(state: UserAgentState) -> dict[str, Any]:

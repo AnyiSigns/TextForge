@@ -458,6 +458,8 @@ async def stream_agent(
                 agent_think_buffer: list[str] = []
                 think_phase = True
                 think_started = False
+                expect_think_reset = False
+                in_compress = False
 
                 def _drain_custom():
                     out = []
@@ -523,6 +525,7 @@ async def stream_agent(
                             yield f"data: {json.dumps({'type': 'extend_outline', 'step': 'extend_outline', 'n': 0, 'total': 1}, ensure_ascii=False)}\n\n"
                         yield f"data: {json.dumps({'type': 'tool_start', 'tool': tool_name}, ensure_ascii=False)}\n\n"
                     elif event_type == "on_tool_end":
+                        expect_think_reset = True
                         for sse in _drain_custom():
                             yield sse
                         tool_name = event.get("name", "")
@@ -553,7 +556,21 @@ async def stream_agent(
                             # node 生命周期事件已由自定义事件流实时推送
                             pass
                         yield f"data: {json.dumps({'type': 'tool_end'}, ensure_ascii=False)}\n\n"
+                    elif event_type == "on_chain_start":
+                        if event.get("name") == "compress":
+                            in_compress = True
+                    elif event_type == "on_chat_model_start":
+                        # 工具执行完后，主 agent 模型会再次被调用（携带工具结果重新推理）。
+                        # 此时复位 think 阶段，使第二次推理也能正确发出 think_start / agent_think_end。
+                        # 排除压缩节点(auto_compress_node)内部的子 LLM 调用，避免误触发假思考事件。
+                        if expect_think_reset and not in_compress:
+                            think_phase = True
+                            think_started = False
+                            agent_think_buffer.clear()
+                            expect_think_reset = False
                     elif event_type == "on_chain_end":
+                        if event.get("name") == "compress":
+                            in_compress = False
                         for sse in _drain_custom():
                             yield sse
                         output = event.get("data", {}).get("output", {})

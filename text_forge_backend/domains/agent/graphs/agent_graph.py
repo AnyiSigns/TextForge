@@ -1,3 +1,5 @@
+from functools import partial
+
 from langgraph.graph import StateGraph
 
 from ..agent_nodes import (
@@ -27,7 +29,7 @@ def build_user_agent_graph(session_factory, model_config: dict | None = None, ch
     builder.add_node("tool_calls", tool_node)
     builder.add_node("workflow_runner", workflow_runner_node)
     builder.add_node("quality_gate", quality_gate_node)
-    builder.add_node("compress", auto_compress_node)
+    builder.add_node("compress", partial(auto_compress_node, session_factory=session_factory))
     builder.set_entry_point("agent")
     builder.add_conditional_edges("agent", _workflow_router)
     builder.add_edge("tool_calls", "quality_gate")

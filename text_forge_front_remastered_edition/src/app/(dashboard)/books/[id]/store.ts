@@ -17,6 +17,13 @@ interface AgentStatus {
   label?: string;
 }
 
+interface AgentToolLogEntry {
+  id: string;
+  seq: number;
+  status: 'start' | 'end';
+  ts: number;
+}
+
 interface BookDetailState {
   bookId: number;
   book: { id: number; title: string } | null;
@@ -36,6 +43,7 @@ interface BookDetailState {
   agentMessages: AgentMessage[];
   agentStreaming: boolean;
   agentStatus: AgentStatus;
+  agentToolLog: AgentToolLogEntry[];
   agentThreadId: string | null;
   pendingReview: Record<string, unknown> | null;
 
@@ -54,6 +62,9 @@ interface BookDetailState {
   setAgentThreadId: (id: string | null) => void;
   setAgentStreaming: (v: boolean) => void;
   setAgentStatus: (status: AgentStatus) => void;
+  pushToolLog: (entry: { status: 'start' | 'end' }) => void;
+  clearToolLog: () => void;
+  commitStreamingMessage: () => void;
   setPendingReview: (review: Record<string, unknown> | null) => void;
   setAgentContext: (context: string) => void;
   addAgentMessage: (msg: AgentMessage) => void;
@@ -81,6 +92,7 @@ export const useBookDetailStore = create<BookDetailState>((set) => ({
   agentMessages: [],
   agentStreaming: false,
   agentStatus: { kind: 'idle' },
+  agentToolLog: [],
   agentThreadId: null,
   pendingReview: null,
 
@@ -101,6 +113,36 @@ export const useBookDetailStore = create<BookDetailState>((set) => ({
   setAgentThreadId: (id) => set({ agentThreadId: id }),
   setAgentStreaming: (v) => set({ agentStreaming: v }),
   setAgentStatus: (status) => set({ agentStatus: status }),
+  pushToolLog: (entry) =>
+    set((state) => ({
+      agentToolLog: [
+        ...state.agentToolLog,
+        {
+          ...entry,
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          seq: state.agentToolLog.length + 1,
+          ts: Date.now(),
+        },
+      ],
+    })),
+  clearToolLog: () => set({ agentToolLog: [] }),
+  commitStreamingMessage: () =>
+    set((state) => {
+      const messages = [...state.agentMessages];
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const m = messages[i];
+        if (m.type === 'streaming') {
+          if (m.content && m.content.trim()) {
+            messages[i] = { ...m, type: 'assistant' };
+          } else {
+            messages.splice(i, 1);
+          }
+          break;
+        }
+        break;
+      }
+      return { agentMessages: messages };
+    }),
   setPendingReview: (review) => set({ pendingReview: review }),
   setAgentContext: (context: string) => {
     set((state) => ({

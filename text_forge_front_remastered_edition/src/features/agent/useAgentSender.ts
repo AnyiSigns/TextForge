@@ -19,6 +19,10 @@ export function useAgentSender() {
   const updateAgentStreamToken = useBookDetailStore((s) => s.updateAgentStreamToken);
   const setAgentStreaming = useBookDetailStore((s) => s.setAgentStreaming);
   const setAgentStatus = useBookDetailStore((s) => s.setAgentStatus);
+  const agentToolLog = useBookDetailStore((s) => s.agentToolLog);
+  const pushToolLog = useBookDetailStore((s) => s.pushToolLog);
+  const clearToolLog = useBookDetailStore((s) => s.clearToolLog);
+  const commitStreamingMessage = useBookDetailStore((s) => s.commitStreamingMessage);
   const setAgentThreadId = useBookDetailStore((s) => s.setAgentThreadId);
   const setPendingReview = useBookDetailStore((s) => s.setPendingReview);
   const setCreativePhase = useBookDetailStore((s) => s.setCreativePhase);
@@ -52,11 +56,12 @@ export function useAgentSender() {
           thinkingStartRef.current = 0;
           break;
         case 'tool_start':
-          setAgentStatus({ kind: 'working', label: '使用工具中...' });
+          pushToolLog({ status: 'start' });
+          commitStreamingMessage();
           currentToolRef.current.add(event.tool || '');
           break;
         case 'tool_end':
-          setAgentStatus({ kind: 'idle' });
+          pushToolLog({ status: 'end' });
           break;
         case 'node_start':
           setAgentStatus({ kind: 'working', label: `正在执行: ${(event as any).label || (event as any).node_id || ''}` });
@@ -103,7 +108,7 @@ export function useAgentSender() {
           break;
       }
     },
-    [addAgentMessage, updateAgentStreamToken, setPendingReview, setAgentStatus, setCreativePhase],
+    [addAgentMessage, updateAgentStreamToken, setPendingReview, setAgentStatus, setCreativePhase, pushToolLog, clearToolLog, commitStreamingMessage],
   );
 
   const sendMessage = useCallback(
@@ -133,6 +138,7 @@ export function useAgentSender() {
 
       addAgentMessage({ role: 'assistant', content: '', type: 'streaming' });
       currentToolRef.current.clear();
+      clearToolLog();
 
       try {
         await agentApi.streamAgent(
@@ -159,7 +165,7 @@ export function useAgentSender() {
         setAgentStreaming(false);
       }
     },
-    [agentStreaming, agentThreadId, bookId, addAgentMessage, setAgentStreaming, setAgentThreadId, handleSSEEvent, setAgentStatus, updateAgentStreamToken, notifyOutlineRefresh],
+    [agentStreaming, agentThreadId, bookId, addAgentMessage, setAgentStreaming, setAgentThreadId, handleSSEEvent, setAgentStatus, updateAgentStreamToken, notifyOutlineRefresh, clearToolLog, pushToolLog, commitStreamingMessage],
   );
 
   const abort = useCallback(() => {
@@ -174,6 +180,7 @@ export function useAgentSender() {
     abortRef.current = abort;
     addAgentMessage({ role: 'assistant', content: '', type: 'streaming' });
     currentToolRef.current.clear();
+    clearToolLog();
     try {
       await agentApi.resumeAgent(
         threadId,
@@ -191,7 +198,7 @@ export function useAgentSender() {
     } catch {
       setAgentStreaming(false);
     }
-  }, [agentThreadId, addAgentMessage, handleSSEEvent, notifyOutlineRefresh, setAgentStreaming]);
+  }, [agentThreadId, addAgentMessage, handleSSEEvent, notifyOutlineRefresh, setAgentStreaming, clearToolLog]);
 
   useEffect(() => {
     const el = messagesEndRef.current?.parentElement;
@@ -206,7 +213,7 @@ export function useAgentSender() {
   useEffect(() => {
     if (!nearBottomRef.current) return;
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [agentMessages, agentStatus]);
+  }, [agentMessages, agentStatus, agentToolLog]);
 
   return { sendMessage, abort, resume, messagesEndRef };
 }
