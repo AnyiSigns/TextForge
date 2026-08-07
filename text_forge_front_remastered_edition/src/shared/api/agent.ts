@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import { getAccessToken } from '@/shared/stores/authStore';
+import { authedFetch } from './authFetch';
 import { fetchModelConfig } from '@/shared/api/models';
 import { readSSE } from './sse';
 import type { SSEEvent, AgentConversation, AgentMessage } from './types';
@@ -51,14 +51,11 @@ export async function streamAgent(
   abortSignal?: AbortSignal,
   bookId?: number,
 ): Promise<void> {
-  const token = getAccessToken();
   const modelConfigData = await getModelConfigData();
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res = await fetch(`/api/agent/stream/${threadId}`, {
+  const res = await authedFetch(`/api/agent/stream/${threadId}`, {
     method: 'POST',
-    headers,
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       thread_id: threadId,
       message,
@@ -158,14 +155,11 @@ export async function streamCompress(
   threadId: string,
   onEvent: (event: SSEEvent) => void,
 ): Promise<void> {
-  const token = getAccessToken();
   const modelConfigData = await getModelConfigData();
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res = await fetch(`/api/agent/compress`, {
+  const res = await authedFetch(`/api/agent/compress`, {
     method: 'POST',
-    headers,
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ thread_id: threadId, model_config_data: modelConfigData }),
   });
   if (!res.ok) throw new Error('Agent 请求失败');

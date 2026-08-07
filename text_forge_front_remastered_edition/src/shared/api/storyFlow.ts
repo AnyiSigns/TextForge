@@ -1,7 +1,7 @@
 // 剧情流 REST/SSE 封装，统一对接后端 /api/story-flows 接口。
 // SSE 事件命名与 agent 流隔离：scene_stream / scene_done / done / error。
 import { apiClient } from './client';
-import { getAccessToken } from '@/shared/stores/authStore';
+import { authedFetch } from './authFetch';
 import { readSSE } from './sse';
 
 export interface StoryFlowOption {
@@ -75,13 +75,9 @@ async function streamStoryFlow(
   callbacks: StoryFlowStreamCallbacks,
   abortSignal?: AbortSignal,
 ): Promise<void> {
-  const token = getAccessToken();
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) headers.Authorization = `Bearer ${token}`;
-
-  const res = await fetch(`/api${url}`, {
+  const res = await authedFetch(`/api${url}`, {
     method: 'POST',
-    headers,
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
     signal: abortSignal,
   });
