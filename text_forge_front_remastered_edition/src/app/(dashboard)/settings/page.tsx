@@ -21,6 +21,8 @@ import {
   removeThemeBackground,
   resetAll,
 } from '@/lib/storage/themeBackground';
+import { PageContainer } from '@/shared/ui/PageContainer';
+import { PageHeader } from '@/shared/ui/PageHeader';
 
 const TEXT_ROLES: { key: string; label: string; desc: string }[] = [
   { key: 'main', label: '主模型', desc: '通用生成' },
@@ -359,18 +361,14 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="flex items-center gap-3 mb-6 px-6 pt-6">
-        <div className="w-8 h-8 rounded-lg bg-foreground/5 flex items-center justify-center">
-          <Settings size={18} className="text-foreground/70" />
-        </div>
-        <div>
-          <h1 className="text-base font-semibold">设置</h1>
-          <p className="text-[11px] text-muted-foreground">管理你的个人资料、界面外观与模型配置</p>
-        </div>
-      </div>
+    <PageContainer>
+      <PageHeader
+        icon={Settings}
+        title="设置"
+        description="管理你的个人资料、界面外观与模型配置"
+      />
 
-      <div className="px-6">
+      <div className="px-6 pb-5">
         <div className="flex gap-1 mb-6">
           {TABS.map((tab) => {
             const Icon = tab.icon;
@@ -880,6 +878,6 @@ export default function SettingsPage() {
           </div>
         )}
       </div>
-    </div>
+    </PageContainer>
   );
 }

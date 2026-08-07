@@ -2,13 +2,12 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { use } from 'react';
-import { ArrowLeft, Upload, Trash2 } from 'lucide-react';
-import Link from 'next/link';
+import { Upload, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { cn } from '@/shared/lib/cn';
 import * as characterApi from '@/shared/api/characters';
-import * as userApi from '@/shared/api/user';
 import type { Character } from '@/shared/api/types';
+import { PageContainer } from '@/shared/ui/PageContainer';
+import { PageHeader } from '@/shared/ui/PageHeader';
 
 export default function CharacterDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -82,18 +81,14 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
   }
 
   return (
-    <div className="h-full overflow-y-auto p-6 max-w-2xl">
-      <div className="flex items-center gap-3 mb-6">
-        <Link href={`/books/${character.bookId ?? ''}`} className="text-muted-foreground hover:text-foreground">
-          <ArrowLeft size={18} />
-        </Link>
-        <div>
-          <h1 className="text-lg font-semibold">角色详情</h1>
-          <p className="text-xs text-muted-foreground">{character.bookId ? `书籍 ID: ${character.bookId}` : '全局角色'}</p>
-        </div>
-      </div>
+    <PageContainer>
+      <PageHeader
+        title="角色详情"
+        description={character.bookId ? `书籍 ID: ${character.bookId}` : '全局角色'}
+        backHref={`/books/${character.bookId ?? ''}`}
+      />
 
-      <div className="space-y-6">
+      <div className="px-6 py-5 max-w-2xl space-y-6">
         <section>
           <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">头像</div>
           <div className="flex items-center gap-4">
@@ -183,6 +178,6 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
           </div>
         </section>
       </div>
-    </div>
+    </PageContainer>
   );
 }
