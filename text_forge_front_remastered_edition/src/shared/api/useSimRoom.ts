@@ -30,6 +30,18 @@ export interface UseSimRoomResult {
   end: (generateSummary?: boolean) => void;
   // 把当前对话沉淀为一条支线（branchType: backstory/relationship/plot-thread/foreshadow-fill/voice-test）。
   createBranch: (branchType: string) => void;
+  // 最近一次协议级事件（auto_end/end/branch_created/error），供调用方展示 toast 等提示。
+  lastEvent: SimRoomEvent | null;
+}
+
+// 协议级事件通知（不承载消息正文，仅用于 toast/提示）。
+export interface SimRoomEvent {
+  type: 'auto_end' | 'end' | 'branch_created' | 'error';
+  reason?: string;
+  summary?: string;
+  roundCount?: number;
+  branchTitle?: string;
+  error?: string;
 }
 
 // 管理指定房间的 WebSocket 连接，处理流式 token、用户消息与轮次状态。
@@ -43,6 +55,7 @@ export function useSimRoomSocket(room: SimRoomDetail | null): UseSimRoomResult {
   const [branching, setBranching] = useState(false);
   const [roundCount, setRoundCount] = useState(0);
   const [myRole, setMyRole] = useState('用户');
+  const [lastEvent, setLastEvent] = useState<SimRoomEvent | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   // 当前轮次是否正在流式输出：用于 stream_token 正确累积到「同一条」AI 消息
   const streamingRef = useRef(false);
@@ -50,9 +63,10 @@ export function useSimRoomSocket(room: SimRoomDetail | null): UseSimRoomResult {
   const streamingSpeakerRef = useRef<string | null>(null);
   // WebSocket 尚在 CONNECTING 时暂存待发消息，onopen 后统一刷出
   const pendingSendsRef = useRef<string[]>([]);
-  // 本地临时消息 id 计数器（避免 Date.now() 同毫秒重复导致 React key 冲突）
+  // 本地临时消息 id 计数器：使用负数递减，避免与后端落库消息的正数自增主键
+  // 冲突（二者混排时若 key 相同，React 会复用好消息节点导致内容错乱/重复）。
   const msgIdRef = useRef(0);
-  const nextMsgId = () => { msgIdRef.current += 1; return msgIdRef.current; };
+  const nextMsgId = () => { msgIdRef.current -= 1; return msgIdRef.current; };
 
   const roomId = room?.id ?? null;
 
@@ -156,13 +170,6 @@ export function useSimRoomSocket(room: SimRoomDetail | null): UseSimRoomResult {
           }
           return msgs;
         });
-      } else if (type === 'user_msg') {
-        const senderLabel = typeof msg.senderLabel === 'string' ? msg.senderLabel : '用户';
-        const content = typeof msg.content === 'string' ? msg.content : '';
-        setMessages((prev) => [
-          ...prev,
-          { id: nextMsgId(), senderType: 'user', senderLabel, content, messageType: 'dialogue' },
-        ]);
       } else if (type === 'turn_done') {
         streamingRef.current = false;
         setStreaming(false);
@@ -170,13 +177,23 @@ export function useSimRoomSocket(room: SimRoomDetail | null): UseSimRoomResult {
       } else if (type === 'auto_end' || type === 'end') {
         streamingRef.current = false;
         setStreaming(false);
-        if (type === 'end') setRoundCount(0);
+        // end/auto_end 事件均携带真实轮数，保留展示（不归零）
+        if (typeof msg.roundCount === 'number') {
+          setRoundCount(msg.roundCount);
+        }
+        setLastEvent({
+          type,
+          reason: typeof msg.reason === 'string' ? msg.reason : undefined,
+          summary: typeof msg.summary === 'string' ? msg.summary : undefined,
+          roundCount: typeof msg.roundCount === 'number' ? msg.roundCount : undefined,
+        });
       } else if (type === 'error') {
         // 错误必须展示给用户，不能静默
         streamingRef.current = false;
         setStreaming(false);
         setBranching(false);
         const errorText = typeof msg.message === 'string' ? msg.message : '模拟房间出错，请重试';
+        setLastEvent({ type, error: errorText });
         setMessages((prev) => [
           ...prev,
           {
@@ -191,7 +208,10 @@ export function useSimRoomSocket(room: SimRoomDetail | null): UseSimRoomResult {
         // 支线生成成功：追加到支线列表并复位生成中状态
         setBranching(false);
         const branch = msg.branch as SimBranch;
-        if (branch) setBranches((prev) => [...prev, branch]);
+        if (branch) {
+          setBranches((prev) => [...prev, branch]);
+          setLastEvent({ type, branchTitle: branch.title });
+        }
       } else if (type === 'suggestions') {
         // 更新下一步推荐建议（卡片输入区）
         const items = Array.isArray(msg.items)
@@ -200,8 +220,21 @@ export function useSimRoomSocket(room: SimRoomDetail | null): UseSimRoomResult {
         setSuggestions(items);
       }
     };
-    ws.onclose = () => setConnected(false);
-    ws.onerror = () => setConnected(false);
+    ws.onclose = () => {
+      setConnected(false);
+      // 连接中断时复位流式/生成状态，避免 UI 永久卡在"生成中…"或禁用态
+      streamingRef.current = false;
+      streamingSpeakerRef.current = null;
+      setStreaming(false);
+      setBranching(false);
+    };
+    ws.onerror = () => {
+      setConnected(false);
+      streamingRef.current = false;
+      streamingSpeakerRef.current = null;
+      setStreaming(false);
+      setBranching(false);
+    };
     wsRef.current = ws;
     };
     void connect();
@@ -215,6 +248,18 @@ export function useSimRoomSocket(room: SimRoomDetail | null): UseSimRoomResult {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId]);
 
+  // 统一发送入口：OPEN(1) 直发，CONNECTING(0) 暂存待 onopen 刷出，CLOSING(2)/CLOSED(3) 直接丢弃，
+  // 避免断连后消息永久积压在 pendingSendsRef 里静默丢失。
+  const sendRaw = useCallback((raw: string) => {
+    const ws = wsRef.current;
+    if (!ws) return;
+    if (ws.readyState === 1) {
+      ws.send(raw);
+    } else if (ws.readyState === 0) {
+      pendingSendsRef.current.push(raw);
+    }
+  }, []);
+
   const send = useCallback(
     (content: string, speakAs?: string) => {
       const ws = wsRef.current;
@@ -226,55 +271,35 @@ export function useSimRoomSocket(room: SimRoomDetail | null): UseSimRoomResult {
       ]);
       // 新一轮开始，旧推荐建议失效
       setSuggestions([]);
-      const raw = JSON.stringify({ type: 'chat', content, speakAs: label });
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(raw);
-      } else {
-        pendingSendsRef.current.push(raw);
-      }
+      sendRaw(JSON.stringify({ type: 'chat', content, speakAs: label }));
       streamingRef.current = true;
       setStreaming(true);
     },
-    [myRole],
+    [myRole, sendRaw],
   );
 
   const createBranch = useCallback((branchType: string) => {
     const ws = wsRef.current;
     if (!ws) return;
     setBranching(true);
-    const raw = JSON.stringify({ type: 'branch', branchType });
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(raw);
-    } else {
-      pendingSendsRef.current.push(raw);
-    }
-  }, []);
+    sendRaw(JSON.stringify({ type: 'branch', branchType }));
+  }, [sendRaw]);
 
   const autoAdvance = useCallback((turns = 2) => {
     const ws = wsRef.current;
     if (!ws) return;
     // 新一轮开始，旧推荐建议失效
     setSuggestions([]);
-    const raw = JSON.stringify({ type: 'auto_advance', turns });
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(raw);
-    } else {
-      pendingSendsRef.current.push(raw);
-    }
+    sendRaw(JSON.stringify({ type: 'auto_advance', turns }));
     streamingRef.current = true;
     setStreaming(true);
-  }, []);
+  }, [sendRaw]);
 
   const end = useCallback((generateSummary = true) => {
     const ws = wsRef.current;
     if (!ws) return;
-    const raw = JSON.stringify({ type: 'end', generateSummary });
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(raw);
-    } else {
-      pendingSendsRef.current.push(raw);
-    }
-  }, []);
+    sendRaw(JSON.stringify({ type: 'end', generateSummary }));
+  }, [sendRaw]);
 
-  return { messages, participants, branches, suggestions, connected, streaming, branching, roundCount, myRole, send, autoAdvance, end, createBranch };
+  return { messages, participants, branches, suggestions, connected, streaming, branching, roundCount, myRole, send, autoAdvance, end, createBranch, lastEvent };
 }

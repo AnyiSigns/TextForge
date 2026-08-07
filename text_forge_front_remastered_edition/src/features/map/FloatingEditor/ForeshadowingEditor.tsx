@@ -21,11 +21,7 @@ export function ForeshadowingEditor({ foreshadowingId, isNew, onClose }: Foresha
   const foreshadowing = !isNew ? foreshadowings.find((f) => f.id === foreshadowingId) : null;
 
   const [description, setDescription] = useState('');
-  const [status, setStatus] = useState('planted');
-  const [plantedAtChapterId, setPlantedAtChapterId] = useState<number | null>(null);
-  const [resolvedAtChapterId, setResolvedAtChapterId] = useState<number | null>(null);
   const [relatedCharacterIds, setRelatedCharacterIds] = useState<number[]>([]);
-  const [relatedEventId, setRelatedEventId] = useState<number | null>(null);
   const [revealType, setRevealType] = useState('gradual');
   const [notes, setNotes] = useState('');
   const [locked, setLocked] = useState(false);
@@ -34,53 +30,37 @@ export function ForeshadowingEditor({ foreshadowingId, isNew, onClose }: Foresha
     if (isNew) return;
     if (!foreshadowing) return;
     setDescription(foreshadowing.description || '');
-    setStatus(foreshadowing.status || 'planted');
-    setPlantedAtChapterId(foreshadowing.plantedAtChapterId ?? null);
-    setResolvedAtChapterId(foreshadowing.resolvedAtChapterId ?? null);
     setRelatedCharacterIds(foreshadowing.relatedCharacterIds || []);
-    setRelatedEventId(foreshadowing.relatedEventId ?? null);
     setRevealType(foreshadowing.revealType || 'gradual');
     setNotes(foreshadowing.notes || '');
     setLocked(foreshadowing.locked || false);
   }, [foreshadowing, isNew]);
 
   const handleSave = () => {
+    const common = { description, relatedCharacterIds, revealType, notes, locked };
     if (isNew) {
       const nextId = Math.max(0, ...foreshadowings.map((f) => f.id)) + 100;
       addForeshadowing({
         id: nextId,
         bookId,
-        description,
-        status,
-        plantedAtChapterId,
-        resolvedAtChapterId,
-        relatedCharacterIds,
-        relatedEventId,
-        revealType,
-        notes,
-        locked,
+        ...common,
+        status: 'planted',
+        plantedAtChapterId: null,
+        resolvedAtChapterId: null,
+        relatedEventId: null,
       });
     } else if (foreshadowingId !== null) {
-      updateForeshadowing(foreshadowingId, {
-        description,
-        status,
-        plantedAtChapterId,
-        resolvedAtChapterId,
-        relatedCharacterIds,
-        relatedEventId,
-        revealType,
-        notes,
-        locked,
-      });
+      // 派生字段（状态/埋下章节/揭示章节/关联事件）由大纲场景节点驱动，不在标签页维护
+      updateForeshadowing(foreshadowingId, common);
     }
     onClose();
   };
 
   if (!isNew && !foreshadowing) return null;
 
-  const plantedChapter = chapters.find((c) => c.id === plantedAtChapterId);
-  const resolvedChapter = chapters.find((c) => c.id === resolvedAtChapterId);
-  const relatedEvent = sceneEvents.find((e) => e.id === relatedEventId);
+  const plantedChapter = chapters.find((c) => c.id === foreshadowing?.plantedAtChapterId);
+  const resolvedChapter = chapters.find((c) => c.id === foreshadowing?.resolvedAtChapterId);
+  const relatedEvent = sceneEvents.find((e) => e.id === foreshadowing?.relatedEventId);
 
   return (
     <div className="space-y-5">
@@ -97,16 +77,10 @@ export function ForeshadowingEditor({ foreshadowingId, isNew, onClose }: Foresha
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <label className="text-[11px] font-medium text-muted-foreground">伏笔状态</label>
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            className="w-full h-8 px-2 rounded-md text-sm bg-background border border-border focus:outline-none focus:border-foreground/20"
-          >
-            <option value="planted">已埋下</option>
-            <option value="ongoing">进行中</option>
-            <option value="resolved">已回收</option>
-          </select>
+          <label className="text-[11px] font-medium text-muted-foreground">伏笔状态（由大纲揭示场景派生）</label>
+          <div className="px-1 py-1.5 text-sm text-muted-foreground/70">
+            {(foreshadowing?.status ?? 'planted') === 'resolved' ? '已回收' : '已埋下'}
+          </div>
         </div>
         <div className="space-y-1.5">
           <label className="text-[11px] font-medium text-muted-foreground">揭示方式</label>
@@ -124,48 +98,26 @@ export function ForeshadowingEditor({ foreshadowingId, isNew, onClose }: Foresha
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <label className="text-[11px] font-medium text-muted-foreground">埋下伏笔章节</label>
-          <select
-            value={plantedAtChapterId ?? ''}
-            onChange={(e) => setPlantedAtChapterId(e.target.value ? parseInt(e.target.value) : null)}
-            className="w-full h-8 px-2 rounded-md text-sm bg-background border border-border focus:outline-none focus:border-foreground/20"
-          >
-            <option value="">未关联</option>
-            {chapters.map((ch) => (
-              <option key={ch.id} value={ch.id}>{ch.title}</option>
-            ))}
-          </select>
+          <label className="text-[11px] font-medium text-muted-foreground">埋下章节（由埋下场景派生）</label>
+          <div className="px-1 py-1.5 text-sm text-muted-foreground/70">
+            {plantedChapter?.title ?? '未埋下'}
+          </div>
         </div>
         <div className="space-y-1.5">
-          <label className="text-[11px] font-medium text-muted-foreground">回收伏笔章节</label>
-          <select
-            value={resolvedAtChapterId ?? ''}
-            onChange={(e) => setResolvedAtChapterId(e.target.value ? parseInt(e.target.value) : null)}
-            className="w-full h-8 px-2 rounded-md text-sm bg-background border border-border focus:outline-none focus:border-foreground/20"
-          >
-            <option value="">未关联</option>
-            {chapters.map((ch) => (
-              <option key={ch.id} value={ch.id}>{ch.title}</option>
-            ))}
-          </select>
+          <label className="text-[11px] font-medium text-muted-foreground">回收章节（由揭示场景派生）</label>
+          <div className="px-1 py-1.5 text-sm text-muted-foreground/70">
+            {resolvedChapter?.title ?? '未回收'}
+          </div>
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <label className="text-[11px] font-medium text-muted-foreground">关联场景事件</label>
-          <select
-            value={relatedEventId ?? ''}
-            onChange={(e) => setRelatedEventId(e.target.value ? parseInt(e.target.value) : null)}
-            className="w-full h-8 px-2 rounded-md text-sm bg-background border border-border focus:outline-none focus:border-foreground/20"
-          >
-            <option value="">未关联</option>
-            {sceneEvents.map((ev) => (
-              <option key={ev.id} value={ev.id}>{ev.title}</option>
-            ))}
-          </select>
-        </div>
-        <div className="space-y-1.5">
+          <label className="text-[11px] font-medium text-muted-foreground">埋下场景（在大纲场景节点设置）</label>
+          <div className="px-1 py-1.5 text-sm text-muted-foreground/70">
+            {relatedEvent?.title ?? '未关联'}
+          </div>
+        </div>        <div className="space-y-1.5">
           <label className="text-[11px] font-medium text-muted-foreground">关联角色 ({relatedCharacterIds.length})</label>
           <div className="max-h-[100px] overflow-y-auto space-y-0.5 border border-border rounded-md p-1.5 bg-background">
             {characters.map((ch) => (

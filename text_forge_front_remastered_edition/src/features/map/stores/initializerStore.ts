@@ -1,5 +1,11 @@
 import { create } from 'zustand';
 import { useEntityStore } from './entityStore';
+import {
+  parsePlotThreads,
+  parseOutline,
+  parseEvents,
+  parseForeshadowings,
+} from '@/features/map/lib/wizardMarkdown';
 
 interface Candidate {
   id: string;
@@ -20,6 +26,8 @@ interface InitializerState {
   saving: boolean;
   error: string | null;
   generating: boolean;
+  streaming: boolean;
+  stepText: Record<number, string>;
   creativeForm: { name: string; tone: string; worldview: string; taboos: string; customFields: Array<{ key: string; value: string }> };
 
   open: () => void;
@@ -98,138 +106,166 @@ async function saveLockedCards(
         customFields,
       } as Parameters<typeof createCharacter>[0]);
     }));
-  } else if (step === 3) {
-    // 情节线
+  }
+}
+
+/* ── Step 3-6：Markdown 单份方案解析落库 ── */
+
+function cnToNum(s: string): number | null {
+  const map: Record<string, number> = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
+  const cleaned = s.replace(/[^一二三四五六七八九十\d]/g, '');
+  if (/^\d+$/.test(cleaned)) return parseInt(cleaned, 10);
+  if (cleaned === '十') return 10;
+  if (cleaned.length === 2 && cleaned.startsWith('十')) return 10 + (map[cleaned[1]] ?? 0);
+  if (cleaned.length === 2 && cleaned.endsWith('十')) return (map[cleaned[0]] ?? 0) * 10;
+  if (cleaned.length === 3) return (map[cleaned[0]] ?? 0) * 10 + (map[cleaned[2]] ?? 0);
+  return map[cleaned] ?? null;
+}
+
+function mapRevealType(raw: string): string {
+  if (raw.includes('突然') || raw.includes('反转') || raw.includes('背叛')) return 'sudden';
+  if (raw.includes('转折') || raw.includes('悬念') || raw.includes('谜团') || raw.includes('秘密') || raw.includes('预言') || raw.includes('身份')) return 'twist';
+  return 'gradual';
+}
+
+async function saveStepText(bookId: number, step: number, text: string): Promise<void> {
+  if (!text || !text.trim()) return;
+
+  if (step === 3) {
+    // 情节线：Markdown 层级（# 主线 / ## 支线）→ PlotThread
     const { createPlotThread } = await import('@/shared/api/world');
-    await Promise.all(cards.map((c) => {
-      const type = c.fields.find((f) => f.key === '类型')?.value ?? '支线';
-      const desc = c.fields.find((f) => f.key === '描述')?.value ?? '';
-      return createPlotThread({ bookId, name: c.title, description: desc, status: 'active', type } as Parameters<typeof createPlotThread>[0]);
-    }));
-  } else if (step === 4) {
-    // 大纲 → 卷+章（容错解析：识别"卷X："与"第X章："前缀，标题与摘要以「 - 」分隔）
+    const threads = parsePlotThreads(text);
+    let mainId: number | null = null;
+    for (const t of threads) {
+      const created = await createPlotThread({
+        bookId,
+        name: t.name,
+        description: t.description || undefined,
+        status: 'active',
+        type: t.type || (t.level === 1 ? '主线' : '支线'),
+        parentThreadId: t.level === 2 && mainId != null ? mainId : undefined,
+      } as Parameters<typeof createPlotThread>[0]);
+      if (t.level === 1) mainId = created.id;
+    }
+    return;
+  }
+
+  if (step === 4) {
+    // 大纲：卷 → 章 → 场景节点 → SceneEvent（时间/地点/角色/情节线）
     const { createVolume, createChapter } = await import('@/shared/api/books');
-    const { createSceneEvent } = await import('@/shared/api/world');
+    const { createSceneEvent, fetchPlotThreads, fetchLocations } = await import('@/shared/api/world');
     const { fetchCharacters } = await import('@/shared/api/characters');
-
-    // 角色名 → id（用于「本章角色」关联）
-    let charNameToId: Record<string, number> = {};
-    try {
-      const chars = await fetchCharacters(bookId);
-      charNameToId = Object.fromEntries(chars.map((c: { id: number; name: string }) => [c.name, c.id]));
-    } catch { /* 角色加载失败不影响卷章创建 */ }
-
-    // 从「卷标题 - 卷摘要」中提取标题与摘要
-    const splitTitleSummary = (raw: string): { title: string; summary: string } => {
-      const s = raw.replace(/[\n\r]/g, ' ').trim();
-      const m = s.match(/^卷[一二三四五六七八九十\d]+[：:]\s*(.+)$/);
-      const body = m ? m[1] : s;
-      const dash = body.indexOf(' - ');
-      if (dash > 0) {
-        return { title: body.slice(0, dash).trim().slice(0, 100), summary: body.slice(dash + 3).trim().slice(0, 500) };
-      }
-      return { title: body.slice(0, 100), summary: '' };
-    };
-    const splitChapter = (raw: string): { title: string; summary: string; scenes: string[]; characters: number[] } => {
-      const s = raw.replace(/[\n\r]/g, ' ').trim();
-      const m = s.match(/^第[一二三四五六七八九十\d]+章[：:]\s*(.+)$/);
-      const body = m ? m[1] : s;
-      // 提取括号标注：场景节点 / 本章角色
-      const sceneM = body.match(/场景节点[：:]\s*([^（）()；;]+)/);
-      const charM = body.match(/本章角色[：:]\s*([^（）()；;]+)/);
-      const scenes = sceneM ? sceneM[1].split(/[、,，]/).map((x) => x.trim()).filter(Boolean) : [];
-      const characters = charM
-        ? charM[1].split(/[、,，]/).map((x) => x.trim()).map((n) => charNameToId[n]).filter((id): id is number => !!id)
-        : [];
-      const dash = body.indexOf(' - ');
-      const core = dash > 0 ? body.slice(0, dash) : body;
-      return { title: core.trim().slice(0, 200), summary: dash > 0 ? body.slice(dash + 3).trim().slice(0, 500) : '', scenes, characters };
-    };
-
-    for (const c of cards) {
-      const text = c.fields.find((f) => f.key === '大纲')?.value ?? '';
-      const volMatches = text.match(/卷[一二三四五六七八九十\d]+[：:][^\n]+/g) || [];
-      const chMatches = text.match(/第[一二三四五六七八九十\d]+章[：:][^\n]+/g) || [];
-
-      if (volMatches.length === 0 && chMatches.length === 0) {
-        // 兜底：整段内容作为一卷一章，避免静默丢数据
-        const createdVol = await createVolume(bookId, '第一卷', '');
-        const title = (text.trim().slice(0, 200)) || '第一章';
-        await createChapter(createdVol.id, { title, summary: '' } as Parameters<typeof createChapter>[1]);
-        continue;
-      }
-
-      // 只有章节没有卷结构时，默认单卷
-      const volInfos = volMatches.length > 0
-        ? volMatches.map((v) => splitTitleSummary(v))
-        : [{ title: '第一卷', summary: '' }];
-
-      for (let vi = 0; vi < volInfos.length; vi++) {
-        const createdVol = await createVolume(bookId, volInfos[vi].title, volInfos[vi].summary);
-        const chPerVol = chMatches.length > 0
-          ? Math.max(1, Math.ceil(chMatches.length / volInfos.length))
-          : 0;
-        const volChapters = chPerVol > 0
-          ? chMatches.slice(vi * chPerVol, (vi + 1) * chPerVol)
-          : [];
-        for (const chTitle of volChapters) {
-          const info = splitChapter(chTitle);
-          const createdChapter = await createChapter(createdVol.id, {
-            title: info.title,
-            summary: info.summary,
-          } as Parameters<typeof createChapter>[1]);
-          // 场景节点 → 时间线事件（关联本章）；本章角色改挂到场景事件，章节角色由场景并集派生
-          for (const scene of info.scenes) {
-            try {
-              await createSceneEvent({
-                bookId, title: scene, content: `（来自大纲「${info.title}」的场景节点）`,
-                eventType: 'scene', sortOrder: 0, chapterId: createdChapter.id,
-                characterIds: info.characters,
-              } as Parameters<typeof createSceneEvent>[0]);
-            } catch { /* 场景事件创建失败不影响主流程 */ }
-          }
+    const volumes = parseOutline(text);
+    const [chars, threads, locs] = await Promise.all([
+      fetchCharacters(bookId).catch(() => []),
+      fetchPlotThreads(bookId).catch(() => []),
+      fetchLocations(bookId).catch(() => []),
+    ]);
+    const charNameToId = Object.fromEntries(chars.map((c: { name: string; id: number }) => [c.name, c.id]));
+    const threadNameToId = Object.fromEntries(threads.map((t: { name: string; id: number }) => [t.name, t.id]));
+    for (const vol of volumes) {
+      const createdVol = await createVolume(bookId, vol.title, vol.summary || undefined);
+      for (const ch of vol.chapters) {
+        const createdCh = await createChapter(createdVol.id, { title: ch.title, summary: ch.summary || undefined });
+        for (const sc of ch.scenes) {
+          try {
+            const loc = sc.location
+              ? locs.find((l) => l.name === sc.location || sc.location.includes(l.name) || l.name.includes(sc.location))
+              : undefined;
+            await createSceneEvent({
+              bookId,
+              title: sc.title,
+              content: sc.summary || undefined,
+              eventType: 'scene',
+              sortOrder: 0,
+              chapterId: createdCh.id,
+              storyLabel: sc.timeLabel || undefined,
+              locationId: loc?.id,
+              characterIds: sc.characters.map((n) => charNameToId[n]).filter(Boolean),
+              plotThreadIds: sc.plotThreads.map((n) => threadNameToId[n]).filter(Boolean),
+            } as Parameters<typeof createSceneEvent>[0]);
+          } catch { /* 单个场景失败不影响主流程 */ }
         }
       }
     }
-  } else if (step === 5) {
-    // 事件：时间标签 → storyLabel，地点名 → locationId（按名称匹配已有地点）
-    const { createSceneEvent, fetchLocations } = await import('@/shared/api/world');
-    let locations: Array<{ id: number; name: string }> = [];
-    try {
-      locations = await fetchLocations(bookId);
-    } catch { /* 地点加载失败不影响事件创建 */ }
-    await Promise.all(cards.map(async (c) => {
-      const desc = c.fields.find((f) => f.key === '描述')?.value ?? '';
-      const timeLabel = c.fields.find((f) => f.key === '时间')?.value ?? '';
-      const locationName = c.fields.find((f) => f.key === '地点')?.value ?? '';
-      const matched = locationName
-        ? locations.find((l) => l.name === locationName || locationName.includes(l.name) || l.name.includes(locationName))
+    return;
+  }
+
+  if (step === 5) {
+    // 事件：章节/时间/地点/角色/情节线 → SceneEvent
+    const { createSceneEvent, fetchLocations, fetchPlotThreads } = await import('@/shared/api/world');
+    const { fetchChaptersTree } = await import('@/shared/api/books');
+    const { fetchCharacters } = await import('@/shared/api/characters');
+    const events = parseEvents(text);
+    const [locs, tree, chars, threads] = await Promise.all([
+      fetchLocations(bookId).catch(() => []),
+      fetchChaptersTree(bookId).catch(() => []),
+      fetchCharacters(bookId).catch(() => []),
+      fetchPlotThreads(bookId).catch(() => []),
+    ]);
+    const chapters = tree.flatMap((v) => v.chapters);
+    const charNameToId = Object.fromEntries(chars.map((c: { name: string; id: number }) => [c.name, c.id]));
+    const threadNameToId = Object.fromEntries(threads.map((t: { name: string; id: number }) => [t.name, t.id]));
+    for (const ev of events) {
+      let chapterId: number | undefined;
+      if (ev.chapterRef) {
+        // 优先按序号匹配（"第一章"/"1" → sortOrder），再精确标题，最后才允许子串兜底
+        // 子串兜底排除可解析为序号的引用，避免"第十一章"误挂到"第一章"
+        const num = cnToNum(ev.chapterRef);
+        if (num != null) {
+          chapterId = chapters.find((c) => c.sortOrder === num)?.id;
+        }
+        if (chapterId == null && num == null) {
+          chapterId = chapters.find((c) => c.title === ev.chapterRef)?.id;
+          if (chapterId == null) {
+            chapterId = chapters.find((c) => ev.chapterRef.includes(c.title) || c.title.includes(ev.chapterRef))?.id;
+          }
+        }
+      }
+      const loc = ev.location
+        ? locs.find((l) => l.name === ev.location || ev.location.includes(l.name) || l.name.includes(ev.location))
         : undefined;
+      try {
+        await createSceneEvent({
+          bookId,
+          title: ev.title,
+          content: ev.summary || undefined,
+          eventType: 'event',
+          sortOrder: 0,
+          chapterId,
+          storyLabel: ev.timeLabel || undefined,
+          locationId: loc?.id,
+          characterIds: ev.characters.map((n) => charNameToId[n]).filter(Boolean),
+          plotThreadIds: ev.plotThreads.map((n) => threadNameToId[n]).filter(Boolean),
+        } as Parameters<typeof createSceneEvent>[0]);
+      } catch { /* 单个事件失败不影响主流程 */ }
+    }
+    return;
+  }
+
+  if (step === 6) {
+    // 伏笔：类型/角色/埋下事件/揭示建议 → Foreshadowing（埋下事件关联 → planted 由后端派生）
+    const { createForeshadowing, fetchSceneEvents } = await import('@/shared/api/world');
+    const { fetchCharacters } = await import('@/shared/api/characters');
+    const items = parseForeshadowings(text);
+    const [events, chars] = await Promise.all([
+      fetchSceneEvents(bookId).catch(() => []),
+      fetchCharacters(bookId).catch(() => []),
+    ]);
+    const charNameToId = Object.fromEntries(chars.map((c: { name: string; id: number }) => [c.name, c.id]));
+    for (const it of items) {
+      const relatedEvent = it.relatedEvent ? events.find((e) => e.title === it.relatedEvent) : undefined;
       const body: Record<string, unknown> = {
-        bookId, title: c.title, content: desc, eventType: 'scene', sortOrder: 0,
+        bookId,
+        description: `${it.title}${it.description ? '：' + it.description : ''}`,
+        status: 'planted',
+        revealType: mapRevealType(it.type),
+        relatedCharacterIds: it.characters.map((n) => charNameToId[n]).filter(Boolean),
       };
-      if (timeLabel) body.storyLabel = timeLabel;
-      if (matched) body.locationId = matched.id;
-      return createSceneEvent(body as Parameters<typeof createSceneEvent>[0]);
-    }));
-  } else if (step === 6) {
-    // 伏笔：类型 → revealType，揭示时机 → notes
-    const { createForeshadowing } = await import('@/shared/api/world');
-    await Promise.all(cards.map((c) => {
-      const desc = c.fields.find((f) => f.key === '内容')?.value ?? c.title;
-      // 后端 wizard 将 LLM 的 type/reveal_timing 映射为「类型」「揭示时机」两个 label
-      const revealRaw = c.fields.find((f) => f.key === '类型')?.value ?? '';
-      const revealTiming = c.fields.find((f) => f.key === '揭示时机')?.value ?? '';
-      // 与 ForeshadowingEditor 的 reveal_type 枚举对齐：gradual/sudden/twist
-      const revealType = revealRaw.includes('突然') || revealRaw.includes('反转') || revealRaw.includes('背叛') ? 'sudden'
-        : revealRaw.includes('转折') || revealRaw.includes('悬念') || revealRaw.includes('谜团') || revealRaw.includes('秘密') || revealRaw.includes('预言') ? 'twist'
-        : 'gradual';
-      const body: Record<string, unknown> = {
-        bookId, description: desc, status: 'planted', revealType,
-      };
-      if (revealTiming) body.notes = `建议揭示时机：${revealTiming}`;
-      return createForeshadowing(body as Parameters<typeof createForeshadowing>[0]);
-    }));
+      if (relatedEvent) body.relatedEventId = relatedEvent.id;
+      if (it.revealTiming) body.notes = `建议揭示时机：${it.revealTiming}`;
+      await createForeshadowing(body as Parameters<typeof createForeshadowing>[0]);
+    }
   }
 }
 
@@ -242,6 +278,8 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
   saving: false,
   error: null,
   generating: false,
+  streaming: false,
+  stepText: {},
   creativeForm: { name: '', tone: '', worldview: '', taboos: '', customFields: [{ key: '战力体系', value: '' }, { key: '势力', value: '' }, { key: '交易单位', value: '' }] },
 
   open: () => set({ isOpen: true, currentStep: 0, saving: false, error: null }),
@@ -249,7 +287,9 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
   close: () => set({ isOpen: false, saving: false, error: null }),
 
   nextStep: async () => {
-    const { currentStep, candidates, lockedIds, creativeForm } = get();
+    const { currentStep, candidates, lockedIds, creativeForm, generating, streaming } = get();
+    // 生成/流式进行中禁止前进：streaming 状态会泄漏到下一步骤，导致误显示"生成中"
+    if (generating || streaming) return;
     if (currentStep < 6) {
       // Step 0 → Step 1: 保存创意设定（失败时提示，不再静默吞掉）
       if (currentStep === 0) {
@@ -271,8 +311,8 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
         }
       }
 
-      // 卡片步骤（1-6）：锁定卡片写入后端
-      if (currentStep >= 1 && currentStep <= 6) {
+      // 卡片步骤（1-2）：锁定卡片写入后端
+      if (currentStep === 1 || currentStep === 2) {
         const lockedCards = candidates[currentStep].filter((c) => lockedIds.has(c.id));
         console.log(`[wizard:store] nextStep step=${currentStep} lockedCards=${lockedCards.length}`, lockedCards.map(c => c.title));
         if (lockedCards.length > 0) {
@@ -294,6 +334,23 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
             const newLocked = new Set(get().lockedIds);
             savedIds.forEach((id) => newLocked.delete(id));
             set({ candidates: newCandidates, lockedIds: newLocked });
+          }
+        }
+      }
+
+      // Markdown 步骤（3-6）：解析流式生成的方案文本落库
+      if (currentStep >= 3 && currentStep <= 6) {
+        const text = get().stepText[currentStep] ?? '';
+        if (text && text.trim()) {
+          const bookId = (await import('@/app/(dashboard)/books/[id]/store')).useBookDetailStore.getState().bookId;
+          if (bookId) {
+            try {
+              await saveStepText(bookId, currentStep, text);
+              await useEntityStore.getState().loadFromApi(bookId);
+            } catch (e) {
+              console.error(`[wizard:store] nextStep saveStepText FAILED`, e);
+              set({ error: '方案保存失败，请重试' });
+            }
           }
         }
       }
@@ -362,7 +419,51 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
       .filter((c) => lockedIds.has(c.id) || confirmedIds.has(c.id))
       .map((c) => c.title);
 
-    set({ generating: true, error: null });
+    set({ generating: true, streaming: currentStep >= 3, error: null });
+
+    // Step 3-6：流式生成单份 Markdown 方案，文本累积到 stepText
+    if (currentStep >= 3) {
+      try {
+        const { streamGenerateMarkdown } = await import('@/shared/api/wizard');
+        set({ stepText: { ...get().stepText, [currentStep]: '' } });
+        // 节流合并 delta 更新，避免每个 SSE 行都触发 zustand set 造成高频重渲染
+        let pendingText = '';
+        let flushTimer: ReturnType<typeof setTimeout> | null = null;
+        const flushPending = () => {
+          if (pendingText) {
+            const chunk = pendingText;
+            pendingText = '';
+            set((s) => ({
+              stepText: { ...s.stepText, [currentStep]: (s.stepText[currentStep] ?? '') + chunk },
+            }));
+          }
+          flushTimer = null;
+        };
+        const fullText = await streamGenerateMarkdown(bookId, currentStep, {
+          extraInstruction,
+          previousCards,
+          onEvent: (ev) => {
+            if (ev.type === 'delta' && ev.text) {
+              pendingText += ev.text;
+              if (!flushTimer) flushTimer = setTimeout(flushPending, 100);
+            }
+            if (ev.type === 'error' && ev.message) set({ error: ev.message });
+          },
+        });
+        if (flushTimer) clearTimeout(flushTimer);
+        flushPending();
+        if (fullText) {
+          set((s) => ({ stepText: { ...s.stepText, [currentStep]: fullText } }));
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'AI 生成失败，请检查模型配置后重试';
+        set({ error: msg });
+      } finally {
+        set({ generating: false, streaming: false });
+      }
+      return;
+    }
+
     try {
       const { generateWizardCards } = await import('@/shared/api/wizard');
       const cards = await generateWizardCards(bookId, currentStep, previousCards, excludeTitles, extraInstruction);
@@ -423,7 +524,6 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
   clearError: () => set({ error: null }),
 
   finish: async () => {
-    const { candidates, lockedIds, confirmedIds, currentStep } = get();
     const { useBookDetailStore } = await import('@/app/(dashboard)/books/[id]/store');
     const bookId = useBookDetailStore.getState().bookId;
 
@@ -435,12 +535,10 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
     set({ saving: true, error: null });
 
     try {
-      // 保存当前步骤剩余的锁定卡片（之前步骤已在 nextStep 中保存）
-      const lockedCards = candidates[currentStep].filter(
-        (c) => lockedIds.has(c.id) || confirmedIds.has(c.id),
-      );
-      if (lockedCards.length > 0) {
-        await saveLockedCards(bookId, currentStep, lockedCards);
+      // Step 6 为最后一步（finish 仅在其显示），落库伏笔 Markdown 文本
+      const text = get().stepText[6] ?? '';
+      if (text && text.trim()) {
+        await saveStepText(bookId, 6, text);
       }
 
       await useEntityStore.getState().loadFromApi(bookId);

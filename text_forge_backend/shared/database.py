@@ -5,10 +5,46 @@ from config.settings import settings
 from fastapi import HTTPException
 from fastapi.exceptions import RequestValidationError
 from models import Base
+from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy import text
 
 logger = get_logger(__name__)
+
+
+def _sync_missing_columns(sync_conn):
+    """为存量表补充新模型引入、但 create_all 不会添加到已有表的列（幂等）。
+
+    项目未引入 Alembic，启动时对已知增量列做轻量对齐，避免存量库
+    首次访问新列时报 column does not exist。
+    """
+    try:
+        tables = set(inspect(sync_conn).get_table_names())
+    except Exception as e:
+        logger.warning(f"数据库 schema 检查跳过: {e}")
+        return
+    if "scene_events" in tables:
+        existing = {c["name"] for c in inspect(sync_conn).get_columns("scene_events")}
+        for col_name, col_ddl in (
+            ("resolved_foreshadowing_ids", "JSONB NOT NULL DEFAULT '[]'::jsonb"),
+            ("completed_plot_thread_ids", "JSONB NOT NULL DEFAULT '[]'::jsonb"),
+        ):
+            if col_name not in existing:
+                sync_conn.exec_driver_sql(
+                    f"ALTER TABLE scene_events ADD COLUMN {col_name} {col_ddl}"
+                )
+                logger.info(f"已为 scene_events 表补充列 {col_name}")
+    if "sim_branches" in tables:
+        existing = {c["name"] for c in inspect(sync_conn).get_columns("sim_branches")}
+        for col_name, col_ddl in (
+            ("related_event_ids", "JSONB NOT NULL DEFAULT '[]'::jsonb"),
+            ("related_foreshadowing_ids", "JSONB NOT NULL DEFAULT '[]'::jsonb"),
+            ("related_plot_thread_ids", "JSONB NOT NULL DEFAULT '[]'::jsonb"),
+        ):
+            if col_name not in existing:
+                sync_conn.exec_driver_sql(
+                    f"ALTER TABLE sim_branches ADD COLUMN {col_name} {col_ddl}"
+                )
+                logger.info(f"已为 sim_branches 表补充列 {col_name}")
 
 
 class DBManager:
@@ -87,6 +123,9 @@ class DBManager:
                 if settings.AUTO_CREATE_TABLES:
                     await conn.run_sync(Base.metadata.create_all)   #type: ignore
                     logger.info("数据库表已创建/存在")
+                # 轻量 schema 对齐：补充存量表新增的列（create_all 不会 ALTER 已有表）。
+                # 独立于 AUTO_CREATE_TABLES：即使生产环境关闭自动建表，存量库也需补充新增列。
+                await conn.run_sync(_sync_missing_columns)
         except Exception as e:
             logger.error(f"数据库连接失败{e}")
 

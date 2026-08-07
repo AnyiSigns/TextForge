@@ -582,8 +582,8 @@ export function SimRoom({ bookId, bookTitle, onClose }: SimRoomProps) {
                     className="h-7 px-2.5 rounded-md text-[11px] border border-foreground/25 bg-transparent cursor-pointer hover:bg-foreground/[0.05] text-foreground/75 shrink-0 disabled:opacity-40 flex items-center gap-1"
                     title="让 AI 自动推进 2 轮剧情，快速积累支线素材"
                   >
-                    <Sparkles size={11} />
-                    AI 推进剧情
+                    {streaming ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
+                    {streaming ? 'AI 推进中…' : 'AI 推进剧情'}
                   </button>
                   <div className="flex-1" />
                   {branching ? (
@@ -626,25 +626,34 @@ export function SimRoom({ bookId, bookTitle, onClose }: SimRoomProps) {
 
                 {/* 卡片式输入区：2 张 AI 推荐卡片 + 自定义卡片 */}
                 <div className="grid grid-cols-2 gap-1.5">
-                  {suggestions.map((s) => (
-                    <button
-                      key={s.label}
-                      onClick={() => handleSuggestionClick(s.content)}
-                      disabled={streaming}
-                      className="text-left px-3 py-2 rounded-xl border border-border/60 bg-foreground/[0.03] cursor-pointer hover:bg-foreground/[0.06] disabled:opacity-40 disabled:cursor-default transition-colors"
-                    >
-                      <span className="text-[10px] font-medium text-foreground/60 block mb-0.5">
-                        ✨ {s.label}
-                      </span>
-                      <span className="text-[11px] leading-snug text-foreground/80 line-clamp-2">
-                        {s.content}
-                      </span>
-                    </button>
-                  ))}
-                  {suggestions.length < 2 && (
-                    <div className="px-3 py-2 rounded-xl border border-dashed border-border/60 text-[11px] text-muted-foreground/60 flex items-center justify-center">
-                      {streaming ? 'AI 推进中…' : '等待剧情推进…'}
+                  {streaming ? (
+                    <div className="col-span-2 px-3 py-2 rounded-xl border border-dashed border-border/60 text-[11px] text-muted-foreground/60 flex items-center justify-center gap-1.5">
+                      <Loader2 size={11} className="animate-spin" />
+                      AI 推进中…
                     </div>
+                  ) : (
+                    <>
+                      {suggestions.map((s) => (
+                        <button
+                          key={s.label}
+                          onClick={() => handleSuggestionClick(s.content)}
+                          disabled={streaming}
+                          className="text-left px-3 py-2 rounded-xl border border-border/60 bg-foreground/[0.03] cursor-pointer hover:bg-foreground/[0.06] disabled:opacity-40 disabled:cursor-default transition-colors"
+                        >
+                          <span className="text-[10px] font-medium text-foreground/60 block mb-0.5">
+                            ✨ {s.label}
+                          </span>
+                          <span className="text-[11px] leading-snug text-foreground/80 line-clamp-2">
+                            {s.content}
+                          </span>
+                        </button>
+                      ))}
+                      {suggestions.length < 2 && (
+                        <div className="px-3 py-2 rounded-xl border border-dashed border-border/60 text-[11px] text-muted-foreground/60 flex items-center justify-center">
+                          {'等待剧情推进…'}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
 

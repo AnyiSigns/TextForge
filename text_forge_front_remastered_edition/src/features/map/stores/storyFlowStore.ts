@@ -29,9 +29,9 @@ interface StoryFlowState {
   currentSceneId: number;
   perspective: Perspective;
   decisionChain: Decision[];
-  triggerEventId: number | null;
+  triggerChapterId: number | null;
 
-  open: (eventId: number) => void;
+  open: (chapterId: number) => void;
   close: () => void;
   setPerspective: (p: Perspective) => void;
   makeDecision: (optionId: string, optionText: string) => void;
@@ -159,18 +159,18 @@ export const useStoryFlowStore = create<StoryFlowState>((set, get) => ({
   currentSceneId: 1,
   perspective: 'first',
   decisionChain: [],
-  triggerEventId: null,
+  triggerChapterId: null,
 
-  open: (eventId) => {
+  open: (chapterId) => {
     set({
       isOpen: true,
       currentSceneId: 1,
       decisionChain: [],
-      triggerEventId: eventId,
+      triggerChapterId: chapterId,
     });
   },
 
-  close: () => set({ isOpen: false, triggerEventId: null }),
+  close: () => set({ isOpen: false, triggerChapterId: null }),
 
   setPerspective: (p) => set({ perspective: p }),
 

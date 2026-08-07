@@ -4,154 +4,101 @@ import { useEffect, useState, useRef } from 'react';
 import { Plus, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/shared/lib/cn';
-import { authFetch } from '@/shared/lib/authFetch';
-import { useAuthStore } from '@/shared/stores/authStore';
 import * as booksApi from '@/shared/api/books';
-import { getModelConfigData } from '@/shared/api/agent';
-
-interface Room {
-  id: number; bookId: number; name: string; description?: string;
-  status: string; locationId?: number; participantCount: number; createdAt: string;
-}
-interface RoomDetail {
-  id: number; bookId: number; name: string; setting?: string;
-  participants: Array<{ id: number; entityType: string; entityId: number; roleLabel: string; personalityOverride?: string }>;
-  messages: Array<{ id: number; senderType: string; senderLabel: string; content: string; messageType: string }>;
-  relatedEventIds: number[]; relatedForeshadowingIds: number[];
-}
+import {
+  listSimRooms,
+  getSimRoom,
+  createSimRoom,
+  type SimRoomDetail,
+  type SimRoomSummary,
+} from '@/shared/api/simRooms';
+import { useSimRoomSocket } from '@/shared/api/useSimRoom';
 
 interface Book { id: number; title: string; }
 
 export default function SimRoomsPage() {
   const [books, setBooks] = useState<Book[]>([]);
   const [selectedBookId, setSelectedBookId] = useState<number | null>(null);
-  const [rooms, setRooms] = useState<Room[]>([]);
-  const [activeRoom, setActiveRoom] = useState<RoomDetail | null>(null);
-  const [wsConnected, setWsConnected] = useState(false);
+  const [rooms, setRooms] = useState<SimRoomSummary[]>([]);
+  const [activeRoom, setActiveRoom] = useState<SimRoomDetail | null>(null);
   const [input, setInput] = useState('');
   const [speakAs, setSpeakAs] = useState('director');
-  const [streaming, setStreaming] = useState(false);
-  const [roundCount, setRoundCount] = useState(0);
-  const wsRef = useRef<WebSocket | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const [showNewRoom, setShowNewRoom] = useState(false);
   const [newRoomName, setNewRoomName] = useState('');
   const [newRoomSetting, setNewRoomSetting] = useState('');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // 统一走共享 hook 处理 WS 协议（消息流式/轮数/连接状态），本页仅做 toast 提示
+  const { messages, participants, connected, streaming, roundCount, send, end, lastEvent } =
+    useSimRoomSocket(activeRoom);
 
   useEffect(() => { booksApi.fetchBooks().then(setBooks).catch(() => {}); }, []);
 
   useEffect(() => {
     if (!selectedBookId) return;
-    authFetch(`/api/sim-rooms/?bookId=${selectedBookId}`)
-      .then((r) => r.json()).then((d) => setRooms(d.items || d.rooms || [])).catch(() => {});
+    listSimRooms(selectedBookId).then(setRooms).catch(() => {});
   }, [selectedBookId]);
 
   useEffect(() => {
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
-    };
-  }, []);
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   useEffect(() => {
-    if (!activeRoom && wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-      setWsConnected(false);
-      setStreaming(false);
-      setRoundCount(0);
+    if (!lastEvent) return;
+    if (lastEvent.type === 'auto_end') {
+      toast.info(`对话自动结束：${lastEvent.reason || ''}（共${lastEvent.roundCount || 0}轮）`);
+    } else if (lastEvent.type === 'end') {
+      toast.info(lastEvent.summary || '对话已结束');
+    } else if (lastEvent.type === 'branch_created') {
+      toast.success(`支线已沉淀：${lastEvent.branchTitle || ''}`);
+    } else if (lastEvent.type === 'error') {
+      toast.error(lastEvent.error || '生成失败');
     }
-  }, [activeRoom]);
+  }, [lastEvent]);
 
   const enterRoom = async (roomId: number) => {
-    if (wsRef.current) wsRef.current.close();
-    const res = await authFetch(`/api/sim-rooms/${roomId}`);
-    const data = await res.json();
-    const detail: RoomDetail = data.room;
-    setActiveRoom(detail);
-
-    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const token = useAuthStore.getState().accessToken;
-    let wsUrl = `${proto}//${location.host}/api/sim-rooms/${roomId}/ws${token ? `?token=${encodeURIComponent(token)}` : ''}`;
-    // 用户模型配置仅存浏览器 IndexedDB，后端无服务端配置；经 WS query 传入供 LLM 初始化
-    try {
-      const modelConfig = await getModelConfigData();
-      if (modelConfig) {
-        const sep = wsUrl.includes('?') ? '&' : '?';
-        wsUrl += `${sep}modelConfig=${encodeURIComponent(JSON.stringify(modelConfig))}`;
-      }
-    } catch {
-      // 配置缺失时后端会返回「没有配置提供商」，由用户先在设置页配置模型
+    const detail = await getSimRoom(roomId);
+    if (detail) {
+      setActiveRoom(detail);
+    } else {
+      toast.error('进入房间失败');
     }
-    const ws = new WebSocket(wsUrl);
-    ws.onopen = () => setWsConnected(true);
-    ws.onmessage = (e) => {
-      const msg = JSON.parse(e.data);
-      if (msg.type === 'stream_token') {
-        setActiveRoom((prev) => {
-          if (!prev) return prev;
-          const msgs = [...prev.messages];
-          const last = msgs[msgs.length - 1];
-          if (last && last.senderType === 'system' && last.content === '') {
-            msgs[msgs.length - 1] = { ...last, content: last.content + msg.token };
-          } else {
-            msgs.push({ id: Date.now(), senderType: 'system', senderLabel: 'AI', content: msg.token, messageType: 'narration' });
-          }
-          return { ...prev, messages: msgs };
-        });
-      } else if (msg.type === 'user_msg') {
-        setActiveRoom((prev) => {
-          if (!prev) return prev;
-          return { ...prev, messages: [...prev.messages, { id: Date.now(), senderType: 'user', senderLabel: msg.senderLabel, content: msg.content, messageType: 'dialogue' }] };
-        });
-      } else if (msg.type === 'turn_done') {
-        setStreaming(false);
-        setRoundCount(msg.roundCount || 0);
-      } else if (msg.type === 'auto_end') {
-        setStreaming(false);
-        toast.info(`对话自动结束：${msg.reason || ''}（共${msg.roundCount || 0}轮）`);
-      } else if (msg.type === 'end') {
-        setStreaming(false);
-        setRoundCount(0);
-        toast.info(msg.summary || '对话已结束');
-      } else if (msg.type === 'branch_created') {
-        toast.success(`支线已沉淀：${msg.branch?.title || ''}`);
-      } else if (msg.type === 'error') {
-        setStreaming(false);
-        toast.error(msg.message || '生成失败');
-      }
-    };
-    ws.onclose = () => setWsConnected(false);
-    wsRef.current = ws;
   };
 
   const handleSend = () => {
-    if (!input.trim() || !wsRef.current || streaming) return;
-    const ws = wsRef.current;
-    setActiveRoom((prev) => {
-      if (!prev) return prev;
-      const label = speakAs === 'director' ? '用户' : speakAs;
-      return { ...prev, messages: [...prev.messages, { id: Date.now(), senderType: 'user', senderLabel: label, content: input, messageType: 'dialogue' }] };
-    });
-    ws.send(JSON.stringify({ type: 'chat', content: input, speakAs }));
+    if (!input.trim() || streaming) return;
+    send(input, speakAs);
     setInput('');
-    setStreaming(true);
   };
 
   const createRoom = async () => {
     if (!selectedBookId || !newRoomName.trim()) return;
-    try {
-      const res = await authFetch('/api/sim-rooms/', {
-        method: 'POST',
-        body: JSON.stringify({ bookId: selectedBookId, name: newRoomName, setting: newRoomSetting, participantIds: [], participantTypes: [] }),
-      });
-      const data = await res.json();
-      setRooms((prev) => [...prev, { id: data.id, bookId: selectedBookId!, name: newRoomName, status: 'active', participantCount: 1, createdAt: new Date().toISOString() }]);
-      setShowNewRoom(false); setNewRoomName(''); setNewRoomSetting('');
+    const created = await createSimRoom({
+      bookId: selectedBookId,
+      name: newRoomName.trim(),
+      description: newRoomSetting.trim() || undefined,
+    });
+    if (created) {
+      setRooms((prev) => [
+        ...prev,
+        {
+          id: created.id,
+          bookId: selectedBookId,
+          name: created.name,
+          description: newRoomSetting.trim() || undefined,
+          status: 'active',
+          participantCount: 1,
+          roundCount: 0,
+          createdAt: new Date().toISOString(),
+        },
+      ]);
+      setShowNewRoom(false);
+      setNewRoomName('');
+      setNewRoomSetting('');
       toast.success('房间已创建');
-    } catch { toast.error('创建失败'); }
+    } else {
+      toast.error('创建失败');
+    }
   };
 
   const selectedBook = books.find((b) => b.id === selectedBookId);
@@ -206,24 +153,23 @@ export default function SimRoomsPage() {
             <div className="flex items-center justify-between px-4 py-2 border-b border-border shrink-0">
               <div>
                 <span className="text-sm font-medium">{activeRoom.name}</span>
-                {activeRoom.setting && <span className="text-[11px] text-muted-foreground ml-2">场景：{activeRoom.setting}</span>}
               </div>
               <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                <span className={cn('w-1.5 h-1.5 rounded-full', wsConnected ? 'bg-green-500' : 'bg-red-400')} />
-                {wsConnected ? '已连接' : '未连接'}
+                <span className={cn('w-1.5 h-1.5 rounded-full', connected ? 'bg-green-500' : 'bg-red-400')} />
+                {connected ? '已连接' : '未连接'}
                 <span className="ml-1 tabular-nums">{roundCount} 轮</span>
               </div>
               <button
-                onClick={() => { if (wsRef.current) { wsRef.current.send(JSON.stringify({ type: 'end', generateSummary: true })); } }}
+                onClick={() => end(true)}
                 className="h-6 px-2 rounded text-[10px] border border-border bg-transparent cursor-pointer hover:bg-destructive/10 text-muted-foreground ml-2">
                 结束对话
               </button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {activeRoom.messages.map((m) => (
+              {messages.map((m) => (
                 <div key={m.id} className={cn('text-[13px] leading-relaxed', m.senderType === 'system' ? 'text-left' : 'text-right')}>
-                  <div className="text-[10px] text-muted-foreground mb-0.5">{m.senderLabel}</div>
+                  <div className="text-[10px] text-muted-foreground mb-0.5">{m.senderLabel === 'director' ? '用户' : m.senderLabel}</div>
                   <div className={cn('inline-block max-w-[80%] p-2.5 rounded-xl whitespace-pre-wrap', m.senderType === 'system' ? 'border border-border bg-background' : 'bg-muted')}>
                     {m.content || (m.senderType === 'system' && m.content === '' && <span className="animate-pulse">...</span>)}
                   </div>
@@ -236,7 +182,7 @@ export default function SimRoomsPage() {
               <select value={speakAs} onChange={(e) => setSpeakAs(e.target.value)}
                 className="h-8 px-2 rounded-md text-xs bg-background border border-border focus:outline-none w-24 shrink-0">
                 <option value="director">导演模式</option>
-                {activeRoom.participants.filter((p) => p.entityType !== 'user').map((p) => (
+                {participants.filter((p) => p.entityType !== 'user').map((p) => (
                   <option key={p.id} value={`character:${p.entityId}`}>{p.roleLabel}</option>
                 ))}
               </select>

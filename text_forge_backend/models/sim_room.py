@@ -69,9 +69,46 @@ class SimBranch(Base):
     branch_type: Mapped[str] = mapped_column(String(30), nullable=False, comment="支线类型: backstory/relationship/plot-thread/foreshadow-fill/voice-test")
     related_character_ids: Mapped[list] = mapped_column(JSONB, default=[], comment="关联角色ID列表")
     related_location_id: Mapped[int] = mapped_column(ForeignKey("locations.id", ondelete="SET NULL"), nullable=True, comment="关联地点ID")
-    related_event_id: Mapped[int] = mapped_column(ForeignKey("scene_events.id", ondelete="SET NULL"), nullable=True, comment="关联事件ID")
-    related_foreshadowing_id: Mapped[int] = mapped_column(ForeignKey("foreshadowings.id", ondelete="SET NULL"), nullable=True, comment="关联伏笔ID")
+    related_event_id: Mapped[int] = mapped_column(ForeignKey("scene_events.id", ondelete="SET NULL"), nullable=True, comment="关联事件ID（兼容单值，全量见 related_event_ids）")
+    related_event_ids: Mapped[list] = mapped_column(JSONB, default=[], comment="关联事件ID全量列表")
+    related_foreshadowing_id: Mapped[int] = mapped_column(ForeignKey("foreshadowings.id", ondelete="SET NULL"), nullable=True, comment="关联伏笔ID（兼容单值，全量见 related_foreshadowing_ids）")
+    related_foreshadowing_ids: Mapped[list] = mapped_column(JSONB, default=[], comment="关联伏笔ID全量列表")
+    related_plot_thread_ids: Mapped[list] = mapped_column(JSONB, default=[], comment="关联剧情线索ID全量列表")
     compressed_context: Mapped[str] = mapped_column(Text, nullable=True, comment="压缩后的上下文（注入Agent用）")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), comment="创建时间")
 
     room: Mapped["SimRoom"] = relationship(back_populates="branches")
+
+    def to_dict(self) -> dict:
+        """序列化为前端协议用的 camelCase 字典（router 各接口共用，避免字段漂移）。"""
+        return {
+            "id": self.id,
+            "title": self.title,
+            "content": self.content,
+            "branchType": self.branch_type,
+            "relatedCharacterIds": self.related_character_ids or [],
+            "relatedLocationId": self.related_location_id,
+            "relatedEventId": self.related_event_id,
+            "relatedEventIds": self.related_event_ids or [],
+            "relatedForeshadowingId": self.related_foreshadowing_id,
+            "relatedForeshadowingIds": self.related_foreshadowing_ids or [],
+            "relatedPlotThreadIds": self.related_plot_thread_ids or [],
+            "createdAt": self.created_at.isoformat() if self.created_at else "",
+        }
+
+    def to_agent_dict(self) -> dict:
+        """序列化为 agent 工具用的 snake_case 字典（lookup_sim_branches 使用）。"""
+        return {
+            "id": self.id,
+            "title": self.title,
+            "content": self.content,
+            "branch_type": self.branch_type,
+            "related_character_ids": self.related_character_ids or [],
+            "related_location_id": self.related_location_id,
+            "related_event_id": self.related_event_id,
+            "related_event_ids": self.related_event_ids or [],
+            "related_foreshadowing_id": self.related_foreshadowing_id,
+            "related_foreshadowing_ids": self.related_foreshadowing_ids or [],
+            "related_plot_thread_ids": self.related_plot_thread_ids or [],
+            "created_at": self.created_at.isoformat() if self.created_at else "",
+        }

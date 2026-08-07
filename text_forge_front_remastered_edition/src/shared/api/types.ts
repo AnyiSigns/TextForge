@@ -47,6 +47,8 @@ export interface SceneEvent {
   locationId: number | null;
   characterIds: number[];
   plotThreadIds?: number[];
+  resolvedForeshadowingIds?: number[];
+  completedPlotThreadIds?: number[];
   locked: boolean;
   createdAt?: string;
   updatedAt?: string;

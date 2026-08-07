@@ -34,6 +34,8 @@ class SceneEventRequest(BaseModel):
     location_id: int | None = Field(default=None, alias="locationId")
     character_ids: list[int] = Field(default=[], alias="characterIds")
     plot_thread_ids: list[int] = Field(default=[], alias="plotThreadIds")
+    resolved_foreshadowing_ids: list[int] = Field(default=[], alias="resolvedForeshadowingIds")
+    completed_plot_thread_ids: list[int] = Field(default=[], alias="completedPlotThreadIds")
     locked: bool = Field(default=False)
 
 
@@ -98,6 +100,8 @@ class SceneEventUpdate(BaseModel):
     location_id: int | None = Field(default=None, alias="locationId")
     character_ids: list[int] | None = Field(default=None, alias="characterIds")
     plot_thread_ids: list[int] | None = Field(default=None, alias="plotThreadIds")
+    resolved_foreshadowing_ids: list[int] | None = Field(default=None, alias="resolvedForeshadowingIds")
+    completed_plot_thread_ids: list[int] | None = Field(default=None, alias="completedPlotThreadIds")
     locked: bool | None = None
 
 

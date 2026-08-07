@@ -437,7 +437,16 @@ async def _build_chapter_target_context(book_id: int, chapter_id: int) -> str:
         return ""
     from sqlalchemy import select
 
-    from models.book import Chapter, ChapterContent, SceneEvent, Volume
+    from models.book import (
+        Chapter,
+        ChapterContent,
+        Character,
+        Foreshadowing,
+        Location,
+        PlotThread,
+        SceneEvent,
+        Volume,
+    )
 
     async with db_manager.with_db() as session:
         ch = await session.get(Chapter, chapter_id)
@@ -478,24 +487,77 @@ async def _build_chapter_target_context(book_id: int, chapter_id: int) -> str:
             )
             prev_text = (pc.content or "")[-800:] if pc else ""
             parts.append(f"前一章《{prev.title}》结尾：\n{prev_text}")
-        # 本章关联事件
+        # 本章场景节点（写作依据）：时间/地点/角色/情节线/揭示伏笔/完结情节线
         events = (
             (
                 await session.execute(
-                    select(SceneEvent).where(
+                    select(SceneEvent)
+                    .where(
                         SceneEvent.book_id == book_id,
                         SceneEvent.chapter_id == chapter_id,
                     )
+                    .order_by(SceneEvent.story_ts, SceneEvent.sort_order)
                 )
             )
             .scalars()
             .all()
         )
         if events:
-            parts.append(
-                "本章关联事件：\n"
-                + "\n".join(f"- {e.title}：{(e.content or '')[:200]}" for e in events)
+            loc_ids = {e.location_id for e in events if e.location_id}
+            char_ids: set[int] = set()
+            thread_ids: set[int] = set()
+            fw_ids: set[int] = set()
+            for e in events:
+                char_ids.update(e.character_ids or [])
+                thread_ids.update(e.plot_thread_ids or [])
+                thread_ids.update(e.completed_plot_thread_ids or [])
+                fw_ids.update(e.resolved_foreshadowing_ids or [])
+            locs = (
+                {l.id: l.name for l in (await session.execute(select(Location).where(Location.id.in_(loc_ids)))).scalars().all()}
+                if loc_ids else {}
             )
+            chars = (
+                {c.id: c.name for c in (await session.execute(select(Character).where(Character.id.in_(char_ids)))).scalars().all()}
+                if char_ids else {}
+            )
+            threads = (
+                {t.id: t.name for t in (await session.execute(select(PlotThread).where(PlotThread.id.in_(thread_ids)))).scalars().all()}
+                if thread_ids else {}
+            )
+            fws = (
+                {f.id: (f.description or "")[:20] for f in (await session.execute(select(Foreshadowing).where(Foreshadowing.id.in_(fw_ids)))).scalars().all()}
+                if fw_ids else {}
+            )
+            event_lines = []
+            for e in events:
+                meta = []
+                if e.story_label:
+                    meta.append(f"时间：{e.story_label}")
+                if e.location_id and e.location_id in locs:
+                    meta.append(f"地点：{locs[e.location_id]}")
+                if e.character_ids:
+                    names = [chars[cid] for cid in e.character_ids if cid in chars]
+                    if names:
+                        meta.append(f"角色：{'、'.join(names)}")
+                if e.plot_thread_ids:
+                    names = [threads[tid] for tid in e.plot_thread_ids if tid in threads]
+                    if names:
+                        meta.append(f"情节线：{'、'.join(names)}")
+                if e.completed_plot_thread_ids:
+                    names = [threads[tid] for tid in e.completed_plot_thread_ids if tid in threads]
+                    if names:
+                        meta.append(f"完结情节线：{'、'.join(names)}")
+                if e.resolved_foreshadowing_ids:
+                    names = [fws[fid] for fid in e.resolved_foreshadowing_ids if fid in fws]
+                    if names:
+                        meta.append(f"揭示伏笔：{'、'.join(names)}")
+                line = f"- {e.title}"
+                if meta:
+                    line += f"（{'；'.join(meta)}）"
+                if e.content:
+                    line += f"：{(e.content or '')[:150]}"
+                event_lines.append(line)
+            parts.append("本章场景节点（写作依据，含时间/地点/角色/情节线）：\n" + "\n".join(event_lines))
         return "\n".join(parts)
 
 

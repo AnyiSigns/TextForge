@@ -20,7 +20,6 @@ export function LocationEditor({ locationId, isNew, onClose }: LocationEditorPro
   const [name, setName] = useState('');
   const [type, setType] = useState('');
   const [description, setDescription] = useState('');
-  const [backgroundUrl, setBackgroundUrl] = useState('');
   const [positionX, setPositionX] = useState('');
   const [positionY, setPositionY] = useState('');
   const [parentId, setParentId] = useState<number>(0);
@@ -35,7 +34,6 @@ export function LocationEditor({ locationId, isNew, onClose }: LocationEditorPro
     setName(location.name);
     setType(location.type);
     setDescription(location.description);
-    setBackgroundUrl(location.backgroundUrl ?? '');
     setPositionX(location.positionX != null ? String(location.positionX) : '');
     setPositionY(location.positionY != null ? String(location.positionY) : '');
     setParentId(location.parentId ?? 0);
@@ -64,7 +62,6 @@ export function LocationEditor({ locationId, isNew, onClose }: LocationEditorPro
         parentId: parentId || null,
         positionX: positionX ? parseFloat(positionX) : null,
         positionY: positionY ? parseFloat(positionY) : null,
-        backgroundUrl: backgroundUrl || null,
         alternateOfId: alternateOfId || null,
         mapIcon: mapIcon || null,
         attributes: attrs,
@@ -76,7 +73,6 @@ export function LocationEditor({ locationId, isNew, onClose }: LocationEditorPro
         type: type || '地点',
         description,
         parentId: parentId || null,
-        backgroundUrl: backgroundUrl || null,
         positionX: positionX ? parseFloat(positionX) : null,
         positionY: positionY ? parseFloat(positionY) : null,
         alternateOfId: alternateOfId || null,
@@ -171,16 +167,6 @@ export function LocationEditor({ locationId, isNew, onClose }: LocationEditorPro
           </div>
         </>
       )}
-
-      <div className="space-y-1.5">
-        <label className="text-[11px] font-medium text-muted-foreground">背景图 URL</label>
-        <input
-          value={backgroundUrl}
-          onChange={(e) => setBackgroundUrl(e.target.value)}
-          placeholder="留空使用渐变背景"
-          className="w-full h-8 px-3 rounded-md text-sm bg-background border border-border focus:outline-none focus:border-foreground/20"
-        />
-      </div>
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">

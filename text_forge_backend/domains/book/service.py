@@ -136,6 +136,8 @@ class BookService:
         """
         try:
             book_data, _ = await self.book_info(user_id, book_id)
+            if not book_data:
+                return None
             character_data, _ = await self.book_characters(user_id, book_id)
             result = {
                 "book": book_data,

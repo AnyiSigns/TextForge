@@ -1,12 +1,13 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import { ChevronRight, ChevronDown, Circle, PenLine, Plus, Pencil, Trash2 } from 'lucide-react';
+import { ChevronRight, ChevronDown, Circle, PenLine, Plus, Pencil, Trash2, Compass } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/shared/lib/cn';
 import { useEntityStore } from '@/features/map/stores/entityStore';
 import { useTimelineStore } from '@/features/map/stores/timelineStore';
 import { useEditorStore } from '@/features/map/stores/editorStore';
+import { useStoryFlowStore } from '@/features/map/stores/storyFlowStore';
 import { useBookDetailStore } from '@/app/(dashboard)/books/[id]/store';
 import { useAgentSender } from '@/features/agent/useAgentSender';
 import { ConfirmDialog } from '@/features/map/components/ConfirmDialog';
@@ -27,6 +28,7 @@ export function OutlineTree({ bookId }: OutlineTreeProps) {
   const cursorTs = useTimelineStore((s) => s.cursorTs);
   const setCursorTs = useTimelineStore((s) => s.setCursorTs);
   const openEditor = useEditorStore((s) => s.open);
+  const openStoryFlow = useStoryFlowStore((s) => s.open);
   const setAgentOpen = useBookDetailStore((s) => s.setAgentOpen);
   const sendMessage = useAgentSender().sendMessage;
 
@@ -321,6 +323,16 @@ export function OutlineTree({ bookId }: OutlineTreeProps) {
                         >
                           <PenLine size={10} />
                         </Link>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openStoryFlow(chapter.id);
+                          }}
+                          className="w-4 h-4 flex items-center justify-center rounded text-muted-foreground/30 hover:text-foreground/50 bg-transparent border-none cursor-pointer transition-colors"
+                          title="剧情流"
+                        >
+                          <Compass size={10} strokeWidth={1.8} />
+                        </button>
                         <span className="text-[9px] text-muted-foreground/40 tabular-nums">
                           {events.length}
                         </span>

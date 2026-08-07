@@ -3,6 +3,7 @@ from config.logging import get_logger
 from shared.pagination import PageParams, PageResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .derived_sync import schedule_recompute
 from .repository import WorldRepository
 
 logger = get_logger(__name__)
@@ -11,6 +12,19 @@ logger = get_logger(__name__)
 class WorldService:
     def __init__(self, session: AsyncSession):
         self.repo = WorldRepository(session)
+
+    async def _refresh_item(self, item):
+        """派生重算由后台防抖执行，此处仅刷新返回实例保证序列化可用。
+
+        Args:
+            item: 需要返回的实体实例。
+
+        Returns:
+            刷新后的实例。
+        """
+        if item is not None:
+            await self.repo.session.refresh(item)
+        return item
 
     async def list_locations_page(self, book_id: int, page_params: PageParams) -> PageResult:
         items, total = await self.repo.list_locations_page(book_id, offset=page_params.offset, limit=page_params.limit)
@@ -36,13 +50,18 @@ class WorldService:
         return await self.repo.list_scene_events(book_id)
 
     async def create_scene_event(self, book_id: int, data: dict):
-        return await self.repo.create_scene_event(book_id, data)
+        item = await self.repo.create_scene_event(book_id, data)
+        schedule_recompute(book_id)
+        return await self._refresh_item(item)
 
     async def update_scene_event(self, event_id: int, book_id: int, data: dict):
-        return await self.repo.update_scene_event(event_id, book_id, data)
+        item = await self.repo.update_scene_event(event_id, book_id, data)
+        schedule_recompute(book_id)
+        return await self._refresh_item(item)
 
     async def delete_scene_event(self, event_id: int, book_id: int):
         await self.repo.delete_scene_event(event_id, book_id)
+        schedule_recompute(book_id)
 
     async def list_foreshadowings_page(self, book_id: int, page_params: PageParams, status: str | None = None) -> PageResult:
         items, total = await self.repo.list_foreshadowings_page(book_id, offset=page_params.offset, limit=page_params.limit, status=status)
@@ -52,13 +71,18 @@ class WorldService:
         return await self.repo.list_foreshadowings(book_id, status=status)
 
     async def create_foreshadowing(self, book_id: int, data: dict):
-        return await self.repo.create_foreshadowing(book_id, data)
+        item = await self.repo.create_foreshadowing(book_id, data)
+        schedule_recompute(book_id)
+        return await self._refresh_item(item)
 
     async def update_foreshadowing(self, item_id: int, book_id: int, data: dict):
-        return await self.repo.update_foreshadowing(item_id, book_id, data)
+        item = await self.repo.update_foreshadowing(item_id, book_id, data)
+        schedule_recompute(book_id)
+        return await self._refresh_item(item)
 
     async def delete_foreshadowing(self, item_id: int, book_id: int):
         await self.repo.delete_foreshadowing(item_id, book_id)
+        schedule_recompute(book_id)
 
     async def list_plot_threads_page(self, book_id: int, page_params: PageParams) -> PageResult:
         items, total = await self.repo.list_plot_threads_page(book_id, offset=page_params.offset, limit=page_params.limit)
@@ -68,10 +92,15 @@ class WorldService:
         return await self.repo.list_plot_threads(book_id)
 
     async def create_plot_thread(self, book_id: int, data: dict):
-        return await self.repo.create_plot_thread(book_id, data)
+        item = await self.repo.create_plot_thread(book_id, data)
+        schedule_recompute(book_id)
+        return await self._refresh_item(item)
 
     async def update_plot_thread(self, item_id: int, book_id: int, data: dict):
-        return await self.repo.update_plot_thread(item_id, book_id, data)
+        item = await self.repo.update_plot_thread(item_id, book_id, data)
+        schedule_recompute(book_id)
+        return await self._refresh_item(item)
 
     async def delete_plot_thread(self, item_id: int, book_id: int):
         await self.repo.delete_plot_thread(item_id, book_id)
+        schedule_recompute(book_id)

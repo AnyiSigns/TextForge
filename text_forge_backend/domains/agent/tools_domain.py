@@ -18,6 +18,7 @@ from domains.world.constants import (
     normalize_foreshadowing_status,
     normalize_plot_thread_status,
 )
+from domains.world.derived_sync import schedule_recompute
 from domains.world.repository import WorldRepository
 from models.book import (
     Book,
@@ -255,20 +256,7 @@ def _build_lookup_tools(session_factory):
                     item for item in items
                     if query in (item.title or "") or query in (item.content or "")
                 ]
-            return [
-                {
-                    "id": item.id,
-                    "title": item.title,
-                    "content": item.content,
-                    "branch_type": item.branch_type,
-                    "related_character_ids": item.related_character_ids or [],
-                    "related_location_id": item.related_location_id,
-                    "related_event_id": item.related_event_id,
-                    "related_foreshadowing_id": item.related_foreshadowing_id,
-                    "created_at": item.created_at.isoformat() if item.created_at else "",
-                }
-                for item in items
-            ]
+            return [item.to_agent_dict() for item in items]
 
     return [
         lookup_characters,
@@ -649,6 +637,9 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
                 except Exception as exc:
                     errors.append({"kind": "plot_thread", "name": p.get("name"), "error": str(exc)})
             await session.commit()
+            # Agent 直接创建场景事件/伏笔/情节线后，统一异步重算派生字段
+            if created_ids["scene_events"] or created_ids["foreshadowings"] or created_ids["plot_threads"]:
+                schedule_recompute(book_id)
         return {"book_id": book_id, "created_ids": created_ids, "errors": errors}
 
     UPDATABLE_FIELDS = {
@@ -692,6 +683,8 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
                     inst = await repo.update_scene_event(item_id, book_id, payload)
                 if not inst:
                     return {"error": f"{kind} 不存在", "item_id": item_id}
+                # Agent 更新场景事件/伏笔/情节线后，统一异步重算派生字段
+                schedule_recompute(book_id)
                 return {"id": inst.id, "kind": kind, "updated": payload}
             if kind == "chapter":
                 inst = (await session.execute(select(Chapter).where(Chapter.id == item_id))).scalar_one_or_none()

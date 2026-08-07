@@ -37,6 +37,8 @@ class SceneEventResponse(BaseModel):
     location_id: int | None = Field(default=None, alias="locationId")
     character_ids: list[int] = Field(default=[], alias="characterIds")
     plot_thread_ids: list[int] = Field(default=[], alias="plotThreadIds")
+    resolved_foreshadowing_ids: list[int] = Field(default=[], alias="resolvedForeshadowingIds")
+    completed_plot_thread_ids: list[int] = Field(default=[], alias="completedPlotThreadIds")
     locked: bool = Field(default=False)
     created_at: datetime | None = Field(default=None, alias="createdAt")
     updated_at: datetime | None = Field(default=None, alias="updatedAt")

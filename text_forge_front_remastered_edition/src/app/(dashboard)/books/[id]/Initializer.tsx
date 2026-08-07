@@ -370,27 +370,76 @@ function CardGridStep({ step }: { step: number }) {
   );
 }
 
-/* ─── Step 4: Outline Document Preview ─── */
+/* ─── Step 3/5/6: Markdown 单份方案（流式生成 + 预览） ─── */
+
+function StepMarkdownStep({ step, title }: { step: number; title: string }) {
+  const { stepText, streaming, generating, saving, regenerateCandidates } = useInitializerStore();
+  const text = stepText[step] ?? '';
+  const hasText = !!text.trim();
+
+  return (
+    <div className="flex-1 overflow-y-auto px-4 py-3">
+      {!hasText && !streaming ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="w-10 h-10 rounded-full bg-[#1c1b1a]/[0.04] flex items-center justify-center mb-3">
+            <RefreshCw size={16} className="text-[#1c1b1a]/25" />
+          </div>
+          <p className="text-[12px] font-medium text-[#1c1b1a]/50 mb-1">还没有{title}方案</p>
+          <p className="text-[10px] text-[#1c1b1a]/30 max-w-[260px] leading-relaxed mb-3">
+            点击下方按钮，AI 将根据前序设定生成一份完整的{title}方案
+          </p>
+          <button
+            onClick={() => void regenerateCandidates()}
+            disabled={saving || generating}
+            className="flex items-center gap-1.5 h-8 px-4 rounded-md text-[11px] font-medium bg-[#1c1b1a] text-[#f4f3f0] hover:opacity-90 transition-opacity border-none cursor-pointer disabled:opacity-50"
+          >
+            {generating ? (
+              <span className="w-3 h-3 border-2 border-[#f4f3f0]/40 border-t-[#f4f3f0] rounded-full animate-spin" />
+            ) : (
+              <RefreshCw size={11} />
+            )}
+            {generating ? '生成中...' : `AI 生成${title}`}
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-[10px] text-[#1c1b1a]/30">
+              {streaming ? '正在生成...' : '生成完毕后点击"下一步"确认落库'}
+            </span>
+          </div>
+          <pre className="whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-[#1c1b1a]/60 bg-[#fafaf8] border border-[#1c1b1a]/[0.06] rounded-lg p-3">
+            {text || '...'}
+          </pre>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ─── Step 4: Outline Document Preview（流式，按卷生成） ─── */
 
 function StepOutlinePreview() {
   const volumes = useEntityStore((s) => s.volumes);
   const chapters = useEntityStore((s) => s.chapters);
-  const { candidates, lockedIds, toggleLock, regenerateCandidates, generating, saving } = useInitializerStore();
+  const { stepText, streaming, generating, saving, regenerateCandidates } = useInitializerStore();
   const [volCount, setVolCount] = useState(2);
   const [chPerVol, setChPerVol] = useState('5,5');
-  const items = candidates[4] ?? [];
 
-  // 配置表单：仅当尚无候选卡片时显示
-  const showConfig = items.length === 0;
+  const text = stepText[4] ?? '';
+  const hasText = !!text.trim();
+  // 尚未生成且未在流式时显示参数配置表单
+  const showConfig = !streaming && !hasText;
 
   const handleGenerate = () => {
-    // 将卷数/每卷章数约束传给后端（extraInstruction），并要求每章标注场景节点与本章角色
-    const extra = `请生成 ${volCount} 卷，每卷章数按以下列表依次分配：${chPerVol}。每个章节必须标注「场景节点」（1~3 个）与「本章角色」（须取自已有角色名）。`;
+    // 将卷数/每卷章数约束传给后端（extraInstruction），按卷流式生成
+    const extra = `卷数=${volCount} 每卷章数=${chPerVol}`;
     void regenerateCandidates(extra);
   };
 
-  const outlineText = (c: { fields: Array<{ key: string; value: string }> }) =>
-    c.fields.find((f) => f.key === '大纲')?.value ?? '';
+  const handleResetParams = () => {
+    useInitializerStore.setState((s) => ({ stepText: { ...s.stepText, 4: '' } }));
+  };
 
   if (showConfig) {
     return (
@@ -415,7 +464,7 @@ function StepOutlinePreview() {
             {generating ? '生成中...' : 'AI 生成大纲方案'}
           </button>
           <p className="text-[10px] text-[#1c1b1a]/30 text-center leading-relaxed">
-            生成的大纲将包含卷、章（含摘要）、场景节点与本章角色，可在下一步前锁定方案
+            按指定卷章数流式生成单份大纲，含卷摘要、章摘要、场景节点（时间/角色/情节线）
           </p>
         </div>
       </div>
@@ -425,47 +474,22 @@ function StepOutlinePreview() {
   return (
     <div className="flex-1 overflow-y-auto px-4 py-3">
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-[10px] text-[#1c1b1a]/30">点击锁定，已选 {items.filter((c) => lockedIds.has(c.id)).length}/{items.length}</span>
-        <button
-          onClick={() => {
-            const store = useInitializerStore.getState();
-            const newCandidates = store.candidates.map((stepCands, si) =>
-              si === 4 ? stepCands.filter((c) => store.lockedIds.has(c.id)) : stepCands,
-            );
-            useInitializerStore.setState({ candidates: newCandidates });
-          }}
-          className="text-[10px] text-[#1c1b1a]/30 hover:text-[#1c1b1a]/60 bg-transparent border-none cursor-pointer underline underline-offset-2"
-        >
-          修改参数
-        </button>
+        <span className="text-[10px] text-[#1c1b1a]/30">
+          {streaming ? '正在按卷生成大纲...' : '生成完毕后点击"下一步"确认落库'}
+        </span>
+        {!streaming && (
+          <button
+            onClick={handleResetParams}
+            className="text-[10px] text-[#1c1b1a]/30 hover:text-[#1c1b1a]/60 bg-transparent border-none cursor-pointer underline underline-offset-2"
+          >
+            修改参数
+          </button>
+        )}
       </div>
 
-      {items.map((c) => {
-        const isLocked = lockedIds.has(c.id);
-        return (
-          <div
-            key={c.id}
-            className={cn(
-              'relative rounded-xl border p-3 mb-3 transition-all duration-200',
-              isLocked
-                ? 'border-[#1c1b1a]/[0.20] bg-[#1c1b1a]/[0.03] shadow-[0_2px_12px_rgba(28,27,26,0.04)]'
-                : 'border-[#1c1b1a]/[0.06] bg-[#fafaf8] hover:border-[#1c1b1a]/[0.14] hover:shadow-[0_4px_16px_rgba(28,27,26,0.06)]',
-            )}
-          >
-            <button
-              onClick={() => toggleLock(4, c.id)}
-              className={cn(
-                'absolute top-2 right-2 z-10 w-5 h-5 flex items-center justify-center rounded-full transition-all cursor-pointer border',
-                isLocked ? 'bg-[#1c1b1a]/[0.06] border-[#1c1b1a]/[0.18] text-[#1c1b1a]/60' : 'bg-transparent border-[#1c1b1a]/[0.06] text-[#1c1b1a]/15 hover:text-[#1c1b1a]/40',
-              )}
-            >
-              <Lock size={10} strokeWidth={2} />
-            </button>
-            <div className="text-[12px] font-semibold text-[#1c1b1a]/80 mb-1.5">{c.title}</div>
-            <pre className="whitespace-pre-wrap font-sans text-[11px] leading-relaxed text-[#1c1b1a]/50">{outlineText(c)}</pre>
-          </div>
-        );
-      })}
+      <pre className="whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-[#1c1b1a]/60 bg-[#fafaf8] border border-[#1c1b1a]/[0.06] rounded-lg p-3">
+        {text || '...'}
+      </pre>
 
       {/* 已保存卷/章预览 */}
       {volumes.length > 0 && (
@@ -504,7 +528,7 @@ export function Initializer() {
     isOpen, currentStep, lockedIds,
     close, nextStep, prevStep,
     regenerateCandidates, finish,
-    saving, generating, error, clearError,
+    saving, generating, streaming, error, clearError,
   } = useInitializerStore();
 
   const isLastStep = currentStep >= 6;
@@ -556,7 +580,7 @@ export function Initializer() {
         <StepIndicator current={currentStep} total={7} />
 
         {/* Content area */}
-        {generating && currentStep !== 0 ? (
+        {generating && (currentStep === 1 || currentStep === 2) ? (
           <div className="flex-1">
             <PulseIndicator />
           </div>
@@ -564,9 +588,11 @@ export function Initializer() {
           <div className="flex-1 flex flex-col overflow-hidden">
             {currentStep === 0 && <StepCreativeSetting />}
             {currentStep === 1 && <CardGridStep step={1} />}
+            {currentStep === 2 && <CardGridStep step={2} />}
+            {currentStep === 3 && <StepMarkdownStep step={3} title="情节线" />}
             {currentStep === 4 && <StepOutlinePreview />}
-            {[2, 3, 5].includes(currentStep) && <CardGridStep step={currentStep} />}
-            {currentStep === 6 && <CardGridStep step={currentStep} />}
+            {currentStep === 5 && <StepMarkdownStep step={5} title="事件" />}
+            {currentStep === 6 && <StepMarkdownStep step={6} title="伏笔" />}
           </div>
         )}
 
@@ -602,7 +628,7 @@ export function Initializer() {
             <div className="flex items-center gap-1.5">
               {!isFirstStep && (
                 <button onClick={prevStep}
-                  disabled={saving}
+                  disabled={saving || generating || streaming}
                   className="flex items-center gap-1 h-7 px-3 rounded-md text-[10px] text-[#1c1b1a]/40 hover:text-[#1c1b1a]/70 hover:bg-[#1c1b1a]/[0.03] bg-transparent border border-[#1c1b1a]/[0.06] cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed">
                   <ChevronLeft size={12} />
                   上一步
@@ -626,7 +652,8 @@ export function Initializer() {
                 </button>
               ) : (
                 <button onClick={handleNextStep}
-                  className="flex items-center gap-1 h-7 px-4 rounded-md text-[10px] font-medium bg-[#1c1b1a] text-[#f4f3f0] hover:opacity-90 transition-opacity border-none cursor-pointer">
+                  disabled={saving || generating || streaming}
+                  className="flex items-center gap-1 h-7 px-4 rounded-md text-[10px] font-medium bg-[#1c1b1a] text-[#f4f3f0] hover:opacity-90 transition-opacity border-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
                   下一步
                   <ChevronRight size={12} />
                 </button>

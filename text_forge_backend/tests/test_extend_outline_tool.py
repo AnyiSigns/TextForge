@@ -19,6 +19,21 @@ from models.book import Book, Chapter, Character, CreativeSetting, Foreshadowing
 
 from domains.agent.tools import extend_outline_tool as tool_mod
 
+
+@pytest.fixture(autouse=True)
+def _patch_recompute(monkeypatch):
+    """将 recompute_derived 替换为 no-op。
+
+    fake session 的查询不包含运行时新建的事件对象，recompute_derived 基于
+    静态 rows 重算会覆盖本工具直接写入的 end/resolved 派生值，干扰本文件
+    对工具自身逻辑的断言。派生重算的一致性由生产路径（真实 DB）负责。
+    """
+
+    async def _noop(session, book_id):
+        return None
+
+    monkeypatch.setattr(tool_mod, "recompute_derived", _noop)
+
 # ---------------------------------------------------------------------------
 # 测试对象构造辅助
 # ---------------------------------------------------------------------------
@@ -52,20 +67,20 @@ def make_location(id: int, **kw):
 
 def make_foreshadowing(id: int, status: str = "planted", resolved_at_chapter_id=None, **kw):
     base = dict(id=id, description="伏笔描述", status=status, planted_at_chapter_id=1,
-                resolved_at_chapter_id=resolved_at_chapter_id, book_id=1)
+                resolved_at_chapter_id=resolved_at_chapter_id, related_event_id=None, book_id=1)
     return SimpleNamespace(**{**base, **kw})
 
 
 def make_plot_thread(id: int, status: str = "active", end_chapter_id=None, **kw):
     base = dict(id=id, name=f"线索{id}", type="main", description="", status=status,
-                end_chapter_id=end_chapter_id, book_id=1)
+                start_chapter_id=None, end_chapter_id=end_chapter_id, related_character_ids=[], book_id=1)
     return SimpleNamespace(**{**base, **kw})
 
 
 def make_scene_event(id: int, story_ts: float = 0.0, story_label: str = "", **kw):
     base = dict(id=id, book_id=1, chapter_id=1, title=f"事件{id}", description="", content="", sort_order=1,
                 event_type="scene", story_ts=story_ts, story_label=story_label, location_id=None,
-                character_ids=[], plot_thread_ids=[])
+                character_ids=[], plot_thread_ids=[], resolved_foreshadowing_ids=[], completed_plot_thread_ids=[])
     return SimpleNamespace(**{**base, **kw})
 
 

@@ -22,12 +22,8 @@ export function PlotThreadEditor({ plotThreadId, isNew, onClose }: PlotThreadEdi
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [status, setStatus] = useState('active');
   const [type, setType] = useState('');
   const [parentThreadId, setParentThreadId] = useState<number | null>(null);
-  const [relatedCharacterIds, setRelatedCharacterIds] = useState<number[]>([]);
-  const [startChapterId, setStartChapterId] = useState<number | null>(null);
-  const [endChapterId, setEndChapterId] = useState<number | null>(null);
   const [progressNote, setProgressNote] = useState('');
   const [locked, setLocked] = useState(false);
 
@@ -36,54 +32,36 @@ export function PlotThreadEditor({ plotThreadId, isNew, onClose }: PlotThreadEdi
     if (!plotThread) return;
     setName(plotThread.name || '');
     setDescription(plotThread.description || '');
-    setStatus(plotThread.status || 'active');
     setType(plotThread.type || '');
     setParentThreadId(plotThread.parentThreadId ?? null);
-    setRelatedCharacterIds(plotThread.relatedCharacterIds || []);
-    setStartChapterId(plotThread.startChapterId ?? null);
-    setEndChapterId(plotThread.endChapterId ?? null);
     setProgressNote(plotThread.progressNote || '');
     setLocked(plotThread.locked || false);
   }, [plotThread, isNew]);
 
   const handleSave = () => {
+    const common = { name, description, type, parentThreadId, progressNote, locked };
     if (isNew) {
       const nextId = Math.max(0, ...plotThreads.map((p) => p.id)) + 100;
       addPlotThread({
         id: nextId,
         bookId,
-        name,
-        description,
-        status,
-        type,
-        parentThreadId,
-        relatedCharacterIds,
-        startChapterId,
-        endChapterId,
-        progressNote,
-        locked,
+        ...common,
+        status: 'active',
+        relatedCharacterIds: [],
+        startChapterId: null,
+        endChapterId: null,
       });
     } else if (plotThreadId !== null) {
-      updatePlotThread(plotThreadId, {
-        name,
-        description,
-        status,
-        type,
-        parentThreadId,
-        relatedCharacterIds,
-        startChapterId,
-        endChapterId,
-        progressNote,
-        locked,
-      });
+      // 派生字段（状态/关联角色/起止章节）由大纲场景事件驱动，不在标签页维护
+      updatePlotThread(plotThreadId, common);
     }
     onClose();
   };
 
   if (!isNew && !plotThread) return null;
 
-  const startChapter = chapters.find((c) => c.id === startChapterId);
-  const endChapter = chapters.find((c) => c.id === endChapterId);
+  const startChapter = chapters.find((c) => c.id === plotThread?.startChapterId);
+  const endChapter = chapters.find((c) => c.id === plotThread?.endChapterId);
   const parentThread = plotThreads.find((p) => p.id === parentThreadId);
 
   return (
@@ -100,16 +78,10 @@ export function PlotThreadEditor({ plotThreadId, isNew, onClose }: PlotThreadEdi
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <label className="text-[11px] font-medium text-muted-foreground">状态</label>
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            className="w-full h-8 px-2 rounded-md text-sm bg-background border border-border focus:outline-none focus:border-foreground/20"
-          >
-            <option value="active">进行中</option>
-            <option value="planted">已埋下</option>
-            <option value="resolved">已完结</option>
-          </select>
+          <label className="text-[11px] font-medium text-muted-foreground">状态（由大纲完结场景派生）</label>
+          <div className="px-1 py-1.5 text-sm text-muted-foreground/70">
+            {(plotThread?.status ?? 'active') === 'completed' ? '已完结' : '进行中'}
+          </div>
         </div>
         <div className="space-y-1.5">
           <label className="text-[11px] font-medium text-muted-foreground">情节线类型</label>
@@ -135,30 +107,16 @@ export function PlotThreadEditor({ plotThreadId, isNew, onClose }: PlotThreadEdi
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <label className="text-[11px] font-medium text-muted-foreground">起始章节</label>
-          <select
-            value={startChapterId ?? ''}
-            onChange={(e) => setStartChapterId(e.target.value ? parseInt(e.target.value) : null)}
-            className="w-full h-8 px-2 rounded-md text-sm bg-background border border-border focus:outline-none focus:border-foreground/20"
-          >
-            <option value="">未关联</option>
-            {chapters.map((ch) => (
-              <option key={ch.id} value={ch.id}>{ch.title}</option>
-            ))}
-          </select>
+          <label className="text-[11px] font-medium text-muted-foreground">起始章节（由大纲场景派生）</label>
+          <div className="px-1 py-1.5 text-sm text-muted-foreground/70">
+            {startChapter?.title ?? '未关联'}
+          </div>
         </div>
         <div className="space-y-1.5">
-          <label className="text-[11px] font-medium text-muted-foreground">结束章节</label>
-          <select
-            value={endChapterId ?? ''}
-            onChange={(e) => setEndChapterId(e.target.value ? parseInt(e.target.value) : null)}
-            className="w-full h-8 px-2 rounded-md text-sm bg-background border border-border focus:outline-none focus:border-foreground/20"
-          >
-            <option value="">未关联</option>
-            {chapters.map((ch) => (
-              <option key={ch.id} value={ch.id}>{ch.title}</option>
-            ))}
-          </select>
+          <label className="text-[11px] font-medium text-muted-foreground">结束章节（由大纲完结场景派生）</label>
+          <div className="px-1 py-1.5 text-sm text-muted-foreground/70">
+            {endChapter?.title ?? '未完结'}
+          </div>
         </div>
       </div>
 
@@ -179,26 +137,11 @@ export function PlotThreadEditor({ plotThreadId, isNew, onClose }: PlotThreadEdi
           </select>
         </div>
         <div className="space-y-1.5">
-          <label className="text-[11px] font-medium text-muted-foreground">关联角色 ({relatedCharacterIds.length})</label>
-          <div className="max-h-[100px] overflow-y-auto space-y-0.5 border border-border rounded-md p-1.5 bg-background">
-            {characters.map((ch) => (
-              <label key={ch.id} className="flex items-center gap-1.5 cursor-pointer text-[11px]">
-                <input
-                  type="checkbox"
-                  checked={relatedCharacterIds.includes(ch.id)}
-                  onChange={() =>
-                    setRelatedCharacterIds(
-                      relatedCharacterIds.includes(ch.id)
-                        ? relatedCharacterIds.filter((id) => id !== ch.id)
-                        : [...relatedCharacterIds, ch.id],
-                    )
-                  }
-                  className="w-3 h-3"
-                />
-                {ch.name}
-              </label>
-            ))}
-            {characters.length === 0 && <span className="text-[10px] text-muted-foreground/40">暂无角色</span>}
+          <label className="text-[11px] font-medium text-muted-foreground">关联角色（由大纲场景角色派生）</label>
+          <div className="px-1 py-1.5 text-[12px] text-muted-foreground/70 leading-relaxed">
+            {(plotThread?.relatedCharacterIds ?? []).length > 0
+              ? (plotThread?.relatedCharacterIds ?? []).map((id) => characters.find((c) => c.id === id)?.name).filter(Boolean).join('、')
+              : '暂无（在场景事件中关联角色）'}
           </div>
         </div>
       </div>

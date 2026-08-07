@@ -13,16 +13,16 @@ export function StoryFlow() {
   const router = useRouter();
   const bookId = useBookDetailStore((s) => s.bookId);
   const {
-    isOpen, currentSceneId, perspective, decisionChain, triggerEventId,
+    isOpen, currentSceneId, perspective, decisionChain, triggerChapterId,
     close, setPerspective, makeDecision,
   } = useStoryFlowStore();
 
-  const sceneEvents = useEntityStore((s) => s.sceneEvents);
+  const chapters = useEntityStore((s) => s.chapters);
   const [showDecisions, setShowDecisions] = useState(false);
 
   const currentScene = useStoryFlowStore.getState().getCurrentScene();
-  const triggerEvent = triggerEventId
-    ? sceneEvents.find((e) => e.id === triggerEventId)
+  const triggerChapter = triggerChapterId
+    ? chapters.find((c) => c.id === triggerChapterId)
     : null;
 
   const narrationText = useMemo(() => {
@@ -58,7 +58,7 @@ export function StoryFlow() {
           <span className="text-muted-foreground/30">|</span>
           <span className="text-[13px] font-semibold text-foreground/80">
             剧情流
-            {triggerEvent && ` · ${triggerEvent.title}`}
+            {triggerChapter && ` · ${triggerChapter.title}`}
           </span>
         </div>
 

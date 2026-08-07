@@ -44,7 +44,10 @@ export interface SimBranch {
   relatedCharacterIds?: number[];
   relatedLocationId?: number | null;
   relatedEventId?: number | null;
+  relatedEventIds?: number[];
   relatedForeshadowingId?: number | null;
+  relatedForeshadowingIds?: number[];
+  relatedPlotThreadIds?: number[];
   createdAt?: string;
 }
 

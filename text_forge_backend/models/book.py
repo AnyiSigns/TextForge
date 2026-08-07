@@ -363,6 +363,12 @@ class SceneEvent(Base):
     plot_thread_ids: Mapped[list] = mapped_column(
         JSONB, default=[], comment="关联情节线ID列表"
     )
+    resolved_foreshadowing_ids: Mapped[list] = mapped_column(
+        JSONB, default=[], comment="本场景揭示的伏笔ID列表"
+    )
+    completed_plot_thread_ids: Mapped[list] = mapped_column(
+        JSONB, default=[], comment="本场景完结的情节线ID列表"
+    )
     locked: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False, comment="是否锁定"
     )

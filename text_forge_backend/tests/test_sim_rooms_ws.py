@@ -12,6 +12,7 @@ from starlette.testclient import TestClient
 import domains.sim_rooms.router as sim_router
 from main import app
 from models.agent_memory import AgentMemory
+from models.book import Character
 from models.sim_room import SimBranch, SimMessage, SimParticipant, SimRoom
 
 
@@ -27,7 +28,8 @@ class ScalarListResult:
 
 
 class FakeRoom:
-    def __init__(self, room_id=1, user_id=1, status="active"):
+    def __init__(self, room_id=1, user_id=1, status="active",
+                 related_event_ids=None, related_foreshadowing_ids=None, related_plot_thread_ids=None):
         self.id = room_id
         self.user_id = user_id
         self.book_id = 1
@@ -37,24 +39,27 @@ class FakeRoom:
         self.location_id = None
         self.summary = None
         self.round_count = 0
-        self.related_event_ids = []
-        self.related_foreshadowing_ids = []
-        self.related_plot_thread_ids = []
+        self.related_event_ids = related_event_ids or []
+        self.related_foreshadowing_ids = related_foreshadowing_ids or []
+        self.related_plot_thread_ids = related_plot_thread_ids or []
 
 
 class FakeSession:
     """按模型/查询分派的最小 session。"""
 
-    def __init__(self, room=None, participants=None, messages=None, memories=None):
+    def __init__(self, room=None, participants=None, messages=None, memories=None, character=None):
         self.room = room
         self.participants = participants or []
         self.messages = messages or []
         self.memories = memories or []
+        self.character = character
         self.added = []
 
     async def get(self, model, ident):
         if model is SimRoom:
             return self.room
+        if model is Character:
+            return self.character
         return None
 
     async def execute(self, stmt):
@@ -138,6 +143,25 @@ def make_room_session():
     return FakeSession(room=room, participants=[char, SimpleNamespace(entity_type="user", entity_id=1)], messages=[history])
 
 
+def make_user_char_room_session():
+    """用户扮演书本角色（林星辰），且房间关联了事件/伏笔/剧情线索。"""
+    room = FakeRoom(
+        related_event_ids=[11, 12],
+        related_foreshadowing_ids=[21],
+        related_plot_thread_ids=[31],
+    )
+    ai_char = SimpleNamespace(entity_type="character", entity_id=5, role_label="测试角色",
+                              personality_override=None, description="角色描述")
+    user_char_p = SimpleNamespace(entity_type="user", entity_id=42, role_label="林星辰")
+    history = SimpleNamespace(sender_label="AI", sender_type="system", message_type="narration", content="已有对话")
+    return FakeSession(
+        room=room,
+        participants=[ai_char, user_char_p],
+        messages=[history],
+        character=SimpleNamespace(name="林星辰", description="身世成谜的少女"),
+    )
+
+
 def make_empty_room_session():
     """新房间：无历史消息，触发开局提示流式块。"""
     room = FakeRoom()
@@ -184,14 +208,16 @@ def test_ws_full_round_protocol(monkeypatch, client):
 
         types = []
         payloads = []
-        for _ in range(5):
+        for _ in range(4):
             msg = json.loads(ws.receive_text())
             types.append(msg["type"])
             payloads.append(msg)
-        assert types == ["user_msg", "stream_start", "stream_token", "turn_done", "suggestions"]
-        assert payloads[2]["token"] == "夜色渐深"
-        assert payloads[3]["roundCount"] == 1
-        assert len(payloads[4]["items"]) == 2
+        assert types == ["stream_start", "stream_token", "turn_done", "suggestions"]
+        assert payloads[1]["token"] == "夜色渐深"
+        assert payloads[2]["roundCount"] == 1
+        assert len(payloads[3]["items"]) == 2
+        # 轮数写回房间（刷新后轮数不丢失）
+        assert session.room.round_count == 1
 
         # 用户消息落库（dialogue）+ 场景落库（scene）+ 角色发言落库（dialogue）
         assert any(m.sender_type == "user" for m in session.added)
@@ -220,6 +246,8 @@ def test_ws_opening_prompt(monkeypatch, client):
             payloads.append(msg)
         assert types == ["connected", "stream_start", "stream_token", "turn_done", "suggestions"]
         assert payloads[2]["token"] == "开局白"
+        # 开场白流式带 senderLabel，与落库的「导演」一致
+        assert payloads[2]["senderLabel"] == "导演"
         assert len(payloads[4]["items"]) == 2
         # 开局开场白应落库为导演消息
         assert any(m.sender_type == "system" and m.sender_label == "导演" and m.content == "开局白" for m in session.added)
@@ -300,3 +328,39 @@ def test_ws_branch_creation(monkeypatch, client):
         assert msg["branch"]["branchType"] == "plot-thread"
         # 支线应落库
         assert any(isinstance(o, SimBranch) for o in session.added)
+
+
+def test_ws_branch_keeps_full_related_ids(monkeypatch, client):
+    """支线保留全部关联 ID（事件/伏笔/剧情线索），不再只取第一个。"""
+    session = make_user_char_room_session()
+    install_ws_deps(monkeypatch, session)
+
+    with client.websocket_connect("/api/sim-rooms/1/ws?token=t1") as ws:
+        ws.receive_text()  # connected
+        ws.send_text(json.dumps({"type": "branch", "branchType": "plot-thread"}))
+        msg = json.loads(ws.receive_text())
+        assert msg["type"] == "branch_created"
+        assert msg["branch"]["relatedEventIds"] == [11, 12]
+        assert msg["branch"]["relatedForeshadowingIds"] == [21]
+        assert msg["branch"]["relatedPlotThreadIds"] == [31]
+        # 兼容单值字段保留第一个
+        assert msg["branch"]["relatedEventId"] == 11
+        branch = next(o for o in session.added if isinstance(o, SimBranch))
+        assert branch.related_event_ids == [11, 12]
+        assert branch.related_plot_thread_ids == [31]
+
+
+def test_ws_branch_includes_user_character(monkeypatch, client):
+    """用户扮演的角色（林星辰）参与支线的相关角色列表与生成上下文。"""
+    session = make_user_char_room_session()
+    install_ws_deps(monkeypatch, session)
+
+    with client.websocket_connect("/api/sim-rooms/1/ws?token=t1") as ws:
+        ws.receive_text()  # connected
+        ws.send_text(json.dumps({"type": "branch", "branchType": "relationship"}))
+        msg = json.loads(ws.receive_text())
+        assert msg["type"] == "branch_created"
+        related = msg["branch"]["relatedCharacterIds"]
+        assert 5 in related and 42 in related
+        branch = next(o for o in session.added if isinstance(o, SimBranch))
+        assert branch.related_character_ids == [5, 42]

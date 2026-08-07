@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 
 from config.logging import get_logger
 from domains.book.repository import CharacterRepository
+from domains.world.derived_sync import recompute_derived
 from domains.world.repository import WorldRepository
 from models.book import Book, Chapter, CreativeSetting, Volume
 
@@ -18,8 +19,8 @@ EXTEND_OUTLINE_SYSTEM_PROMPT = """你是小说大纲规划师。根据已有内�
 1. 生成 N 章标题和摘要（每个摘要 50 字以内，涵盖章内关键情节）
 2. 为每章生成 3~5 个 SceneEvent（场景事件）：每个含 name/description/event_type
 3. 为每个 SceneEvent 自动关联已知地点(location_id)、角色(character_ids)、情节线(plot_thread_ids)
-4. 如果某条线索在此次追加中完结，标注应更新 end_chapter_id
-5. 如果某个伏笔在此次追加中揭晓，标注应更新 resolved_at_chapter_id
+4. 如果某条情节线在此次追加的场景中完结，在该场景事件标注 completed_plot_thread_ids
+5. 如果某个伏笔在此次追加的场景中揭晓，在该场景事件标注 resolved_foreshadowing_ids
 
 **输出格式（严格 JSON）：**
 {
@@ -35,7 +36,9 @@ EXTEND_OUTLINE_SYSTEM_PROMPT = """你是小说大纲规划师。根据已有内�
           "story_label": "时间标签（如'第一天上午'）",
           "location_id": null,
           "character_ids": [],
-          "plot_thread_ids": []
+          "plot_thread_ids": [],
+          "completed_plot_thread_ids": [],
+          "resolved_foreshadowing_ids": []
         }
       ],
       "thread_updates": [{"thread_id": 1, "end_chapter": true}],
@@ -45,6 +48,9 @@ EXTEND_OUTLINE_SYSTEM_PROMPT = """你是小说大纲规划师。根据已有内�
   "new_volume_needed": false
 }
 """
+
+# 兼容旧输出：thread_updates / foreshadowing_updates 仍会被处理（等价于在该章第一个场景事件上标注）
+_LEGACY_THREAD_UPDATES_SUPPORTED = True
 
 
 async def _get_next_batch_number(session, book_id: int) -> int:
@@ -304,10 +310,13 @@ def build_extend_outline_tool(session_factory, model_config: dict | None = None)
                         location_id=se_data.get("location_id"),
                         character_ids=se_data.get("character_ids", []),
                         plot_thread_ids=se_data.get("plot_thread_ids", []),
+                        completed_plot_thread_ids=se_data.get("completed_plot_thread_ids", []),
+                        resolved_foreshadowing_ids=se_data.get("resolved_foreshadowing_ids", []),
                     )
                     session.add(new_event)
                     created_events.append(new_event)
 
+                # 兼容旧输出：thread_updates / foreshadowing_updates 等价于在本章第一个场景事件上标注
                 for tu in ch_data.get("thread_updates", []):
                     tid = tu.get("thread_id")
                     if tid and tu.get("end_chapter"):
@@ -315,6 +324,11 @@ def build_extend_outline_tool(session_factory, model_config: dict | None = None)
                             if t.id == tid:
                                 t.end_chapter_id = new_chapter.id
                                 t.status = "completed"
+                                if created_events:
+                                    ev = created_events[-1]
+                                    cur = list(ev.completed_plot_thread_ids or [])
+                                    if tid not in cur:
+                                        ev.completed_plot_thread_ids = cur + [tid]
 
                 for fu in ch_data.get("foreshadowing_updates", []):
                     fid = fu.get("foreshadowing_id")
@@ -323,8 +337,16 @@ def build_extend_outline_tool(session_factory, model_config: dict | None = None)
                             if f.id == fid:
                                 f.resolved_at_chapter_id = new_chapter.id
                                 f.status = "resolved"
+                                if created_events:
+                                    ev = created_events[-1]
+                                    cur = list(ev.resolved_foreshadowing_ids or [])
+                                    if fid not in cur:
+                                        ev.resolved_foreshadowing_ids = cur + [fid]
 
             await session.commit()
+
+            # 追加大纲后统一重算派生字段（情节线起止/角色/状态、伏笔埋下/揭示章节）
+            await recompute_derived(session, book_id)
 
             return {
                 "status": "completed",

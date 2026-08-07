@@ -96,6 +96,13 @@ async def _execute_round(
     Returns:
         (更新后的 round_count, 是否应结束, 结束原因)。
     """
+    if round_count >= MAX_ROUNDS:
+        # 已达轮次上限：不再发 stream_start，直接结束，避免无 token 的虚假流开始
+        await websocket.send_text(json.dumps(
+            {"type": "auto_end", "reason": "达到轮次上限", "roundCount": round_count}, ensure_ascii=False
+        ))
+        return round_count, True, "达到轮次上限"
+
     state = {
         "room_id": room_id,
         "round_count": round_count,
@@ -136,7 +143,7 @@ async def _execute_round(
     if not final_output:
         final_output = "\n".join(f"{k}：{v}" for k, v in result.get("character_outputs", {}).items())
 
-    # 落库本轮输出：场景与各角色分别落库（前端按角色头像/名字渲染）
+    # 落库本轮输出：场景与各角色分别落库（前端按角色头像/名字渲染），并同步轮数
     async with db_manager.session_factory() as ss:
         scene_out = result.get("scene_output")
         if scene_out:
@@ -144,11 +151,15 @@ async def _execute_round(
         for label, text in (result.get("character_outputs") or {}).items():
             if text.strip():
                 ss.add(SimMessage(room_id=room_id, sender_type="system", sender_label=label, content=text.strip(), message_type="dialogue"))
+        # 轮数写回房间，刷新 updated_at，保证刷新/重连后轮数与列表排序不丢失
+        r = await ss.get(SimRoom, room_id)
+        if r:
+            r.round_count = round_count
         await ss.commit()
 
     await websocket.send_text(json.dumps({"type": "turn_done", "roundCount": round_count}, ensure_ascii=False))
 
-    recent_history.append(f"[系统] {final_output[:200]}")
+    recent_history.append(f"[系统][summary] {final_output[:200]}")
 
     should_end = bool(result.get("should_end")) or round_count >= MAX_ROUNDS
     end_reason = result.get("director_decision", {}).get("end_reason", "达到轮次上限") if should_end else ""
@@ -217,6 +228,7 @@ async def _generate_branch(
     location_id: int | None,
     model_config: dict | None = None,
     character_memories: dict[str, str] | None = None,
+    user_char: dict | None = None,
 ) -> dict:
     """根据当前模拟对话生成一条结构化支线并落库。
 
@@ -232,13 +244,17 @@ async def _generate_branch(
         location_id: 房间关联地点 ID。
         model_config: 用户模型配置。
         character_memories: 角色记忆字典（role_label -> 摘要），用于补充角色背景。
+        user_char: 用户扮演的角色详情（entity_id/role_label/description），参与支线上下文与相关角色。
 
     Returns:
         生成的支线字典，包含 id/title/content/branchType/related 字段。
     """
     type_label = BRANCH_TYPE_LABELS.get(branch_type, "剧情支线")
     recent = "\n".join(recent_history[-10:]) or "（对话刚开始）"
-    chars = "\n".join(f"- {c['role_label']}（{c.get('description', '')[:200]}）" for c in char_details) or "（无角色）"
+    all_chars = list(char_details)
+    if user_char and user_char.get("entity_id"):
+        all_chars.append(user_char)
+    chars = "\n".join(f"- {c['role_label']}（{c.get('description', '')[:200]}）" for c in all_chars) or "（无角色）"
     mem_lines = "\n".join(f"- {k}：{v[:150]}" for k, v in (character_memories or {}).items()) or "（暂无角色记忆）"
     prompt = f"""你是小说创作助手。请从下面这段角色模拟对话中，提炼出一条"角色支线"素材并落库。
 
@@ -266,14 +282,14 @@ async def _generate_branch(
         text = result.content if hasattr(result, "content") else str(result)
         import json as _json
         parsed = _json.loads(text.strip().removeprefix("```json").removesuffix("```").strip())
-        title = str(parsed.get("title", f"{type_label}-{len(recent_history)}轮"))[:100]
-        content = str(parsed.get("content", recent[:300]))
+        title = str(parsed.get("title", "")).strip()[:100] or f"{type_label}-{len(recent_history)}轮"
+        content = str(parsed.get("content", "")).strip() or (recent[:300] or "（对话暂无内容）")
     except Exception as exc:
         logger.warning(f"生成支线失败，回退为对话摘录: {exc}")
         title = f"{type_label}-{len(recent_history)}轮"
-        content = recent[:300]
+        content = recent[:300] or "（对话暂无内容）"
 
-    char_ids = [c.get("entity_id") for c in char_details if c.get("entity_id")]
+    char_ids = [c.get("entity_id") for c in all_chars if c.get("entity_id")]
     async with db_manager.session_factory() as ss:
         branch = SimBranch(
             room_id=room_id,
@@ -283,23 +299,16 @@ async def _generate_branch(
             related_character_ids=char_ids,
             related_location_id=location_id,
             related_event_id=related_event_ids[0] if related_event_ids else None,
+            related_event_ids=related_event_ids,
             related_foreshadowing_id=related_foreshadowing_ids[0] if related_foreshadowing_ids else None,
+            related_foreshadowing_ids=related_foreshadowing_ids,
+            related_plot_thread_ids=related_plot_thread_ids,
         )
         ss.add(branch)
         await ss.commit()
         await ss.refresh(branch)
 
-    return {
-        "id": branch.id,
-        "title": branch.title,
-        "content": branch.content,
-        "branchType": branch.branch_type,
-        "relatedCharacterIds": char_ids,
-        "relatedLocationId": branch.related_location_id,
-        "relatedEventId": branch.related_event_id,
-        "relatedForeshadowingId": branch.related_foreshadowing_id,
-        "createdAt": branch.created_at.isoformat() if branch.created_at else "",
-    }
+    return branch.to_dict()
 
 
 @router.get("/")
@@ -434,7 +443,7 @@ async def get_room(
             "roundCount": room.round_count,
             "participants": participants,
             "messages": [{"id": m.id, "senderType": m.sender_type, "senderLabel": m.sender_label, "content": m.content, "messageType": m.message_type, "createdAt": m.created_at.isoformat() if m.created_at else ""} for m in msgs],
-            "branches": [{"id": b.id, "title": b.title, "content": b.content, "branchType": b.branch_type, "relatedCharacterIds": b.related_character_ids, "relatedLocationId": b.related_location_id, "relatedEventId": b.related_event_id, "relatedForeshadowingId": b.related_foreshadowing_id, "createdAt": b.created_at.isoformat() if b.created_at else ""} for b in branches],
+            "branches": [b.to_dict() for b in branches],
         }
     }
 
@@ -532,15 +541,35 @@ async def room_websocket(websocket: WebSocket, room_id: int, model_config: str |
             select(SimParticipant).where(SimParticipant.room_id == room_id)
         )).scalars().all()
 
+        # 批量加载参与者引用的角色描述，避免逐个 get(Character) 造成 N+1 查询
+        char_ids_needed = [p.entity_id for p in participants if p.entity_type == "character" and p.entity_id]
+        chars_map: dict[int, Character] = {}
+        if char_ids_needed:
+            char_rows = (await s.execute(
+                select(Character).where(Character.id.in_(char_ids_needed))
+            )).scalars().all()
+            chars_map = {c.id: c for c in char_rows}
+
         for p in participants:
             if p.entity_type == "user":
                 continue
             detail = {"role_label": p.role_label, "entity_type": p.entity_type, "entity_id": p.entity_id, "personality_override": p.personality_override, "description": ""}
-            if p.entity_type == "character" and p.entity_id:
-                char = await s.get(Character, p.entity_id)
-                if char:
-                    detail["description"] = char.description or ""
+            if p.entity_type == "character" and p.entity_id and p.entity_id in chars_map:
+                detail["description"] = chars_map[p.entity_id].description or ""
             char_details.append(detail)
+
+        # 用户扮演的「我的身份」角色详情：参与支线上下文/相关角色，但不作为 AI 发言者
+        user_char_detail: dict | None = None
+        for p in participants:
+            if p.entity_type == "user" and p.entity_id and p.entity_id != room.user_id:
+                uchar = await s.get(Character, p.entity_id)
+                if uchar:
+                    user_char_detail = {
+                        "entity_id": p.entity_id,
+                        "role_label": p.role_label or uchar.name,
+                        "description": uchar.description or "",
+                    }
+                break
 
         # 现有消息列表
         existing_msgs = (await s.execute(
@@ -564,7 +593,8 @@ async def room_websocket(websocket: WebSocket, room_id: int, model_config: str |
                 if mem:
                     character_memories[c["role_label"]] = mem.content or ""
 
-    round_count = 0
+    # 从已持久化的轮数继续，避免重连后新轮覆盖丢失已有轮数
+    round_count = room.round_count or 0
 
     async def _execute_sql(stmt):
         async with db_manager.session_factory() as ss:
@@ -602,7 +632,7 @@ async def room_websocket(websocket: WebSocket, room_id: int, model_config: str |
             await websocket.send_text(json.dumps({"type": "stream_start"}, ensure_ascii=False))
             async for piece in _stream_llm_pieces(llm, opening_prompt):
                 opening_text += piece
-                await websocket.send_text(json.dumps({"type": "stream_token", "token": piece}, ensure_ascii=False))
+                await websocket.send_text(json.dumps({"type": "stream_token", "token": piece, "senderLabel": "导演"}, ensure_ascii=False))
             if opening_text:
                 async with db_manager.session_factory() as ss:
                     sm0 = SimMessage(room_id=room_id, sender_type="system", sender_label="导演", content=opening_text, message_type="narration")
@@ -644,6 +674,7 @@ async def room_websocket(websocket: WebSocket, room_id: int, model_config: str |
                     r = await ss.get(SimRoom, room_id)
                     if r:
                         r.status = "archived"
+                        r.round_count = round_count
                         if summary:
                             r.summary = summary
                         await ss.commit()
@@ -664,6 +695,7 @@ async def room_websocket(websocket: WebSocket, room_id: int, model_config: str |
                         location_id=room.location_id,
                         model_config=parsed_model_config,
                         character_memories=character_memories,
+                        user_char=user_char_detail,
                     )
                     await websocket.send_text(json.dumps({"type": "branch_created", "branch": branch}, ensure_ascii=False))
                 except Exception as exc:
@@ -705,7 +737,8 @@ async def room_websocket(websocket: WebSocket, room_id: int, model_config: str |
                 ss.add(sm)
                 await ss.commit()
 
-            await websocket.send_text(json.dumps({"type": "user_msg", "senderLabel": speak_as, "content": user_content}, ensure_ascii=False))
+            # 用户发言进入上下文，格式与重连重建的 [label][type] 保持一致
+            recent_history.append(f"[{speak_as}][dialogue] {user_content[:200]}")
 
             # 跑一轮图（流式）
             round_count, should_end, _ = await _execute_round(

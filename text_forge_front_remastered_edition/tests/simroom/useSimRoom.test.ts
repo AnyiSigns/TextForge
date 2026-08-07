@@ -14,12 +14,14 @@ class MockWebSocket {
   onerror: ((e: unknown) => void) | null = null;
   sent: string[] = [];
   closed = false;
+  // WebSocket.OPEN（stub 后无静态常量，用字面量）
+  readyState = 1;
   constructor(url: string) {
     this.url = url;
     MockWebSocket.instances.push(this);
   }
   send(d: string) { this.sent.push(d); }
-  close() { this.closed = true; this.onclose?.(null); }
+  close() { this.closed = true; this.readyState = 3; this.onclose?.(null); }
   emit(type: string, payload: Record<string, unknown> = {}) {
     this.onmessage?.({ data: JSON.stringify({ type, ...payload }) });
   }
@@ -234,5 +236,92 @@ describe('useSimRoomSocket 协议处理', () => {
     expect(result.current.suggestions).toHaveLength(1);
     await act(async () => { result.current.send('自定义发言', 'director'); });
     expect(result.current.suggestions).toEqual([]);
+  });
+
+  it('本地流式消息使用负数 id，不与后端落库消息的正数主键冲突', async () => {
+    // 进入已有历史消息的房间（DB id 从 1 开始）
+    const withHistory: SimRoomDetail = {
+      ...room,
+      messages: [
+        { id: 1, senderType: 'system', senderLabel: '导演', content: '开场白', messageType: 'narration' },
+        { id: 2, senderType: 'user', senderLabel: '林星辰', content: '你们在聊什么？', messageType: 'dialogue' },
+      ],
+    };
+    const { result } = renderHook(() => useSimRoomSocket(withHistory));
+    await waitForSocket();
+    const ws = MockWebSocket.instances[0];
+    await act(async () => {
+      ws.emit('stream_start');
+      ws.emit('stream_token', { token: '夜色', senderLabel: '场景' });
+      ws.emit('stream_token', { token: '沉沉', senderLabel: '场景' });
+    });
+    const msgs = result.current.messages;
+    // 历史 2 条 + 新流式 1 条，且 id 互不重复（新消息 id 为负数）
+    expect(msgs).toHaveLength(3);
+    const ids = msgs.map((m) => m.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    const streamed = msgs.find((m) => m.senderLabel === '场景');
+    expect(streamed?.content).toBe('夜色沉沉');
+    expect(typeof streamed?.id).toBe('number');
+    expect(streamed!.id < 0).toBe(true);
+  });
+
+  it('user_msg 回显不再重复追加用户消息', async () => {
+    const { result } = renderHook(() => useSimRoomSocket(room));
+    await waitForSocket();
+    const ws = MockWebSocket.instances[0];
+    await act(async () => { result.current.send('你们在聊什么？', 'director'); });
+    await act(async () => {
+      ws.emit('user_msg', { senderLabel: 'director', content: '你们在聊什么？' });
+    });
+    const userMsgs = result.current.messages.filter((m) => m.senderType === 'user');
+    expect(userMsgs).toHaveLength(1);
+  });
+
+  it('连接断开时复位流式与支线生成状态', async () => {
+    const { result } = renderHook(() => useSimRoomSocket(room));
+    await waitForSocket();
+    const ws = MockWebSocket.instances[0];
+    await act(async () => { result.current.autoAdvance(2); });
+    expect(result.current.streaming).toBe(true);
+    await act(async () => { ws.emit('branch_created', { branch: { id: 1, title: 'x', content: 'y', branchType: 'plot-thread' } }); });
+    await act(async () => { result.current.createBranch('plot-thread'); });
+    expect(result.current.branching).toBe(true);
+    await act(async () => { ws.close(); });
+    expect(result.current.streaming).toBe(false);
+    expect(result.current.branching).toBe(false);
+    expect(result.current.connected).toBe(false);
+  });
+
+  it('end 事件保留后端返回的轮数，不清零', async () => {
+    const { result } = renderHook(() => useSimRoomSocket(room));
+    await waitForSocket();
+    const ws = MockWebSocket.instances[0];
+    await act(async () => {
+      ws.emit('end', { summary: '已结束', roundCount: 7 });
+    });
+    expect(result.current.roundCount).toBe(7);
+    expect(result.current.streaming).toBe(false);
+  });
+
+  it('CLOSED 状态下发送不再积压到 pendingSends', async () => {
+    const { result } = renderHook(() => useSimRoomSocket(room));
+    await waitForSocket();
+    const ws = MockWebSocket.instances[0];
+    ws.readyState = 3; // WebSocket.CLOSED
+    await act(async () => { result.current.send('不会发出的消息', 'director'); });
+    expect(ws.sent).toEqual([]);
+  });
+
+  it('CONNECTING 状态下消息暂存，onopen 后统一刷出', async () => {
+    const { result } = renderHook(() => useSimRoomSocket(room));
+    await waitForSocket();
+    const ws = MockWebSocket.instances[0];
+    ws.readyState = 0; // WebSocket.CONNECTING
+    await act(async () => { result.current.send('先发的消息', 'director'); });
+    expect(ws.sent).toEqual([]);
+    ws.readyState = 1; // WebSocket.OPEN
+    await act(async () => { ws.onopen?.(null); });
+    expect(ws.sent).toEqual([JSON.stringify({ type: 'chat', content: '先发的消息', speakAs: 'director' })]);
   });
 });

@@ -3,8 +3,6 @@
 import { useState, useEffect } from 'react';
 import { useEntityStore } from '@/features/map/stores/entityStore';
 import { useEditorStore } from '@/features/map/stores/editorStore';
-import { useStoryFlowStore } from '@/features/map/stores/storyFlowStore';
-import { Compass } from 'lucide-react';
 
 interface SceneEditorProps {
   eventId: number | null;
@@ -18,10 +16,11 @@ export function SceneEditor({ eventId, isNew, onClose }: SceneEditorProps) {
   const addSceneEvent = useEntityStore((s) => s.addSceneEvent);
   const chapters = useEntityStore((s) => s.chapters);
   const plotThreads = useEntityStore((s) => s.plotThreads);
+  const foreshadowings = useEntityStore((s) => s.foreshadowings);
   const locations = useEntityStore((s) => s.locations);
   const characters = useEntityStore((s) => s.characters);
+  const updateForeshadowing = useEntityStore((s) => s.updateForeshadowing);
   const bookId = useEntityStore((s) => s.book?.id ?? 1);
-  const openStoryFlow = useStoryFlowStore((s) => s.open);
   const prefillChapterId = useEditorStore((s) => s.prefillChapterId);
 
   const event = !isNew ? sceneEvents.find((e) => e.id === eventId) : null;
@@ -34,6 +33,14 @@ export function SceneEditor({ eventId, isNew, onClose }: SceneEditorProps) {
   const [locationId, setLocationId] = useState<number | null>(null);
   const [characterIds, setCharacterIds] = useState<number[]>([]);
   const [plotThreadIds, setPlotThreadIds] = useState<number[]>([]);
+  const [completedPlotThreadIds, setCompletedPlotThreadIds] = useState<number[]>([]);
+  const [resolvedForeshadowingIds, setResolvedForeshadowingIds] = useState<number[]>([]);
+  const [plantedForeshadowingIds, setPlantedForeshadowingIds] = useState<number[]>([]);
+
+  // 本场景当前"埋下"的伏笔（伏笔的 relatedEventId 指向本场景）
+  const currentPlanted = eventId != null
+    ? foreshadowings.filter((f) => f.relatedEventId === eventId).map((f) => f.id)
+    : [];
 
   // 自动推算时间轴位置（故事时间戳），用户无需手动输入数字：
   // - 挂在章节上：排在该章已有事件的末尾（若无事件则夹在相邻章节之间）
@@ -67,6 +74,9 @@ export function SceneEditor({ eventId, isNew, onClose }: SceneEditorProps) {
   useEffect(() => {
     if (isNew) {
       setChapterId(prefillChapterId ?? null);
+      setCompletedPlotThreadIds([]);
+      setResolvedForeshadowingIds([]);
+      setPlantedForeshadowingIds([]);
       return;
     }
     if (!event) return;
@@ -78,9 +88,19 @@ export function SceneEditor({ eventId, isNew, onClose }: SceneEditorProps) {
     setLocationId(event.locationId);
     setCharacterIds(event.characterIds || []);
     setPlotThreadIds(event.plotThreadIds || []);
-  }, [event, isNew, prefillChapterId]);
+    setCompletedPlotThreadIds(event.completedPlotThreadIds || []);
+    setResolvedForeshadowingIds(event.resolvedForeshadowingIds || []);
+    // 仅在本场景实体挂载时初始化埋下伏笔，避免 foreshadowings 列表刷新覆盖用户编辑
+    setPlantedForeshadowingIds(
+      foreshadowings.filter((f) => f.relatedEventId === eventId).map((f) => f.id),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event, isNew, prefillChapterId, eventId]);
 
   if (!isNew && !event) return null;
+
+  const toggleId = (list: number[], id: number) =>
+    list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
 
   const handleSave = () => {
     if (isNew) {
@@ -98,6 +118,8 @@ export function SceneEditor({ eventId, isNew, onClose }: SceneEditorProps) {
         locationId,
         characterIds,
         plotThreadIds,
+        resolvedForeshadowingIds,
+        completedPlotThreadIds,
         locked: false,
       });
     } else if (eventId !== null) {
@@ -110,7 +132,17 @@ export function SceneEditor({ eventId, isNew, onClose }: SceneEditorProps) {
         locationId,
         characterIds,
         plotThreadIds,
+        resolvedForeshadowingIds,
+        completedPlotThreadIds,
       });
+      // 埋下伏笔：把勾选的伏笔关联到本场景（relatedEventId），取消则解除
+      for (const fw of foreshadowings) {
+        const selected = plantedForeshadowingIds.includes(fw.id);
+        const was = currentPlanted.includes(fw.id);
+        if (selected !== was) {
+          updateForeshadowing(fw.id, { relatedEventId: selected ? eventId : null });
+        }
+      }
     }
     onClose();
   };
@@ -193,19 +225,32 @@ export function SceneEditor({ eventId, isNew, onClose }: SceneEditorProps) {
       </div>
 
       <div className="space-y-1.5">
-        <label className="text-[11px] font-medium text-muted-foreground">关联情节线</label>
+        <label className="text-[11px] font-medium text-muted-foreground">关联情节线（勾选"完结"表示情节线在本场景结束）</label>
         <div className="max-h-[120px] overflow-y-auto space-y-0.5">
-          {plotThreads.map((pt) => (
-            <label key={pt.id} className="flex items-center gap-2 px-1 py-0.5 rounded cursor-pointer hover:bg-[#1c1b1a]/[0.02]">
-              <input
-                type="checkbox"
-                checked={plotThreadIds.includes(pt.id)}
-                onChange={() => setPlotThreadIds(plotThreadIds.includes(pt.id) ? plotThreadIds.filter((id) => id !== pt.id) : [...plotThreadIds, pt.id])}
-                className="w-3 h-3 rounded border-[#1c1b1a]/[0.15]"
-              />
-              <span className="text-[11px] text-[#1c1b1a]/60 truncate">{pt.name}</span>
-            </label>
-          ))}
+          {plotThreads.map((pt) => {
+            const linked = plotThreadIds.includes(pt.id);
+            const done = completedPlotThreadIds.includes(pt.id);
+            return (
+              <label key={pt.id} className="flex items-center gap-2 px-1 py-0.5 rounded cursor-pointer hover:bg-[#1c1b1a]/[0.02]">
+                <input
+                  type="checkbox"
+                  checked={linked}
+                  onChange={() => setPlotThreadIds(toggleId(plotThreadIds, pt.id))}
+                  className="w-3 h-3 rounded border-[#1c1b1a]/[0.15]"
+                />
+                <span className="text-[11px] text-[#1c1b1a]/60 truncate flex-1">{pt.name}</span>
+                <input
+                  type="checkbox"
+                  checked={done}
+                  disabled={!linked}
+                  onChange={() => setCompletedPlotThreadIds(toggleId(completedPlotThreadIds, pt.id))}
+                  title="在本场景完结此情节线"
+                  className="w-3 h-3 rounded border-[#1c1b1a]/[0.15] disabled:opacity-30"
+                />
+                <span className="text-[9px] text-[#1c1b1a]/30 shrink-0">完结</span>
+              </label>
+            );
+          })}
           {plotThreads.length === 0 && <span className="text-[10px] text-muted-foreground/40">暂无情节线</span>}
         </div>
       </div>
@@ -218,7 +263,7 @@ export function SceneEditor({ eventId, isNew, onClose }: SceneEditorProps) {
               <input
                 type="checkbox"
                 checked={characterIds.includes(c.id)}
-                onChange={() => setCharacterIds(characterIds.includes(c.id) ? characterIds.filter((id) => id !== c.id) : [...characterIds, c.id])}
+                onChange={() => setCharacterIds(toggleId(characterIds, c.id))}
                 className="w-3 h-3 rounded border-[#1c1b1a]/[0.15]"
               />
               <span className="text-[11px] text-[#1c1b1a]/60 truncate">{c.name}</span>
@@ -228,19 +273,45 @@ export function SceneEditor({ eventId, isNew, onClose }: SceneEditorProps) {
         </div>
       </div>
 
+      <div className="space-y-1.5">
+        <label className="text-[11px] font-medium text-muted-foreground">本场景揭示伏笔（揭示章节由该场景派生）</label>
+        <div className="max-h-[120px] overflow-y-auto space-y-0.5">
+          {foreshadowings.map((f) => (
+            <label key={f.id} className="flex items-center gap-2 px-1 py-0.5 rounded cursor-pointer hover:bg-[#1c1b1a]/[0.02]">
+              <input
+                type="checkbox"
+                checked={resolvedForeshadowingIds.includes(f.id)}
+                onChange={() => setResolvedForeshadowingIds(toggleId(resolvedForeshadowingIds, f.id))}
+                className="w-3 h-3 rounded border-[#1c1b1a]/[0.15]"
+              />
+              <span className="text-[11px] text-[#1c1b1a]/60 truncate">{f.description.slice(0, 20) || `伏笔 #${f.id}`}</span>
+            </label>
+          ))}
+          {foreshadowings.length === 0 && <span className="text-[10px] text-muted-foreground/40">暂无伏笔</span>}
+        </div>
+      </div>
+
+      {!isNew && (
+        <div className="space-y-1.5">
+          <label className="text-[11px] font-medium text-muted-foreground">本场景埋下伏笔（埋下章节由该场景派生）</label>
+          <div className="max-h-[120px] overflow-y-auto space-y-0.5">
+            {foreshadowings.map((f) => (
+              <label key={f.id} className="flex items-center gap-2 px-1 py-0.5 rounded cursor-pointer hover:bg-[#1c1b1a]/[0.02]">
+                <input
+                  type="checkbox"
+                  checked={plantedForeshadowingIds.includes(f.id)}
+                  onChange={() => setPlantedForeshadowingIds(toggleId(plantedForeshadowingIds, f.id))}
+                  className="w-3 h-3 rounded border-[#1c1b1a]/[0.15]"
+                />
+                <span className="text-[11px] text-[#1c1b1a]/60 truncate">{f.description.slice(0, 20) || `伏笔 #${f.id}`}</span>
+              </label>
+            ))}
+            {foreshadowings.length === 0 && <span className="text-[10px] text-muted-foreground/40">暂无伏笔</span>}
+          </div>
+        </div>
+      )}
+
       <div className="flex justify-between items-center pt-2">
-        {!isNew && eventId !== null && (
-          <button
-            onClick={() => {
-              onClose();
-              openStoryFlow(eventId);
-            }}
-            className="flex items-center gap-1.5 h-8 px-3 rounded-md text-xs text-muted-foreground/60 hover:text-foreground hover:bg-foreground/5 bg-transparent border border-border/40 cursor-pointer transition-colors"
-          >
-            <Compass size={12} />
-            剧情流
-          </button>
-        )}
         {isNew && <div />}
         <div className="flex gap-2">
           <button
