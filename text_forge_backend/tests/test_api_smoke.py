@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-
 from main import app
 
 
@@ -46,6 +45,11 @@ def test_core_routes_registered():
         "/api/agent/stream/{thread_id}",
         "/api/wizard/generate",
         "/api/workflows/",
+        # 剧情流
+        "/api/story-flows/",
+        "/api/story-flows/{flow_id}",
+        "/api/story-flows/{flow_id}/advance",
+        "/api/story-flows/{flow_id}/complete",
         # 系统
         "/api/health",
         "/",

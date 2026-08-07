@@ -1,6 +1,7 @@
 import { apiClient } from './client';
 import { getAccessToken } from '@/shared/stores/authStore';
 import { fetchModelConfig } from '@/shared/api/models';
+import { readSSE } from './sse';
 import type { SSEEvent, AgentConversation, AgentMessage } from './types';
 
 interface AgentStartResult {
@@ -67,46 +68,23 @@ export async function streamAgent(
     signal: abortSignal,
   });
 
-  if (!res.ok) throw new Error('Agent 请求失败');
-
-  const reader = res.body?.getReader();
-  if (!reader) return;
-
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          try {
-            const event: SSEEvent = JSON.parse(line.slice(6));
-            onEvent(event);
-
-            if (event.type === 'end') {
-              onDone(event.reply || '', (event as any).title);
-              // 不立即返回，继续读取后续事件，流结束自然退出。
-            }
-            if (event.type === 'error') {
-              onError(event.message || '未知错误');
-              return;
-            }
-          } catch {
-            // skip malformed JSON
-          }
-        }
-      }
-    }
-  } finally {
-    reader.releaseLock();
+  if (!res.ok) {
+    const err: Error & { status?: number } = new Error('Agent 请求失败');
+    err.status = res.status;
+    throw err;
   }
+
+  await readSSE(res, (event) => {
+    onEvent(event as unknown as SSEEvent);
+
+    if (event.type === 'end') {
+      onDone((event as any).reply || '', (event as any).title);
+      // 不立即返回，继续读取后续事件，流结束自然退出。
+    }
+    if (event.type === 'error') {
+      onError((event as any).message || '未知错误');
+    }
+  });
 }
 
 export async function resumeAgent(
@@ -192,31 +170,8 @@ export async function streamCompress(
   });
   if (!res.ok) throw new Error('Agent 请求失败');
 
-  const reader = res.body?.getReader();
-  if (!reader) return;
-
-  const decoder = new TextDecoder();
-  let buffer = '';
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          try {
-            const event: SSEEvent = JSON.parse(line.slice(6));
-            onEvent(event);
-          } catch {
-            // skip malformed JSON
-          }
-        }
-      }
-    }
-  } finally {
-    reader.releaseLock();
-  }
+  await readSSE(res, (event) => {
+    onEvent(event as unknown as SSEEvent);
+  });
 }
 

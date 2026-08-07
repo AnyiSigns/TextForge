@@ -17,11 +17,12 @@ from domains.lock.router import router as lock_router
 from domains.memory.router import router as memory_router
 from domains.model.router import router as model_router
 from domains.sim_rooms.router import router as sim_rooms_router
+from domains.story_flow.router import router as story_flow_router
 from domains.system.health_router import router as health_router
 from domains.system.sync_router import router as sync_router
+from domains.wizard.router import router as wizard_router
 from domains.workflow.router import router as workflow_router
 from domains.workflow.seed import seed_builtin_workflows
-from domains.wizard.router import router as wizard_router
 from domains.world.router import router as world_router
 from domains.writing_session.router import router as writing_session_router
 from fastapi import FastAPI
@@ -108,3 +109,4 @@ app.include_router(health_router, prefix="/api")
 app.include_router(sync_router, prefix="/api")
 app.include_router(lock_router, prefix="/api")
 app.include_router(sim_rooms_router, prefix="/api")
+app.include_router(story_flow_router, prefix="/api")

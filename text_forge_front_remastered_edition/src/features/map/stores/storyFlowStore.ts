@@ -1,4 +1,20 @@
 import { create } from 'zustand';
+import { toast } from 'sonner';
+import { useEntityStore } from '@/features/map/stores/entityStore';
+import { getModelConfigData } from '@/shared/api/agent';
+import {
+  StoryFlowConfigError,
+  advanceStoryFlow as apiAdvance,
+  completeStoryFlow as apiComplete,
+  createStoryFlow as apiCreate,
+  fetchStoryFlow as apiFetch,
+  findActiveStoryFlow as apiFindActive,
+  updateStoryFlowViewCharacter as apiUpdateViewCharacter,
+} from '@/shared/api/storyFlow';
+import type {
+  StoryFlowNode as ApiStoryFlowNode,
+} from '@/shared/api/storyFlow';
+import type { Character } from '@/shared/api/types';
 
 interface Decision {
   id: number;
@@ -9,196 +25,467 @@ interface Decision {
 
 interface SceneNode {
   id: number;
+  seq: number;
   title: string;
   narration: string;
   options: SceneOption[];
   locationName?: string;
   characters?: string[];
+  chosenOption?: string | null;
+  createdAt?: string;
+  anchoredEventId?: number | null;
 }
 
 interface SceneOption {
   id: string;
   text: string;
-  nextSceneId: number | null;
 }
 
 type Perspective = 'first' | 'third';
 
 interface StoryFlowState {
   isOpen: boolean;
+  /** 当前节点 index（= nodes.length-1；点击决策链回看时指向历史节点） */
   currentSceneId: number;
   perspective: Perspective;
   decisionChain: Decision[];
   triggerChapterId: number | null;
 
-  open: (chapterId: number) => void;
+  flowId: number | null;
+  status: 'active' | 'completed';
+  nodes: SceneNode[];
+  viewCharacterId: number | null;
+  availableCharacters: Character[];
+  loading: boolean;
+  streaming: boolean;
+  perspectiveLocked: boolean;
+  pickCharacterOpen: boolean;
+  pendingChosenOption: string | null;
+  streamText: string;
+  abortController: AbortController | null;
+  anchorEventIds: number[];
+  currentEventIndex: number;
+  restored: boolean;
+
+  open: (chapterId: number) => Promise<void>;
   close: () => void;
   setPerspective: (p: Perspective) => void;
-  makeDecision: (optionId: string, optionText: string) => void;
-  getCurrentScene: () => SceneNode | null;
+  openCharacterPicker: () => void;
+  chooseViewCharacter: (charId: number) => Promise<void>;
+  skipViewCharacter: () => Promise<void>;
+  startFlow: () => Promise<void>;
+  advance: (optionText: string) => Promise<void>;
+  retry: () => Promise<void>;
+  finishFlow: () => Promise<string>;
+  restore: (flowId: number) => Promise<void>;
+  goToNode: (index: number) => void;
 }
 
-const MOCK_SCENES: SceneNode[] = [
-  {
-    id: 1,
-    title: '密室觉醒',
-    locationName: '城主府·密室',
-    characters: ['林星辰'],
-    narration: '密室中弥漫着古老的气息。林星辰的手指触碰到那本泛黄的星图时，掌心突然传来一阵灼热。星辰纹印发出了微弱的星光，映照在密室的石壁上，那些古老的壁画仿佛活了过来，讲述着一段被遗忘的历史。',
-    options: [
-      { id: '1a', text: '仔细研究壁画上的内容', nextSceneId: 2 },
-      { id: '1b', text: '尝试引动体内的星辰之力', nextSceneId: 3 },
-      { id: '1c', text: '小心地将星图收好，退出密室', nextSceneId: 4 },
-    ],
-  },
-  {
-    id: 2,
-    title: '壁画之谜',
-    locationName: '城主府·密室',
-    characters: ['林星辰'],
-    narration: '你凑近壁画，发现上面描绘的是一场旷世大战。一位身披星光的身影正与一个被暗影包裹的人形战斗。在壁画的右下角，你看到了与自己掌心一模一样的星辰纹印。这一刻，你意识到自己的命运与这场远古之战紧密相连。',
-    options: [
-      { id: '2a', text: '默记壁画内容，回去请教北辰师父', nextSceneId: 5 },
-      { id: '2b', text: '尝试用星辰之力激活壁画的其他部分', nextSceneId: 3 },
-    ],
-  },
-  {
-    id: 3,
-    title: '星辰之力初现',
-    locationName: '城主府·密室',
-    characters: ['林星辰'],
-    narration: '你闭上眼睛，按照直觉引导体内的那股温热能量。掌心纹印迸发出璀璨的星光，整个密室被照得如同白昼。石壁上的壁画开始旋转，一道由星光组成的门扉在密室中央缓缓打开。门的那边，是无垠的星海。',
-    options: [
-      { id: '3a', text: '踏入星光之门', nextSceneId: 6 },
-      { id: '3b', text: '先退出密室，找北辰师父商议', nextSceneId: 5 },
-    ],
-  },
-  {
-    id: 4,
-    title: '谨慎行事',
-    locationName: '城主府·走廊',
-    characters: ['林星辰'],
-    narration: '你将星图小心翼翼地收入怀中，退出了密室。走廊里空无一人，但你的心跳依然很快。刚才的体验太过真实，你确定那不是幻觉。在走廊拐角处，你遇到了正在寻你的苏月——她的眼神中似乎藏着什么。',
-    options: [
-      { id: '4a', text: '把密室的发现告诉苏月', nextSceneId: 7 },
-      { id: '4b', text: '暂时保密，独自调查', nextSceneId: 5 },
-    ],
-  },
-  {
-    id: 5,
-    title: '北辰师父的指点',
-    locationName: '云中城·书房',
-    characters: ['林星辰', '北辰'],
-    narration: '你将密室的发现告诉了北辰师父。老人听完后沉默了很久，然后从书架上取出了一本和你手中星图一模一样封面的古书——只是更加残破。\n\n「这就是命运之书。」北辰说到，「它记载着每一任星辰之主的预言。而你手中的，是最后一页。」',
-    options: [
-      { id: '5a', text: '询问星辰之主的命运是什么', nextSceneId: 8 },
-      { id: '5b', text: '表达自己不愿承担这份责任', nextSceneId: 9 },
-      { id: '5c', text: '下定决心要成为星辰之主', nextSceneId: 10 },
-    ],
-  },
-  {
-    id: 6,
-    title: '星海彼岸',
-    locationName: '星海空间',
-    characters: ['林星辰', '星灵'],
-    narration: '穿过星光之门，你来到了一个奇异的空间。脚下是无尽的星河，头顶是旋转的星云。在这片星海的中心，一个由星光凝聚而成的人形缓缓向你走来。\n\n「被选中者，终于等到你了。」它的声音在意识中回荡。',
-    options: [
-      { id: '6a', text: '问它："你是谁？为什么选中我？"', nextSceneId: 8 },
-      { id: '6b', text: '感受这片星海的力量', nextSceneId: 10 },
-    ],
-  },
-  {
-    id: 7,
-    title: '苏月的秘密',
-    locationName: '云中城·花园',
-    characters: ['林星辰', '苏月'],
-    narration: '苏月听完你的描述后，神色复杂。她轻轻摘下脖子上的星尘项链，递到你面前。「其实我一直在等你觉醒，」她低声说道，「我的家族世代守护着星辰之主觉醒的秘密。这条项链，是上一任星辰之主留下的。」',
-    options: [
-      { id: '7a', text: '握住苏月的手，感谢她的信任', nextSceneId: 9 },
-      { id: '7b', text: '接过项链仔细端详', nextSceneId: 8 },
-    ],
-  },
-  {
-    id: 8,
-    title: '命运的真相',
-    locationName: '天澜星·观星台',
-    characters: ['林星辰', '北辰', '星灵'],
-    narration: '真相渐渐浮出水面。上一任星辰之主并非自然陨落，而是在与暗影之主的战斗中，为了保护天澜星而牺牲了自己。他的星辰之力被分散到星域各处，等待着下一位继承者的觉醒。而那个人，就是你。',
-    options: [
-      { id: '8a', text: '决心继承星辰之力，守护天澜星', nextSceneId: 10 },
-      { id: '8b', text: '询问是否有避免战斗的方法', nextSceneId: 9 },
-    ],
-  },
-  {
-    id: 9,
-    title: '犹豫与抉择',
-    locationName: '云中城·城墙',
-    characters: ['林星辰', '苏月'],
-    narration: '你站在城墙上，眺望着远方的天际线。苏月静静地陪在你身边。\n\n「我不知道自己能不能做好，」你说道，「我怕辜负了所有人的期待。」\n\n苏月轻轻靠在你肩上：「没有人一开始就知道答案。但我知道，你就是那个对的人。」',
-    options: [
-      { id: '9a', text: '下定决心，开启修行之路', nextSceneId: 10 },
-      { id: '9b', text: '先在学府中默默学习，积蓄力量', nextSceneId: 10 },
-    ],
-  },
-  {
-    id: 10,
-    title: '星辰之主的决心',
-    locationName: '星辰学府·广场',
-    characters: ['林星辰', '北辰', '苏月', '云城主'],
-    narration: '阳光洒落在星辰学府的广场上。你站在所有人面前，掌心的星辰纹印已经不再隐藏。\n\n北辰师父将命运之书的残页放入你手中，云城主郑重地点了点头。苏月眼中闪烁着泪光——那是骄傲与不舍。\n\n从今天起，你不再是普通的少年。你是被星辰选中的人。',
-    options: [],
-  },
-];
+function mapNode(n: ApiStoryFlowNode): SceneNode {
+  return {
+    id: n.id,
+    seq: n.seq,
+    title: n.title,
+    narration: n.narration,
+    options: (n.options ?? []).map((o, i) => ({ id: `opt-${n.seq}-${i}`, text: o.text })),
+    locationName: n.locationName ?? undefined,
+    characters: n.characterNames ?? [],
+    chosenOption: n.chosenOption,
+    createdAt: n.createdAt,
+    anchoredEventId: n.anchoredEventId,
+  };
+}
 
-function getScene(id: number): SceneNode | null {
-  return MOCK_SCENES.find((s) => s.id === id) ?? null;
+/** 由 nodes 派生决策链（只含已做出选择的节点，按 seq 顺序）。 */
+function buildDecisionChain(nodes: SceneNode[]): Decision[] {
+  const chain: Decision[] = [];
+  for (const n of nodes) {
+    if (!n.chosenOption) continue;
+    chain.push({
+      id: chain.length + 1,
+      sceneTitle: n.title,
+      chosenOption: n.chosenOption,
+      timestamp: n.createdAt ? new Date(n.createdAt).getTime() : Date.now(),
+    });
+  }
+  return chain;
+}
+
+type SceneDonePayload = {
+  node: ApiStoryFlowNode | null;
+  completed: boolean;
+  flowId: number;
+  anchorEventIds?: number[];
+  currentEventIndex?: number;
+};
+
+/** 共享的 scene_done 状态合并（startFlow 与 advance 复用，避免状态字段漂移）。 */
+function buildSceneDoneState(s: StoryFlowState, d: SceneDonePayload) {
+  const nodes = d.node ? [...s.nodes, mapNode(d.node)] : s.nodes;
+  return {
+    nodes,
+    flowId: d.flowId || s.flowId,
+    status: d.completed ? 'completed' : s.status,
+    currentSceneId: nodes.length - 1,
+    decisionChain: buildDecisionChain(nodes),
+    loading: false,
+    streaming: false,
+    streamText: '',
+    pendingChosenOption: null,
+    anchorEventIds: d.anchorEventIds ?? s.anchorEventIds,
+    currentEventIndex: d.currentEventIndex ?? s.currentEventIndex,
+  };
+}
+
+// 流式 token 缓冲：用 rAF 合并刷新，避免每个 SSE token 触发 O(n^2) 字符串拼接与整组件重渲染
+let streamBuffer = '';
+let streamRaf: number | null = null;
+
+function pushStreamToken(token: string) {
+  streamBuffer += token;
+  if (streamRaf === null) {
+    streamRaf = requestAnimationFrame(() => {
+      streamRaf = null;
+      const text = streamBuffer;
+      streamBuffer = '';
+      useStoryFlowStore.setState({ streamText: text });
+    });
+  }
+}
+
+function clearStreamBuffer() {
+  if (streamRaf !== null) {
+    cancelAnimationFrame(streamRaf);
+    streamRaf = null;
+  }
+  streamBuffer = '';
 }
 
 export const useStoryFlowStore = create<StoryFlowState>((set, get) => ({
   isOpen: false,
-  currentSceneId: 1,
-  perspective: 'first',
+  currentSceneId: -1,
+  perspective: 'third',
   decisionChain: [],
   triggerChapterId: null,
 
-  open: (chapterId) => {
+  flowId: null,
+  status: 'active',
+  nodes: [],
+  viewCharacterId: null,
+  availableCharacters: [],
+  loading: false,
+  streaming: false,
+  perspectiveLocked: false,
+  pickCharacterOpen: false,
+  pendingChosenOption: null,
+  streamText: '',
+  abortController: null,
+  anchorEventIds: [],
+  currentEventIndex: -1,
+  restored: false,
+
+  open: async (chapterId) => {
+    if (get().isOpen) return; // 入口双击防抖：已打开时忽略重复 open
+    const entity = useEntityStore.getState();
+    const bookId = entity.book?.id;
+    if (!bookId) {
+      toast.error('书籍信息未加载，请刷新页面后重试');
+      return;
+    }
+    if (!entity.characters.length || !entity.sceneEvents.length) {
+      // entityStore 无数据时先触发加载
+      await entity.loadFromApi(bookId);
+    }
+
+    // 可用视角角色 = 本章事件 SceneEvent.characterIds 并集（去重，过滤已不存在的角色）
+    const chapterEventIds = new Set(
+      useEntityStore
+        .getState()
+        .sceneEvents.filter((e) => e.chapterId === chapterId)
+        .flatMap((e) => e.characterIds ?? []),
+    );
+    const availableCharacters = useEntityStore
+      .getState()
+      .characters.filter((c) => chapterEventIds.has(c.id));
+
     set({
       isOpen: true,
-      currentSceneId: 1,
-      decisionChain: [],
       triggerChapterId: chapterId,
+      loading: true,
+      nodes: [],
+      decisionChain: [],
+      currentSceneId: -1,
+      flowId: null,
+      status: 'active',
+      viewCharacterId: null,
+      pendingChosenOption: null,
+      streamText: '',
+      availableCharacters,
+      perspectiveLocked: availableCharacters.length === 0,
+      perspective: 'third',
+      anchorEventIds: [],
+      currentEventIndex: -1,
+      restored: false,
     });
+
+    try {
+      const activeFlow = await apiFindActive(bookId, chapterId);
+      if (activeFlow) {
+        await get().restore(activeFlow.id);
+        if (get().nodes.length === 0) {
+          // 恢复后 nodes 为空（上次首场景生成失败）→ 重新生成首场景
+          await get().startFlow();
+        }
+      } else if (availableCharacters.length > 0) {
+        set({ pickCharacterOpen: true });
+      } else {
+        // 无角色章节：直接第三人称进入
+        await get().startFlow();
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '剧情流打开失败';
+      toast.error(msg);
+      set({ loading: false, streaming: false });
+    }
   },
 
-  close: () => set({ isOpen: false, triggerChapterId: null }),
-
-  setPerspective: (p) => set({ perspective: p }),
-
-  makeDecision: (optionId, optionText) => {
-    const { currentSceneId, decisionChain, perspective } = get();
-    const currentScene = getScene(currentSceneId);
-    if (!currentScene) return;
-
-    const newDecision: Decision = {
-      id: decisionChain.length + 1,
-      sceneTitle: currentScene.title,
-      chosenOption: optionText,
-      timestamp: Date.now(),
-    };
-
-    const option = currentScene.options.find((o) => o.id === optionId);
-    const nextSceneId = option?.nextSceneId ?? currentSceneId;
-
+  close: () => {
+    get().abortController?.abort();
     set({
-      currentSceneId: nextSceneId,
-      decisionChain: [...decisionChain, newDecision],
+      isOpen: false,
+      triggerChapterId: null,
+      currentSceneId: -1,
+      decisionChain: [],
+      flowId: null,
+      status: 'active',
+      nodes: [],
+      viewCharacterId: null,
+      availableCharacters: [],
+      loading: false,
+      streaming: false,
+      perspectiveLocked: false,
+      pickCharacterOpen: false,
+      pendingChosenOption: null,
+      streamText: '',
+      abortController: null,
+      anchorEventIds: [],
+      currentEventIndex: -1,
+      restored: false,
     });
   },
 
-  getCurrentScene: () => {
-    return getScene(get().currentSceneId);
+  setPerspective: (p) => {
+    if (p === 'first') {
+      if (get().perspectiveLocked) return; // 无角色章节禁用
+      if (!get().viewCharacterId) {
+        if (get().availableCharacters.length > 0) {
+          get().openCharacterPicker(); // 后补视角角色
+        }
+        return;
+      }
+    }
+    set({ perspective: p });
   },
+
+  openCharacterPicker: () => set({ pickCharacterOpen: true }),
+
+  chooseViewCharacter: async (charId) => {
+    const { flowId } = get();
+    if (flowId) {
+      // 已存在流：更新视角角色并立即生效（后续生成以其为中心）
+      try {
+        await apiUpdateViewCharacter(flowId, charId);
+      } catch {
+        toast.error('视角角色更新失败');
+        return;
+      }
+    }
+    set({ viewCharacterId: charId, perspectiveLocked: false, pickCharacterOpen: false, perspective: 'first' });
+    if (!flowId) {
+      await get().startFlow();
+    }
+  },
+
+  skipViewCharacter: async () => {
+    const { flowId } = get();
+    set({ pickCharacterOpen: false, perspective: 'third' });
+    if (flowId) {
+      try {
+        await apiUpdateViewCharacter(flowId, null);
+      } catch {
+        toast.error('视角设置更新失败');
+      }
+      return;
+    }
+    await get().startFlow();
+  },
+
+  startFlow: async () => {
+    const { triggerChapterId, viewCharacterId } = get();
+    const bookId = useEntityStore.getState().book?.id;
+    if (!bookId || !triggerChapterId) return;
+    set({ streaming: true, loading: true, pickCharacterOpen: false, streamText: '' });
+    const controller = new AbortController();
+    set({ abortController: controller });
+
+    let config: Awaited<ReturnType<typeof getModelConfigData>>;
+    try {
+      config = await getModelConfigData();
+    } catch {
+      toast.error('请先在设置页配置模型');
+      set({ streaming: false, loading: false, abortController: null });
+      return;
+    }
+
+    try {
+      await apiCreate(bookId, triggerChapterId, viewCharacterId ?? null, config, {
+        onStream: (token) => pushStreamToken(token),
+        onSceneDone: (d) => {
+          clearStreamBuffer();
+          set((s) => buildSceneDoneState(s, d));
+        },
+        onDone: () => {
+          clearStreamBuffer();
+          set({ streaming: false, loading: false });
+        },
+        onError: (msg) => {
+          clearStreamBuffer();
+          toast.error(msg);
+          set({ streaming: false, loading: false, abortController: null });
+        },
+      }, controller.signal);
+    } catch (e) {
+      clearStreamBuffer();
+      if (e instanceof StoryFlowConfigError) {
+        toast.error(e.message);
+      } else if ((e as Error)?.name !== 'AbortError') {
+        toast.error('首场景生成失败，请重试');
+      }
+      set({ streaming: false, loading: false, abortController: null });
+    }
+  },
+
+  advance: async (optionText) => {
+    const { flowId, streaming } = get();
+    if (!flowId || streaming) return;
+    const current = get().nodes[get().currentSceneId];
+    const alreadyDecided = Boolean(current?.chosenOption);
+    // 决策链乐观追加（重试与恢复续推时不重复追加）
+    if (!alreadyDecided && !get().pendingChosenOption && current) {
+      set((s) => ({
+        decisionChain: [
+          ...s.decisionChain,
+          { id: s.decisionChain.length + 1, sceneTitle: current.title, chosenOption: optionText, timestamp: Date.now() },
+        ],
+      }));
+    }
+    set({ streaming: true, pendingChosenOption: optionText, streamText: '' });
+    const controller = new AbortController();
+    set({ abortController: controller });
+
+    let config: Awaited<ReturnType<typeof getModelConfigData>>;
+    try {
+      config = await getModelConfigData();
+    } catch {
+      toast.error('请先在设置页配置模型');
+      set({ streaming: false, pendingChosenOption: null, abortController: null });
+      return;
+    }
+
+    try {
+      await apiAdvance(flowId, optionText, config, {
+        onStream: (token) => pushStreamToken(token),
+        onSceneDone: (d) => {
+          clearStreamBuffer();
+          set((s) => buildSceneDoneState(s, d));
+        },
+        onDone: () => {
+          clearStreamBuffer();
+          set({ streaming: false });
+        },
+        onError: (msg) => {
+          clearStreamBuffer();
+          toast.error(msg);
+          set({ streaming: false, abortController: null });
+        },
+      }, controller.signal);
+    } catch (e) {
+      clearStreamBuffer();
+      if (e instanceof StoryFlowConfigError) {
+        toast.error(e.message);
+      } else if ((e as Error)?.name !== 'AbortError') {
+        toast.error('推进失败，请重试');
+      }
+      set({ streaming: false, abortController: null });
+    }
+  },
+
+  retry: async () => {
+    const { pendingChosenOption } = get();
+    if (!pendingChosenOption) return;
+    await get().advance(pendingChosenOption);
+  },
+
+  finishFlow: async () => {
+    const { flowId, status } = get();
+    if (!flowId) return '';
+    let config: Awaited<ReturnType<typeof getModelConfigData>>;
+    try {
+      config = await getModelConfigData();
+    } catch {
+      toast.error('请先在设置页配置模型');
+      return '';
+    }
+    try {
+      const data = await apiComplete(flowId, config);
+      set({ status: 'completed', flowId: data.flowId || flowId });
+      return data.summary || '';
+    } catch (e) {
+      if (e instanceof StoryFlowConfigError) {
+        toast.error(e.message);
+      } else {
+        toast.error('结束推演失败，请重试');
+      }
+      return '';
+    }
+  },
+
+  restore: async (flowId) => {
+    const data = await apiFetch(flowId);
+    const nodes = data.nodes.map(mapNode);
+    let viewCharacterId = data.flow.viewCharacterId;
+    let perspectiveLocked = false;
+    if (viewCharacterId != null) {
+      const exists = useEntityStore
+        .getState()
+        .characters.some((c) => c.id === viewCharacterId);
+      if (!exists) {
+        viewCharacterId = null;
+        perspectiveLocked = true;
+      }
+    }
+    const last = nodes[nodes.length - 1];
+    set({
+      flowId: data.flow.id,
+      status: data.flow.status,
+      nodes,
+      viewCharacterId,
+      perspectiveLocked,
+      currentSceneId: nodes.length - 1,
+      decisionChain: buildDecisionChain(nodes),
+      loading: false,
+      streaming: false,
+      anchorEventIds: data.flow.anchorEventIds ?? [],
+      currentEventIndex: data.flow.currentEventIndex ?? -1,
+      restored: true,
+    });
+    // 中断窗口续推：最后节点已选选项但无下一场景 → 自动以该选项继续生成（用户无感）
+    if (data.flow.status === 'active' && last?.chosenOption) {
+      await get().advance(last.chosenOption);
+    }
+  },
+
+  goToNode: (index) => set({ currentSceneId: index }),
 }));
 
-export { MOCK_SCENES };
 export type { SceneNode, SceneOption, Decision, Perspective };
