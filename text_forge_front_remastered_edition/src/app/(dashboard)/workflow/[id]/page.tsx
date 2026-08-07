@@ -266,7 +266,7 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#faf9f7]">
+    <div className="flex flex-col h-full bg-[#faf9f7] glass-exempt">
       <div className="flex items-center justify-between px-4 py-2 border-b border-[#1c1b1a]/[0.06] shrink-0 bg-[#f4f3f0]">
         <div className="flex items-center gap-3">
           <Link href="/workflow" className="text-[#1c1b1a]/30 hover:text-[#1c1b1a]/60">

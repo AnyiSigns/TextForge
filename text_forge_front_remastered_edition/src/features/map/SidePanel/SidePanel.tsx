@@ -58,7 +58,7 @@ export function SidePanel({ onClose }: SidePanelProps) {
   ];
 
   return (
-    <div className="h-full flex flex-col bg-card/95 backdrop-blur-md border-r border-border/60 shadow-xl">
+    <div className="h-full flex flex-col bg-card/95 backdrop-blur-md border-r border-border/60 shadow-xl theme-surface">
       <div className="flex border-b border-border/30">
         {tabs.map((tab) => (
           <button

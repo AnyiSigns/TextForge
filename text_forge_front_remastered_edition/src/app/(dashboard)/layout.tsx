@@ -142,7 +142,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-background">
+    <div className="flex flex-col h-screen overflow-hidden bg-background dashboard-main">
       <div className="flex flex-1 min-h-0">
         {!panelFullscreen && (
           <>

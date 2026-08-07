@@ -85,7 +85,7 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
   };
 
   return (
-    <div className="flex h-full w-full bg-background">
+    <div className="flex h-full w-full bg-background theme-surface">
       {panelOpen && (
         <div className="w-60 flex-shrink-0">
           <SidePanel onClose={() => setPanelOpen(false)} />

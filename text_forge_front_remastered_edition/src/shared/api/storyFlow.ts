@@ -69,13 +69,15 @@ export function assertStoryFlowModelConfig(modelConfigData: StoryFlowModelConfig
 }
 
 /** 读取 SSE 流并按事件回调分发（复用 agent.ts streamAgent 的 reader/decoder 模式）。 */
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
+
 async function streamStoryFlow(
   url: string,
   body: Record<string, unknown>,
   callbacks: StoryFlowStreamCallbacks,
   abortSignal?: AbortSignal,
 ): Promise<void> {
-  const res = await authedFetch(`/api${url}`, {
+  const res = await authedFetch(`${API_BASE}${url}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

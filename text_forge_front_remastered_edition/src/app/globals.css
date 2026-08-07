@@ -29,6 +29,17 @@
   --font-sans: 'Inter', 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: 'Geist Mono', 'Cascadia Code', 'JetBrains Mono', monospace;
   --radius: 1rem;
+
+  /* 自定义主题背景 */
+  --bg-image: none;
+  --bg-image-opacity: 0.3;
+  --bg-image-blur: 0px;
+
+  /* 液态玻璃 */
+  --card-rgb: 250, 250, 248;
+  --border-rgb: 216, 214, 210;
+  --glass-opacity: 0.7;
+  --glass-blur: 12px;
 }
 
 .dark {
@@ -53,6 +64,9 @@
   --input: #3d3834;
   --ring: #a09b95;
   --sidebar-hover: rgba(236,235,232,0.06);
+
+  --card-rgb: 36, 33, 32;
+  --border-rgb: 61, 56, 52;
 }
 
 @theme inline {
@@ -525,4 +539,73 @@ textarea:focus {
 @keyframes map-level-in {
   from { opacity: 0; transform: scale(1.04); }
   to { opacity: 1; transform: scale(1); }
+}
+
+/* ===== 自定义主题背景（背景图由 ThemeBgInit inline style 渲染，
+       避免大 base64 塞入 CSS 变量；此处仅控制透明度/模糊） ===== */
+
+.theme-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  opacity: var(--bg-image-opacity);
+  filter: blur(var(--bg-image-blur));
+  transform: scale(1.1);
+  pointer-events: none;
+}
+
+/* 有背景图时：主内容容器背景透明，让背景图透出 */
+body.has-theme-bg .dashboard-main {
+  background-color: transparent;
+}
+body.has-theme-bg .app-sidebar,
+body.has-theme-bg .app-right-panel {
+  background-color: transparent;
+}
+/* 页面级大容器（标题栏/编辑器/侧边面板/初始化器等）统一透明化，
+   用 !important 覆盖 /95 /98 及硬编码 hex；输入框等小控件不在此列 */
+body.has-theme-bg .theme-surface {
+  background-color: transparent !important;
+}
+
+/* ===== 液态玻璃（仅 blur + 半透明，无高光/反光/渐变叠加） ===== */
+
+html.glass body {
+  --card: rgba(var(--card-rgb), var(--glass-opacity));
+  --border: rgba(var(--border-rgb), calc(var(--glass-opacity) * 0.6));
+  --popover: rgba(var(--card-rgb), calc(var(--glass-opacity) * 0.9));
+  --secondary: rgba(var(--card-rgb), calc(var(--glass-opacity) * 0.5));
+  --muted: rgba(var(--card-rgb), calc(var(--glass-opacity) * 0.5));
+}
+
+/* 玻璃模式下：侧边栏/右侧面板用半透明卡片色，与卡片统一 */
+html.glass .app-sidebar,
+html.glass .app-right-panel {
+  background: rgba(var(--card-rgb), var(--glass-opacity));
+}
+
+html.glass .rounded-xl,
+html.glass .rounded-lg,
+html.glass [class*="bg-card"],
+html.glass [class*="bg-background"],
+html.glass .app-sidebar,
+html.glass .app-right-panel,
+html.glass .app-statusbar {
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+}
+
+html.glass .shadow-card,
+html.glass .shadow-header {
+  box-shadow: none;
+}
+
+/* 液态玻璃豁免区：工作流编辑页等保持原有硬编码样式，不受玻璃开关影响 */
+html.glass .glass-exempt,
+html.glass .glass-exempt * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }

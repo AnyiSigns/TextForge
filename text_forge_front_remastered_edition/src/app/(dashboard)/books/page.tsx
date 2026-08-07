@@ -119,7 +119,7 @@ export default function BooksListPage() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border shadow-header">
+      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border shadow-header theme-surface">
         <div className="px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">

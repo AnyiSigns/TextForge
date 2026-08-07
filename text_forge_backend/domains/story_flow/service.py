@@ -35,7 +35,9 @@ logger = get_logger(__name__)
 
 DEFAULT_OPTIONS = [{"text": "继续剧情"}]
 MARKER = "###OPTIONS###"
+MORE_MARKER = "###MORE###"
 HISTORY_WINDOW = 6
+MAX_SCENES_PER_EVENT = 3
 
 
 async def _make_llm(model_config: dict):
@@ -122,52 +124,6 @@ def _split_two_phase(full_text: str) -> tuple[str, list[dict]]:
     narration = full_text[:idx].strip() or "（本幕叙事为空）"
     options = _parse_options(full_text[idx + len(MARKER):])
     return narration, options
-
-
-async def _stream_scene_body(
-    llm, messages: list, emit
-) -> tuple[str, list[dict]]:
-    """流式生成场景叙事+选项（两段式）。
-
-    分隔符之前的叙事部分逐 token 回调 emit（SSE scene_stream）；
-    遇到分隔符后停止转发并静默收集剩余内容，解析出选项数组。
-
-    Args:
-        llm: main 档 LLM。
-        messages: [SystemMessage, HumanMessage]。
-        emit: 接收叙事 token 的回调（async 或同步均可接受）。
-
-    Returns:
-        (叙事原文, 选项列表)。
-    """
-    full_text = ""
-    emitted = 0
-    seen_marker = False
-    tail = ""
-
-    async for piece in _astream_text(llm, messages):
-        full_text += piece
-        if not seen_marker:
-            idx = full_text.find(MARKER)
-            if idx >= 0:
-                seen_marker = True
-                tail = full_text[idx + len(MARKER):]
-                forward = full_text[:idx][emitted:]
-                if forward:
-                    emit(forward)
-                emitted = len(full_text[:idx])
-            else:
-                forward = full_text[emitted:]
-                if forward:
-                    emit(forward)
-                emitted = len(full_text)
-        else:
-            tail += piece
-
-    if not seen_marker:
-        return _split_two_phase(full_text)
-    narration = full_text[: full_text.find(MARKER)].strip()
-    return narration or "（本幕叙事为空）", _parse_options(tail)
 
 
 async def _load_anchor_events(session: AsyncSession, chapter_id: int) -> list[SceneEvent]:
@@ -385,8 +341,13 @@ async def _generate_scene_node(
     index: int,
     view_character_id: int | None,
     user_input: str | None = None,
+    closing: bool = False,
 ) -> AsyncGenerator[dict, None]:
-    """生成一个场景节点（两段式流式），落库并推进会话状态。
+    """生成一个场景节点（两段式真流式），落库并推进会话状态。
+
+    事件模式下由 LLM 输出 `###MORE###` 标记决定是否续幕（每事件至多 3 幕，
+    MAX_SCENES_PER_EVENT 兜底强制收束）；收尾幕（closing=True）生成后会话
+    立即置为 completed。
 
     Args:
         session: 数据库会话。
@@ -395,9 +356,10 @@ async def _generate_scene_node(
         chapter: 章节。
         model_config: 用户模型配置。
         seq: 新节点序号。
-        index: 待解析的锚点事件下标（-1 表示实时模式）。
+        index: 待解析的锚点事件下标（-1 表示实时/收尾模式）。
         view_character_id: 视角角色 ID。
         user_input: 用户自定义输入原文（可为 None）。
+        closing: 是否收尾幕（事件全部推演完后追加的自由收束幕）。
 
     Yields:
         SSE 事件字典：scene_stream / scene_done / done / error。
@@ -418,16 +380,28 @@ async def _generate_scene_node(
         else []
     )
 
-    if resolved_index >= 0:
-        stage_label = f"事件 {resolved_index + 1} / {len(anchor_ids)}"
-        last_event = resolved_index == len(anchor_ids) - 1
+    nodes = await repo.get_nodes(session, flow.id)
+    event_mode = resolved_index >= 0
+    if event_mode:
+        scene_index = 1 + sum(
+            1 for n in nodes if n.anchored_event_id == event.id
+        )
+    else:
+        scene_index = 0
+    max_reached = event_mode and scene_index >= MAX_SCENES_PER_EVENT
+
+    if closing:
+        stage_label = "收尾幕"
+        last_event = True
+    elif event_mode:
+        stage_label = f"事件 {resolved_index + 1} / {len(anchor_ids)} · 第 {scene_index} 幕"
+        last_event = resolved_index == len(anchor_ids) - 1 and max_reached
     else:
         stage_label = f"第 {seq} 幕"
         last_event = False
 
     event_desc = await _build_event_desc(session, event, character_names=event_character_names)
     book_context = await _build_book_context(session, book, chapter)
-    nodes = await repo.get_nodes(session, flow.id)
     history = _build_decision_history(nodes)
 
     prompt = build_scene_prompt(
@@ -440,6 +414,8 @@ async def _generate_scene_node(
         view_character_name=view_name,
         user_input=user_input,
         last_event=last_event,
+        closing=closing,
+        scene_index=scene_index,
     )
     messages = [
         SystemMessage(content=prompt),
@@ -450,20 +426,44 @@ async def _generate_scene_node(
     await session.commit()
 
     llm = await _make_llm(model_config)
-    tokens: list[str] = []
 
-    def _emit(piece: str) -> None:
-        tokens.append(piece)
-
+    # 真流式：LLM token 到达即转发 scene_stream，不做整段收集后补发
+    full_text = ""
+    emitted = 0
+    seen_marker = False
+    tail = ""
     try:
-        narration, options = await _stream_scene_body(llm, messages, _emit)
+        async for piece in _astream_text(llm, messages):
+            full_text += piece
+            if not seen_marker:
+                idx = full_text.find(MARKER)
+                if idx >= 0:
+                    seen_marker = True
+                    tail = full_text[idx + len(MARKER):]
+                    forward = full_text[:idx][emitted:]
+                    if forward:
+                        yield {"type": "scene_stream", "token": forward}
+                    emitted = len(full_text[:idx])
+                else:
+                    forward = full_text[emitted:]
+                    if forward:
+                        yield {"type": "scene_stream", "token": forward}
+                    emitted = len(full_text)
+            else:
+                tail += piece
     except Exception as exc:
         logger.exception("[story_flow] 场景生成 LLM 调用失败")
         yield {"type": "error", "message": f"场景生成失败: {str(exc)[:100]}"}
         return
 
-    for piece in tokens:
-        yield {"type": "scene_stream", "token": piece}
+    if not seen_marker:
+        narration, options = _split_two_phase(full_text)
+    else:
+        narration = full_text[: full_text.find(MARKER)].strip() or "（本幕叙事为空）"
+        options = _parse_options(tail)
+
+    # AI 决定本事件是否续幕：尾区含 ###MORE### 且未达幕数上限（第 3 幕强制收束）
+    more = event_mode and not max_reached and MORE_MARKER in tail
 
     meta = await _derive_node_metadata(
         session, event, seq, view_character_id, character_names=event_character_names
@@ -481,7 +481,15 @@ async def _generate_scene_node(
             character_names=meta["character_names"],
         )
         flow.round_count += 1
-        flow.current_event_index = resolved_index
+        if closing:
+            # 收尾幕：事件全部推演完后的自由收束幕，生成完即完成
+            flow.current_event_index = len(anchor_ids)
+            flow.status = "completed"
+        elif event_mode:
+            # 续幕则停留在当前事件，否则推进到下一事件（可能 == len 触发收尾）
+            flow.current_event_index = resolved_index if more else resolved_index + 1
+        else:
+            flow.current_event_index = -1
         await session.commit()
     except IntegrityError:
         # 并发重复插入（(flow_id, seq) 联合唯一约束兜底）：回滚后取已存在的节点
@@ -510,7 +518,7 @@ async def _generate_scene_node(
     yield {
         "type": "scene_done",
         "node": repo.node_to_dict(node),
-        "completed": False,
+        "completed": closing,
         "flow_id": flow.id,
         "anchor_event_ids": flow.anchor_event_ids or [],
         "current_event_index": flow.current_event_index,
@@ -640,29 +648,7 @@ async def stream_advance_flow(
             await session.commit()
 
     anchor_ids = flow.anchor_event_ids or []
-    event_mode = flow.current_event_index >= 0 and bool(anchor_ids)
 
-    # ③ 事件模式序列末尾判定 → 直接完成
-    if event_mode and flow.current_event_index + 1 >= len(anchor_ids):
-        flow.status = "completed"
-        try:
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            yield {"type": "error", "message": "保存状态失败，请重试"}
-            return
-        yield {
-            "type": "scene_done",
-            "node": None,
-            "completed": True,
-            "flow_id": flow.id,
-            "anchor_event_ids": flow.anchor_event_ids or [],
-            "current_event_index": flow.current_event_index,
-        }
-        yield {"type": "done"}
-        return
-
-    # ④ 生成下一场景节点
     next_seq = (last_node.seq + 1) if last_node else 1
     if book is None or chapter is None:
         _book = await session.get(Book, flow.book_id)
@@ -673,6 +659,43 @@ async def stream_advance_flow(
             yield {"type": "error", "message": "书籍或章节不存在"}
             return
 
+    # ③ 事件模式：全部事件推演完 → 先追加一幕自由收尾幕（closing）；
+    #    收尾幕已生成（最后节点无锚点）→ 结束推演
+    if anchor_ids and flow.current_event_index >= len(anchor_ids):
+        if last_node and last_node.anchored_event_id is None:
+            flow.status = "completed"
+            try:
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                yield {"type": "error", "message": "保存状态失败，请重试"}
+                return
+            yield {
+                "type": "scene_done",
+                "node": None,
+                "completed": True,
+                "flow_id": flow.id,
+                "anchor_event_ids": anchor_ids,
+                "current_event_index": flow.current_event_index,
+            }
+            yield {"type": "done"}
+            return
+        async for event in _generate_scene_node(
+            session=session,
+            flow=flow,
+            book=book,
+            chapter=chapter,
+            model_config=model_config,
+            seq=next_seq,
+            index=-1,
+            view_character_id=flow.view_character_id,
+            closing=True,
+        ):
+            yield event
+        return
+
+    # ④ 生成下一幕：事件模式停留在当前事件（AI 以 ###MORE### 决定是否续幕，
+    #    幕数上限兜底强制收束），实时模式 index=-1
     async for event in _generate_scene_node(
         session=session,
         flow=flow,
@@ -680,7 +703,7 @@ async def stream_advance_flow(
         chapter=chapter,
         model_config=model_config,
         seq=next_seq,
-        index=(flow.current_event_index + 1) if event_mode else -1,
+        index=flow.current_event_index if anchor_ids else -1,
         view_character_id=flow.view_character_id,
     ):
         yield event

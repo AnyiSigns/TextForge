@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { X, ChevronLeft, ChevronRight, Check, Lock, RefreshCw, Plus } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Check, RefreshCw, Plus } from 'lucide-react';
 import { cn } from '@/shared/lib/cn';
 import { useInitializerStore, STEP_LABELS } from '@/features/map/stores/initializerStore';
 import { useEntityStore } from '@/features/map/stores/entityStore';
@@ -48,17 +48,6 @@ function StepIndicator({ current, total }: { current: number; total: number }) {
             </div>
           );
         })}
-      </div>
-    </div>
-  );
-}
-
-function PulseIndicator() {
-  return (
-    <div className="flex items-center justify-center py-16">
-      <div className="relative w-4 h-4">
-        <div className="absolute inset-0 rounded-full bg-[#1c1b1a]/30 animate-pulse-outer" />
-        <div className="absolute inset-[4px] rounded-full bg-[#1c1b1a]/40 animate-pulse-inner" />
       </div>
     </div>
   );
@@ -122,250 +111,6 @@ function StepCreativeSetting() {
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-/* ─── Step 1: Location TreeView ─── */
-
-function StepLocationTree() {
-  const locations = useEntityStore((s) => s.locations);
-  const roots = locations.filter((l) => l.parentId === null || l.parentId === 1);
-  const getChildren = (parentId: number) => locations.filter((l) => l.parentId === parentId);
-
-  const LocationRow = ({ id, depth = 0 }: { id: number; depth?: number }) => {
-    const loc = locations.find((l) => l.id === id);
-    if (!loc) return null;
-    const children = getChildren(id);
-    const [expanded, setExpanded] = useState(depth < 3);
-
-    return (
-      <div>
-        <div
-          className="flex items-center gap-1.5 py-1.5 hover:bg-[#1c1b1a]/[0.02] rounded transition-colors cursor-default"
-          style={{ paddingLeft: 8 + depth * 20 }}
-        >
-          {children.length > 0 ? (
-            <button onClick={() => setExpanded(!expanded)}
-              className="w-4 h-4 flex items-center justify-center bg-transparent border-none cursor-pointer text-[#1c1b1a]/20">
-              {expanded ? <ChevronRight size={10} className="rotate-90" /> : <ChevronRight size={10} />}
-            </button>
-          ) : <div className="w-4" />}
-          <span className="text-[12px] text-[#1c1b1a]/70 truncate">{loc.name}</span>
-          <span className="text-[8px] text-[#1c1b1a]/20 bg-[#1c1b1a]/[0.04] px-1.5 py-px rounded ml-auto shrink-0">
-            {loc.type}
-          </span>
-        </div>
-        {expanded && children.map((ch) => <LocationRow key={ch.id} id={ch.id} depth={depth + 1} />)}
-      </div>
-    );
-  };
-
-  return (
-    <div className="flex-1 overflow-y-auto px-4 py-3">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-[10px] text-[#1c1b1a]/30 tabular-nums">{locations.length} 个地点</span>
-      </div>
-      {roots.map((r) => <LocationRow key={r.id} id={r.id} />)}
-    </div>
-  );
-}
-
-/* ─── Field value renderer（别名/自定义字段等结构化为可读展示） ─── */
-
-function FieldValue({ value }: { value: string }) {
-  // 尝试按 JSON 解析：数组 → 标签列表；对象 → 键值对
-  let parsed: unknown = null;
-  const trimmed = (value ?? '').trim();
-  if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
-    try {
-      parsed = JSON.parse(trimmed);
-    } catch {
-      parsed = null;
-    }
-  }
-
-  if (Array.isArray(parsed)) {
-    const items = parsed.map(String).filter(Boolean);
-    if (items.length === 0) return <span className="text-[11px] text-[#1c1b1a]/50">{value}</span>;
-    return (
-      <div className="flex flex-wrap gap-1">
-        {items.map((it, i) => (
-          <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-[#1c1b1a]/[0.05] text-[#1c1b1a]/60">{it}</span>
-        ))}
-      </div>
-    );
-  }
-
-  if (parsed && typeof parsed === 'object') {
-    const entries = Object.entries(parsed as Record<string, unknown>).filter(([, v]) => v !== '' && v != null);
-    if (entries.length === 0) return <span className="text-[11px] text-[#1c1b1a]/50">{value}</span>;
-    return (
-      <div className="flex flex-col gap-0.5">
-        {entries.map(([k, v], i) => (
-          <div key={i} className="text-[10px]">
-            <span className="text-[#1c1b1a]/35">{k}：</span>
-            <span className="text-[#1c1b1a]/60">{String(v)}</span>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  return <span className="text-[11px] leading-relaxed text-[#1c1b1a]/50">{value}</span>;
-}
-
-/* ─── Generic Card Grid (Steps 2,3,5,6) ─── */
-
-function CardGridStep({ step }: { step: number }) {
-  const { candidates, lockedIds, toggleLock, regenerateCandidates, generating, saving } = useInitializerStore();
-  const [editingField, setEditingField] = useState<string | null>(null);
-  const items = candidates[step] ?? [];
-
-  const handleRegenerate = () => {
-    void regenerateCandidates();
-  };
-
-  const handleFieldEdit = (cardId: string, fieldKey: string, newValue: string) => {
-    // 直接修改 candidates 数组中的值
-    const store = useInitializerStore.getState();
-    const newCandidates = store.candidates.map((stepCandidates, si) => {
-      if (si !== step) return stepCandidates;
-      return stepCandidates.map((c) => {
-        if (c.id !== cardId) return c;
-        return {
-          ...c,
-          fields: c.fields.map((f) =>
-            f.key === fieldKey ? { ...f, value: newValue } : f,
-          ),
-        };
-      });
-    });
-    useInitializerStore.setState({ candidates: newCandidates });
-  };
-
-  return (
-    <div className="flex-1 overflow-y-auto px-4 py-3">
-      <div className="mb-2 flex items-center justify-between">
-        <span className="text-[10px] text-[#1c1b1a]/30">点击锁定，已选 {items.filter((c) => lockedIds.has(c.id)).length}/{items.length}</span>
-      </div>
-      {items.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="w-10 h-10 rounded-full bg-[#1c1b1a]/[0.04] flex items-center justify-center mb-3">
-            <RefreshCw size={16} className="text-[#1c1b1a]/25" />
-          </div>
-          <p className="text-[12px] font-medium text-[#1c1b1a]/50 mb-1">还没有候选内容</p>
-          <p className="text-[10px] text-[#1c1b1a]/30 max-w-[260px] leading-relaxed mb-3">
-            点击底部"重新生成"按钮，让 AI 根据前序步骤的设定生成此步骤的候选卡片
-          </p>
-          <button
-            onClick={handleRegenerate}
-            disabled={saving || generating}
-            className="flex items-center gap-1.5 h-8 px-4 rounded-md text-[11px] font-medium bg-[#1c1b1a] text-[#f4f3f0] hover:opacity-90 transition-opacity border-none cursor-pointer disabled:opacity-50"
-          >
-            {generating ? (
-              <span className="w-3 h-3 border-2 border-[#f4f3f0]/40 border-t-[#f4f3f0] rounded-full animate-spin" />
-            ) : (
-              <RefreshCw size={11} />
-            )}
-            {generating ? '生成中...' : 'AI 生成候选'}
-          </button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-3">
-        {items.map((c) => {
-          const isLocked = lockedIds.has(c.id);
-          const desc = c.fields.find((f) => f.key === '描述')?.value ?? '';
-          const roleType = c.fields.find((f) => f.key === '角色类型')?.value ?? '';
-
-          return (
-            <div
-              key={c.id}
-              className={cn(
-                'relative rounded-xl border p-3 transition-all duration-200',
-                isLocked
-                  ? 'border-[#1c1b1a]/[0.20] bg-[#1c1b1a]/[0.03] shadow-[0_2px_12px_rgba(28,27,26,0.04)]'
-                  : 'border-[#1c1b1a]/[0.06] bg-[#fafaf8] hover:border-[#1c1b1a]/[0.14] hover:-translate-y-0.5 hover:shadow-[0_4px_16px_rgba(28,27,26,0.06)]',
-              )}
-            >
-              <button
-                onClick={() => toggleLock(step, c.id)}
-                className={cn(
-                  'absolute top-2 right-2 z-10 w-5 h-5 flex items-center justify-center rounded-full transition-all cursor-pointer border',
-                  isLocked ? 'bg-[#1c1b1a]/[0.06] border-[#1c1b1a]/[0.18] text-[#1c1b1a]/60' : 'bg-transparent border-[#1c1b1a]/[0.06] text-[#1c1b1a]/15 hover:text-[#1c1b1a]/40',
-                )}
-              >
-                <Lock size={10} strokeWidth={2} />
-              </button>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-7 h-7 rounded-full bg-[#1c1b1a]/[0.06] flex items-center justify-center text-[#1c1b1a]/40 text-[10px] font-semibold shrink-0">
-                  {c.title.charAt(0)}
-                </div>
-                <input
-                  value={c.title}
-                  onChange={(e) => {
-                    const store = useInitializerStore.getState();
-                    const newCandidates = store.candidates.map((stepCands, si) => {
-                      if (si !== step) return stepCands;
-                      return stepCands.map((x) =>
-                        x.id === c.id ? { ...x, title: e.target.value } : x,
-                      );
-                    });
-                    useInitializerStore.setState({ candidates: newCandidates });
-                  }}
-                  className="min-w-0 flex-1 text-[12px] font-semibold text-[#1c1b1a]/80 bg-transparent border-none outline-none p-0"
-                />
-                {roleType && <span className="text-[9px] text-[#1c1b1a]/30 shrink-0">{roleType}</span>}
-              </div>
-
-              {c.fields.map((f) => {
-                const fieldId = `${c.id}-${f.key}`;
-                const isEditing = editingField === fieldId;
-                const isMultiline = (f.value?.length ?? 0) > 30;
-                return (
-                  <div key={f.key} className="mt-2">
-                    <div className="text-[9px] text-[#1c1b1a]/25 mb-0.5">{f.key}</div>
-                    {isEditing ? (
-                      isMultiline ? (
-                        <textarea
-                          autoFocus
-                          value={f.value}
-                          onChange={(e) => handleFieldEdit(c.id, f.key, e.target.value)}
-                          onBlur={() => setEditingField(null)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Escape') setEditingField(null);
-                          }}
-                          rows={3}
-                          className="w-full px-2 py-1.5 rounded-md text-[11px] leading-relaxed text-[#1c1b1a]/70 bg-[#fafaf8] border border-[#1c1b1a]/[0.12] focus:outline-none focus:border-[#1c1b1a]/[0.25] resize-none"
-                        />
-                      ) : (
-                        <input
-                          autoFocus
-                          value={f.value}
-                          onChange={(e) => handleFieldEdit(c.id, f.key, e.target.value)}
-                          onBlur={() => setEditingField(null)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Escape') setEditingField(null);
-                          }}
-                          className="w-full px-2 py-1.5 rounded-md text-[11px] text-[#1c1b1a]/70 bg-[#fafaf8] border border-[#1c1b1a]/[0.12] focus:outline-none focus:border-[#1c1b1a]/[0.25]"
-                        />
-                      )
-                    ) : (
-                      <div
-                        onClick={() => setEditingField(fieldId)}
-                        className="text-[11px] leading-relaxed text-[#1c1b1a]/50 cursor-text rounded px-2 py-1.5 -mx-2 hover:bg-[#1c1b1a]/[0.03] hover:text-[#1c1b1a]/65 transition-colors min-h-[1.5em]"
-                      >
-                        {f.value ? <FieldValue value={f.value} /> : <span className="text-[#1c1b1a]/15 italic">点击编辑...</span>}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          );
-        })}
-        </div>
-      )}
     </div>
   );
 }
@@ -559,7 +304,7 @@ export function Initializer() {
       />
 
       <div
-        className="fixed top-0 right-0 z-50 h-full w-[520px] bg-[#f4f3f0]/98 backdrop-blur-md border-l border-[#1c1b1a]/[0.06] shadow-2xl flex flex-col"
+        className="fixed top-0 right-0 z-50 h-full w-[520px] bg-[#f4f3f0]/98 backdrop-blur-md border-l border-[#1c1b1a]/[0.06] shadow-2xl flex flex-col theme-surface"
         style={{ animation: 'slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards' }}
       >
         {/* Header */}
@@ -580,21 +325,15 @@ export function Initializer() {
         <StepIndicator current={currentStep} total={7} />
 
         {/* Content area */}
-        {generating && (currentStep === 1 || currentStep === 2) ? (
-          <div className="flex-1">
-            <PulseIndicator />
-          </div>
-        ) : (
-          <div className="flex-1 flex flex-col overflow-hidden">
-            {currentStep === 0 && <StepCreativeSetting />}
-            {currentStep === 1 && <CardGridStep step={1} />}
-            {currentStep === 2 && <CardGridStep step={2} />}
-            {currentStep === 3 && <StepMarkdownStep step={3} title="情节线" />}
-            {currentStep === 4 && <StepOutlinePreview />}
-            {currentStep === 5 && <StepMarkdownStep step={5} title="事件" />}
-            {currentStep === 6 && <StepMarkdownStep step={6} title="伏笔" />}
-          </div>
-        )}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {currentStep === 0 && <StepCreativeSetting />}
+          {currentStep === 1 && <StepMarkdownStep step={1} title="地点" />}
+          {currentStep === 2 && <StepMarkdownStep step={2} title="角色" />}
+          {currentStep === 3 && <StepMarkdownStep step={3} title="情节线" />}
+          {currentStep === 4 && <StepOutlinePreview />}
+          {currentStep === 5 && <StepMarkdownStep step={5} title="事件" />}
+          {currentStep === 6 && <StepMarkdownStep step={6} title="伏笔" />}
+        </div>
 
         {/* Footer */}
         <div className="px-4 py-2.5 border-t border-[#1c1b1a]/[0.06] flex-shrink-0">
@@ -668,16 +407,6 @@ export function Initializer() {
           from { transform: translateX(100%); opacity: 0; }
           to { transform: translateX(0); opacity: 1; }
         }
-        @keyframes pulse-outer {
-          0%, 100% { transform: scale(1); opacity: 0.3; }
-          50% { transform: scale(1.8); opacity: 0; }
-        }
-        @keyframes pulse-inner {
-          0%, 100% { opacity: 0.4; }
-          50% { opacity: 0.7; }
-        }
-        .animate-pulse-outer { animation: pulse-outer 1.2s ease-in-out infinite; }
-        .animate-pulse-inner { animation: pulse-inner 1.2s ease-in-out infinite; }
       `}</style>
     </>
   );

@@ -7,20 +7,28 @@ import { useBookDetailStore } from '@/app/(dashboard)/books/[id]/store';
 import { useEntityStore } from '@/features/map/stores/entityStore';
 
 // 动态 import 的 API 模块全部 mock，捕获调用参数
-const worldApi = vi.hoisted(() => ({
-  createLocation: vi.fn(async (b: unknown) => b),
-  createSceneEvent: vi.fn(async (b: unknown) => b),
-  createForeshadowing: vi.fn(async (b: unknown) => b),
-  createPlotThread: vi.fn(async (b: unknown) => b),
-  fetchLocations: vi.fn(async () => [{ id: 7, name: '王都' }]),
-  fetchSceneEvents: vi.fn(async () => []),
-  fetchPlotThreads: vi.fn(async () => [{ id: 1, name: '主线' }, { id: 2, name: '宗门线索' }]),
-  fetchForeshadowings: vi.fn(async () => []),
-}));
-const charactersApi = vi.hoisted(() => ({
-  createCharacter: vi.fn(async (b: unknown) => b),
-  fetchCharacters: vi.fn(async () => [{ id: 11, name: '林晚' }, { id: 12, name: '苏璃' }]),
-}));
+const worldApi = vi.hoisted(() => {
+  let locSeq = 0;
+  return {
+    createLocation: vi.fn(async (b: unknown) => { locSeq += 1; return { ...(b as object), id: 200 + locSeq }; }),
+    updateLocation: vi.fn(async (_id: number, _body: Record<string, unknown>) => ({})),
+    createSceneEvent: vi.fn(async (b: unknown) => b),
+    createForeshadowing: vi.fn(async (b: unknown) => b),
+    createPlotThread: vi.fn(async (b: unknown) => b),
+    fetchLocations: vi.fn(async () => [{ id: 7, name: '王都' }]),
+    fetchSceneEvents: vi.fn(async () => []),
+    fetchPlotThreads: vi.fn(async () => [{ id: 1, name: '主线' }, { id: 2, name: '宗门线索' }]),
+    fetchForeshadowings: vi.fn(async () => []),
+  };
+});
+const charactersApi = vi.hoisted(() => {
+  let charSeq = 0;
+  return {
+    createCharacter: vi.fn(async (b: unknown) => { charSeq += 1; return { ...(b as object), id: 100 + charSeq }; }),
+    updateCharacter: vi.fn(async (_id: number, _body: Record<string, unknown>) => ({})),
+    fetchCharacters: vi.fn(async () => [{ id: 11, name: '林晚' }, { id: 12, name: '苏璃' }]),
+  };
+});
 const booksApi = vi.hoisted(() => ({
   createVolume: vi.fn(async (_b: unknown, _title: string, _summary?: string) => ({ id: 100 })),
   createChapter: vi.fn(async (_v: unknown, _body: Record<string, unknown>) => ({ id: 200 })),
@@ -55,6 +63,7 @@ beforeEach(() => {
     lockedIds: new Set(),
     confirmedIds: new Set(),
     stepText: {},
+    savedSteps: new Set(),
     creativeForm: { name: '', tone: '', worldview: '测试世界观', taboos: '', customFields: [] },
   });
 });
@@ -110,32 +119,102 @@ describe('初始化器字段映射（与后端 wizard label 对齐）', () => {
     expect(String(body.notes)).toContain('第三卷');
   });
 
-  it('Step2 角色：别名/角色状态/自定义字段 不丢失', async () => {
-    useInitializerStore.setState({ currentStep: 2 });
-    const lockCard = useInitializerStore.getState().toggleLock;
-    useInitializerStore.setState((s) => {
-      const candidates = [...s.candidates];
-      candidates[2] = [{
-        id: 'c1',
-        title: '林晚',
-        fields: [
-          { key: '角色类型', value: '主角' },
-          { key: '描述', value: '帝国三皇子' },
-          { key: '别名', value: '["剑圣"]' },
-          { key: '角色状态', value: '流放中' },
-          { key: '自定义字段', value: '{"功法":"九天星辰诀"}' },
-        ],
-      }];
-      return { candidates };
-    });
-    lockCard(2, 'c1');
+  it('Step2 角色：Markdown 解析落库（别名/状态/自定义字段/首次出场/关系链）', async () => {
+    setStepText(2, [
+      '## 角色：萧尘 - 帝国三皇子，被流放至边疆',
+      '类型：主角',
+      '别名：三殿下、剑圣',
+      '状态：金丹期散修·流放中',
+      '首次出场：王都',
+      '关系链：',
+      '师徒 - 玄真道人：',
+      '名义师徒，实为仇人',
+      '敌对 - 苏璃：不死不休的宿敌',
+      '自定义字段：',
+      '功法：九天星辰诀',
+      '武器：断念剑',
+      '',
+      '## 角色：玄真道人 - 隐居药谷的炼丹宗师',
+      '类型：导师',
+      '状态：隐居',
+      '',
+      '## 角色：店小二 - 客栈跑堂的伙计',
+      '类型：龙套',
+      '状态：见钱眼开',
+    ].join('\n'));
     await useInitializerStore.getState().nextStep();
-    expect(charactersApi.createCharacter).toHaveBeenCalledTimes(1);
-    const body = charactersApi.createCharacter.mock.calls[0][0] as Record<string, unknown>;
-    expect(body.name).toBe('林晚');
-    expect(JSON.stringify(body)).toContain('剑圣'); // 别名
-    expect(JSON.stringify(body)).toContain('流放中'); // 状态
-    expect(JSON.stringify(body)).toContain('九天星辰诀'); // 自定义字段
+    // 三个角色全部创建（萧尘不在已有角色中）
+    expect(charactersApi.createCharacter).toHaveBeenCalledTimes(3);
+    const main = charactersApi.createCharacter.mock.calls[0][0] as Record<string, unknown>;
+    expect(main.name).toBe('萧尘');
+    expect(main.roleType).toBe('主角');
+    expect(String(main.status)).toContain('流放');
+    expect(main.spawnLocationId).toBe(7); // 首次出场 → 王都(已有 id 7)
+    expect(main.aliases).toEqual(['三殿下', '剑圣']);
+    expect(main.customFields).toMatchObject({ 功法: '九天星辰诀', 武器: '断念剑' });
+    // 次要/龙套角色（店小二）无关系链 → 只创建不更新
+    expect(charactersApi.updateCharacter).toHaveBeenCalledTimes(1);
+    const patch = charactersApi.updateCharacter.mock.calls[0][1] as { relationshipChain: Array<{ targetId: number; type: string; description: string }> };
+    expect(patch.relationshipChain).toHaveLength(2);
+    expect(patch.relationshipChain[0]).toMatchObject({ targetId: 102, type: '师徒' }); // 玄真道人（本批 id 102）
+    expect(patch.relationshipChain[1]).toMatchObject({ targetId: 12, type: '敌对' }); // 苏璃（已有 id 12）
+    expect(String(patch.relationshipChain[0].description)).toContain('仇人'); // 多行续写合并
+  });
+
+  it('Step1 地点：Markdown 层级解析（父子关系/自定义字段/跳级降级/已存在跳过）', async () => {
+    setStepText(1, [
+      '# 地点：星辉大陆 - 漂浮于星海的广袤大陆',
+      '类型：大陆',
+      '自定义字段：',
+      '势力：三大公会',
+      '资源：星辰矿石',
+      '',
+      '## 地点：星辉城 - 大陆中枢王都',
+      '类型：王都',
+      '自定义字段：',
+      '势力：皇族',
+      '',
+      '### 地点：晨曦宫 - 皇族居所',
+      '类型：宫殿',
+      '',
+      '### 地点：斗兽场 - 血腥的竞技场',
+      '类型：竞技场',
+      '',
+      '# 地点：王都 - 已存在应跳过',
+      '类型：王都',
+    ].join('\n'));
+    await useInitializerStore.getState().nextStep();
+    // 王都已存在（id 7）被跳过 → 仅创建 4 个新地点
+    expect(worldApi.createLocation).toHaveBeenCalledTimes(4);
+    const createdNames = worldApi.createLocation.mock.calls.map((c) => (c[0] as { name: string }).name);
+    expect(createdNames).toEqual(['星辉大陆', '星辉城', '晨曦宫', '斗兽场']);
+    // 自定义字段 → attributes
+    const continent = worldApi.createLocation.mock.calls[0][0] as Record<string, unknown>;
+    expect(continent.attributes).toMatchObject({ 势力: '三大公会', 资源: '星辰矿石' });
+    // 父子关系按名字解析 parentId：晨曦宫(203)/斗兽场(204) → 星辉城(202)，星辉城(202) → 星辉大陆(201)
+    expect(worldApi.updateLocation).toHaveBeenCalledTimes(3);
+    const updates = worldApi.updateLocation.mock.calls;
+    const parentOf = (id: number) => (updates.find((c) => c[0] === id)?.[1] as { parentId?: number })?.parentId;
+    expect(parentOf(203)).toBe(202); // 晨曦宫 → 星辉城
+    expect(parentOf(204)).toBe(202); // 斗兽场 → 星辉城
+    expect(parentOf(202)).toBe(201); // 星辉城 → 星辉大陆
+  });
+
+  it('Step1 地点：标题跳级（### 无 ## 父级）降级为顶层，不设置 parentId', async () => {
+    setStepText(1, [
+      '# 地点：孤岛大陆 - 与世隔绝的荒芜之地',
+      '类型：大陆',
+      '',
+      '### 地点：废弃灯塔 - 海边孤立的灯塔',
+      '类型：灯塔',
+    ].join('\n'));
+    await useInitializerStore.getState().nextStep();
+    // 两个地点都创建（栈 [2] 无记录 → 废弃灯塔 parentName undefined）
+    expect(worldApi.createLocation).toHaveBeenCalledTimes(2);
+    const updates = worldApi.updateLocation.mock.calls;
+    // 废弃灯塔（id 202）不产生 parentId 更新
+    const lighthouseUpdate = updates.find((c) => c[0] === 202);
+    expect(lighthouseUpdate).toBeUndefined();
   });
 
   it('Step0 创意设定：自定义字段从「自定义字段」label 读取（后端映射）', async () => {

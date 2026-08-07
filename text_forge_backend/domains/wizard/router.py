@@ -187,7 +187,7 @@ async def _build_wizard_context(
         context_parts.append(f"\n【已有地点】\n{locs_text}")
 
     # 已有角色
-    char_stmt = select(Character).where(Character.book_id == book_id).limit(15)
+    char_stmt = select(Character).where(Character.book_id == book_id).limit(30)
     char_res = await session.execute(char_stmt)
     chars = char_res.scalars().all()
     if chars:
@@ -416,12 +416,16 @@ async def generate_wizard_cards(
 
 
 class WizardStreamRequest(BaseModel):
-    """wizard 流式生成请求（Step 3-6，Markdown 单份方案）。"""
+    """wizard 流式生成请求（Step 1-6，Markdown 单份方案）。
+
+    注：Step 1 地点 / Step 2 角色 已从卡片式 JSON 改为 Markdown 单份方案，
+    与 Step 3-6 统一走流式生成。Step 0 世界观仍走 /generate 表单模式。
+    """
 
     model_config = ConfigDict(populate_by_name=True)
 
     book_id: int = Field(alias="bookId")
-    step: int = Field(ge=3, le=6)
+    step: int = Field(ge=1, le=6)
     model_config_data: dict | None = Field(default=None, alias="modelConfig")
     extra_instruction: str | None = Field(default=None, alias="extraInstruction")
     previous_cards: list[dict] | None = Field(default=[], alias="previousCards")
@@ -498,16 +502,16 @@ async def stream_generate_wizard(
     body: WizardStreamRequest,
     session: Annotated[AsyncSession, Depends(db_manager.get_db)],
 ):
-    """为 Step 3-6 流式生成 Markdown 单份方案（SSE）。
+    """为 Step 1-6 流式生成 Markdown 单份方案（SSE）。
 
     Step 4 大纲按卷分批生成：内部逐卷调用 LLM，每卷完成推送一条 volume_end。
     其余步骤单次生成，文本逐行推送。
 
     Args:
-        body: 包含 book_id、step（3-6）和可选的 extra_instruction / model_config。
+        body: 包含 book_id、step（1-6）和可选的 extra_instruction / model_config。
     """
     step = body.step
-    if step not in STEP_PROMPTS or step < 3:
+    if step not in STEP_PROMPTS or step < 1:
         raise HTTPException(status_code=400, detail=f"该步骤不支持流式生成: {step}")
 
     book_stmt = select(Book).where(Book.id == body.book_id, Book.user_id == user_id)

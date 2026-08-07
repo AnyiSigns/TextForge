@@ -16,6 +16,8 @@ def build_scene_prompt(
     view_character_name: str | None,
     user_input: str | None,
     last_event: bool,
+    closing: bool = False,
+    scene_index: int = 1,
 ) -> str:
     """构造单次场景生成的系统提示词。
 
@@ -25,10 +27,12 @@ def build_scene_prompt(
         chapter_summary: 章节摘要（可为空）。
         event_desc: 当前锚点事件的描述文本（标题/内容/出场角色/地点/关联伏笔/情节线），实时生成模式为「自由推演」。
         decision_history: 决策链历史原文（最近 6 节点 + 更早摘要行），空为「（推演刚开始）」。
-        stage_label: 阶段标签，如「事件 2 / 5」或「第 3 幕」。
+        stage_label: 阶段标签，如「事件 2 / 5 · 第 1 幕」或「第 3 幕」。
         view_character_name: 视角角色名（可为空，为空则无视角中心）。
         user_input: 用户自定义输入原文（可为空）。
         last_event: 是否最后一个锚点事件（引导剧情收束）。
+        closing: 是否收尾幕（事件全部推演完后的自由收束幕）。
+        scene_index: 本事件第几幕（1 起，每事件至多 3 幕）。
 
     Returns:
         系统提示词字符串。
@@ -48,8 +52,18 @@ def build_scene_prompt(
         )
 
     closing_part = ""
-    if last_event:
-        closing_part = "\n本幕是最后的事件锚点，请自然引导剧情收束，为本章结局铺垫。"
+    if closing:
+        closing_part = "\n本幕是本章推演的收尾幕（无锚点事件），请为本章剧情做一个自然有力的收束，并为后续章节留下衔接空间。"
+    elif last_event:
+        closing_part = "\n本幕是最后的事件锚点（本事件最后一幕），请自然引导剧情收束，为本章结局铺垫。"
+
+    scene_rule_part = ""
+    if not closing and scene_index > 0:
+        scene_rule_part = (
+            f"\n【幕数规则】每个事件可推演 1~3 幕（本幕为该事件第 {scene_index} 幕，最多 3 幕）。"
+            f"若本事件剧情尚有值得继续展开的后续，请在选项 JSON 数组之后另起一行单独输出标记 `###MORE###`（独占一行，前后无其他字符）；"
+            f"若本幕已使该事件剧情告一段落，则不要输出该标记。若本幕已是第 3 幕，必须收束本事件，不得输出该标记。"
+        )
 
     return f"""你是小说章节剧情推演的叙事引擎。请根据给定的章节设定与事件骨架，生成一段沉浸式的小说场景叙事与后续行动选项。
 
@@ -64,11 +78,13 @@ def build_scene_prompt(
 {perspective_part}
 {input_part}
 {closing_part}
+{scene_rule_part}
 
 【输出要求（两段式，严格遵守）】
 1. 先直接输出叙事纯文本（150~250 字），不使用任何 Markdown 标题或前缀，就是正文本身。若设定了视角中心，叙述围绕该角色的视角展开；严禁出现「你」字，视角角色一律使用原名。
-2. 叙事结束后另起单独一行，输出分隔符 `###OPTIONS###`（独占一行，前后无其他字符）。
-3. 分隔符之后输出 JSON 数组（不要 ```json 代码块标记，不要任何解释文字），格式如下：
+2. 若本幕涉及多个出场角色，以角色间的对话与行动互动为主展开（对话幕）：每句对话前用「角色原名：」标注说话人（如「林星辰：……」「苏婉：……」），用对话推动剧情、展现角色性格；叙事仍为第三人称，严禁出现「你」字，所有角色一律使用原名。
+3. 叙事结束后另起单独一行，输出分隔符 `###OPTIONS###`（独占一行，前后无其他字符）。
+4. 分隔符之后输出 JSON 数组（不要 ```json 代码块标记，不要任何解释文字），格式如下：
 [{{"text": "选项一（一句话描述一个可执行的行动，10~20字）"}}, {{"text": "选项二"}}, {{"text": "选项三"}}]
 生成 2~3 个选项，选项要与当前情境契合、推动剧情发展。
 

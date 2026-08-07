@@ -107,12 +107,12 @@ def make_chapter() -> Chapter:
     return chapter
 
 
-def make_event() -> SceneEvent:
+def make_event(id=100, title="密室觉醒") -> SceneEvent:
     event = SceneEvent(
-        id=100,
+        id=id,
         book_id=1,
         chapter_id=1,
-        title="密室觉醒",
+        title=title,
         content="林星辰在密室中发现星图。",
         sort_order=0,
         event_type="event",
@@ -138,7 +138,7 @@ def make_flow(with_nodes=True) -> StoryFlow:
     return flow
 
 
-def make_node(seq=1, chosen=None, title="密室觉醒", narration="叙事文本") -> StoryFlowNode:
+def make_node(seq=1, chosen=None, title="密室觉醒", narration="叙事文本", anchored=100) -> StoryFlowNode:
     return StoryFlowNode(
         id=seq * 100,
         flow_id=10,
@@ -147,7 +147,7 @@ def make_node(seq=1, chosen=None, title="密室觉醒", narration="叙事文本"
         narration=narration,
         options=[{"text": "选项一"}] if not chosen else [{"text": "选项一"}, {"text": "选项二"}],
         chosen_option=chosen,
-        anchored_event_id=100,
+        anchored_event_id=anchored,
     )
 
 
@@ -327,17 +327,77 @@ async def test_stream_advance_flow_replay_before_write(monkeypatch):
     assert node2.chosen_option is None
 
 
-# ── 事件序列末尾 → 自动完成 ──
+# ── 事件序列末尾 → 追加收尾幕；收尾幕已生成 → 自动完成 ──
 
 @pytest.mark.asyncio
-async def test_stream_advance_flow_completes_at_sequence_end(monkeypatch):
+async def test_stream_advance_flow_generates_closing_at_sequence_end(monkeypatch):
+    """全部事件推演完（current_event_index == len）→ 生成收尾幕（closing=True）。"""
     flow = make_flow()
-    flow.current_event_index = 0  # 已推进到第 0 个事件，序列共 1 个
-    node1 = make_node(seq=1, chosen=None)
+    flow.current_event_index = 1  # 事件共 1 个，已全部推演完
+    node1 = make_node(seq=1, chosen="选项一")
     session = FakeSession(
         rows={StoryFlow: flow, StoryFlowNode: [node1]},
-        by_id={StoryFlow: {10: flow}, StoryFlowNode: {100: node1}},
+        by_id={
+            StoryFlow: {10: flow},
+            StoryFlowNode: {100: node1},
+            Book: {1: make_book()},
+            Chapter: {1: make_chapter()},
+        },
     )
+
+    async def fake_get_last_node(s, flow_id):
+        return node1
+
+    async def fake_get_node_by_seq(s, flow_id, seq):
+        return None
+
+    monkeypatch.setattr(service.repo, "get_last_node", fake_get_last_node)
+    monkeypatch.setattr(service.repo, "get_node_by_seq", fake_get_node_by_seq)
+
+    called = {"kwargs": None}
+    async def fake_generate(**kwargs):
+        called["kwargs"] = kwargs
+        yield {"type": "scene_stream", "token": "x"}
+
+    monkeypatch.setattr(service, "_generate_scene_node", fake_generate)
+
+    events = [e async for e in service.stream_advance_flow(
+        session=session,
+        flow=flow,
+        chosen_option_text="选项一",
+        model_config={"main_config": {}},
+    )]
+
+    assert called["kwargs"] is not None
+    assert called["kwargs"]["index"] == -1
+    assert called["kwargs"]["closing"] is True
+    assert [e["type"] for e in events] == ["scene_stream"]
+
+
+@pytest.mark.asyncio
+async def test_stream_advance_flow_completes_after_closing(monkeypatch):
+    """收尾幕已生成（最后节点无锚点）→ advance 直接 completed，不再生成。"""
+    flow = make_flow()
+    flow.current_event_index = 1
+    closing_node = make_node(seq=2, chosen=None, title="收尾", anchored=None)
+    session = FakeSession(
+        rows={StoryFlow: flow, StoryFlowNode: [closing_node]},
+        by_id={
+            StoryFlow: {10: flow},
+            StoryFlowNode: {200: closing_node},
+            Book: {1: make_book()},
+            Chapter: {1: make_chapter()},
+        },
+    )
+
+    async def fake_get_last_node(s, flow_id):
+        return closing_node
+
+    async def fake_get_node_by_seq(s, flow_id, seq):
+        return None
+
+    monkeypatch.setattr(service.repo, "get_last_node", fake_get_last_node)
+    monkeypatch.setattr(service.repo, "get_node_by_seq", fake_get_node_by_seq)
 
     called = {"generated": False}
     async def fake_generate(**kwargs):
@@ -408,6 +468,137 @@ async def test_generate_scene_node_two_phase_stream(monkeypatch):
     assert node["options"] == [{"text": "仔细研究"}, {"text": "退出密室"}]
     assert "林星辰" in node["narration"]
     assert flow.round_count == 1
+
+
+# ── 多幕机制：###MORE### 续幕 / 第 3 幕强制收束 / 收尾幕 ──
+
+def _gen_session(flow, nodes, events):
+    return FakeSession(
+        rows={
+            StoryFlow: flow,
+            StoryFlowNode: nodes,
+            SceneEvent: events,
+            Book: make_book(),
+            Chapter: make_chapter(),
+        },
+        by_id={Book: {1: make_book()}, Chapter: {1: make_chapter()}},
+    )
+
+
+@pytest.mark.asyncio
+async def test_generate_scene_node_more_marker_stays_on_event(monkeypatch):
+    """尾区含 ###MORE### 且未达上限 → 停留在当前事件（index 不变）。"""
+    flow = make_flow()
+    flow.anchor_event_ids = [100, 200]
+    flow.current_event_index = 0
+    event1 = make_event()
+    event2 = make_event(id=200, title="星门之后")
+    session = _gen_session(flow, [], [event1, event2])
+
+    def fake_model_factory(config):
+        return SimpleNamespace(
+            main=FakeLLM([
+                "林星辰推开了密室的暗门。",
+                "###OPTIONS###",
+                '[{"text":"继续深入"}]\n###MORE###',
+            ])
+        )
+
+    monkeypatch.setattr(service, "ModelFactory", fake_model_factory)
+
+    events = [e async for e in service._generate_scene_node(
+        session=session,
+        flow=flow,
+        book=make_book(),
+        chapter=make_chapter(),
+        model_config={"main_config": {}},
+        seq=1,
+        index=0,
+        view_character_id=None,
+    )]
+
+    assert events[-2]["type"] == "scene_done"
+    assert events[-2]["node"]["options"] == [{"text": "继续深入"}]
+    assert flow.current_event_index == 0  # 停留：同一事件下一幕
+    assert flow.status == "active"
+
+
+@pytest.mark.asyncio
+async def test_generate_scene_node_more_capped_at_three(monkeypatch):
+    """已 2 幕且尾区含 ###MORE### → 第 3 幕强制收束，推进到下一事件。"""
+    flow = make_flow()
+    flow.anchor_event_ids = [100, 200]
+    flow.current_event_index = 0
+    event1 = make_event()
+    event2 = make_event(id=200, title="星门之后")
+    node1 = make_node(seq=1, chosen="选项一")
+    node2 = make_node(seq=2, chosen="选项一", title="密室觉醒", narration="第二幕")
+    session = _gen_session(flow, [node1, node2], [event1, event2])
+
+    def fake_model_factory(config):
+        return SimpleNamespace(
+            main=FakeLLM([
+                "第三幕叙事。",
+                "###OPTIONS###",
+                '[{"text":"继续深入"}]\n###MORE###',
+            ])
+        )
+
+    monkeypatch.setattr(service, "ModelFactory", fake_model_factory)
+
+    events = [e async for e in service._generate_scene_node(
+        session=session,
+        flow=flow,
+        book=make_book(),
+        chapter=make_chapter(),
+        model_config={"main_config": {}},
+        seq=3,
+        index=0,
+        view_character_id=None,
+    )]
+
+    assert events[-2]["type"] == "scene_done"
+    assert flow.current_event_index == 1  # 第 3 幕强制推进下一事件
+    assert flow.status == "active"
+
+
+@pytest.mark.asyncio
+async def test_generate_scene_node_closing_completes(monkeypatch):
+    """收尾幕（closing=True）→ 生成后会话置 completed，scene_done completed=True。"""
+    flow = make_flow()
+    flow.anchor_event_ids = [100]
+    flow.current_event_index = 1  # 事件已全部推演完
+    event1 = make_event()
+    session = _gen_session(flow, [], [event1])
+
+    def fake_model_factory(config):
+        return SimpleNamespace(
+            main=FakeLLM([
+                "夜色渐深，故事在这一章暂时落幕。",
+                "###OPTIONS###",
+                '[{"text":"就此作别"}]',
+            ])
+        )
+
+    monkeypatch.setattr(service, "ModelFactory", fake_model_factory)
+
+    events = [e async for e in service._generate_scene_node(
+        session=session,
+        flow=flow,
+        book=make_book(),
+        chapter=make_chapter(),
+        model_config={"main_config": {}},
+        seq=2,
+        index=-1,
+        view_character_id=None,
+        closing=True,
+    )]
+
+    assert events[-2]["type"] == "scene_done"
+    assert events[-2]["completed"] is True
+    assert events[-2]["node"]["anchoredEventId"] is None
+    assert flow.status == "completed"
+    assert flow.current_event_index == 1  # 哨兵：== len(anchor_ids)
 
 
 # ── complete：摘要生成失败 → 回退决策链拼接 ──

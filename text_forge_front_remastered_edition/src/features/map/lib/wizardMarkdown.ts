@@ -1,5 +1,7 @@
-// 初始化向导 Step 3-6 的 Markdown 方案解析器。
+// 初始化向导 Step 1-6 的 Markdown 方案解析器。
 // 统一格式：
+// - Step 1 地点：# 地点（标题层级表达父子关系）+ 「类型/自定义字段：」字段行
+// - Step 2 角色：## 角色 + 「类型/别名/状态/首次出场/关系链/自定义字段：」字段行
 // - Step 3 情节线：# 线 / ## 线 + 「类型：」字段行
 // - Step 4 大纲：# 卷 / ## 章 / ### 场景 + 「时间/角色/情节线：」字段行
 // - Step 5 事件：## 事件 + 「章节/时间/地点/角色/情节线：」字段行
@@ -16,6 +18,177 @@ export function splitNames(text: string | undefined | null): string[] {
 }
 
 const FIELD_RE = /^(\S+?)[:：]\s*(.*)$/;
+
+/* ── Step 1：地点（标题层级表达父子关系 + 块字段） ── */
+
+export interface ParsedLocation {
+  name: string;
+  type: string;
+  description: string;
+  parentName?: string;
+  level: number;
+  customFields: Record<string, string>;
+}
+
+export function parseLocations(markdown: string): ParsedLocation[] {
+  const locations: ParsedLocation[] = [];
+  let cur: ParsedLocation | undefined;
+  let customBlock = false;
+  // 层级栈（多叉树）：stack[level] = 最近该层级的节点名，父级 = stack[level-1]
+  const stack: Record<number, string> = {};
+
+  for (const raw of markdown.split('\n')) {
+    const line = raw.trimEnd();
+    const hm = line.match(/^(\#{1,6})\s*地点[:：]\s*(.+)$/);
+    if (hm) {
+      const level = hm[1].length;
+      const { title, summary } = splitTitleSummary(hm[2]);
+      cur = {
+        name: title,
+        type: '',
+        description: summary,
+        level,
+        parentName: level > 1 ? stack[level - 1] : undefined,
+        customFields: {},
+      };
+      locations.push(cur);
+      stack[level] = title;
+      customBlock = false;
+      continue;
+    }
+    if (!cur || line.trim() === '') continue;
+
+    // 自定义字段块：标记行后的「键：值」行，直到下一个标题
+    if (customBlock) {
+      const fm = line.match(FIELD_RE);
+      if (fm) {
+        // 块内出现已知字段名（如 LLM 反向顺序的「类型：」）→ 按外层字段处理并退出块
+        if (fm[1] === '类型') {
+          cur.type = fm[2].trim();
+          customBlock = false;
+        } else {
+          cur.customFields[fm[1]] = fm[2].trim();
+        }
+      }
+      continue;
+    }
+
+    const fm = line.match(FIELD_RE);
+    if (fm) {
+      if (fm[1] === '类型') {
+        cur.type = fm[2].trim();
+      } else if (fm[1] === '自定义字段') {
+        const inline = fm[2].trim();
+        if (inline) {
+          try {
+            const parsed = JSON.parse(inline);
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+              cur.customFields = Object.fromEntries(
+                Object.entries(parsed as Record<string, unknown>).map(([k, v]) => [k, String(v)]),
+              );
+            }
+          } catch { /* 非 JSON 内联值忽略 */ }
+        } else {
+          customBlock = true;
+        }
+      }
+    }
+  }
+  return locations;
+}
+
+/* ── Step 2：角色（块字段：关系链 + 自定义字段） ── */
+
+export interface ParsedCharacterRelation {
+  type: string;
+  targetName: string;
+  description: string;
+}
+
+export interface ParsedCharacter {
+  name: string;
+  roleType: string;
+  aliases: string[];
+  status: string;
+  description: string;
+  spawnLocationName?: string;
+  relationships: ParsedCharacterRelation[];
+  customFields: Record<string, string>;
+}
+
+/** 关系行：关系类型 - 目标角色名：首行描述（分隔符两侧须有空格，避免类型内含连字符被误切） */
+const RELATION_RE = /^(.+?)\s+-\s+(.+?)[:：]\s*(.*)$/;
+
+/** 角色块字段名集合：用于在关系链块中识别"退出块"的字段行 */
+const CHARACTER_FIELD_KEYS = new Set(['类型', '角色类型', '别名', '状态', '首次出场', '关系链', '自定义字段']);
+
+export function parseCharacters(markdown: string): ParsedCharacter[] {
+  const chars: ParsedCharacter[] = [];
+  let cur: ParsedCharacter | undefined;
+  let block: 'relation' | 'custom' | null = null;
+
+  const applyField = (key: string, value: string) => {
+    if (!cur) return;
+    if (key === '类型' || key === '角色类型') cur.roleType = value;
+    else if (key === '别名') cur.aliases = splitNames(value);
+    else if (key === '状态') cur.status = value;
+    else if (key === '首次出场') cur.spawnLocationName = value;
+    else if (key === '关系链') block = 'relation';
+    else if (key === '自定义字段') block = 'custom';
+  };
+
+  for (const raw of markdown.split('\n')) {
+    const line = raw.trimEnd();
+    const hm = line.match(/^(\#{1,6})\s*角色[:：]\s*(.+)$/);
+    if (hm) {
+      const { title, summary } = splitTitleSummary(hm[2]);
+      cur = {
+        name: title,
+        roleType: '',
+        aliases: [],
+        status: '',
+        description: summary,
+        relationships: [],
+        customFields: {},
+      };
+      chars.push(cur);
+      block = null;
+      continue;
+    }
+    if (!cur || line.trim() === '') continue;
+
+    if (block === 'custom') {
+      const fm = line.match(FIELD_RE);
+      if (fm) cur.customFields[fm[1]] = fm[2].trim();
+      continue;
+    }
+
+    if (block === 'relation') {
+      // 字段行（如「自定义字段：」「类型：」）→ 退出关系块并应用
+      const fm = line.match(FIELD_RE);
+      if (fm && CHARACTER_FIELD_KEYS.has(fm[1])) {
+        block = null;
+        applyField(fm[1], fm[2].trim());
+        continue;
+      }
+      const rm = line.match(RELATION_RE);
+      if (rm) {
+        cur.relationships.push({ type: rm[1].trim(), targetName: rm[2].trim(), description: rm[3].trim() });
+      } else {
+        // 非关系模式行：追加为当前关系描述续行（多行详写）
+        const last = cur.relationships[cur.relationships.length - 1];
+        if (last) {
+          last.description = last.description ? `${last.description}${line.trim()}` : line.trim();
+        }
+      }
+      continue;
+    }
+
+    const fm = line.match(FIELD_RE);
+    if (fm) applyField(fm[1], fm[2].trim());
+  }
+  return chars;
+}
 
 /* ── Step 3：情节线 ── */
 

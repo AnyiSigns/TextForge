@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Settings, User, Palette, Boxes, Eye, EyeOff, Mail, Wifi, Cpu } from 'lucide-react';
+import { useEffect, useState, useRef } from 'react';
+import { Settings, User, Palette, Boxes, Eye, EyeOff, Mail, Wifi, Cpu, Upload, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTheme } from 'next-themes';
 import { Card } from '@/shared/ui/card';
@@ -10,6 +10,17 @@ import * as userApi from '@/shared/api/user';
 import * as modelApi from '@/shared/api/models';
 import { EMBED_TIERS, downloadEmbedModel, deleteEmbedModel, cancelEmbedDownload } from '@/lib/rag/embed';
 import { useEmbedDownloaded } from '@/hooks/useEmbedDownloaded';
+import {
+  loadThemeBackground,
+  saveThemeBgImage,
+  saveThemeBgOpacity,
+  saveThemeBgBlur,
+  saveGlassEnabled,
+  saveGlassOpacity,
+  saveGlassBlur,
+  removeThemeBackground,
+  resetAll,
+} from '@/lib/storage/themeBackground';
 
 const TEXT_ROLES: { key: string; label: string; desc: string }[] = [
   { key: 'main', label: '主模型', desc: '通用生成' },
@@ -103,6 +114,23 @@ export default function SettingsPage() {
   const [embedDeleting, setEmbedDeleting] = useState<string | null>(null);
   const downloadedIds = useEmbedDownloaded();
 
+  const [bgImage, setBgImage] = useState<string | null>(null);
+  const [bgOpacity, setBgOpacity] = useState(0.3);
+  const [bgBlur, setBgBlur] = useState(0);
+  const [glassEnabled, setGlassEnabledState] = useState(false);
+  const [glassOpacity, setGlassOpacityState] = useState(0.7);
+  const [glassBlur, setGlassBlurState] = useState(12);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const sliderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 滑块拖动时实时写 CSS 变量预览，IndexedDB 落库防抖 200ms
+  const debouncedSliderSave = (fn: () => void) => {
+    if (sliderTimer.current) clearTimeout(sliderTimer.current);
+    sliderTimer.current = setTimeout(fn, 200);
+  };
+  const applyVar = (prop: string, value: string) => {
+    document.documentElement.style.setProperty(prop, value);
+  };
+
   useEffect(() => {
     setMounted(true);
     userApi.fetchProfile().then((p) => {
@@ -115,6 +143,14 @@ export default function SettingsPage() {
       if (cfg.embeddingModel) setEmbeddingModel(cfg.embeddingModel);
       if (cfg.visionModel) setVisionModel(cfg.visionModel);
       if (cfg.searchConfig) setSearchConfig(cfg.searchConfig);
+    }).catch(() => {});
+    loadThemeBackground().then((s) => {
+      setBgImage(s.bgImage);
+      setBgOpacity(s.bgOpacity);
+      setBgBlur(s.bgBlur);
+      setGlassEnabledState(s.glassEnabled);
+      setGlassOpacityState(s.glassOpacity);
+      setGlassBlurState(s.glassBlur);
     }).catch(() => {});
   }, []);
 
@@ -232,6 +268,94 @@ export default function SettingsPage() {
     } finally {
       setEmbedDeleting(null);
     }
+  };
+
+  const compressImage = (dataUri: string, maxWidth: number, quality: number): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const w = Math.min(img.width, maxWidth);
+        const h = Math.round((img.height / img.width) * w);
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { resolve(dataUri); return; }
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = () => resolve(dataUri);
+      img.src = dataUri;
+    });
+  };
+
+  const handleBgUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const SAFE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (file.type && !SAFE_TYPES.includes(file.type)) {
+      toast.error('仅支持 JPG/PNG/WebP/GIF 图片');
+      e.target.value = '';
+      return;
+    }
+    const MAX_SIZE = 10 * 1024 * 1024;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      let dataUri = reader.result as string;
+      if (file.size > MAX_SIZE) {
+        dataUri = await compressImage(dataUri, 1920, 0.8);
+      }
+      setBgImage(dataUri);
+      saveThemeBgImage(dataUri).catch(() => toast.error('保存背景图片失败'));
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleBgRemove = () => {
+    setBgImage(null);
+    setBgOpacity(0.3);
+    setBgBlur(0);
+    removeThemeBackground().catch(() => {});
+  };
+
+  const handleBgOpacityChange = (v: number) => {
+    setBgOpacity(v);
+    applyVar('--bg-image-opacity', String(v));
+    debouncedSliderSave(() => saveThemeBgOpacity(v).catch(() => {}));
+  };
+
+  const handleBgBlurChange = (v: number) => {
+    setBgBlur(v);
+    applyVar('--bg-image-blur', `${v}px`);
+    debouncedSliderSave(() => saveThemeBgBlur(v).catch(() => {}));
+  };
+
+  const handleGlassToggle = (enabled: boolean) => {
+    setGlassEnabledState(enabled);
+    saveGlassEnabled(enabled).catch(() => {});
+  };
+
+  const handleGlassOpacityChange = (v: number) => {
+    setGlassOpacityState(v);
+    applyVar('--glass-opacity', String(v));
+    debouncedSliderSave(() => saveGlassOpacity(v).catch(() => {}));
+  };
+
+  const handleGlassBlurChange = (v: number) => {
+    setGlassBlurState(v);
+    applyVar('--glass-blur', `${v}px`);
+    debouncedSliderSave(() => saveGlassBlur(v).catch(() => {}));
+  };
+
+  const handleResetAll = () => {
+    setBgImage(null);
+    setBgOpacity(0.3);
+    setBgBlur(0);
+    setGlassEnabledState(false);
+    setGlassOpacityState(0.7);
+    setGlassBlurState(12);
+    resetAll().then(() => toast.success('已还原默认')).catch(() => {});
   };
 
   return (
@@ -354,31 +478,178 @@ export default function SettingsPage() {
 
 
         {activeTab === 'appearance' && (
-          <Card className="p-5 space-y-5">
-            <div className="space-y-2">
-              <label className="text-[11px] text-muted-foreground block">主题模式</label>
-              <div className="flex gap-2">
-                {mounted ? (
-                  ['light', 'dark', 'system'].map((t) => (
-                    <button key={t} onClick={() => setTheme(t)}
-                      className={cn(
-                        'h-8 px-3 rounded-md text-xs border cursor-pointer bg-transparent transition-colors',
-                        theme === t ? 'border-foreground bg-foreground/5 font-medium' : 'border-border hover:border-foreground/20',
-                      )}>
-                      {t === 'light' ? '浅色' : t === 'dark' ? '深色' : '跟随系统'}
-                    </button>
-                  ))
-                ) : (
-                  ['light', 'dark', 'system'].map((t) => (
-                    <button key={t} disabled
-                      className="h-8 px-3 rounded-md text-xs border border-border cursor-pointer bg-transparent transition-colors opacity-50">
-                      {t === 'light' ? '浅色' : t === 'dark' ? '深色' : '跟随系统'}
-                    </button>
-                  ))
-                )}
+          <div className="space-y-5">
+            <Card className="p-5 space-y-5">
+              <div className="space-y-2">
+                <label className="text-[11px] text-muted-foreground block">主题模式</label>
+                <div className="flex gap-2">
+                  {mounted ? (
+                    ['light', 'dark', 'system'].map((t) => (
+                      <button key={t} onClick={() => setTheme(t)}
+                        className={cn(
+                          'h-8 px-3 rounded-md text-xs border cursor-pointer bg-transparent transition-colors',
+                          theme === t ? 'border-foreground bg-foreground/5 font-medium' : 'border-border hover:border-foreground/20',
+                        )}>
+                        {t === 'light' ? '浅色' : t === 'dark' ? '深色' : '跟随系统'}
+                      </button>
+                    ))
+                  ) : (
+                    ['light', 'dark', 'system'].map((t) => (
+                      <button key={t} disabled
+                        className="h-8 px-3 rounded-md text-xs border border-border cursor-pointer bg-transparent transition-colors opacity-50">
+                        {t === 'light' ? '浅色' : t === 'dark' ? '深色' : '跟随系统'}
+                      </button>
+                    ))
+                  )}
+                </div>
               </div>
+            </Card>
+
+            <Card className="p-5 space-y-4">
+              <div>
+                <div className="text-xs font-medium">自定义主题背景</div>
+                <div className="text-[11px] text-muted-foreground mt-0.5">上传一张图片铺在应用底层，可调整透明度和模糊度</div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-20 h-14 rounded-lg border border-border overflow-hidden bg-muted flex-shrink-0"
+                  style={bgImage ? {
+                    backgroundImage: `url(${bgImage})`,
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                  } : undefined}
+                >
+                  {!bgImage && <div className="w-full h-full flex items-center justify-center text-[10px] text-muted-foreground/50">无背景</div>}
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleBgUpload}
+                    className="hidden"
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex items-center gap-1.5 h-7 px-3 rounded-md text-[11px] border border-border cursor-pointer bg-transparent hover:bg-muted transition-colors"
+                  >
+                    <Upload size={11} />
+                    上传图片
+                  </button>
+                  {bgImage && (
+                    <button
+                      onClick={handleBgRemove}
+                      className="flex items-center gap-1.5 h-7 px-3 rounded-md text-[11px] border border-border cursor-pointer bg-transparent hover:bg-muted transition-colors text-destructive"
+                    >
+                      <Trash2 size={11} />
+                      移除背景
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {bgImage && (
+                <>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] text-muted-foreground">背景透明度</label>
+                      <span className="text-[10px] text-muted-foreground tabular-nums">{Math.round(bgOpacity * 100)}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0} max={1} step={0.05}
+                      value={bgOpacity}
+                      onChange={(e) => handleBgOpacityChange(parseFloat(e.target.value))}
+                      className="w-full h-1.5 appearance-none bg-border rounded-full outline-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-foreground [&::-webkit-slider-thumb]:cursor-pointer"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] text-muted-foreground">背景模糊度</label>
+                      <span className="text-[10px] text-muted-foreground tabular-nums">{bgBlur}px</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0} max={30} step={1}
+                      value={bgBlur}
+                      onChange={(e) => handleBgBlurChange(parseInt(e.target.value))}
+                      className="w-full h-1.5 appearance-none bg-border rounded-full outline-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-foreground [&::-webkit-slider-thumb]:cursor-pointer"
+                    />
+                  </div>
+                </>
+              )}
+              <p className="text-[10px] text-muted-foreground/60">支持 JPG/PNG/WebP，单文件不超过 10MB，超过自动压缩到 1920px 宽</p>
+            </Card>
+
+            <Card className="p-5 space-y-4">
+              <div>
+                <div className="text-xs font-medium">液态玻璃</div>
+                <div className="text-[11px] text-muted-foreground mt-0.5">为全局卡片和面板添加淡淡的毛玻璃效果（仅模糊 + 半透明，无高光反光）</div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] text-muted-foreground">开启液态玻璃</label>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={glassEnabled}
+                  onClick={() => handleGlassToggle(!glassEnabled)}
+                  className={cn(
+                    'relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors',
+                    glassEnabled ? 'bg-foreground' : 'bg-muted-foreground/30',
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'pointer-events-none block h-4 w-4 rounded-full bg-background shadow-sm transition-transform',
+                      glassEnabled ? 'translate-x-4' : 'translate-x-0',
+                    )}
+                  />
+                </button>
+              </div>
+
+              {glassEnabled && (
+                <>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] text-muted-foreground">卡片透明度</label>
+                      <span className="text-[10px] text-muted-foreground tabular-nums">{Math.round(glassOpacity * 100)}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0.1} max={1} step={0.05}
+                      value={glassOpacity}
+                      onChange={(e) => handleGlassOpacityChange(parseFloat(e.target.value))}
+                      className="w-full h-1.5 appearance-none bg-border rounded-full outline-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-foreground [&::-webkit-slider-thumb]:cursor-pointer"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] text-muted-foreground">玻璃模糊度</label>
+                      <span className="text-[10px] text-muted-foreground tabular-nums">{glassBlur}px</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0} max={30} step={1}
+                      value={glassBlur}
+                      onChange={(e) => handleGlassBlurChange(parseInt(e.target.value))}
+                      className="w-full h-1.5 appearance-none bg-border rounded-full outline-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-foreground [&::-webkit-slider-thumb]:cursor-pointer"
+                    />
+                  </div>
+                </>
+              )}
+            </Card>
+
+            <div className="flex justify-end">
+              <button
+                onClick={handleResetAll}
+                className="h-8 px-4 rounded-md border border-border text-xs cursor-pointer bg-transparent hover:bg-muted transition-colors text-muted-foreground"
+              >
+                还原默认
+              </button>
             </div>
-          </Card>
+          </div>
         )}
 
         {activeTab === 'model' && (

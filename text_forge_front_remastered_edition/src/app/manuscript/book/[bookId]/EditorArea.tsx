@@ -296,7 +296,7 @@ export function EditorArea() {
             onMouseUp={updateSelection}
             onKeyUp={updateSelection}
             placeholder="在此创作…"
-            className="flex-1 w-full resize-none outline-none border-none p-6 text-[15px] leading-relaxed font-[var(--font-serif),serif] bg-background"
+            className="flex-1 w-full resize-none outline-none border-none p-6 text-[15px] leading-relaxed font-[var(--font-serif),serif] bg-background theme-surface"
             spellCheck={false}
           />
 

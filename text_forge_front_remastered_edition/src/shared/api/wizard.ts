@@ -87,8 +87,9 @@ export interface StreamGenerateOptions {
 }
 
 /**
- * 流式生成 Markdown 单份方案（Step 3-6，SSE）。
+ * 流式生成 Markdown 单份方案（Step 1-6，SSE）。
  * Step 4 大纲后端按卷分批生成，其余步骤单次生成，文本逐行推送。
+ * Step 1 地点 / Step 2 角色 同样使用本接口（一次生成完整方案，前端解析落库）。
  */
 export async function streamGenerateMarkdown(
   bookId: number,

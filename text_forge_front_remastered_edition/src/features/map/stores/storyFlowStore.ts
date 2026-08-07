@@ -370,9 +370,13 @@ export const useStoryFlowStore = create<StoryFlowState>((set, get) => ({
     if (!flowId || streaming) return;
     const current = get().nodes[get().currentSceneId];
     const alreadyDecided = Boolean(current?.chosenOption);
-    // 决策链乐观追加（重试与恢复续推时不重复追加）
+    // 决策链乐观追加 + 把选择写回当前节点：scene_done 后 buildDecisionChain 重建时
+    // 依赖节点上的 chosenOption，不写回的话旧节点永远是 null，决策链每轮都被清空。
+    // alreadyDecided / pendingChosenOption 用于重试与恢复续推时防重复追加。
     if (!alreadyDecided && !get().pendingChosenOption && current) {
+      const sceneId = get().currentSceneId;
       set((s) => ({
+        nodes: s.nodes.map((n, i) => (i === sceneId ? { ...n, chosenOption: optionText } : n)),
         decisionChain: [
           ...s.decisionChain,
           { id: s.decisionChain.length + 1, sceneTitle: current.title, chosenOption: optionText, timestamp: Date.now() },

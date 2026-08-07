@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { useEntityStore } from './entityStore';
 import {
+  parseLocations,
+  parseCharacters,
   parsePlotThreads,
   parseOutline,
   parseEvents,
@@ -28,14 +30,15 @@ interface InitializerState {
   generating: boolean;
   streaming: boolean;
   stepText: Record<number, string>;
+  abortRef: AbortController | null;
+  /** 已成功落库的步骤集合：回退再前进不重复保存；重新生成后清除对应标记 */
+  savedSteps: Set<number>;
   creativeForm: { name: string; tone: string; worldview: string; taboos: string; customFields: Array<{ key: string; value: string }> };
 
   open: () => void;
   close: () => void;
   nextStep: () => Promise<void>;
   prevStep: () => void;
-  toggleLock: (step: number, candidateId: string) => void;
-  toggleConfirm: (step: number, candidateId: string) => void;
   setCreativeForm: (data: Partial<InitializerState['creativeForm']>) => void;
   regenerateCandidates: (extraInstruction?: string) => Promise<void>;
   finish: () => Promise<void>;
@@ -53,63 +56,7 @@ interface InitError extends Error {
   step?: string;
 }
 
-/**
- * 将锁定的卡片批量写入后端。
- */
-async function saveLockedCards(
-  bookId: number,
-  step: number,
-  cards: Candidate[],
-): Promise<void> {
-  console.log(`[wizard:store] saveLockedCards step=${step} count=${cards.length}`);
-  if (step === 1) {
-    // 地点
-    const { createLocation } = await import('@/shared/api/world');
-    const results = await Promise.all(cards.map(async (c) => {
-      const type = c.fields.find((f) => f.key === '类型')?.value ?? '城镇';
-      const desc = c.fields.find((f) => f.key === '描述')?.value ?? '';
-      const body = { bookId, name: c.title, type, description: desc };
-      console.log(`[wizard:store] createLocation body=`, body);
-      const result = await createLocation(body as Parameters<typeof createLocation>[0]);
-      console.log(`[wizard:store] createLocation result=`, result);
-      return result;
-    }));
-    console.log(`[wizard:store] saveLockedCards locations done`, results);
-  } else if (step === 2) {
-    // 角色
-    const { createCharacter } = await import('@/shared/api/characters');
-    await Promise.all(cards.map((c) => {
-      const roleType = c.fields.find((f) => f.key === '角色类型')?.value ?? '配角';
-      const desc = c.fields.find((f) => f.key === '描述')?.value ?? '';
-      // 别名（JSON 数组或顿号/逗号分隔文本）
-      const aliasesRaw = c.fields.find((f) => f.key === '别名')?.value ?? '';
-      let aliases: string[] = [];
-      try {
-        const parsed = JSON.parse(aliasesRaw);
-        if (Array.isArray(parsed)) aliases = parsed.map(String).filter(Boolean);
-      } catch {
-        aliases = aliasesRaw.split(/[、,，]/).map((s) => s.trim()).filter(Boolean);
-      }
-      // 角色状态（当前身份/处境）
-      const status = c.fields.find((f) => f.key === '角色状态')?.value ?? '活跃';
-      // 自定义字段（key-value 对象）
-      const customRaw = c.fields.find((f) => f.key === '自定义字段')?.value ?? '';
-      let customFields: Record<string, unknown> = {};
-      try {
-        const parsed = JSON.parse(customRaw);
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) customFields = parsed;
-      } catch { /* 文本格式忽略 */ }
-      return createCharacter({
-        bookId, name: c.title, description: desc, roleType,
-        status,
-        aliases,
-        customFields,
-      } as Parameters<typeof createCharacter>[0]);
-    }));
-  }
-}
-
-/* ── Step 3-6：Markdown 单份方案解析落库 ── */
+/* ── Step 1-6：Markdown 单份方案解析落库 ── */
 
 function cnToNum(s: string): number | null {
   const map: Record<string, number> = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
@@ -130,6 +77,94 @@ function mapRevealType(raw: string): string {
 
 async function saveStepText(bookId: number, step: number, text: string): Promise<void> {
   if (!text || !text.trim()) return;
+
+  if (step === 1) {
+    // 地点：标题层级 → Location（父级按名字解析 parentId，自定义字段 → attributes）
+    const { createLocation, updateLocation, fetchLocations } = await import('@/shared/api/world');
+    const locations = parseLocations(text);
+    if (locations.length === 0) return;
+    const existing = await fetchLocations(bookId).catch(() => []);
+    const existingNames = new Set(existing.map((l) => l.name));
+    const idMap: Record<string, number> = {};
+    for (const loc of locations) {
+      if (existingNames.has(loc.name)) continue; // 重复落库防护
+      try {
+        const created = await createLocation({
+          bookId,
+          name: loc.name,
+          type: loc.type || '城镇',
+          description: loc.description || undefined,
+          attributes: Object.keys(loc.customFields).length > 0 ? loc.customFields : undefined,
+        } as Parameters<typeof createLocation>[0]);
+        idMap[loc.name] = created.id;
+      } catch { /* 单个地点失败不中断 */ }
+    }
+    // 父级按名字解析（本批 + 已有地点合并），并行更新
+    const allIds: Record<string, number> = {
+      ...Object.fromEntries(existing.map((l) => [l.name, l.id])),
+      ...idMap,
+    };
+    const parentUpdates: Array<Promise<unknown>> = [];
+    for (const loc of locations) {
+      if (!idMap[loc.name] || !loc.parentName || !allIds[loc.parentName]) continue;
+      parentUpdates.push(
+        updateLocation(idMap[loc.name], { parentId: allIds[loc.parentName] }, bookId),
+      );
+    }
+    await Promise.allSettled(parentUpdates);
+    return;
+  }
+
+  if (step === 2) {
+    // 角色：别名/状态/自定义字段/首次出场/关系链 → Character
+    const { createCharacter, updateCharacter, fetchCharacters } = await import('@/shared/api/characters');
+    const { fetchLocations } = await import('@/shared/api/world');
+    const characters = parseCharacters(text);
+    if (characters.length === 0) return;
+    const [existing, locs] = await Promise.all([
+      fetchCharacters(bookId).catch(() => []),
+      fetchLocations(bookId).catch(() => []),
+    ]);
+    const existingNames = new Set(existing.map((c) => c.name));
+    const locationNameToId = Object.fromEntries(locs.map((l) => [l.name, l.id]));
+    const idMap: Record<string, number> = {};
+    for (const ch of characters) {
+      if (existingNames.has(ch.name)) continue; // 重复落库防护
+      const spawnId = ch.spawnLocationName ? locationNameToId[ch.spawnLocationName] : undefined;
+      try {
+        const created = await createCharacter({
+          bookId,
+          name: ch.name,
+          roleType: ch.roleType || '配角',
+          aliases: ch.aliases,
+          status: ch.status || '活跃',
+          description: ch.description || undefined,
+          customFields: Object.keys(ch.customFields).length > 0 ? ch.customFields : undefined,
+          ...(spawnId != null ? { spawnLocationId: spawnId } : {}),
+        } as Parameters<typeof createCharacter>[0]);
+        idMap[ch.name] = created.id;
+      } catch { /* 单个角色失败不中断 */ }
+    }
+    // 关系链：targetName → id（本批 + 已有角色合并），并行更新
+    const allIds: Record<string, number> = {
+      ...Object.fromEntries(existing.map((c) => [c.name, c.id])),
+      ...idMap,
+    };
+    const chainUpdates: Array<Promise<unknown>> = [];
+    for (const ch of characters) {
+      const id = idMap[ch.name];
+      if (!id || ch.relationships.length === 0) continue;
+      const chain = ch.relationships
+        .filter((r) => allIds[r.targetName])
+        .map((r) => ({ targetId: allIds[r.targetName], type: r.type, description: r.description }));
+      if (chain.length === 0) continue;
+      chainUpdates.push(
+        updateCharacter(id, { relationshipChain: chain } as Parameters<typeof updateCharacter>[1]),
+      );
+    }
+    await Promise.allSettled(chainUpdates);
+    return;
+  }
 
   if (step === 3) {
     // 情节线：Markdown 层级（# 主线 / ## 支线）→ PlotThread
@@ -280,14 +315,20 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
   generating: false,
   streaming: false,
   stepText: {},
+  abortRef: null,
+  savedSteps: new Set<number>(),
   creativeForm: { name: '', tone: '', worldview: '', taboos: '', customFields: [{ key: '战力体系', value: '' }, { key: '势力', value: '' }, { key: '交易单位', value: '' }] },
 
   open: () => set({ isOpen: true, currentStep: 0, saving: false, error: null }),
 
-  close: () => set({ isOpen: false, saving: false, error: null }),
+  close: () => {
+    // 中止进行中的流式生成，避免关闭面板后请求仍在运行
+    get().abortRef?.abort();
+    set({ isOpen: false, saving: false, error: null, abortRef: null });
+  },
 
   nextStep: async () => {
-    const { currentStep, candidates, lockedIds, creativeForm, generating, streaming } = get();
+    const { currentStep, creativeForm, generating, streaming } = get();
     // 生成/流式进行中禁止前进：streaming 状态会泄漏到下一步骤，导致误显示"生成中"
     if (generating || streaming) return;
     if (currentStep < 6) {
@@ -311,35 +352,8 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
         }
       }
 
-      // 卡片步骤（1-2）：锁定卡片写入后端
-      if (currentStep === 1 || currentStep === 2) {
-        const lockedCards = candidates[currentStep].filter((c) => lockedIds.has(c.id));
-        console.log(`[wizard:store] nextStep step=${currentStep} lockedCards=${lockedCards.length}`, lockedCards.map(c => c.title));
-        if (lockedCards.length > 0) {
-          const bookId = (await import('@/app/(dashboard)/books/[id]/store')).useBookDetailStore.getState().bookId;
-          console.log(`[wizard:store] nextStep saving bookId=${bookId}`);
-          if (bookId) {
-            try {
-              await saveLockedCards(bookId, currentStep, lockedCards);
-              await useEntityStore.getState().loadFromApi(bookId);
-            } catch (e) {
-              console.error(`[wizard:store] nextStep save FAILED`, e);
-              set({ error: '候选保存失败，请重试' });
-            }
-            // 保存后移除已入库卡片，回退再前进不会重复
-            const savedIds = new Set(lockedCards.map((c) => c.id));
-            const newCandidates = [...get().candidates];
-            newCandidates[currentStep] = newCandidates[currentStep].filter((c) => !savedIds.has(c.id));
-            // 同时清理 lockedIds
-            const newLocked = new Set(get().lockedIds);
-            savedIds.forEach((id) => newLocked.delete(id));
-            set({ candidates: newCandidates, lockedIds: newLocked });
-          }
-        }
-      }
-
-      // Markdown 步骤（3-6）：解析流式生成的方案文本落库
-      if (currentStep >= 3 && currentStep <= 6) {
+      // Markdown 步骤（1-6）：解析流式生成的方案文本落库（已保存的步骤回退再前进不重复）
+      if (currentStep >= 1 && currentStep <= 6 && !get().savedSteps.has(currentStep)) {
         const text = get().stepText[currentStep] ?? '';
         if (text && text.trim()) {
           const bookId = (await import('@/app/(dashboard)/books/[id]/store')).useBookDetailStore.getState().bookId;
@@ -347,6 +361,7 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
             try {
               await saveStepText(bookId, currentStep, text);
               await useEntityStore.getState().loadFromApi(bookId);
+              set((s) => ({ savedSteps: new Set(s.savedSteps).add(currentStep) }));
             } catch (e) {
               console.error(`[wizard:store] nextStep saveStepText FAILED`, e);
               set({ error: '方案保存失败，请重试' });
@@ -355,38 +370,14 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
         }
       }
 
-      const confirmedInStep = candidates[currentStep]
-        .filter((c) => lockedIds.has(c.id))
-        .map((c) => c.id);
-      const newConfirmed = new Set(get().confirmedIds);
-      confirmedInStep.forEach((id) => newConfirmed.add(id));
-      set({ currentStep: currentStep + 1, confirmedIds: newConfirmed });
+      set({ currentStep: currentStep + 1 });
     }
   },
 
   prevStep: () => {
-    const { currentStep } = get();
+    const { currentStep, generating, streaming } = get();
+    if (generating || streaming) return;
     if (currentStep > 0) set({ currentStep: currentStep - 1 });
-  },
-
-  toggleLock: (step, candidateId) => {
-    const newLocked = new Set(get().lockedIds);
-    if (newLocked.has(candidateId)) {
-      newLocked.delete(candidateId);
-    } else {
-      newLocked.add(candidateId);
-    }
-    set({ lockedIds: newLocked });
-  },
-
-  toggleConfirm: (step, candidateId) => {
-    const newConfirmed = new Set(get().confirmedIds);
-    if (newConfirmed.has(candidateId)) {
-      newConfirmed.delete(candidateId);
-    } else {
-      newConfirmed.add(candidateId);
-    }
-    set({ confirmedIds: newConfirmed });
   },
 
   setCreativeForm: (data) => {
@@ -419,13 +410,19 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
       .filter((c) => lockedIds.has(c.id) || confirmedIds.has(c.id))
       .map((c) => c.title);
 
-    set({ generating: true, streaming: currentStep >= 3, error: null });
+    set({ generating: true, streaming: currentStep >= 1, error: null });
 
-    // Step 3-6：流式生成单份 Markdown 方案，文本累积到 stepText
-    if (currentStep >= 3) {
+    // Step 1-6：流式生成单份 Markdown 方案，文本累积到 stepText
+    if (currentStep >= 1) {
+      const controller = new AbortController();
+      set({ abortRef: controller });
       try {
         const { streamGenerateMarkdown } = await import('@/shared/api/wizard');
-        set({ stepText: { ...get().stepText, [currentStep]: '' } });
+        // 重新生成：清除该步骤已保存标记（允许再次落库新文本）
+        set((s) => ({
+          stepText: { ...s.stepText, [currentStep]: '' },
+          savedSteps: new Set([...s.savedSteps].filter((x) => x !== currentStep)),
+        }));
         // 节流合并 delta 更新，避免每个 SSE 行都触发 zustand set 造成高频重渲染
         let pendingText = '';
         let flushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -442,6 +439,7 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
         const fullText = await streamGenerateMarkdown(bookId, currentStep, {
           extraInstruction,
           previousCards,
+          signal: controller.signal,
           onEvent: (ev) => {
             if (ev.type === 'delta' && ev.text) {
               pendingText += ev.text;
@@ -456,10 +454,13 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
           set((s) => ({ stepText: { ...s.stepText, [currentStep]: fullText } }));
         }
       } catch (e) {
-        const msg = e instanceof Error ? e.message : 'AI 生成失败，请检查模型配置后重试';
-        set({ error: msg });
+        // AbortError 为用户关闭面板/中止，不视为错误
+        if ((e as Error)?.name !== 'AbortError') {
+          const msg = e instanceof Error ? e.message : 'AI 生成失败，请检查模型配置后重试';
+          set({ error: msg });
+        }
       } finally {
-        set({ generating: false, streaming: false });
+        set({ generating: false, streaming: false, abortRef: null });
       }
       return;
     }
@@ -535,10 +536,11 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
     set({ saving: true, error: null });
 
     try {
-      // Step 6 为最后一步（finish 仅在其显示），落库伏笔 Markdown 文本
+      // Step 6 为最后一步（finish 仅在其显示），落库伏笔 Markdown 文本（已保存则不重复）
       const text = get().stepText[6] ?? '';
-      if (text && text.trim()) {
+      if (text && text.trim() && !get().savedSteps.has(6)) {
         await saveStepText(bookId, 6, text);
+        set((s) => ({ savedSteps: new Set(s.savedSteps).add(6) }));
       }
 
       await useEntityStore.getState().loadFromApi(bookId);
