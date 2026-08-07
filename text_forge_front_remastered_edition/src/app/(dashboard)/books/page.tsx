@@ -7,6 +7,9 @@ import { BookOpen, Plus, Search, Pin, PinOff, Trash2, ChevronRight, Pencil } fro
 import { toast } from 'sonner';
 import * as booksApi from '@/shared/api/books';
 import type { Book } from '@/shared/api/types';
+import { PageContainer } from '@/shared/ui/PageContainer';
+import { PageHeader } from '@/shared/ui/PageHeader';
+import { ListRow } from '@/shared/ui/ListRow';
 
 export default function BooksListPage() {
   const [books, setBooks] = useState<Book[]>([]);
@@ -118,35 +121,30 @@ export default function BooksListPage() {
   const formatWords = (n: number) => n >= 10000 ? `${(n / 10000).toFixed(1)} 万字` : `${n.toLocaleString()} 字`;
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border shadow-header theme-surface">
-        <div className="px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <BookOpen size={20} strokeWidth={1.6} className="text-muted-foreground" />
-              <div>
-                <h1 className="text-lg font-semibold">书籍管理</h1>
-                <p className="text-xs text-muted-foreground">{books.length} 本书 · {books.reduce((s, b) => s + (b.currentWordCount ?? 0), 0) >= 10000 ? formatWords(books.reduce((s, b) => s + (b.currentWordCount ?? 0), 0)) : '--'}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {selectedIds.size > 0 && (
-                <>
-                  <button onClick={handleBatchDelete} className="flex items-center gap-1.5 h-8 px-3 rounded-md text-xs font-medium bg-destructive text-destructive-foreground hover:opacity-90 transition-opacity border-none cursor-pointer">
-                    <Trash2 size={13} /> 删除 ({selectedIds.size})
-                  </button>
-                  <button onClick={() => setSelectedIds(new Set())} className="h-8 px-2.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-hover)] transition-colors bg-transparent border-none cursor-pointer">
-                    取消
-                  </button>
-                </>
-              )}
-              <button onClick={openNew} className="flex items-center gap-1.5 h-8 px-3.5 rounded-md bg-foreground text-background text-xs font-medium hover:opacity-90 transition-opacity border-none cursor-pointer">
-                <Plus size={14} /> 新建
-              </button>
-            </div>
-          </div>
-
-          <div className="relative mt-4 max-w-xs">
+    <PageContainer>
+      <PageHeader
+        icon={BookOpen}
+        title="书籍管理"
+        description={`${books.length} 本书 · ${books.reduce((s, b) => s + (b.currentWordCount ?? 0), 0) >= 10000 ? formatWords(books.reduce((s, b) => s + (b.currentWordCount ?? 0), 0)) : '--'}`}
+        actions={
+          <>
+            {selectedIds.size > 0 && (
+              <>
+                <button onClick={handleBatchDelete} className="flex items-center gap-1.5 h-8 px-3 rounded-md text-xs font-medium bg-destructive text-destructive-foreground hover:opacity-90 transition-opacity border-none cursor-pointer">
+                  <Trash2 size={13} /> 删除 ({selectedIds.size})
+                </button>
+                <button onClick={() => setSelectedIds(new Set())} className="h-8 px-2.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-hover)] transition-colors bg-transparent border-none cursor-pointer">
+                  取消
+                </button>
+              </>
+            )}
+            <button onClick={openNew} className="flex items-center gap-1.5 h-8 px-3.5 rounded-md bg-foreground text-background text-xs font-medium hover:opacity-90 transition-opacity border-none cursor-pointer">
+              <Plus size={14} /> 新建
+            </button>
+          </>
+        }
+        search={
+          <div className="relative max-w-xs">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input
               placeholder="搜索书名或描述..."
@@ -155,8 +153,8 @@ export default function BooksListPage() {
               className="w-full h-8 pl-8 pr-3 rounded-md text-xs bg-background border border-border focus:outline-none"
             />
           </div>
-        </div>
-      </div>
+        }
+      />
 
       <div className="px-6 py-5">
         {loading && <div className="flex items-center justify-center py-20 text-center text-sm text-muted-foreground">加载中...</div>}
@@ -173,9 +171,8 @@ export default function BooksListPage() {
             const progress = book.totalWordGoal ? Math.min(100, Math.round((book.currentWordCount ?? 0) / book.totalWordGoal * 100)) : 0;
             const isHovered = hoveredId === book.id;
             return (
-              <div
+              <ListRow
                 key={book.id}
-                className="book-list-row flex items-center gap-3 p-3 rounded-lg border border-border/40 bg-background/30 hover:border-border/60 hover:bg-background/50 hover:shadow-card"
                 onMouseEnter={() => setHoveredId(book.id)}
                 onMouseLeave={() => setHoveredId(null)}
               >
@@ -230,7 +227,7 @@ export default function BooksListPage() {
                 >
                   <Trash2 size={13} />
                 </button>
-              </div>
+              </ListRow>
             );
           })}
         </div>
@@ -318,6 +315,6 @@ export default function BooksListPage() {
           </div>
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }
