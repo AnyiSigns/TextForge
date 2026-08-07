@@ -1,5 +1,7 @@
 // 角色模拟房间 REST 封装，统一对接后端 /api/sim-rooms 接口。
-import { authFetch } from '@/shared/lib/authFetch';
+// 使用 apiClient（axios）：带 Authorization 且 401 时自动刷新 token 并重试，
+// 避免裸 fetch（authFetch）在 token 过期时直接 401 导致创建失败。
+import { apiClient } from './client';
 
 // 房间参与者信息（来自后端的 SimParticipant）。
 export interface SimRoomParticipant {
@@ -33,6 +35,19 @@ export interface SimRoomSummary {
   createdAt: string;
 }
 
+// 一条结构化的角色支线（来自 sim_branches 表）。
+export interface SimBranch {
+  id: number;
+  title: string;
+  content: string;
+  branchType: string;
+  relatedCharacterIds?: number[];
+  relatedLocationId?: number | null;
+  relatedEventId?: number | null;
+  relatedForeshadowingId?: number | null;
+  createdAt?: string;
+}
+
 // 房间完整详情（来自 get_room 响应）。
 export interface SimRoomDetail {
   id: number;
@@ -40,11 +55,11 @@ export interface SimRoomDetail {
   name: string;
   description?: string | null;
   status: string;
-  setting?: string | null;
   locationId?: number | null;
   roundCount: number;
   participants: SimRoomParticipant[];
   messages: SimRoomMessage[];
+  branches?: SimBranch[];
   relatedEventIds: number[];
   relatedForeshadowingIds: number[];
   relatedPlotThreadIds: number[];
@@ -55,8 +70,8 @@ export interface CreateSimRoomPayload {
   bookId: number;
   name: string;
   description?: string | null;
-  setting?: string | null;
   locationId?: number | null;
+  userCharacterId?: number | null;
   participantIds?: number[];
   participantTypes?: string[];
   relatedEventIds?: number[];
@@ -67,9 +82,9 @@ export interface CreateSimRoomPayload {
 // 拉取指定书籍下的模拟房间列表。
 export async function listSimRooms(bookId: number): Promise<SimRoomSummary[]> {
   try {
-    const res = await authFetch(`/api/sim-rooms/?bookId=${bookId}`);
-    if (!res.ok) return [];
-    const data = await res.json();
+    const { data } = await apiClient.get<{ items?: SimRoomSummary[]; rooms?: SimRoomSummary[] }>(
+      `/sim-rooms/?bookId=${bookId}`,
+    );
     return data.items ?? data.rooms ?? [];
   } catch {
     return [];
@@ -79,9 +94,7 @@ export async function listSimRooms(bookId: number): Promise<SimRoomSummary[]> {
 // 获取单个房间的详情（含参与者与历史消息）。
 export async function getSimRoom(roomId: number): Promise<SimRoomDetail | null> {
   try {
-    const res = await authFetch(`/api/sim-rooms/${roomId}`);
-    if (!res.ok) return null;
-    const data = await res.json();
+    const { data } = await apiClient.get<{ room?: SimRoomDetail }>(`/sim-rooms/${roomId}`);
     return data.room ?? null;
   } catch {
     return null;
@@ -93,13 +106,19 @@ export async function createSimRoom(
   payload: CreateSimRoomPayload,
 ): Promise<{ id: number; name: string } | null> {
   try {
-    const res = await authFetch('/api/sim-rooms/', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) return null;
-    return await res.json();
+    const { data } = await apiClient.post<{ id: number; name: string }>('/sim-rooms/', payload);
+    return data;
   } catch {
     return null;
+  }
+}
+
+// 删除模拟房间（后端级联清理参与者/消息/支线/角色记忆）。
+export async function deleteSimRoom(roomId: number): Promise<boolean> {
+  try {
+    await apiClient.delete(`/sim-rooms/${roomId}`);
+    return true;
+  } catch {
+    return false;
   }
 }

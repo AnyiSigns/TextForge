@@ -21,7 +21,8 @@ class DBManager:
         """初始化 DBManager，创建异步引擎与会话工厂。"""
         self.async_engine = create_async_engine(
             url=settings.POSTGRES_DB_URL,
-            echo=settings.ENV == "development",
+            # echo 由 SQL_ECHO 显式控制，默认关闭，避免 SQL 日志淹没业务日志
+            echo=settings.SQL_ECHO,
             pool_pre_ping=True,  # 开启连接预检查
             pool_size=3,  # 连接池大小
             max_overflow=10  # 连接池最大溢出数

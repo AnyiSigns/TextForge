@@ -51,8 +51,13 @@ class WorkflowService:
             logger.error("流水线异常", exc_info=True)
             raise HTTPException(status_code=500, detail="操作失败")
 
-    async def delete_workflow(self, workflow_id: str, _user_id: int):
+    async def delete_workflow(self, workflow_id: str, user_id: int):
         try:
+            instance = await self.workflow_repo.get_workflow_id(workflow_id, user_id)
+            if not instance:
+                raise HTTPException(status_code=404, detail="流水线不存在")
+            if getattr(instance, "builtin", False):
+                raise HTTPException(status_code=403, detail="内置模板不可删除")
             status = await self.workflow_repo.delete_user_in_workflow(workflow_id)
             if status:
                 await self.workflow_repo.session.commit()

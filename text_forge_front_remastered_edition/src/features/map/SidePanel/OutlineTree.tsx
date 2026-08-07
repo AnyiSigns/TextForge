@@ -7,6 +7,8 @@ import { cn } from '@/shared/lib/cn';
 import { useEntityStore } from '@/features/map/stores/entityStore';
 import { useTimelineStore } from '@/features/map/stores/timelineStore';
 import { useEditorStore } from '@/features/map/stores/editorStore';
+import { useBookDetailStore } from '@/app/(dashboard)/books/[id]/store';
+import { useAgentSender } from '@/features/agent/useAgentSender';
 import { ConfirmDialog } from '@/features/map/components/ConfirmDialog';
 import { toast } from 'sonner';
 
@@ -25,6 +27,8 @@ export function OutlineTree({ bookId }: OutlineTreeProps) {
   const cursorTs = useTimelineStore((s) => s.cursorTs);
   const setCursorTs = useTimelineStore((s) => s.setCursorTs);
   const openEditor = useEditorStore((s) => s.open);
+  const setAgentOpen = useBookDetailStore((s) => s.setAgentOpen);
+  const sendMessage = useAgentSender().sendMessage;
 
   const [expandedVolumes, setExpandedVolumes] = useState<Set<number>>(new Set([1]));
   const [expandedChapters, setExpandedChapters] = useState<Set<number>>(new Set());
@@ -38,18 +42,20 @@ export function OutlineTree({ bookId }: OutlineTreeProps) {
   const [newVolumeSummary, setNewVolumeSummary] = useState('');
 
   const volumeData = useMemo(() => {
-    return volumes.map((vol) => {
-      const volChapters = chapters
-        .filter((ch) => ch.volumeId === vol.id)
-        .sort((a, b) => a.sortOrder - b.sortOrder)
-        .map((ch) => {
-          const events = sceneEvents
-            .filter((e) => e.chapterId === ch.id)
-            .sort((a, b) => a.sortOrder - b.sortOrder || a.storyTs - b.storyTs);
-          return { chapter: ch, events };
-        });
-      return { volume: vol, chapters: volChapters };
-    });
+    return [...volumes]
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+      .map((vol) => {
+        const volChapters = chapters
+          .filter((ch) => ch.volumeId === vol.id)
+          .sort((a, b) => a.sortOrder - b.sortOrder)
+          .map((ch) => {
+            const events = sceneEvents
+              .filter((e) => e.chapterId === ch.id)
+              .sort((a, b) => a.sortOrder - b.sortOrder || a.storyTs - b.storyTs);
+            return { chapter: ch, events };
+          });
+        return { volume: vol, chapters: volChapters };
+      });
   }, [volumes, chapters, sceneEvents]);
 
   const toggleVolume = (id: number) => {
@@ -131,7 +137,6 @@ export function OutlineTree({ bookId }: OutlineTreeProps) {
       title: newChapterTitle.trim(),
       summary: newChapterSummary.trim() || '',
       sortOrder: order,
-      characterIds: [],
       locked: false,
     });
     setAddChapterVolumeId(null);
@@ -204,16 +209,16 @@ export function OutlineTree({ bookId }: OutlineTreeProps) {
                 {volChapters.length}章
               </span>
 
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setAddChapterVolumeId(volume.id);
-                  setNewChapterTitle('');
-                  setNewChapterSummary('');
-                }}
-                className="w-4 h-4 flex items-center justify-center rounded text-muted-foreground/30 hover:text-foreground/50 transition-colors bg-transparent border-none cursor-pointer opacity-0 group-hover:opacity-100"
-                title="添加章节"
-              >
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setAddChapterVolumeId(volume.id);
+                    setNewChapterTitle('');
+                    setNewChapterSummary('');
+                  }}
+                  className="w-4 h-4 flex items-center justify-center rounded text-muted-foreground/40 hover:text-foreground/60 transition-colors bg-transparent border-none cursor-pointer"
+                  title="添加章节"
+                >
                 <Plus size={10} strokeWidth={2} />
               </button>
 
@@ -322,7 +327,7 @@ export function OutlineTree({ bookId }: OutlineTreeProps) {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            openEditor('scene', null);
+                            openEditor('scene', null, { chapterId: chapter.id });
                           }}
                           className="w-4 h-4 flex items-center justify-center rounded bg-transparent border-none cursor-pointer text-muted-foreground/30 hover:text-foreground/50"
                           title="添加事件"
@@ -394,6 +399,20 @@ export function OutlineTree({ bookId }: OutlineTreeProps) {
           </div>
         );
       })}
+
+      <button
+        onClick={() => {
+          const input = window.prompt('要追加多少章大纲？（由 AI 生成，1~100）', '3');
+          if (input == null) return;
+          const n = Math.max(1, Math.min(100, parseInt(input, 10) || 3));
+          setAgentOpen(true);
+          sendMessage(`请调用 generate_outline_extension 工具，为当前书籍追加 ${n} 章大纲。`);
+        }}
+        className="mt-2 w-full flex items-center justify-center gap-1.5 h-8 rounded-md text-[11px] font-medium border border-border/50 text-muted-foreground/70 hover:text-foreground hover:bg-foreground/[0.03] bg-transparent cursor-pointer transition-colors"
+        title="让 AI 基于现有大纲追加新章节（generate_outline_extension 的手动触发）"
+      >
+        <Plus size={12} strokeWidth={2} /> AI 追加章节
+      </button>
 
       {deleteVolumeId !== null && (
         <ConfirmDialog

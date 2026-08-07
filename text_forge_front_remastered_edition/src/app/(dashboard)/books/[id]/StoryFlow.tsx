@@ -1,13 +1,17 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { X, ArrowLeft, Eye, GitBranch, Send, ChevronRight } from 'lucide-react';
 import { cn } from '@/shared/lib/cn';
 import { useStoryFlowStore } from '@/features/map/stores/storyFlowStore';
 import { useEntityStore } from '@/features/map/stores/entityStore';
+import { useBookDetailStore } from './store';
 import type { Perspective } from '@/features/map/stores/storyFlowStore';
 
 export function StoryFlow() {
+  const router = useRouter();
+  const bookId = useBookDetailStore((s) => s.bookId);
   const {
     isOpen, currentSceneId, perspective, decisionChain, triggerEventId,
     close, setPerspective, makeDecision,
@@ -234,6 +238,7 @@ export function StoryFlow() {
             {decisionChain.length > 0 && (
               <div className="px-4 py-3 border-t border-border/20 flex-shrink-0">
                 <button
+                  onClick={() => router.push(`/workflow?book_id=${bookId}`)}
                   className="w-full flex items-center justify-center gap-1.5 h-8 rounded-md text-[11px] font-medium bg-foreground text-background hover:opacity-90 transition-opacity border-none cursor-pointer"
                 >
                   <Send size={11} />

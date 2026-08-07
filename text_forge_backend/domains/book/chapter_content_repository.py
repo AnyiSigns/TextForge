@@ -92,7 +92,6 @@ class ChapterContentRepository(BaseRepository[ChapterContent]):
         stmt = (
             select(func.coalesce(func.max(ChapterContent.version), 0))
             .where(ChapterContent.chapter_id == chapter_id)
-            .with_for_update()
         )
         result = await self.session.execute(stmt)
         current = result.scalar_one() or 0

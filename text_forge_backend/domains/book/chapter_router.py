@@ -48,7 +48,6 @@ async def create_chapter(
         volume_id,
         title=request.title,
         summary=request.summary,
-        character_ids=request.character_ids,
         locked=request.locked,
     )
     if not item:

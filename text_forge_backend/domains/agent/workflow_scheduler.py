@@ -2,6 +2,8 @@ from collections import deque
 from collections.abc import Callable
 from typing import Any
 
+import asyncio
+
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.config import get_stream_writer
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,6 +39,7 @@ KEYWORD_CONTEXT_MAP = {
     "scene_events": ["事件", "情节", "时间线"],
     "foreshadowings": ["伏笔"],
     "plot_threads": ["线索", "情节线"],
+    "branches": ["支线", "角色模拟"],
     "creative_settings": ["世界观", "设定", "文风", "基调"],
     "chapter_summaries": ["摘要", "章"],
     "recent_chapters": ["近期", "前文"],
@@ -110,6 +113,9 @@ def auto_allocate_context(system_prompt: str) -> list[str]:
 async def _load_context_pool(book_id: int) -> dict[str, list[int]]:
     """加载书籍上下文池。
 
+    若书籍未配置任何上下文选择（全部为空），则默认加载本书全部章节与卷，
+    保证章节摘要/正文/大纲在未手动配置时也能进入工作流上下文。
+
     Args:
         book_id: 书籍 ID。
 
@@ -120,7 +126,35 @@ async def _load_context_pool(book_id: int) -> dict[str, list[int]]:
         return {}
     async with db_manager.with_db() as session:
         repo = BookContextConfigRepository(session)
-        return await repo.get_config(book_id)
+        config = await repo.get_config(book_id)
+        if any(config.values()):
+            return config
+
+        from sqlalchemy import select
+
+        from models.book import Chapter, Volume
+
+        chapters = (
+            (
+                await session.execute(
+                    select(Chapter)
+                    .join(Volume, Volume.id == Chapter.volume_id)
+                    .where(Volume.book_id == book_id)
+                    .order_by(Volume.sort_order, Chapter.sort_order)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        chapter_ids = [c.id for c in chapters]
+        volume_ids = list(dict.fromkeys(c.volume_id for c in chapters))
+        return {
+            "character_ids": [],
+            "chapter_content_ids": chapter_ids,
+            "chapter_summary_ids": chapter_ids,
+            "volume_ids": volume_ids,
+            "outline_node_ids": chapter_ids,
+        }
 
 
 def _to_serializable(value):
@@ -247,10 +281,10 @@ def _format_context_field(
     if field == "outline_structure":
         lines = []
         for r in records:
-            node_type = getattr(r, "node_type", "")
             title = getattr(r, "title", "未命名")
-            content = getattr(r, "content", "") or ""
-            lines.append(f"- [{node_type}] {title}：{content[:500]}")
+            summary = getattr(r, "summary", "") or ""
+            sort = getattr(r, "sort_order", 0)
+            lines.append(f"- 第{sort}章 {title}：{summary[:300]}")
         return "\n".join(lines)
 
     if field == "volumes":
@@ -285,6 +319,15 @@ def _format_context_field(
             desc = getattr(r, "description", "") or ""
             status = getattr(r, "status", "") or ""
             lines.append(f"- [{status}] {name}：{desc[:300]}")
+        return "\n".join(lines)
+
+    if field == "branches":
+        lines = []
+        for r in records:
+            title = getattr(r, "title", "未命名")
+            btype = getattr(r, "branch_type", "") or ""
+            content = getattr(r, "content", "") or ""
+            lines.append(f"- [{btype}] {title}：{content[:400]}")
         return "\n".join(lines)
 
     if field == "creative_settings":
@@ -361,8 +404,14 @@ async def audit_node_output(
             f"【创作输出】\n{output[:3000]}\n\n"
             f"输出是否严格遵循了上述写作要求？只回答 PASS 或 FAIL，然后简要说明理由。"
         )
-        quality_response = await llm.audit.ainvoke(quality_prompt)
-        quality_text = quality_response.content if hasattr(quality_response, "content") else str(quality_response)
+        quality_response = await asyncio.wait_for(
+            llm.audit.ainvoke(quality_prompt), timeout=60
+        )
+        quality_text = (
+            quality_response.content
+            if hasattr(quality_response, "content")
+            else str(quality_response)
+        )
 
         if quality_text.strip().upper().startswith("FAIL") or "不合格" in quality_text:
             return {"passed": False, "reason": quality_text.strip()[:500]}
@@ -370,6 +419,84 @@ async def audit_node_output(
     except Exception:
         logger.exception("audit_node_output 失败，默认通过")
         return {"passed": True}
+
+
+async def _build_chapter_target_context(book_id: int, chapter_id: int) -> str:
+    """构造目标章节的写作上下文（标题/摘要/所属卷/前章衔接/关联事件）。
+
+    供工作流节点注入"本章写作目标"，让节点明确知道自己正在写哪一章。
+
+    Args:
+        book_id: 书籍 ID。
+        chapter_id: 目标章节 ID。
+
+    Returns:
+        格式化的本章写作目标文本；章节不存在返回空字符串。
+    """
+    if not book_id or not chapter_id:
+        return ""
+    from sqlalchemy import select
+
+    from models.book import Chapter, ChapterContent, SceneEvent, Volume
+
+    async with db_manager.with_db() as session:
+        ch = await session.get(Chapter, chapter_id)
+        if not ch:
+            return ""
+        parts = [f"【本章写作目标】第{ch.sort_order}章《{ch.title}》"]
+        if ch.summary:
+            parts.append(f"章节摘要：{ch.summary}")
+        vol = await session.get(Volume, ch.volume_id)
+        if vol:
+            parts.append(f"所属卷：《{vol.title}》")
+        # 前一章结尾衔接（取最近 800 字）
+        prev = (
+            (
+                await session.execute(
+                    select(Chapter)
+                    .where(
+                        Chapter.volume_id == ch.volume_id,
+                        Chapter.sort_order < ch.sort_order,
+                    )
+                    .order_by(Chapter.sort_order.desc())
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if prev:
+            pc = (
+                (
+                    await session.execute(
+                        select(ChapterContent)
+                        .where(ChapterContent.chapter_id == prev.id)
+                        .order_by(ChapterContent.id.desc())
+                    )
+                )
+                .scalars()
+                .first()
+            )
+            prev_text = (pc.content or "")[-800:] if pc else ""
+            parts.append(f"前一章《{prev.title}》结尾：\n{prev_text}")
+        # 本章关联事件
+        events = (
+            (
+                await session.execute(
+                    select(SceneEvent).where(
+                        SceneEvent.book_id == book_id,
+                        SceneEvent.chapter_id == chapter_id,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if events:
+            parts.append(
+                "本章关联事件：\n"
+                + "\n".join(f"- {e.title}：{(e.content or '')[:200]}" for e in events)
+            )
+        return "\n".join(parts)
 
 
 def _format_prompt_context(
@@ -414,6 +541,7 @@ def _format_prompt_context(
                 "scene_events": "场景事件",
                 "foreshadowings": "伏笔列表",
                 "plot_threads": "剧情线索",
+                "branches": "角色支线",
                 "creative_settings": "创意设定",
             }.get(field_name, field_name)
             parts.append(f"## {display_name}（共 {len(records)} 条）")
@@ -444,6 +572,7 @@ async def execute_node(
     on_token: Callable[[str], None] | None = None,
     node_id: str = "",
     on_progress: Callable[[dict[str, Any]], None] | None = None,
+    target_chapter_id: int | None = None,
 ) -> dict[str, Any]:
     """执行单个工作流节点。
 
@@ -454,6 +583,9 @@ async def execute_node(
         model_config: 模型配置。
         personal_rag_results: 前端写入的个人 RAG 检索结果。
         on_token: 流式输出回调。
+        node_id: 节点 ID。
+        on_progress: 进度回调。
+        target_chapter_id: 目标章节 ID；传入时把本章写作目标注入节点上下文。
 
     Returns:
         {"success": bool, "output": str, "needs_review": bool, "quality_check": dict, "tokens": int}
@@ -477,6 +609,17 @@ async def execute_node(
         structured, personal_rag_results, upstream_outputs
     )
 
+    # 目标章节写作目标注入（让节点明确自己正在写哪一章）
+    chapter_target_text = ""
+    if target_chapter_id:
+        try:
+            chapter_target_text = await _build_chapter_target_context(
+                book_id, target_chapter_id
+            )
+        except Exception as exc:
+            logger.warning(f"构建章节目标上下文失败: {exc}")
+            chapter_target_text = ""
+
     llm = ModelFactory(model_config or {})
 
     if executor_type == "audit":
@@ -485,8 +628,13 @@ async def execute_node(
         model = llm.main
 
     messages = [
-        SystemMessage(content=system_prompt or "你是一个专业的创作AI。根据上下文生成内容。直接输出创作内容，不要多余解释。"),
-        HumanMessage(content=f"项目上下文\n{context_text}\n\n请根据上述上下文和你的角色职责开始创作。"),
+        SystemMessage(
+            content=system_prompt
+            or "你是一个专业的创作AI。根据上下文生成内容。直接输出创作内容，不要多余解释。"
+        ),
+        HumanMessage(
+            content=f"项目上下文\n{context_text}\n\n{chapter_target_text}\n\n请根据上述上下文和你的角色职责开始创作。"
+        ),
     ]
 
     full_content = ""
@@ -497,21 +645,35 @@ async def execute_node(
         stream_writer = None
     try:
         if on_progress:
-            on_progress({
-                "event": "node_start",
-                "node_id": node_id,
-                "label": node_def.get("label") or node_def.get("name") or node_id,
-            })
-        if stream_writer is not None:
-            try:
-                stream_writer({
+            on_progress(
+                {
                     "event": "node_start",
                     "node_id": node_id,
                     "label": node_def.get("label") or node_def.get("name") or node_id,
-                })
+                }
+            )
+        if stream_writer is not None:
+            try:
+                stream_writer(
+                    {
+                        "event": "node_start",
+                        "node_id": node_id,
+                        "label": node_def.get("label")
+                        or node_def.get("name")
+                        or node_id,
+                    }
+                )
             except Exception:
                 pass
-        async for chunk in model.astream(messages):
+        # 流式读取 LLM 输出，每次分块等待上限 120s，防止 MaaS 挂起导致任务永久卡住
+        stream = model.astream(messages)
+        while True:
+            try:
+                chunk = await asyncio.wait_for(anext(stream), timeout=120)
+            except StopAsyncIteration:
+                break
+            except asyncio.TimeoutError as exc:
+                raise TimeoutError("LLM 流式响应超时") from exc
             token = chunk.content if hasattr(chunk, "content") else str(chunk)
             if token:
                 full_content += token
@@ -519,20 +681,24 @@ async def execute_node(
                 if on_token:
                     on_token(token)
                 if on_progress:
-                    on_progress({
-                        "event": "node_stream",
-                        "node_id": node_id,
-                        "token": token,
-                        "index": token_count,
-                    })
-                if stream_writer is not None:
-                    try:
-                        stream_writer({
+                    on_progress(
+                        {
                             "event": "node_stream",
                             "node_id": node_id,
                             "token": token,
                             "index": token_count,
-                        })
+                        }
+                    )
+                if stream_writer is not None:
+                    try:
+                        stream_writer(
+                            {
+                                "event": "node_stream",
+                                "node_id": node_id,
+                                "token": token,
+                                "index": token_count,
+                            }
+                        )
                     except Exception:
                         pass
     except Exception:
@@ -561,20 +727,24 @@ async def execute_node(
     needs_review = not qc.get("passed", True)
 
     if on_progress:
-        on_progress({
-            "event": "node_end",
-            "node_id": node_id,
-            "output_preview": full_content[:500],
-            "tokens": token_count,
-        })
-    if stream_writer is not None:
-        try:
-            stream_writer({
+        on_progress(
+            {
                 "event": "node_end",
                 "node_id": node_id,
                 "output_preview": full_content[:500],
                 "tokens": token_count,
-            })
+            }
+        )
+    if stream_writer is not None:
+        try:
+            stream_writer(
+                {
+                    "event": "node_end",
+                    "node_id": node_id,
+                    "output_preview": full_content[:500],
+                    "tokens": token_count,
+                }
+            )
         except Exception:
             pass
 
@@ -593,7 +763,9 @@ async def run_workflow(
     model_config: dict,
     on_progress: Callable[[dict[str, Any]], None],
     personal_rag_results: list[dict] | None = None,
+    seed_upstream_outputs: dict[str, str] | None = None,
     node_id: str = "",
+    target_chapter_id: int | None = None,
 ) -> dict[str, Any]:
     """执行完整工作流，按拓扑顺序逐个执行节点。
 
@@ -603,6 +775,9 @@ async def run_workflow(
         model_config: 模型配置。
         on_progress: 进度回调，每节点开始时/完成时调用。
         personal_rag_results: 前端写入的个人 RAG 检索结果。
+        seed_upstream_outputs: 起始上游输出（如 Agent 联网搜索结果），{node_id: text}，注入每个节点。
+        node_id: 节点 ID。
+        target_chapter_id: 目标章节 ID，透传给每个节点。
 
     Returns:
         {"status": "completed"/"pending_review"/"error", "node_results": [...], ...}
@@ -634,17 +809,19 @@ async def run_workflow(
         return {"status": "error", "message": "工作流存在循环依赖"}
 
     node_results: list[dict[str, Any]] = []
-    upstream_outputs: dict[str, str] = {}
+    upstream_outputs: dict[str, str] = dict(seed_upstream_outputs or {})
 
-    for node in sorted_nodes:
-        node_id = node.get("id", "")
+    for idx, node in enumerate(sorted_nodes):
+        node_id = node.get("id") or node.get("name") or node.get("label") or f"node-{idx}"
         node_label = node.get("label") or node.get("name") or node_id
 
-        on_progress({
-            "event": "node_start",
-            "node_id": node_id,
-            "label": node_label,
-        })
+        on_progress(
+            {
+                "event": "node_start",
+                "node_id": node_id,
+                "label": node_label,
+            }
+        )
 
         if edges:
             predecessors = [e["from"] for e in edges if e.get("to") == node_id]
@@ -664,24 +841,29 @@ async def run_workflow(
             personal_rag_results=personal_rag_results,
             node_id=node_id,
             on_progress=on_progress,
+            target_chapter_id=target_chapter_id,
         )
 
         if result.get("needs_review"):
-            on_progress({
-                "event": "node_fail",
-                "node_id": node_id,
-                "label": node_label,
-                "reason": result.get("quality_check", {}).get("reason", ""),
-                "output_preview": result.get("output", "")[:1000],
-                "system_prompt": node.get("system_prompt", "")[:500],
-            })
-            node_results.append({
-                "node_id": node_id,
-                "node_label": node_label,
-                "output": result["output"],
-                "status": "fail",
-                "quality_check": result.get("quality_check"),
-            })
+            on_progress(
+                {
+                    "event": "node_fail",
+                    "node_id": node_id,
+                    "label": node_label,
+                    "reason": result.get("quality_check", {}).get("reason", ""),
+                    "output_preview": result.get("output", "")[:1000],
+                    "system_prompt": node.get("system_prompt", "")[:500],
+                }
+            )
+            node_results.append(
+                {
+                    "node_id": node_id,
+                    "node_label": node_label,
+                    "output": result["output"],
+                    "status": "fail",
+                    "quality_check": result.get("quality_check"),
+                }
+            )
             return {
                 "status": "pending_review",
                 "node_results": node_results,
@@ -690,23 +872,43 @@ async def run_workflow(
             }
 
         upstream_outputs[node_id] = result["output"]
-        on_progress({
-            "event": "node_end",
-            "node_id": node_id,
-            "label": node_label,
-            "output_preview": result["output"][:500],
-            "tokens": result.get("tokens", 0),
-        })
-        node_results.append({
-            "node_id": node_id,
-            "node_label": node_label,
-            "output": result["output"],
-            "status": "completed",
-            "tokens": result.get("tokens", 0),
-        })
+        on_progress(
+            {
+                "event": "node_end",
+                "node_id": node_id,
+                "label": node_label,
+                "output_preview": result["output"][:500],
+                "tokens": result.get("tokens", 0),
+            }
+        )
+        node_results.append(
+            {
+                "node_id": node_id,
+                "node_label": node_label,
+                "output": result["output"],
+                "status": "completed",
+                "tokens": result.get("tokens", 0),
+            }
+        )
 
     return {
         "status": "completed",
         "node_results": node_results,
         "upstream_outputs": upstream_outputs,
+        # 候选正文：executor=main 且产出文本的节点输出。审计/仲裁（audit）节点输出是
+        # 报告，不是正文。自定义工作流可能含多个正文节点（writer/polish/改写等），
+        # 最终用哪个做章节正文需由用户确认（Agent 询问用户后 write_chapter_content 落库）。
+        "content_nodes": [
+            {
+                "node_id": nr["node_id"],
+                "node_label": nr["node_label"],
+                "output": nr["output"],
+                # 摘要用于 Agent 向用户展示候选，避免完整正文撑爆上下文
+                "summary": (nr["output"] or "")[:300],
+            }
+            for nr in node_results
+            if nr.get("status") == "completed"
+            and nr.get("node_id")
+            in {n.get("id") for n in nodes if n.get("executor") == "main"}
+        ],
     }

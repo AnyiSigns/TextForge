@@ -24,3 +24,8 @@ class UserAgentState(TypedDict):
     personal_rag_results: list | None
     terminate_chapter_id: int | None
     pending_workflow: dict | None  # 由 execute_workflow/execute_workflow_node 工具写入，交由原生 workflow_runner 节点执行
+    pending_tool: dict | None  # 被门控拦截、等待用户审批的写工具调用 {tool_name, tool_args, tool_id, decision?, edited_content?}
+    workflow_result: dict | None  # 工作流执行结果（含 content_nodes 候选正文），由 workflow_runner 节点写入
+    candidate_reply_ready: bool  # 工作流完成后是否已生成「候选正文确认」回复，_entry_router 据此直接 END
+    suggestions_signature: str | None  # 最近一次已推送的建议组合签名，用于跨回合去重（避免每次回复都重复刷屏）
+    preferred_workflow_node: str | None  # 用户最近一次选定的工作流候选节点 ID，后续多章自动沿用（不再每章询问）

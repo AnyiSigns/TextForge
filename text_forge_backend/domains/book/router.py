@@ -24,6 +24,7 @@ from schema.response.book import (
 from shared.database import db_manager
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from .chapter_service import ChapterService, chapter_db
 from .context_config_repository import BookContextConfigRepository
@@ -103,6 +104,20 @@ async def update_book(
     return BookResponse.model_validate(instance)
 
 
+@router.patch("/{id}", response_model=BookResponse)
+async def patch_book(
+    id: Annotated[int, Path(description="书籍ID")],
+    request: UpdateBookRequest,
+    user_id: Annotated[int, Depends(get_current)],
+    book_service: Annotated[BookService, Depends(book_db)],
+):
+    data = request.model_dump(exclude_none=True)
+    instance = await book_service.patch_book(user_id, id, data)
+    if not instance:
+        raise HTTPException(status_code=404, detail="书籍不存在或无权访问")
+    return BookResponse.model_validate(instance)
+
+
 @router.delete("/{id}")
 async def delete_book(
     id: Annotated[int, Path(description="书籍ID")],
@@ -178,6 +193,7 @@ async def book_chapters_volume_tree(
         ch_stmt = (
             select(Chapter)
             .where(Chapter.volume_id == vol.id)
+            .options(selectinload(Chapter.scene_events))
             .order_by(Chapter.sort_order, Chapter.id)
         )
         ch_res = await session.execute(ch_stmt)
@@ -209,6 +225,7 @@ async def book_outline_tree(
     ch_stmt = (
         select(Chapter)
         .where(Chapter.volume_id.in_([v["id"] for v in volumes]))
+        .options(selectinload(Chapter.scene_events))
         .order_by(Chapter.sort_order, Chapter.id)
     )
     ch_res = await session.execute(ch_stmt)

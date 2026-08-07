@@ -205,7 +205,7 @@ def build_extend_outline_tool(session_factory, model_config: dict | None = None)
                 context_parts.append("当前无未回收的伏笔")
 
             if last_event:
-                context_parts.append(f"最后事件：{last_event.title} - {(last_event.description or '')[:200]}")
+                context_parts.append(f"最后事件：{last_event.title} - {(last_event.content or '')[:200]}")
 
             user_instruction = f"\n\n额外创作指令：{instruction}" if instruction else ""
             human_content = (
@@ -236,11 +236,14 @@ def build_extend_outline_tool(session_factory, model_config: dict | None = None)
             try:
                 response = await llm.main.ainvoke(messages)
                 raw_text = response.content if hasattr(response, "content") else str(response)
+                import json as json_lib
                 import re
-                json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', raw_text, re.DOTALL)
-                if json_match:
-                    import json as json_lib
-                    result_data = json_lib.loads(json_match.group())
+                # 剥离 markdown 代码块围栏（```json ... ```）
+                text = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw_text.strip(), flags=re.MULTILINE)
+                # 取第一个 { 到最后一个 } 的切片：兼容任意嵌套深度（原正则只支持一层嵌套，会截断 chapters）
+                start, end = text.find("{"), text.rfind("}")
+                if start != -1 and end > start:
+                    result_data = json_lib.loads(text[start:end + 1])
             except Exception as exc:
                 logger.warning(f"extend_outline JSON 解析失败: {exc}")
 

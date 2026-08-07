@@ -30,6 +30,7 @@ interface EntityState {
   clearError: () => void;
 
   updateSceneEvent: (id: number, patch: Partial<SceneEvent>) => void;
+  moveSceneEvent: (id: number, storyTs: number) => void;
   updateLocation: (id: number, patch: Partial<Location>) => void;
   updateCharacter: (id: number, patch: Partial<Character>) => void;
 
@@ -57,7 +58,7 @@ interface EntityState {
   updateCreativeSetting: (data: { tone: string; worldview: string; writingTaboos: string; customDimensions: Record<string, unknown> }) => void;
 }
 
-const EMPTY_STATE: Omit<EntityState, 'loadFromApi' | 'clearError' | 'updateCreativeSetting' | 'updateSceneEvent' | 'updateLocation' | 'updateCharacter' | 'addLocation' | 'addCharacter' | 'addSceneEvent' | 'addPlotThread' | 'addForeshadowing' | 'addChapter' | 'addVolume' | 'removeLocation' | 'removeCharacter' | 'removeSceneEvent' | 'removeForeshadowing' | 'removePlotThread' | 'removeVolume' | 'removeChapter' | 'updateForeshadowing' | 'updatePlotThread' | 'updateVolume' | 'updateChapter' | 'reset'> = {
+const EMPTY_STATE: Omit<EntityState, 'loadFromApi' | 'clearError' | 'updateCreativeSetting' | 'updateSceneEvent' | 'moveSceneEvent' | 'updateLocation' | 'updateCharacter' | 'addLocation' | 'addCharacter' | 'addSceneEvent' | 'addPlotThread' | 'addForeshadowing' | 'addChapter' | 'addVolume' | 'removeLocation' | 'removeCharacter' | 'removeSceneEvent' | 'removeForeshadowing' | 'removePlotThread' | 'removeVolume' | 'removeChapter' | 'updateForeshadowing' | 'updatePlotThread' | 'updateVolume' | 'updateChapter' | 'reset'> = {
   book: null as unknown as Book,
   volumes: [],
   chapters: [],
@@ -124,7 +125,7 @@ export const useEntityStore = create<EntityState>((set, get) => ({
           }
         : get().book,
       volumes: volsAndChapters ? (volsAndChapters.map((v: any) => ({ id: v.id, bookId: 1, title: v.title, summary: v.summary || '', sortOrder: v.sortOrder })) as any) : get().volumes,
-      chapters: volsAndChapters ? ((volsAndChapters as any[]).flatMap((v: any) => (v.chapters || []).map((ch: any) => ({ id: ch.id, volumeId: ch.volumeId, title: ch.title, summary: ch.summary || '', sortOrder: ch.sortOrder, characterIds: [], locked: ch.locked || false }))) as any) : get().chapters,
+      chapters: volsAndChapters ? ((volsAndChapters as any[]).flatMap((v: any) => (v.chapters || []).map((ch: any) => ({ id: ch.id, volumeId: ch.volumeId, title: ch.title, summary: ch.summary || '', sortOrder: ch.sortOrder, characterIds: ch.characterIds || [], locked: ch.locked || false }))) as any) : get().chapters,
       sceneEvents: (sceneEvents as any) ?? get().sceneEvents,
       locations: (locations as any) ?? get().locations,
       characters: (characters as any) ?? get().characters,
@@ -158,6 +159,14 @@ export const useEntityStore = create<EntityState>((set, get) => ({
     import('@/shared/api/world').then(({ updateSceneEvent: apiUpdate }) =>
       apiUpdate(id, patch as any, get().book?.id).catch(() => toast.error('事件更新失败'))
     );
+  },
+
+  moveSceneEvent: (id, storyTs) => {
+    set((state) => ({
+      sceneEvents: state.sceneEvents.map((e) =>
+        e.id === id ? { ...e, storyTs } : e,
+      ),
+    }));
   },
 
   updateLocation: (id, patch) => {
@@ -301,7 +310,7 @@ export const useEntityStore = create<EntityState>((set, get) => ({
     const tempId = ch.id;
     set((state) => ({ chapters: [...state.chapters, ch] }));
     import('@/shared/api/books').then(({ createChapter }) =>
-      createChapter(ch.volumeId, { title: ch.title, summary: ch.summary ?? undefined, characterIds: ch.characterIds || [], locked: ch.locked || false }).then((real) => {
+      createChapter(ch.volumeId, { title: ch.title, summary: ch.summary ?? undefined, locked: ch.locked || false }).then((real) => {
         set((state) => ({
           chapters: state.chapters.map((c) =>
             c.id === tempId ? { ...(real as any), id: real.id ?? tempId } : c,

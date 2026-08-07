@@ -1,10 +1,13 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { X, Play, CheckCircle2, XCircle, Loader2, AlertTriangle } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { X, Play, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { cn } from '@/shared/lib/cn';
-import * as agentApi from '@/shared/api/agent';
-import { fetchModelConfig } from '@/shared/api/models';
+import { getModelConfigData } from '@/shared/api/agent';
+import { getAccessToken } from '@/shared/stores/authStore';
+import { fetchChaptersTree } from '@/shared/api/books';
+import type { Chapter, Volume } from '@/shared/api/types';
 import type { Workflow } from '@/shared/api/workflows';
 
 interface NodeStatus {
@@ -13,6 +16,8 @@ interface NodeStatus {
   status: 'pending' | 'running' | 'completed' | 'failed';
   tokens?: number;
   reason?: string;
+  // 节点流式输出（node_stream 累积）
+  output?: string;
 }
 
 interface ExecutionPanelProps {
@@ -30,9 +35,21 @@ export function ExecutionPanel({ workflow, bookId, onClose }: ExecutionPanelProp
       status: 'pending' as const,
     })),
   );
-  const [threadId, setThreadId] = useState<string | null>(null);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
-  const streamRef = useRef<AbortController | null>(null);
+  // 目标章节选择：传入后工作流节点将按该章写作目标生成正文
+  const [chapterTree, setChapterTree] = useState<(Volume & { chapters: Chapter[] })[]>([]);
+  const [targetChapterId, setTargetChapterId] = useState<number | ''>('');
+
+  useEffect(() => {
+    if (!bookId) return;
+    fetchChaptersTree(bookId)
+      .then(setChapterTree)
+      .catch(() => setChapterTree([]));
+  }, [bookId]);
+
+  const chapterOptions = chapterTree.flatMap((v) =>
+    (v.chapters ?? []).map((c) => ({ id: c.id, label: `${v.title} / ${c.title}` })),
+  );
 
   useEffect(() => {
     setStatuses(
@@ -51,61 +68,109 @@ export function ExecutionPanel({ workflow, bookId, onClose }: ExecutionPanelProp
     const controller = new AbortController();
     setAbortController(controller);
 
-    try {
-      const session = await agentApi.startAgentSession(bookId);
-      const tid = session.thread_id;
-      setThreadId(tid);
-
-      let reply = '';
-      await agentApi.streamAgent(
-        tid,
-        `请按工作流 "${workflow.name}" (ID: ${workflow.id}) 执行创作任务。`,
-        (event) => {
-          switch (event.type) {
-            case 'node_start':
-              setStatuses((prev) =>
-                prev.map((s) =>
-                  s.nodeId === (event as any).node_id
-                    ? { ...s, status: 'running' }
-                    : s,
-                ),
-              );
-              break;
-            case 'node_end':
-              setStatuses((prev) =>
-                prev.map((s) =>
-                  s.nodeId === (event as any).node_id
-                    ? { ...s, status: 'completed', tokens: (event as any).tokens }
-                    : s,
-                ),
-              );
-              break;
-            case 'node_fail':
-              setStatuses((prev) =>
-                prev.map((s) =>
-                  s.nodeId === (event as any).node_id
-                    ? { ...s, status: 'failed', reason: (event as any).reason }
-                    : s,
-                ),
-              );
-              break;
+    const applyEvent = (data: any) => {
+      const nodeId = data?.node_id as string | undefined;
+      switch (data?.event ?? data?.type) {
+        case 'node_start':
+          if (nodeId) {
+            setStatuses((prev) => prev.map((s) => (s.nodeId === nodeId ? { ...s, status: 'running', output: '' } : s)));
           }
-        },
-        (finalReply) => {
-          reply = finalReply;
-          setRunning(false);
-        },
-        (err) => {
-          setRunning(false);
-        },
-        controller.signal,
-      );
-    } catch {
-      setRunning(false);
+          break;
+        case 'node_stream':
+          // 角色节点执行的流式输出：累积展示，让用户看到生成过程
+          if (nodeId && typeof data?.token === 'string') {
+            setStatuses((prev) =>
+              prev.map((s) => (s.nodeId === nodeId ? { ...s, output: (s.output || '') + data.token } : s)),
+            );
+          }
+          break;
+        case 'node_end':
+          if (nodeId) {
+            setStatuses((prev) =>
+              prev.map((s) => (s.nodeId === nodeId ? { ...s, status: 'completed', tokens: data.tokens } : s)),
+            );
+          }
+          break;
+        case 'node_fail':
+          if (nodeId) {
+            setStatuses((prev) =>
+              prev.map((s) => (s.nodeId === nodeId ? { ...s, status: 'failed', reason: data.reason } : s)),
+            );
+          }
+          break;
+        case 'done': {
+          const result = data?.result;
+          if (result?.status === 'error') {
+            toast.error(result.message || '工作流执行失败');
+          } else if (result?.status === 'pending_review') {
+            toast.info(`节点 "${result.pending_node_label}" 未通过审计，进入待审核`);
+          }
+          break;
+        }
+      }
+    };
+
+    try {
+      const modelConfigData = await getModelConfigData();
+      if (!modelConfigData) {
+        toast.error('请先在设置页配置模型');
+        setRunning(false);
+        return;
+      }
+      const token = getAccessToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers.Authorization = `Bearer ${token}`;
+
+      const res = await fetch(`/api/workflows/run`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          workflow_id: workflow.id,
+          book_id: bookId,
+          model_config_data: modelConfigData,
+          target_chapter_id: targetChapterId || undefined,
+        }),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        let msg = '工作流执行请求失败';
+        try {
+          const d = await res.json();
+          if (d?.detail) msg = typeof d.detail === 'string' ? d.detail : msg;
+        } catch { /* ignore */ }
+        toast.error(msg);
+        setRunning(false);
+        return;
+      }
+
+      // 解析 SSE 事件流
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (reader) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            applyEvent(JSON.parse(line.slice(6)));
+          } catch { /* 忽略无法解析的行 */ }
+        }
+      }
+    } catch (err) {
+      // AbortError 为用户主动停止，不算错误
+      if ((err as Error)?.name !== 'AbortError') {
+        console.error('[workflow] execute failed', err);
+        toast.error('工作流执行失败');
+      }
     } finally {
+      setRunning(false);
       setAbortController(null);
     }
-  }, [workflow, bookId]);
+  }, [workflow, bookId, targetChapterId]);
 
   const handleStop = useCallback(() => {
     abortController?.abort();
@@ -119,17 +184,32 @@ export function ExecutionPanel({ workflow, bookId, onClose }: ExecutionPanelProp
   return (
     <div className="border-t border-[#1c1b1a]/[0.08] bg-[#f4f3f0]">
       <div className="flex items-center justify-between px-4 py-2 border-b border-[#1c1b1a]/[0.06]">
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-[#1c1b1a]/30">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-[#1c1b1a]/30 shrink-0">
             运行面板
           </span>
+          {/* 目标章节选择 */}
+          <select
+            value={targetChapterId}
+            onChange={(e) => setTargetChapterId(e.target.value ? Number(e.target.value) : '')}
+            disabled={running}
+            className="h-6 max-w-[180px] px-1.5 rounded text-[10px] bg-white border border-[#1c1b1a]/[0.10] focus:outline-none text-[#1c1b1a]/60 disabled:opacity-50"
+            title="选择目标章节后，工作流将按该章写作目标生成"
+          >
+            <option value="">目标章节：不限</option>
+            {chapterOptions.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.label}
+              </option>
+            ))}
+          </select>
           {running && (
-            <span className="text-[10px] text-[#1c1b1a]/40">
+            <span className="text-[10px] text-[#1c1b1a]/40 shrink-0">
               {completedCount}/{statuses.length} 完成
             </span>
           )}
           {!running && completedCount > 0 && (
-            <span className="text-[10px] text-[#1c1b1a]/40">
+            <span className="text-[10px] text-[#1c1b1a]/40 shrink-0">
               完成 {completedCount}/{statuses.length}
               {failedCount > 0 && ` (${failedCount} 失败)`}
             </span>
@@ -200,11 +280,20 @@ export function ExecutionPanel({ workflow, bookId, onClose }: ExecutionPanelProp
               </span>
             )}
             {s.status === 'failed' && s.reason && (
-              <AlertTriangle size={12} className="text-red-500/40 shrink-0" />
+              <span className="text-[10px] text-red-500/50 shrink-0 truncate max-w-[160px]">
+                {s.reason}
+              </span>
             )}
-          </div>
-        ))}
-        {statuses.length === 0 && (
+          {s.output && (
+            <div className="pl-8 pr-2 pb-2 -mt-1">
+              <div className="text-[10px] leading-relaxed text-[#1c1b1a]/45 bg-[#1c1b1a]/[0.03] rounded-md px-2 py-1.5 max-h-[80px] overflow-y-auto whitespace-pre-wrap break-words">
+                {s.output}
+                {s.status === 'running' && <span className="inline-block w-1 h-3 bg-[#1c1b1a]/30 ml-0.5 animate-pulse" />}
+              </div>
+            </div>
+          )}
+        </div>
+      ))}        {statuses.length === 0 && (
           <div className="text-[10px] text-[#1c1b1a]/25 text-center py-2">
             无节点
           </div>

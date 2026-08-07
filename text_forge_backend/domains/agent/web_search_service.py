@@ -48,7 +48,7 @@ class WebSearchService:
         return results
 
     async def _search_bocha(self, query: str, api_key: str, top_k: int) -> list[dict]:
-        """调用博查搜索 API。
+        """调用博查搜索 API（POST /v1/web-search，JSON body）。
 
         Args:
             query: 搜索关键词。
@@ -61,20 +61,23 @@ class WebSearchService:
         import httpx
         try:
             async with httpx.AsyncClient(timeout=10) as client:
-                res = await client.get(
-                    "https://api.bochaai.com/v1/web/search",
-                    params={"q": query, "count": top_k},
-                    headers={"Authorization": f"Bearer {api_key}"},
+                res = await client.post(
+                    "https://api.bochaai.com/v1/web-search",
+                    json={"query": query, "count": top_k, "summary": True, "freshness": "noLimit"},
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
                 )
                 res.raise_for_status()
                 data = res.json()
                 return [
                     {
-                        "title": r.get("title", ""),
-                        "snippet": r.get("summary", ""),
+                        "title": r.get("name", "") or r.get("title", ""),
+                        "snippet": r.get("summary", "") or r.get("snippet", ""),
                         "url": r.get("url", ""),
                     }
-                    for r in (data.get("data") or {}).get("results", [])[:top_k]
+                    for r in (((data.get("data") or {}).get("webPages") or {}).get("value", []) or [])[:top_k]
                 ]
         except Exception as exc:
             logger.warning(f"web_search 失败: {exc}")

@@ -15,6 +15,7 @@ const CONTEXT_FIELD_LABELS: Record<string, string> = {
   scene_events: '场景事件',
   foreshadowings: '伏笔列表',
   plot_threads: '剧情线索',
+  branches: '角色支线',
 };
 
 const ALL_CONTEXT_FIELDS = Object.keys(CONTEXT_FIELD_LABELS);

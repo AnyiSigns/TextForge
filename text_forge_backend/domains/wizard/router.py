@@ -40,6 +40,7 @@ class WizardGenerateRequest(BaseModel):
     previous_cards: list[dict] | None = Field(default=[], alias="previousCards")
     exclude_titles: list[str] | None = Field(default=[], alias="excludeTitles")
     model_config_data: dict | None = Field(default=None, alias="modelConfig")
+    extra_instruction: str | None = Field(default=None, alias="extraInstruction")
 
 
 class WizardCard(BaseModel):
@@ -228,10 +229,15 @@ async def generate_wizard_cards(
     if excl:
         exclude_notice = f"\n\n【重要】以下方案已被用户锁定，请勿生成重复内容：{'、'.join(excl[:10])}"
 
+    # 额外指令（如大纲步骤的卷数/每卷章数约束）
+    extra_instruction = body.extra_instruction or ""
+    if extra_instruction:
+        extra_instruction = f"\n\n【用户额外要求】\n{extra_instruction}\n请务必满足上述数量与结构约束。"
+
     # ── 构建消息 ──
     user_prompt = (
         f"你正在为小说创作向导生成「{step_name}」步骤的候选方案。\n\n"
-        f"以下是当前已有的创作设定：\n\n{context}{exclude_notice}\n\n"
+        f"以下是当前已有的创作设定：\n\n{context}{exclude_notice}{extra_instruction}\n\n"
         f"请根据系统提示词的要求，生成 3~6 个候选方案。直接输出 JSON，不要任何额外文字。"
     )
 

@@ -12,6 +12,20 @@ def setup_logger():
     根据 settings 配置控制台与文件日志 handler，
     已初始化时自动跳过，避免重复配置。
     """
+    # 先无条件压制噪音 logger，避免被 uvicorn 等的 root INFO 配置覆盖。
+    # 注意：uvicorn 启动时先用 LOGGING_CONFIG 给 root 配 handler 并设为 INFO，
+    # 随后 app import 触发本函数；若沿用下方的早退逻辑会直接 return，
+    # 导致下面的 setLevel 被跳过，SQL 日志便从 root 继承 INFO 疯狂打印。
+    _sql_echo = getattr(settings, "SQL_ECHO", False)
+    _sql_level = logging.INFO if _sql_echo else logging.WARNING
+    # SQLAlchemy 打印每条 SQL 的 logger（echo=True 时），默认压到 WARNING
+    logging.getLogger("sqlalchemy.engine").setLevel(_sql_level)
+    logging.getLogger("sqlalchemy.engine.Engine").setLevel(_sql_level)
+    logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
+    logging.getLogger("sqlalchemy.dialects").setLevel(logging.WARNING)
+    logging.getLogger("uvicorn").setLevel(logging.WARNING)
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+
     root_logger = logging.getLogger()
     if root_logger.handlers:
         return
@@ -41,9 +55,6 @@ def setup_logger():
         file_handler.setLevel(log_level)
         file_handler.setFormatter(formatter)
         root_logger.addHandler(file_handler)
-
-    logging.getLogger("uvicorn").setLevel(logging.WARNING)
-    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 
 setup_logger()

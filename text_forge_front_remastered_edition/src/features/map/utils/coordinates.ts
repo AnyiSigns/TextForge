@@ -104,11 +104,13 @@ export function getWorldCoords(locations: LocationInput[]): WorldCoords[] {
 
   for (let i = 0; i < roots.length; i++) {
     const root = roots[i];
+    // 根节点半径 = 基础半径 500 收缩一次（0.35）
+    const rootRadius = 500 * RADIUS_RATIO;
     if (root.id === mainRoot.id) {
-      buildNode(root, 0, 0, 500, 0, visited, result, locationMap);
+      buildNode(root, 0, 0, rootRadius, 0, visited, result, locationMap);
     } else {
       const offset = 2000 * i;
-      buildNode(root, offset, 0, 500, 0, visited, result, locationMap);
+      buildNode(root, offset, 0, rootRadius, 0, visited, result, locationMap);
     }
   }
 
@@ -117,9 +119,9 @@ export function getWorldCoords(locations: LocationInput[]): WorldCoords[] {
 
 function buildNode(
   loc: LocationInput,
-  parentCx: number,
-  parentCy: number,
-  parentRadius: number,
+  cx: number,
+  cy: number,
+  radius: number,
   depth: number,
   visited: Set<number>,
   accumulator: WorldCoords[],
@@ -128,14 +130,8 @@ function buildNode(
   if (visited.has(loc.id)) return;
   visited.add(loc.id);
 
-  const posX = clamp(loc.positionX ?? 0.5, 0, 1);
-  const posY = clamp(loc.positionY ?? 0.5, 0, 1);
-  const radius = parentRadius * RADIUS_RATIO;
-  const margin = parentRadius - radius;
-
-  const cx = parentCx + (posX - 0.5) * 2 * margin;
-  const cy = parentCy + (posY - 0.5) * 2 * margin;
-
+  // 位置与半径均由父级布局阶段计算好（含 position 偏移与碰撞分离），
+  // 此处直接使用，不再二次收缩半径或重复应用 position 偏移。
   accumulator.push({
     id: loc.id,
     cx,

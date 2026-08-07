@@ -4,13 +4,15 @@ import { openDB, type IDBPDatabase } from 'idb';
 const DB_NAME = 'text-forge-db';
 const STORE_NAME = 'keyval';
 const KB_STORE = 'knowledge';
-const DB_VERSION = 2;
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
 function getDB(): Promise<IDBPDatabase> {
   if (!dbPromise) {
-    dbPromise = openDB(DB_NAME, DB_VERSION, {
+    // 不锁定版本号：库可能被历史版本升级到更高版本，
+    // openDB(name, 固定版本) 在版本低于现有库时会抛 VersionError 导致全部读写失败。
+    // 不指定版本则打开当前版本；库不存在时 version=1 并执行 upgrade 建 store。
+    dbPromise = openDB(DB_NAME, undefined, {
       upgrade(db) {
         if (!db.objectStoreNames.contains(STORE_NAME)) {
           db.createObjectStore(STORE_NAME);

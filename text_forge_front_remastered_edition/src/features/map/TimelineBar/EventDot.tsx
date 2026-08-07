@@ -9,7 +9,7 @@ interface EventDotProps {
   x: number;
   isSelected: boolean;
   isActive: boolean;
-  onClick: () => void;
+  onPointerDown: (e: React.PointerEvent) => void;
 }
 
 const TYPE_CONFIG = {
@@ -18,14 +18,14 @@ const TYPE_CONFIG = {
   event: { size: 5, ring: false, color: 'bg-foreground/40' },
 };
 
-export function EventDot({ event, x, isSelected, isActive, onClick }: EventDotProps) {
+export function EventDot({ event, x, isSelected, isActive, onPointerDown }: EventDotProps) {
   const config = useMemo(() => TYPE_CONFIG[event.eventType] ?? TYPE_CONFIG.event, [event.eventType]);
 
   return (
     <div
-      className={cn('absolute top-1/2 -translate-y-1/2 z-10 cursor-pointer group')}
+      className={cn('absolute top-1/2 -translate-y-1/2 z-10 cursor-ew-resize group select-none')}
       style={{ left: x, marginLeft: -config.size / 2 }}
-      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      onPointerDown={(e) => { e.stopPropagation(); onPointerDown(e); }}
     >
       {/* 标签 */}
       <div

@@ -1,8 +1,11 @@
 from config.logging import get_logger
 from core.exceptions import AppException
 from fastapi import Depends
+from models.book import Chapter
 from shared.database import db_manager
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from .chapter_repository import ChapterRepository
 
@@ -49,8 +52,14 @@ class ChapterService:
                 if value is not None:
                     setattr(instance, key, value)
             await self.session.commit()
-            await self.session.refresh(instance)
-            return instance
+            # 章节角色为场景派生，重新查询预加载场景事件以便序列化 character_ids
+            stmt = (
+                select(Chapter)
+                .where(Chapter.id == chapter_id)
+                .options(selectinload(Chapter.scene_events))
+            )
+            result = await self.session.execute(stmt)
+            return result.scalar_one_or_none()
         except AppException:
             raise
         except Exception:

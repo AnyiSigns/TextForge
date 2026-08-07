@@ -28,7 +28,7 @@ export interface Chapter {
   title: string;
   summary?: string | null;
   sortOrder: number;
-  characterIds: number[];
+  characterIds?: number[];
   locked: boolean;
   createdAt?: string;
   updatedAt?: string;
@@ -257,7 +257,7 @@ export interface LockResult {
 }
 
 export interface SSEEvent {
-  type: 'token' | 'think_start' | 'agent_think_end' | 'tool_start' | 'tool_end' | 'progress' |
+  type: 'token' | 'agent_token' | 'agent_reasoning' | 'think_start' | 'agent_think_end' | 'tool_start' | 'tool_end' | 'progress' |
         'node_start' | 'node_stream' | 'node_end' | 'node_fail' |
         'propose_cards' | 'review_card' | 'suggestions' | 'extend_outline' | 'title_update' | 'compress_done' | 'end' | 'error';
   token?: string;

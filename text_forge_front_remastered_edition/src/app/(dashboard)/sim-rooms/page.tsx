@@ -7,6 +7,7 @@ import { cn } from '@/shared/lib/cn';
 import { authFetch } from '@/shared/lib/authFetch';
 import { useAuthStore } from '@/shared/stores/authStore';
 import * as booksApi from '@/shared/api/books';
+import { getModelConfigData } from '@/shared/api/agent';
 
 interface Room {
   id: number; bookId: number; name: string; description?: string;
@@ -73,7 +74,17 @@ export default function SimRoomsPage() {
 
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const token = useAuthStore.getState().accessToken;
-    const wsUrl = `${proto}//${location.host}/api/sim-rooms/${roomId}/ws${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+    let wsUrl = `${proto}//${location.host}/api/sim-rooms/${roomId}/ws${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+    // 用户模型配置仅存浏览器 IndexedDB，后端无服务端配置；经 WS query 传入供 LLM 初始化
+    try {
+      const modelConfig = await getModelConfigData();
+      if (modelConfig) {
+        const sep = wsUrl.includes('?') ? '&' : '?';
+        wsUrl += `${sep}modelConfig=${encodeURIComponent(JSON.stringify(modelConfig))}`;
+      }
+    } catch {
+      // 配置缺失时后端会返回「没有配置提供商」，由用户先在设置页配置模型
+    }
     const ws = new WebSocket(wsUrl);
     ws.onopen = () => setWsConnected(true);
     ws.onmessage = (e) => {
@@ -105,6 +116,11 @@ export default function SimRoomsPage() {
         setStreaming(false);
         setRoundCount(0);
         toast.info(msg.summary || '对话已结束');
+      } else if (msg.type === 'branch_created') {
+        toast.success(`支线已沉淀：${msg.branch?.title || ''}`);
+      } else if (msg.type === 'error') {
+        setStreaming(false);
+        toast.error(msg.message || '生成失败');
       }
     };
     ws.onclose = () => setWsConnected(false);

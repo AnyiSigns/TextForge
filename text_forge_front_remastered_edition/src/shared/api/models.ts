@@ -10,10 +10,16 @@ export type RoleModelConfig = {
   model_id: string;
 };
 
+export type SearchConfig = {
+  provider: string;
+  api_key: string;
+};
+
 export type ModelConfig = {
   textRoleModels: Record<string, RoleModelConfig>;
   embeddingModel?: RoleModelConfig;
   visionModel?: RoleModelConfig;
+  searchConfig?: SearchConfig;
 };
 
 export async function fetchModelConfig(): Promise<ModelConfig> {

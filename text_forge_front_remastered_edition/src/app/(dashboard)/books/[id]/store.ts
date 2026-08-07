@@ -9,6 +9,14 @@ interface AgentMessage {
   token?: string;
   label?: string;
   note?: string;
+  /** 工具卡片消息：工具名与执行状态（作为独立消息插入消息流，顺序天然正确） */
+  tool?: string;
+  toolStatus?: 'running' | 'done' | 'error';
+  /** 工作流节点卡片消息：nodeId / 状态 / tokens */
+  nodeId?: string;
+  nodeStatus?: 'running' | 'completed' | 'failed';
+  tokens?: number;
+  reason?: string;
 }
 
 interface AgentStatus {
@@ -22,6 +30,15 @@ interface AgentToolLogEntry {
   seq: number;
   status: 'start' | 'end';
   ts: number;
+}
+
+/** 工作流节点（角色）执行状态卡片数据。 */
+export interface AgentNodeStatus {
+  nodeId: string;
+  label: string;
+  status: 'running' | 'completed' | 'failed';
+  tokens?: number;
+  reason?: string;
 }
 
 interface BookDetailState {
@@ -44,6 +61,9 @@ interface BookDetailState {
   agentStreaming: boolean;
   agentStatus: AgentStatus;
   agentToolLog: AgentToolLogEntry[];
+  agentNodeStatuses: AgentNodeStatus[];
+  /** 工作流节点正文：nodeId → 累积的流式输出，由状态卡片展开时在卡片内部展示。 */
+  nodeOutputs: Record<string, string>;
   agentThreadId: string | null;
   pendingReview: Record<string, unknown> | null;
 
@@ -64,11 +84,19 @@ interface BookDetailState {
   setAgentStatus: (status: AgentStatus) => void;
   pushToolLog: (entry: { status: 'start' | 'end' }) => void;
   clearToolLog: () => void;
+  upsertNodeStatus: (status: AgentNodeStatus) => void;
+  clearNodeStatuses: () => void;
+  setNodeOutput: (nodeId: string, token: string) => void;
+  clearNodeOutputs: () => void;
   commitStreamingMessage: () => void;
   setPendingReview: (review: Record<string, unknown> | null) => void;
   setAgentContext: (context: string) => void;
   addAgentMessage: (msg: AgentMessage) => void;
   updateAgentStreamToken: (token: string) => void;
+  /** 按工具名更新最近一条 tool 卡片消息的状态（end/error 时复位「请求外援中」） */
+  updateToolMessage: (tool: string, status: 'done' | 'error') => void;
+  /** 按 nodeId 更新节点卡片消息（node_stream 累积正文 / node_end 状态） */
+  updateNodeMessage: (nodeId: string, patch: Partial<AgentMessage>) => void;
   closeCardDraw: () => void;
   autoDetectPhase: () => void;
 }
@@ -93,6 +121,8 @@ export const useBookDetailStore = create<BookDetailState>((set) => ({
   agentStreaming: false,
   agentStatus: { kind: 'idle' },
   agentToolLog: [],
+  agentNodeStatuses: [],
+  nodeOutputs: {},
   agentThreadId: null,
   pendingReview: null,
 
@@ -126,22 +156,39 @@ export const useBookDetailStore = create<BookDetailState>((set) => ({
       ],
     })),
   clearToolLog: () => set({ agentToolLog: [] }),
+  upsertNodeStatus: (status) =>
+    set((state) => {
+      const existing = state.agentNodeStatuses.find((n) => n.nodeId === status.nodeId);
+      if (!existing) {
+        return { agentNodeStatuses: [...state.agentNodeStatuses, status] };
+      }
+      return {
+        agentNodeStatuses: state.agentNodeStatuses.map((n) =>
+          n.nodeId === status.nodeId ? { ...n, ...status } : n,
+        ),
+      };
+    }),
+  clearNodeStatuses: () => set({ agentNodeStatuses: [] }),
+  setNodeOutput: (nodeId, token) =>
+    set((state) => ({
+      nodeOutputs: {
+        ...state.nodeOutputs,
+        [nodeId]: (state.nodeOutputs[nodeId] || '') + token,
+      },
+    })),
+  clearNodeOutputs: () => set({ nodeOutputs: {} }),
   commitStreamingMessage: () =>
     set((state) => {
-      const messages = [...state.agentMessages];
-      for (let i = messages.length - 1; i >= 0; i--) {
-        const m = messages[i];
-        if (m.type === 'streaming') {
-          if (m.content && m.content.trim()) {
-            messages[i] = { ...m, type: 'assistant' };
-          } else {
-            messages.splice(i, 1);
-          }
-          break;
-        }
-        break;
-      }
-      return { agentMessages: messages };
+      // 处理所有残留 streaming 消息：有内容定型为 assistant，空消息移除。
+      // 只处理最后一条会导致多条 streaming（多轮工具调用/手动压缩叠加）时
+      // 其余残留，进而在新一轮流式期间连带显示三点脉冲。
+      const messages = state.agentMessages.map((m) => {
+        if (m.type !== 'streaming') return m;
+        return m.content && m.content.trim() ? { ...m, type: 'assistant' as const } : m;
+      });
+      return {
+        agentMessages: messages.filter((m) => !(m.type === 'streaming' && !(m.content && m.content.trim()))),
+      };
     }),
   setPendingReview: (review) => set({ pendingReview: review }),
   setAgentContext: (context: string) => {
@@ -153,6 +200,26 @@ export const useBookDetailStore = create<BookDetailState>((set) => ({
   addAgentMessage: (msg) =>
     set((state) => ({
       agentMessages: [...state.agentMessages, msg],
+    })),
+
+  updateToolMessage: (tool, status) =>
+    set((state) => {
+      // 从后往前找最近一条同工具名的 tool 卡片消息并更新状态
+      const messages = [...state.agentMessages];
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].type === 'tool' && messages[i].tool === tool) {
+          messages[i] = { ...messages[i], toolStatus: status };
+          break;
+        }
+      }
+      return { agentMessages: messages };
+    }),
+
+  updateNodeMessage: (nodeId, patch) =>
+    set((state) => ({
+      agentMessages: state.agentMessages.map((m) =>
+        m.type === 'node' && m.nodeId === nodeId ? { ...m, ...patch } : m,
+      ),
     })),
 
   updateAgentStreamToken: (token) =>

@@ -12,6 +12,7 @@ from models.book import (
     SceneEvent,
     Volume,
 )
+from models.sim_room import SimBranch, SimRoom
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,6 +32,7 @@ class StructuredRepository:
         "scene_events": SceneEvent,
         "foreshadowings": Foreshadowing,
         "plot_threads": PlotThread,
+        "branches": SimBranch,
     }
 
     FIELD_ALIAS = {
@@ -100,12 +102,6 @@ class StructuredRepository:
 
         if field == "setting":
             stmt = stmt.where(model.book_id == book_id)
-            stmt = stmt.options(
-                model.worldview,
-                model.tone,
-                model.writing_taboos,
-                model.custom_dimensions,
-            )
             query_result = await self.session.execute(stmt)
             rows = query_result.scalars().all()
             return rows
@@ -114,14 +110,6 @@ class StructuredRepository:
             stmt = stmt.where(model.book_id == book_id)
             if character_ids:
                 stmt = stmt.where(model.id.in_(character_ids))
-            stmt = stmt.options(
-                model.name,
-                model.aliases,
-                model.description,
-                model.role_type,
-                model.status,
-                model.relationship_chain,
-            )
             query_result = await self.session.execute(stmt)
             rows = query_result.scalars().all()
             return rows
@@ -130,10 +118,6 @@ class StructuredRepository:
             stmt = stmt.where(model.book_id == book_id)
             if character_ids:
                 stmt = stmt.where(model.id.in_(character_ids))
-            stmt = stmt.options(
-                model.name,
-                model.relationship_chain,
-            )
             query_result = await self.session.execute(stmt)
             rows = query_result.scalars().all()
             return rows
@@ -152,11 +136,6 @@ class StructuredRepository:
                 stmt = stmt.where(model.id.in_(chapter_summary_ids))
             else:
                 return []
-            stmt = stmt.options(
-                model.id,
-                model.title,
-                model.summary,
-            )
             query_result = await self.session.execute(stmt)
             rows = query_result.scalars().all()
             return rows
@@ -166,11 +145,6 @@ class StructuredRepository:
             if not ids:
                 return []
             stmt = stmt.where(model.id.in_(ids))
-            stmt = stmt.options(
-                model.id,
-                model.title,
-                model.summary,
-            )
             query_result = await self.session.execute(stmt)
             chapter_rows = {c.id: c for c in query_result.scalars().all()}
             if not chapter_rows:
@@ -188,58 +162,23 @@ class StructuredRepository:
             return merged
 
         if field == "outline_structure":
-            stmt = stmt.where(model.book_id == book_id)
+            # Chapter 表无 book_id，需 join Volume 按书过滤；大纲即本书全部章节（按卷/排序）
+            stmt = (
+                select(model)
+                .join(Volume, Volume.id == model.volume_id)
+                .where(Volume.book_id == book_id)
+                .order_by(Volume.sort_order, model.sort_order)
+            )
             selected_ids = list(outline_node_ids or [])
             if selected_ids:
-                parent_stmt = select(model.id, model.parent_id).where(model.book_id == book_id)
-                parent_res = await self.session.execute(parent_stmt)
-                parent_map = {row[0]: row[1] for row in parent_res.all() if row[0] is not None}
-
-                ancestor_ids = set()
-                for node_id in selected_ids:
-                    current = node_id
-                    while current and current in parent_map:
-                        parent = parent_map[current]
-                        if parent:
-                            ancestor_ids.add(parent)
-                        current = parent
-
-                all_ids = list(set(selected_ids) | ancestor_ids)
-                stmt = stmt.where(model.id.in_(all_ids))
-
-            stmt = stmt.options(
-                model.node_type,
-                model.title,
-                model.content,
-                model.parent_id,
-                model.target_volume_id,
-                model.target_chapter_id,
-            )
+                stmt = stmt.where(model.id.in_(selected_ids))
             query_result = await self.session.execute(stmt)
-            rows = query_result.scalars().all()
-
-            if selected_ids and rows:
-                row_map = {r.id: r for r in rows}
-                allowed = set()
-                for node_id in selected_ids:
-                    current = node_id
-                    while current and current in row_map:
-                        allowed.add(current)
-                        current = parent_map.get(current)
-                rows = [r for r in rows if r.id in allowed]
-
-            return rows
+            return query_result.scalars().all()
 
         if field == "volumes":
             stmt = stmt.where(model.book_id == book_id)
             if volume_ids:
                 stmt = stmt.where(model.id.in_(volume_ids))
-            stmt = stmt.options(
-                model.id,
-                model.title,
-                model.summary,
-                model.sort_order,
-            )
             query_result = await self.session.execute(stmt)
             rows = query_result.scalars().all()
             return rows
@@ -267,6 +206,17 @@ class StructuredRepository:
             query_result = await self.session.execute(stmt)
             rows = query_result.scalars().all()
             return rows
+
+        if field == "branches":
+            # 支线挂在 sim_rooms 下（SimBranch 无 book_id 列），需 join 房间按书过滤
+            stmt = (
+                select(SimBranch)
+                .join(SimRoom, SimRoom.id == SimBranch.room_id)
+                .where(SimRoom.book_id == book_id)
+                .order_by(SimBranch.created_at)
+            )
+            query_result = await self.session.execute(stmt)
+            return query_result.scalars().all()
 
         return []
 

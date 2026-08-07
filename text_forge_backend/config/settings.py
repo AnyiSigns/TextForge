@@ -1,6 +1,7 @@
 from datetime import timedelta
 from pathlib import Path
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,13 +24,18 @@ class Settings(BaseSettings):
     LOG_FILE_PATH: str = get_abs_path("logs/app.log")
 
     # jwt
-    JWT_SECRET_KEY: str = "$2b$12$fD2PIzcMsv6GH5kuYKx3teR3dzKHXdVE"
+    # 注意：密钥不能硬编码在源码中，必须通过 .env 提供（gitignored）。
+    # 缺失或过短时启动直接报错，防止生产环境使用默认密钥被伪造 token。
+    JWT_SECRET_KEY: str = ""
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TIME: timedelta = timedelta(minutes=15)
     JWT_EXPIRE_TIME: timedelta = timedelta(days=7)
 
     # 数据库
     AUTO_CREATE_TABLES: bool = True
+    # SQLAlchemy 是否打印每条 SQL。默认关闭，避免淹没 agent/workflow 业务日志；
+    # 需要排查 SQL 时在 .env 设 SQL_ECHO=true。
+    SQL_ECHO: bool = False
     POSTGRES_GRAPH_URL: str = "postgresql://postgres:1234@localhost:5433/text_forge"
     POSTGRES_DB_URL: str = (
         "postgresql+asyncpg://postgres:1234@localhost:5433/text_forge"
@@ -38,9 +44,9 @@ class Settings(BaseSettings):
     # email config
     EMAIL_SERVER: str = "smtp.yeah.net"
     EMAIL_PORT: int = 465
-    EMAIL_USERNAME: str = "anyiSigns@yeah.net"
-    EMAIL_PASSWORD: str = "USVrDmdWJwHDL35k"
-    EMAIL_FROM: str = "anyiSigns@yeah.net"
+    EMAIL_USERNAME: str = ""
+    EMAIL_PASSWORD: str = ""
+    EMAIL_FROM: str = ""
     EMAIL_START_TLS: bool = False
     EMAIL_USE_TSL: bool = True
     EMAIL_TIME_OUT: int = 30  # 邮件发送超时时间，30秒
@@ -63,6 +69,15 @@ class Settings(BaseSettings):
         # 严格区分大小写
         case_sensitive=True,
     )
+
+    @model_validator(mode="after")
+    def _validate_secrets(self) -> "Settings":
+        """生产配置安全校验：密钥必须来自 .env，禁止使用空默认值。"""
+        if not self.JWT_SECRET_KEY or len(self.JWT_SECRET_KEY) < 16:
+            raise ValueError(
+                "JWT_SECRET_KEY 未配置或长度不足 16 字符，请在 .env 中设置。"
+            )
+        return self
 
 
 settings = Settings()

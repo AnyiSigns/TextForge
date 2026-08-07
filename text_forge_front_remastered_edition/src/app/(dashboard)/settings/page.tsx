@@ -27,19 +27,31 @@ const PROVIDER_TEMPLATES: Record<string, { base_url: string; model_id: string; d
   zhipu: [{ base_url: 'https://open.bigmodel.cn/api/paas/v4', model_id: 'glm-4-plus', desc: 'GLM-4 Plus' }],
   moonshot: [{ base_url: 'https://api.moonshot.cn/v1', model_id: 'moonshot-v1-8k', desc: 'Moonshot v1 8K' }],
   qianfan: [{ base_url: 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1', model_id: 'ernie-4.0', desc: 'ERNIE 4.0' }],
-  dashscope: [{ base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model_id: 'qwen-turbo', desc: '通义千问 Turbo' }],
+  dashscope: [
+    { base_url: process.env.NEXT_PUBLIC_MODEL_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1', model_id: process.env.NEXT_PUBLIC_MODEL_ID || 'qwen-turbo', desc: '通义千问 (MaaS 配置)' },
+    { base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model_id: 'qwen-turbo', desc: '通义千问 Turbo' },
+  ],
 };
 
 const PROVIDER_LIST = Object.keys(PROVIDER_TEMPLATES);
 
+// 默认模型配置：从 .env.local 注入（gitignored，不提交密钥）。
+// dashscope adapter 后端映射 langchain_qwq.ChatQwQ，其内部走 OpenAI 兼容协议
+// （DEFAULT_API_BASE 即 compatible-mode/v1），故 base_url 必须用兼容模式端点而非 /api/v1。
+const MODEL_BASE_URL = process.env.NEXT_PUBLIC_MODEL_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+const MODEL_API_KEY = process.env.NEXT_PUBLIC_MODEL_API_KEY || '';
+const MODEL_ID = process.env.NEXT_PUBLIC_MODEL_ID || 'qwen-turbo';
+const EMBEDDING_API_KEY = process.env.NEXT_PUBLIC_EMBEDDING_API_KEY || '';
+
 const DEFAULT_TEXT_ROLES: Record<string, { adapter: string; base_url: string; api_key: string; model_id: string }> = {
-  main: { adapter: 'deepseek', base_url: 'https://api.deepseek.com', api_key: '', model_id: 'deepseek-chat' },
-  audit: { adapter: 'ollama', base_url: 'http://localhost:11434/v1', api_key: '', model_id: 'llama3' },
-  router: { adapter: 'deepseek', base_url: 'https://api.deepseek.com', api_key: '', model_id: 'deepseek-chat' },
-  tool: { adapter: 'deepseek', base_url: 'https://api.deepseek.com', api_key: '', model_id: 'deepseek-chat' },
+  main: { adapter: 'dashscope', base_url: MODEL_BASE_URL, api_key: MODEL_API_KEY, model_id: MODEL_ID },
+  audit: { adapter: 'dashscope', base_url: MODEL_BASE_URL, api_key: MODEL_API_KEY, model_id: MODEL_ID },
+  router: { adapter: 'dashscope', base_url: MODEL_BASE_URL, api_key: MODEL_API_KEY, model_id: MODEL_ID },
+  tool: { adapter: 'dashscope', base_url: MODEL_BASE_URL, api_key: MODEL_API_KEY, model_id: MODEL_ID },
 };
 
-const DEFAULT_EMBEDDING = { adapter: 'dashscope', base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', api_key: '', model_id: 'text-embedding-v4' };
+const DEFAULT_EMBEDDING = { adapter: 'dashscope', base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', api_key: EMBEDDING_API_KEY, model_id: 'text-embedding-v4' };
+const DEFAULT_SEARCH = { provider: 'bocha', api_key: process.env.NEXT_PUBLIC_SEARCH_API_KEY || '' };
 const DEFAULT_VISION = { adapter: 'openai', base_url: 'https://api.openai.com/v1', api_key: '', model_id: 'gpt-4o' };
 
 const TABS = [
@@ -76,6 +88,7 @@ export default function SettingsPage() {
   const [modelConfig, setModelConfig] = useState<Record<string, { adapter: string; base_url: string; api_key: string; model_id: string }>>({});
   const [embeddingModel, setEmbeddingModel] = useState<{ adapter: string; base_url: string; api_key: string; model_id: string }>(DEFAULT_EMBEDDING);
   const [visionModel, setVisionModel] = useState<{ adapter: string; base_url: string; api_key: string; model_id: string }>(DEFAULT_VISION);
+  const [searchConfig, setSearchConfig] = useState(DEFAULT_SEARCH);
   const [testingRole, setTestingRole] = useState<string | null>(null);
   const [editingRole, setEditingRole] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ adapter: '', base_url: '', api_key: '', model_id: '' });
@@ -101,6 +114,7 @@ export default function SettingsPage() {
       setModelConfig(cfg.textRoleModels || {});
       if (cfg.embeddingModel) setEmbeddingModel(cfg.embeddingModel);
       if (cfg.visionModel) setVisionModel(cfg.visionModel);
+      if (cfg.searchConfig) setSearchConfig(cfg.searchConfig);
     }).catch(() => {});
   }, []);
 
@@ -152,9 +166,10 @@ export default function SettingsPage() {
     textRoleModels = modelConfig,
     embedModel = embeddingModel,
     vision = visionModel,
+    search = searchConfig,
   ) => {
     try {
-      await modelApi.saveModelConfig({ textRoleModels, embeddingModel: embedModel, visionModel: vision });
+      await modelApi.saveModelConfig({ textRoleModels, embeddingModel: embedModel, visionModel: vision, searchConfig: search });
       toast.success('已保存');
     } catch {
       toast.error('保存失败');
@@ -334,25 +349,9 @@ export default function SettingsPage() {
               </div>
             </div>
           </Card>
-
-          <Card className="p-5 space-y-3 border-destructive/20 bg-destructive/[0.02] mt-4">
-            <h3 className="text-[12px] font-semibold text-destructive/80">危险区域</h3>
-            <p className="text-[11px] leading-relaxed text-muted-foreground/80">
-              删除账户后所有数据将永久丢失且无法恢复，包括你的书籍、设定和创作内容。
-            </p>
-            <button
-              onClick={() => {
-                if (confirm('确定要永久删除账户吗？此操作不可撤销。')) {
-                  toast.error('账户删除功能需要后端支持');
-                }
-              }}
-              className="h-8 px-4 rounded-md text-[11px] font-medium bg-destructive/10 text-destructive/80 hover:bg-destructive/20 border border-destructive/20 cursor-pointer transition-colors"
-            >
-              删除我的账户
-            </button>
-          </Card>
           </>
         )}
+
 
         {activeTab === 'appearance' && (
           <Card className="p-5 space-y-5">
@@ -440,6 +439,35 @@ export default function SettingsPage() {
             </Card>
 
             <Card className="p-5 space-y-4">
+              <div className="text-xs font-medium">搜索配置</div>
+              <div className="text-[11px] text-muted-foreground">用于 Agent 的实时网页搜索（检索外部资料辅助创作）</div>
+              <div className="rounded-lg border border-border/60 p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-medium">{searchConfig.provider || 'bocha'}</div>
+                    <div className="text-[10px] text-muted-foreground">博查 Bocha · 网页搜索 API</div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button type="button" onClick={() => {
+                      if (searchConfig.api_key.trim()) {
+                        persistModelConfig();
+                        toast.success('搜索配置已保存');
+                      } else {
+                        toast.error('请输入搜索 API key');
+                      }
+                    }} className="h-6 px-2 rounded-md text-[10px] border border-border cursor-pointer bg-transparent hover:bg-muted transition-colors">
+                      保存
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <input value={searchConfig.api_key} onChange={(e) => setSearchConfig({ ...searchConfig, api_key: e.target.value })}
+                    placeholder="博查 api_key" type="password" className="w-full h-7 px-2 rounded-md text-[11px] bg-background border border-border focus:outline-none" />
+                </div>
+              </div>
+            </Card>
+
+            <Card className="p-5 space-y-4">
               <div className="text-xs font-medium">Embedding 模型</div>
               <div className="text-[11px] text-muted-foreground">用于个人文档向量检索，生成时自动调用</div>
               <div className="rounded-lg border border-border/60 p-3 space-y-2">
@@ -466,13 +494,12 @@ export default function SettingsPage() {
                       ))}
                     </select>
                     <div className="grid grid-cols-2 gap-2">
-                      <input value={embedEditForm.base_url} onChange={(e) => setEmbedEditForm({ ...embedEditForm, base_url: e.target.value })}
-                        placeholder="base_url" className="h-7 px-2 rounded-md text-[11px] bg-background border border-border focus:outline-none" />
                       <input value={embedEditForm.model_id} onChange={(e) => setEmbedEditForm({ ...embedEditForm, model_id: e.target.value })}
                         placeholder="model_id" className="h-7 px-2 rounded-md text-[11px] bg-background border border-border focus:outline-none" />
                       <input value={embedEditForm.api_key} onChange={(e) => setEmbedEditForm({ ...embedEditForm, api_key: e.target.value })}
-                        placeholder="api_key" type="password" className="h-7 px-2 rounded-md text-[11px] bg-background border border-border focus:outline-none col-span-2" />
+                        placeholder="api_key" type="password" className="h-7 px-2 rounded-md text-[11px] bg-background border border-border focus:outline-none" />
                     </div>
+                    <p className="text-[10px] text-muted-foreground/60">Embedding 服务商端点固定，无需配置 base_url（dashscope/cohere/百度均由官方 SDK 直连）</p>
                     <button type="button" onClick={() => { setEmbeddingModel(embedEditForm); setEditingEmbedding(false); persistModelConfig(modelConfig, embedEditForm); }}
                       className="h-7 px-3 rounded-md text-[11px] bg-foreground text-background font-medium border-none cursor-pointer hover:opacity-90">
                       保存

@@ -259,4 +259,7 @@ class ModelWrapper:
             "api_key": config.get("api_key"),
             "base_url": config.get("base_url"),
         }
+        # OpenAI 兼容类（含 ChatQwQ/ChatDeepSeek/ChatMoonshot 等）支持 httpx 超时。
+        # 不设置时 openai client 默认 600s，MaaS 流式连接挂起会导致任务永久卡住。
+        params["timeout"] = config.get("request_timeout", 120)
         return {k: v for k, v in params.items() if v is not None}

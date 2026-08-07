@@ -8,6 +8,7 @@ import { LocationEditor } from './LocationEditor';
 import { CharacterEditor } from './CharacterEditor';
 import { ForeshadowingEditor } from './ForeshadowingEditor';
 import { PlotThreadEditor } from './PlotThreadEditor';
+import { ChapterEditor } from './ChapterEditor';
 
 const PANEL_LABELS: Record<string, string> = {
   scene: '场景编辑',
@@ -71,7 +72,7 @@ export function FloatingEditor() {
         return <PlotThreadEditor plotThreadId={entityId} isNew={isNew} onClose={close} />;
       case 'chapter':
       case 'volume':
-        return <SceneEditor eventId={entityId} isNew={isNew} onClose={close} />;
+        return <ChapterEditor entityType={entityType} entityId={entityId} isNew={isNew} onClose={close} />;
       default:
         return null;
     }

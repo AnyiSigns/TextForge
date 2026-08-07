@@ -143,9 +143,6 @@ class Chapter(Base):
     title: Mapped[str] = mapped_column(String(200), nullable=False, comment="标题")
     summary: Mapped[str] = mapped_column(Text, nullable=True, comment="章节摘要")
     sort_order: Mapped[int] = mapped_column(Integer, default=0, comment="排序")
-    character_ids: Mapped[list] = mapped_column(
-        JSONB, default=[], comment="出场角色ID列表"
-    )
     locked: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False, comment="是否锁定"
     )
@@ -166,6 +163,19 @@ class Chapter(Base):
     contents: Mapped[list["ChapterContent"]] = relationship(
         back_populates="chapter", cascade="all,delete-orphan"
     )
+
+    @property
+    def character_ids(self) -> list[int]:
+        """出场角色ID列表（派生）：本章所有场景事件关联角色的并集。
+
+        角色关联以场景（SceneEvent）为唯一来源，章节不直接存储。
+        """
+        ids: list[int] = []
+        for e in self.scene_events or []:
+            for cid in e.character_ids or []:
+                if cid not in ids:
+                    ids.append(cid)
+        return ids
 
 
 class ChapterContent(Base):

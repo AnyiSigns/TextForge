@@ -2,6 +2,12 @@ from models.book import Chapter
 from shared.base_repo import BaseRepository
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+
+def _chapter_stmt():
+    """构造章节查询语句，预加载场景事件以支持派生 character_ids。"""
+    return select(Chapter).options(selectinload(Chapter.scene_events))
 
 
 class ChapterRepository(BaseRepository[Chapter]):
@@ -25,7 +31,7 @@ class ChapterRepository(BaseRepository[Chapter]):
         Returns:
             章节实例列表。
         """
-        stmt = select(Chapter).where(Chapter.volume_id == volume_id).order_by(Chapter.sort_order, Chapter.id)
+        stmt = _chapter_stmt().where(Chapter.volume_id == volume_id).order_by(Chapter.sort_order, Chapter.id)
         result = await self.session.execute(stmt)
         return result.scalars().all()
 
@@ -66,8 +72,8 @@ class ChapterRepository(BaseRepository[Chapter]):
         """
         instance = await self.add(volume_id=volume_id, **kwargs)
         await self.session.commit()
-        await self.session.refresh(instance)
-        return instance
+        result = await self.session.execute(_chapter_stmt().where(Chapter.id == instance.id))
+        return result.scalar_one()
 
     async def update_chapter(self, chapter_id: int, **kwargs):
         """更新章节。
@@ -86,8 +92,8 @@ class ChapterRepository(BaseRepository[Chapter]):
             if value is not None:
                 setattr(instance, key, value)
         await self.session.commit()
-        await self.session.refresh(instance)
-        return instance
+        result = await self.session.execute(_chapter_stmt().where(Chapter.id == chapter_id))
+        return result.scalar_one_or_none()
 
     async def delete_chapter(self, chapter_id: int):
         """删除章节。

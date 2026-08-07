@@ -21,7 +21,9 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import * as workflowApi from '@/shared/api/workflows';
+import * as booksApi from '@/shared/api/books';
 import type { Workflow, WorkflowNode as WfNode } from '@/shared/api/workflows';
+import type { Book } from '@/shared/api/types';
 import { RoleNode } from '../components/RoleNode';
 import { NodePalette } from '../components/NodePalette';
 import { InspectorPanel } from '../components/InspectorPanel';
@@ -119,8 +121,21 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [showExecution, setShowExecution] = useState(false);
+  // 执行工作流的书籍：优先从 URL ?book_id= 读取（详情页"提交到工作流"跳转带入），
+  // 用户也可在页面内手动选择。ExecutionPanel 依赖它启用"运行"。
+  const [activeBookId, setActiveBookId] = useState<number | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const v = new URLSearchParams(window.location.search).get('book_id');
+    return v ? Number(v) : null;
+  });
+  const [bookOptions, setBookOptions] = useState<Book[]>([]);
 
   const loadedRef = useRef(false);
+
+  useEffect(() => {
+    // 拉取书籍列表用于执行时选择目标书籍
+    booksApi.fetchBooks().then((list) => setBookOptions(list)).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (isNew) {
@@ -268,6 +283,17 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <select
+            value={activeBookId ?? ''}
+            onChange={(e) => setActiveBookId(e.target.value ? Number(e.target.value) : null)}
+            className="h-7 px-2 rounded-md text-[11px] bg-white border border-[#1c1b1a]/[0.10] text-[#1c1b1a] focus:outline-none cursor-pointer"
+            title="选择执行目标书籍"
+          >
+            <option value="">选择目标书籍...</option>
+            {bookOptions.map((b) => (
+              <option key={b.id} value={b.id}>{b.title}</option>
+            ))}
+          </select>
           <button
             onClick={() => setShowExecution((v) => !v)}
             className="flex items-center gap-1 h-7 px-3 rounded-md text-xs font-medium border border-[#1c1b1a]/[0.10] bg-white text-[#1c1b1a] cursor-pointer hover:bg-[#1c1b1a]/[0.02]"
@@ -328,7 +354,7 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
       {showExecution && (
         <ExecutionPanel
           workflow={workflow}
-          bookId={undefined}
+          bookId={activeBookId ?? undefined}
           onClose={() => setShowExecution(false)}
         />
       )}

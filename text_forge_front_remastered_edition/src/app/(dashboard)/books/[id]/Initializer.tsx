@@ -171,12 +171,60 @@ function StepLocationTree() {
   );
 }
 
+/* ─── Field value renderer（别名/自定义字段等结构化为可读展示） ─── */
+
+function FieldValue({ value }: { value: string }) {
+  // 尝试按 JSON 解析：数组 → 标签列表；对象 → 键值对
+  let parsed: unknown = null;
+  const trimmed = (value ?? '').trim();
+  if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      parsed = null;
+    }
+  }
+
+  if (Array.isArray(parsed)) {
+    const items = parsed.map(String).filter(Boolean);
+    if (items.length === 0) return <span className="text-[11px] text-[#1c1b1a]/50">{value}</span>;
+    return (
+      <div className="flex flex-wrap gap-1">
+        {items.map((it, i) => (
+          <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-[#1c1b1a]/[0.05] text-[#1c1b1a]/60">{it}</span>
+        ))}
+      </div>
+    );
+  }
+
+  if (parsed && typeof parsed === 'object') {
+    const entries = Object.entries(parsed as Record<string, unknown>).filter(([, v]) => v !== '' && v != null);
+    if (entries.length === 0) return <span className="text-[11px] text-[#1c1b1a]/50">{value}</span>;
+    return (
+      <div className="flex flex-col gap-0.5">
+        {entries.map(([k, v], i) => (
+          <div key={i} className="text-[10px]">
+            <span className="text-[#1c1b1a]/35">{k}：</span>
+            <span className="text-[#1c1b1a]/60">{String(v)}</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return <span className="text-[11px] leading-relaxed text-[#1c1b1a]/50">{value}</span>;
+}
+
 /* ─── Generic Card Grid (Steps 2,3,5,6) ─── */
 
 function CardGridStep({ step }: { step: number }) {
-  const { candidates, lockedIds, toggleLock } = useInitializerStore();
+  const { candidates, lockedIds, toggleLock, regenerateCandidates, generating, saving } = useInitializerStore();
   const [editingField, setEditingField] = useState<string | null>(null);
   const items = candidates[step] ?? [];
+
+  const handleRegenerate = () => {
+    void regenerateCandidates();
+  };
 
   const handleFieldEdit = (cardId: string, fieldKey: string, newValue: string) => {
     // 直接修改 candidates 数组中的值
@@ -201,7 +249,30 @@ function CardGridStep({ step }: { step: number }) {
       <div className="mb-2 flex items-center justify-between">
         <span className="text-[10px] text-[#1c1b1a]/30">点击锁定，已选 {items.filter((c) => lockedIds.has(c.id)).length}/{items.length}</span>
       </div>
-      <div className="grid grid-cols-1 gap-3">
+      {items.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="w-10 h-10 rounded-full bg-[#1c1b1a]/[0.04] flex items-center justify-center mb-3">
+            <RefreshCw size={16} className="text-[#1c1b1a]/25" />
+          </div>
+          <p className="text-[12px] font-medium text-[#1c1b1a]/50 mb-1">还没有候选内容</p>
+          <p className="text-[10px] text-[#1c1b1a]/30 max-w-[260px] leading-relaxed mb-3">
+            点击底部"重新生成"按钮，让 AI 根据前序步骤的设定生成此步骤的候选卡片
+          </p>
+          <button
+            onClick={handleRegenerate}
+            disabled={saving || generating}
+            className="flex items-center gap-1.5 h-8 px-4 rounded-md text-[11px] font-medium bg-[#1c1b1a] text-[#f4f3f0] hover:opacity-90 transition-opacity border-none cursor-pointer disabled:opacity-50"
+          >
+            {generating ? (
+              <span className="w-3 h-3 border-2 border-[#f4f3f0]/40 border-t-[#f4f3f0] rounded-full animate-spin" />
+            ) : (
+              <RefreshCw size={11} />
+            )}
+            {generating ? '生成中...' : 'AI 生成候选'}
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3">
         {items.map((c) => {
           const isLocked = lockedIds.has(c.id);
           const desc = c.fields.find((f) => f.key === '描述')?.value ?? '';
@@ -284,7 +355,7 @@ function CardGridStep({ step }: { step: number }) {
                         onClick={() => setEditingField(fieldId)}
                         className="text-[11px] leading-relaxed text-[#1c1b1a]/50 cursor-text rounded px-2 py-1.5 -mx-2 hover:bg-[#1c1b1a]/[0.03] hover:text-[#1c1b1a]/65 transition-colors min-h-[1.5em]"
                       >
-                        {f.value || <span className="text-[#1c1b1a]/15 italic">点击编辑...</span>}
+                        {f.value ? <FieldValue value={f.value} /> : <span className="text-[#1c1b1a]/15 italic">点击编辑...</span>}
                       </div>
                     )}
                   </div>
@@ -293,7 +364,8 @@ function CardGridStep({ step }: { step: number }) {
             </div>
           );
         })}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -303,9 +375,22 @@ function CardGridStep({ step }: { step: number }) {
 function StepOutlinePreview() {
   const volumes = useEntityStore((s) => s.volumes);
   const chapters = useEntityStore((s) => s.chapters);
-  const [showConfig, setShowConfig] = useState(chapters.length === 0);
+  const { candidates, lockedIds, toggleLock, regenerateCandidates, generating, saving } = useInitializerStore();
   const [volCount, setVolCount] = useState(2);
   const [chPerVol, setChPerVol] = useState('5,5');
+  const items = candidates[4] ?? [];
+
+  // 配置表单：仅当尚无候选卡片时显示
+  const showConfig = items.length === 0;
+
+  const handleGenerate = () => {
+    // 将卷数/每卷章数约束传给后端（extraInstruction），并要求每章标注场景节点与本章角色
+    const extra = `请生成 ${volCount} 卷，每卷章数按以下列表依次分配：${chPerVol}。每个章节必须标注「场景节点」（1~3 个）与「本章角色」（须取自已有角色名）。`;
+    void regenerateCandidates(extra);
+  };
+
+  const outlineText = (c: { fields: Array<{ key: string; value: string }> }) =>
+    c.fields.find((f) => f.key === '大纲')?.value ?? '';
 
   if (showConfig) {
     return (
@@ -325,12 +410,13 @@ function StepOutlinePreview() {
             <input value={chPerVol} onChange={(e) => setChPerVol(e.target.value)}
               placeholder="5,5" className="w-full h-8 px-3 rounded-md text-xs bg-[#fafaf8] border border-[#1c1b1a]/[0.08] focus:outline-none" />
           </div>
-          <div className="flex gap-2">
-            <button onClick={() => setShowConfig(false)}
-              className="flex-1 h-8 rounded-md text-xs border border-[#1c1b1a]/[0.08] bg-transparent text-[#1c1b1a]/40 cursor-pointer">取消</button>
-            <button onClick={() => setShowConfig(false)}
-              className="flex-1 h-8 rounded-md text-xs bg-[#1c1b1a] text-[#f4f3f0] border-none cursor-pointer font-medium">确认生成</button>
-          </div>
+          <button onClick={handleGenerate} disabled={generating || saving}
+            className="w-full h-9 rounded-md text-xs bg-[#1c1b1a] text-[#f4f3f0] border-none cursor-pointer font-medium disabled:opacity-50">
+            {generating ? '生成中...' : 'AI 生成大纲方案'}
+          </button>
+          <p className="text-[10px] text-[#1c1b1a]/30 text-center leading-relaxed">
+            生成的大纲将包含卷、章（含摘要）、场景节点与本章角色，可在下一步前锁定方案
+          </p>
         </div>
       </div>
     );
@@ -338,26 +424,75 @@ function StepOutlinePreview() {
 
   return (
     <div className="flex-1 overflow-y-auto px-4 py-3">
-      {volumes.map((vol) => {
-        const volChapters = chapters.filter((ch) => ch.volumeId === vol.id).sort((a, b) => a.sortOrder - b.sortOrder);
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-[10px] text-[#1c1b1a]/30">点击锁定，已选 {items.filter((c) => lockedIds.has(c.id)).length}/{items.length}</span>
+        <button
+          onClick={() => {
+            const store = useInitializerStore.getState();
+            const newCandidates = store.candidates.map((stepCands, si) =>
+              si === 4 ? stepCands.filter((c) => store.lockedIds.has(c.id)) : stepCands,
+            );
+            useInitializerStore.setState({ candidates: newCandidates });
+          }}
+          className="text-[10px] text-[#1c1b1a]/30 hover:text-[#1c1b1a]/60 bg-transparent border-none cursor-pointer underline underline-offset-2"
+        >
+          修改参数
+        </button>
+      </div>
+
+      {items.map((c) => {
+        const isLocked = lockedIds.has(c.id);
         return (
-          <div key={vol.id} className="mb-4">
-            <div className="text-[14px] font-bold text-[#1c1b1a]/80 mb-0.5">{vol.title}</div>
-            {vol.summary && <div className="text-[10px] text-[#1c1b1a]/35 mb-2">{vol.summary}</div>}
-            <div className="border-t border-[#1c1b1a]/[0.06] pt-2 space-y-1.5">
-              {volChapters.map((ch) => (
-                <div key={ch.id} className="flex items-start gap-2 pl-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-[#1c1b1a]/[0.12] mt-1.5 flex-shrink-0" />
-                  <div>
-                    <div className="text-[11px] font-medium text-[#1c1b1a]/70">{ch.title}</div>
-                    {ch.summary && <div className="text-[10px] text-[#1c1b1a]/35">{ch.summary}</div>}
-                  </div>
-                </div>
-              ))}
-            </div>
+          <div
+            key={c.id}
+            className={cn(
+              'relative rounded-xl border p-3 mb-3 transition-all duration-200',
+              isLocked
+                ? 'border-[#1c1b1a]/[0.20] bg-[#1c1b1a]/[0.03] shadow-[0_2px_12px_rgba(28,27,26,0.04)]'
+                : 'border-[#1c1b1a]/[0.06] bg-[#fafaf8] hover:border-[#1c1b1a]/[0.14] hover:shadow-[0_4px_16px_rgba(28,27,26,0.06)]',
+            )}
+          >
+            <button
+              onClick={() => toggleLock(4, c.id)}
+              className={cn(
+                'absolute top-2 right-2 z-10 w-5 h-5 flex items-center justify-center rounded-full transition-all cursor-pointer border',
+                isLocked ? 'bg-[#1c1b1a]/[0.06] border-[#1c1b1a]/[0.18] text-[#1c1b1a]/60' : 'bg-transparent border-[#1c1b1a]/[0.06] text-[#1c1b1a]/15 hover:text-[#1c1b1a]/40',
+              )}
+            >
+              <Lock size={10} strokeWidth={2} />
+            </button>
+            <div className="text-[12px] font-semibold text-[#1c1b1a]/80 mb-1.5">{c.title}</div>
+            <pre className="whitespace-pre-wrap font-sans text-[11px] leading-relaxed text-[#1c1b1a]/50">{outlineText(c)}</pre>
           </div>
         );
       })}
+
+      {/* 已保存卷/章预览 */}
+      {volumes.length > 0 && (
+        <div className="mt-2 pt-3 border-t border-[#1c1b1a]/[0.06]">
+          <div className="text-[10px] font-semibold text-[#1c1b1a]/35 uppercase tracking-wider mb-2">已生成大纲</div>
+          {volumes.map((vol) => {
+            const volChapters = chapters.filter((ch) => ch.volumeId === vol.id).sort((a, b) => a.sortOrder - b.sortOrder);
+            return (
+              <div key={vol.id} className="mb-3">
+                <div className="text-[13px] font-bold text-[#1c1b1a]/80">{vol.title}</div>
+                {vol.summary && <div className="text-[10px] text-[#1c1b1a]/35 mb-1">{vol.summary}</div>}
+                <div className="border-t border-[#1c1b1a]/[0.06] pt-1.5 space-y-1">
+                  {volChapters.map((ch) => (
+                    <div key={ch.id} className="flex items-start gap-2 pl-2">
+                      <div className="w-1.5 h-1.5 rounded-full bg-[#1c1b1a]/[0.12] mt-1.5 flex-shrink-0" />
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-medium text-[#1c1b1a]/70">{ch.title}</div>
+                        {ch.summary && <div className="text-[10px] text-[#1c1b1a]/35">{ch.summary}</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -429,7 +564,7 @@ export function Initializer() {
           <div className="flex-1 flex flex-col overflow-hidden">
             {currentStep === 0 && <StepCreativeSetting />}
             {currentStep === 1 && <CardGridStep step={1} />}
-            {currentStep === 4 && <CardGridStep step={4} />}
+            {currentStep === 4 && <StepOutlinePreview />}
             {[2, 3, 5].includes(currentStep) && <CardGridStep step={currentStep} />}
             {currentStep === 6 && <CardGridStep step={currentStep} />}
           </div>

@@ -134,6 +134,7 @@ async def _prepare_agent_state(
     thread_id: str,
     message: str,
     model_config: dict,
+    book_id_override: int | None = None,
 ) -> tuple[Conversation, UserAgentState, int]:
     conversation = await _get_conversation(session, thread_id, user_id)
     if not conversation:
@@ -150,6 +151,12 @@ async def _prepare_agent_state(
     recent_messages = await _load_recent_messages(session, conversation.id, limit=10)
 
     book_id = conversation.book_id or 0
+    # 前端携带当前书籍时修正会话绑定，避免旧会话 book_id=0 导致「无法访问书籍信息」
+    if book_id_override:
+        if conversation.book_id != book_id_override:
+            conversation.book_id = book_id_override
+            await session.commit()
+        book_id = book_id_override
     state: UserAgentState = {
         "messages": recent_messages,
         "user_id": user_id,
@@ -165,9 +172,18 @@ async def _prepare_agent_state(
         "pending_review": None,
         "review_decision": None,
         "edited_content": None,
+        "candidate_reply_ready": False,
         "workflow_node_outputs": {},
         "personal_rag_results": None,
         "terminate_chapter_id": None,
+        # 一次性状态必须显式重置：LangGraph checkpoint 会保留上一轮写入的
+        # workflow_result / pending_workflow / pending_tool，若不在新回合清空，
+        # 用户选定候选正文后 write_chapter_content 仍会被「确认回合」守卫拦截
+        # （gated_tool_node 见 workflow_result 就拒绝所有工具），导致正文永远落不了库。
+        "workflow_result": None,
+        "pending_workflow": None,
+        "pending_tool": None,
+        "suggestions_signature": None,
     }
 
     if book_id:
@@ -301,7 +317,7 @@ async def respond_to_agent(
     book_id = None
     try:
         conversation, state, book_id = await _prepare_agent_state(
-            session, user_id, body.thread_id, body.message, model_config
+            session, user_id, body.thread_id, body.message, model_config, body.book_id
         )
         if book_id:
             locked, lock_key = await _acquire_book_lock(book_id, user_id)
@@ -378,77 +394,90 @@ async def stream_agent(
                 raise HTTPException(status_code=404, detail="未找到会话状态")
 
             state_data = state_snapshot.get("channel_values", {})
-            pending_review = state_data.get("pending_review")
-            if not pending_review:
-                return StreamingResponse(
-                    _empty_sse("无待处理的审核，请发送新消息开始对话"),
-                    media_type="text/event-stream",
-                    headers={"Cache-Control": "no-cache, no-transform"},
-                )
-            review_decision = state_data.get("review_decision", "accept")
-            edited_content = state_data.get("edited_content", "")
-            node_label = pending_review.get("node_label", "")
-
-            from langchain_core.messages import HumanMessage
-
-            messages = list(state_data.get("messages", []))
-
-            if review_decision == "terminate":
-                chapter_id_for_terminate = state_data.get("terminate_chapter_id")
-                instruction_parts = []
-                if chapter_id_for_terminate:
-                    instruction_parts.append(f"target_chapter_id={chapter_id_for_terminate}")
-                node_outputs = state_data.get("workflow_node_outputs", {})
-                if node_outputs:
-                    outputs_text = "\n\n".join([
-                        f"[{nid}] {data if isinstance(data, str) else data.get('output', '')[:2000]}"
-                        for nid, data in node_outputs.items()
-                    ])
-                    instruction_parts.append(f"根据以下工作流节点输出生成章节正文：\n\n{outputs_text}")
-                messages.append(
-                    HumanMessage(
-                        content=f"工作流已被用户终止。请根据已完成的节点输出生成最终章节。{' '.join(instruction_parts) if instruction_parts else '请汇总已有输出并给出建议。'}"
+            pending_tool = state_data.get("pending_tool")
+            if pending_tool:
+                # 被门控拦截的写工具审批：直接交回 tool_calls 节点执行，不重跑 agent
+                _tool_decision = state_data.get("review_decision") or "accept"
+                state = {
+                    **state_data,
+                    "pending_tool": {**pending_tool, "decision": _tool_decision, "edited_content": state_data.get("edited_content")},
+                    "pending_review": None,
+                    "review_decision": None,
+                    "edited_content": None,
+                    "candidate_reply_ready": False,
+                }
+            else:
+                pending_review = state_data.get("pending_review")
+                if not pending_review:
+                    return StreamingResponse(
+                        _empty_sse("无待处理的审核，请发送新消息开始对话"),
+                        media_type="text/event-stream",
+                        headers={"Cache-Control": "no-cache, no-transform"},
                     )
-                )
+                review_decision = state_data.get("review_decision", "accept")
+                edited_content = state_data.get("edited_content", "")
+                node_label = pending_review.get("node_label", "")
+
+                from langchain_core.messages import HumanMessage
+
+                messages = list(state_data.get("messages", []))
+
+                if review_decision == "terminate":
+                    chapter_id_for_terminate = state_data.get("terminate_chapter_id")
+                    instruction_parts = []
+                    if chapter_id_for_terminate:
+                        instruction_parts.append(f"target_chapter_id={chapter_id_for_terminate}")
+                    node_outputs = state_data.get("workflow_node_outputs", {})
+                    if node_outputs:
+                        outputs_text = "\n\n".join([
+                            f"[{nid}] {data if isinstance(data, str) else data.get('output', '')[:2000]}"
+                            for nid, data in node_outputs.items()
+                        ])
+                        instruction_parts.append(f"根据以下工作流节点输出生成章节正文：\n\n{outputs_text}")
+                    messages.append(
+                        HumanMessage(
+                            content=f"工作流已被用户终止。请根据已完成的节点输出生成最终章节。{' '.join(instruction_parts) if instruction_parts else '请汇总已有输出并给出建议。'}"
+                        )
+                    )
+                    state = {
+                        **state_data,
+                        "messages": messages,
+                        "pending_review": None,
+                        "review_decision": None,
+                        "edited_content": None,
+                        "terminate_chapter_id": None,
+                        "active_workflow_id": None,
+                        "workflow_node_outputs": {},
+                    }
+                elif review_decision == "retry":
+                    messages.append(
+                        HumanMessage(
+                            content=f"节点 [{node_label}] 的输出被用户拒绝。请调整参数或从不同的角度重新生成，确保输出严格遵循该节点的写作要求。"
+                        )
+                    )
+                elif review_decision == "edit" and edited_content:
+                    messages.append(
+                        HumanMessage(
+                            content=f"节点 [{node_label}] 的输出已被用户修改为以下内容：\n\n{edited_content}\n\n请基于此修改后的内容继续工作，并相应调整后续节点的上下文。"
+                        )
+                    )
+                else:
+                    messages.append(
+                        HumanMessage(
+                            content=f"节点 [{node_label}] 的输出已被用户接受。请继续执行下一个节点。"
+                        )
+                    )
+
                 state = {
                     **state_data,
                     "messages": messages,
                     "pending_review": None,
                     "review_decision": None,
                     "edited_content": None,
-                    "terminate_chapter_id": None,
-                    "active_workflow_id": None,
-                    "workflow_node_outputs": {},
                 }
-            elif review_decision == "retry":
-                messages.append(
-                    HumanMessage(
-                        content=f"节点 [{node_label}] 的输出被用户拒绝。请调整参数或从不同的角度重新生成，确保输出严格遵循该节点的写作要求。"
-                    )
-                )
-            elif review_decision == "edit" and edited_content:
-                messages.append(
-                    HumanMessage(
-                        content=f"节点 [{node_label}] 的输出已被用户修改为以下内容：\n\n{edited_content}\n\n请基于此修改后的内容继续工作，并相应调整后续节点的上下文。"
-                    )
-                )
-            else:
-                messages.append(
-                    HumanMessage(
-                        content=f"节点 [{node_label}] 的输出已被用户接受。请继续执行下一个节点。"
-                    )
-                )
-
-            state = {
-                **state_data,
-                "messages": messages,
-                "pending_review": None,
-                "review_decision": None,
-                "edited_content": None,
-            }
         else:
             conversation, state, book_id = await _prepare_agent_state(
-                session, user_id, thread_id, body.message, model_config
+                session, user_id, thread_id, body.message, model_config, body.book_id
             )
         if book_id:
             locked, lock_key = await _acquire_book_lock(book_id, user_id)
@@ -461,228 +490,184 @@ async def stream_agent(
             model_config=model_config,
             checkpointer=graph_pool_manager.checkpoint,
         )
-        config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 100}
+        config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 20}
 
         async def event_generator():
-            custom_queue: asyncio.Queue = asyncio.Queue()
-            custom_task = None
-
-            async def _pump_custom():
-                try:
-                    async for chunk in graph.astream(
-                        state, config=config, stream_mode="custom"
-                    ):
-                        data = chunk[1] if isinstance(chunk, tuple) else chunk
-                        if isinstance(data, dict):
-                            await custom_queue.put(data)
-                except Exception as exc:
-                    logger.warning(f"[custom-stream] 捕获工作流流式事件失败: {exc}")
-                finally:
-                    await custom_queue.put(None)
-
             try:
-                custom_task = asyncio.create_task(_pump_custom())
-
                 yield ":\n\n"
                 final_reply = ""
                 tool_called_this_turn = False
-                agent_think_buffer: list[str] = []
-                think_phase = True
-                think_started = False
-                expect_think_reset = False
-                in_compress = False
+                # 单迭代器：stream_mode=["updates","custom"]，二者按真实执行顺序交错产出，
+                # 消除此前「astream(custom) 独立任务 + astream_events 主循环」双通道的
+                # 事件竞态与 node_start/node_end 重复推送问题。
+                from langchain_core.messages import AIMessage as _AIMsg
+                from langchain_core.messages import HumanMessage as _HMsg
+                from langchain_core.messages import ToolMessage as _TMsg
 
-                def _drain_custom():
-                    out = []
-                    while not custom_queue.empty():
-                        item = custom_queue.get_nowait()
-                        if item is None:
-                            continue
-                        etype = item.get("event")
-                        if etype in ("node_start", "node_stream", "node_end", "node_fail"):
-                            out.append(
-                                f"data: {json.dumps({'type': etype, **item}, ensure_ascii=False)}\n\n"
-                            )
-                    return out
-
-                async for event in graph.astream_events(
-                    state, config=config, version="v2"
+                async for mode, data in graph.astream(
+                    state, config=config, stream_mode=["updates", "custom"]
                 ):
-                    for sse in _drain_custom():
-                        yield sse
-                    event_type = event.get("event")
-                    if event_type == "on_chat_model_stream":
-                        chunk = event.get("data", {}).get("chunk")
-                        if chunk and hasattr(chunk, "content"):
-                            reasoning = (
-                                getattr(chunk, "reasoning_content", None)
-                                or (chunk.additional_kwargs or {}).get("reasoning_content", "")
-                                or (chunk.response_metadata or {}).get("reasoning_content", "")
-                            )
-                            token = chunk.content or ""
-
-                            if reasoning:
-                                agent_think_buffer.append(reasoning)
-                                if not think_started:
-                                    think_started = True
-                                    yield f"data: {json.dumps({'type': 'think_start', 'elapsed': 0, 'user_id': user_id}, ensure_ascii=False)}\n\n"
-
-                            if token:
-                                if think_phase and agent_think_buffer:
-                                    think_phase = False
-                                    yield f"data: {json.dumps({'type': 'agent_think_end'}, ensure_ascii=False)}\n\n"
-                                    agent_think_buffer.clear()
-
-                                if tool_called_this_turn:
-                                    final_reply += token
-                                else:
-                                    agent_think_buffer.append(token)
-                                yield f"data: {json.dumps({'token': token, 'type': 'token'}, ensure_ascii=False)}\n\n"
-                    elif event_type == "on_custom_event":
-                        custom_name = event.get("name", "")
-                        custom_data = event.get("data", {})
-                        if custom_name in ("node_start", "node_end", "node_fail", "progress"):
-                            yield f"data: {json.dumps({'type': custom_name, **custom_data}, ensure_ascii=False)}\n\n"
-                    elif event_type == "on_tool_start":
-                        if think_phase and agent_think_buffer:
-                            think_phase = False
+                    if mode == "custom":
+                        if not isinstance(data, dict):
+                            continue
+                        etype = data.get("event")
+                        if etype in ("node_start", "node_stream", "node_end", "node_fail"):
+                            yield f"data: {json.dumps({'type': etype, **data}, ensure_ascii=False)}\n\n"
+                        elif etype == "think_start":
+                            yield f"data: {json.dumps({'type': 'think_start', 'elapsed': 0, 'user_id': user_id}, ensure_ascii=False)}\n\n"
+                        elif etype == "agent_think_end":
                             yield f"data: {json.dumps({'type': 'agent_think_end'}, ensure_ascii=False)}\n\n"
-                            agent_think_buffer.clear()
-                        tool_called_this_turn = True
-                        tool_name = event.get("name", "")
-                        if tool_name == "generate_chapter":
-                            yield f"data: {json.dumps({'type': 'progress', 'step': 'generate_chapter', 'n': 1, 'total': 4, 'words': 0, 'eta': 0}, ensure_ascii=False)}\n\n"
-                        elif tool_name == "generate_outline_extension":
-                            yield f"data: {json.dumps({'type': 'extend_outline', 'step': 'extend_outline', 'n': 0, 'total': 1}, ensure_ascii=False)}\n\n"
-                        yield f"data: {json.dumps({'type': 'tool_start', 'tool': tool_name}, ensure_ascii=False)}\n\n"
-                    elif event_type == "on_tool_end":
-                        expect_think_reset = True
-                        for sse in _drain_custom():
-                            yield sse
-                        tool_name = event.get("name", "")
-                        output = event.get("data", {}).get("output", {})
-                        if tool_name == "generate_chapter" and isinstance(output, dict):
-                            progress_events = output.get("progress_events", [])
-                            for prog in progress_events:
-                                yield f"data: {json.dumps({'type': 'progress', **prog}, ensure_ascii=False)}\n\n"
-                        if tool_name == "generate_outline_extension" and isinstance(output, dict):
-                            yield f"data: {json.dumps({'type': 'extend_outline', **output}, ensure_ascii=False)}\n\n"
-                        if tool_name == "execute_workflow" and isinstance(output, dict):
-                            # node_start/node_stream/node_end 已由自定义事件流实时推送，此处仅处理审核卡
-                            if output.get("status") == "pending_review":
-                                node_results = output.get("node_results", [])
-                                if node_results:
-                                    last = node_results[-1]
-                                    qc = last.get("quality_check", {})
-                                    pending_review_data = {
-                                        "type": "review_card",
-                                        "node_id": output.get("pending_node_id", ""),
-                                        "node_label": output.get("pending_node_label", ""),
-                                        "output_preview": last.get("output", "")[:1000],
-                                        "reason": qc.get("reason", ""),
-                                        "system_prompt": qc.get("system_prompt", ""),
-                                    }
-                                    yield f"data: {json.dumps(pending_review_data, ensure_ascii=False)}\n\n"
-                        if tool_name == "execute_workflow_node" and isinstance(output, dict):
-                            # node 生命周期事件已由自定义事件流实时推送
-                            pass
-                        yield f"data: {json.dumps({'type': 'tool_end'}, ensure_ascii=False)}\n\n"
-                    elif event_type == "on_chain_start":
-                        if event.get("name") == "compress":
-                            in_compress = True
-                    elif event_type == "on_chat_model_start":
-                        # 工具执行完后，主 agent 模型会再次被调用（携带工具结果重新推理）。
-                        # 此时复位 think 阶段，使第二次推理也能正确发出 think_start / agent_think_end。
-                        # 排除压缩节点(auto_compress_node)内部的子 LLM 调用，避免误触发假思考事件。
-                        if expect_think_reset and not in_compress:
-                            think_phase = True
-                            think_started = False
-                            agent_think_buffer.clear()
-                            expect_think_reset = False
-                    elif event_type == "on_chain_end":
-                        if event.get("name") == "compress":
-                            in_compress = False
-                        for sse in _drain_custom():
-                            yield sse
-                        output = event.get("data", {}).get("output", {})
-                        if isinstance(output, dict):
-                            pending_review = output.get("pending_review")
-                            if pending_review and isinstance(pending_review, dict):
-                                yield f"data: {json.dumps({'type': 'review_card', **pending_review}, ensure_ascii=False)}\n\n"
+                        elif etype == "agent_reasoning":
+                            # 思考内容：前端仅用于状态指示，不强依赖其文本
+                            yield f"data: {json.dumps({'type': 'agent_reasoning', 'token': data.get('token', '')}, ensure_ascii=False)}\n\n"
+                        elif etype == "agent_token":
+                            token = data.get("token", "")
+                            if token:
+                                final_reply += token
+                                yield f"data: {json.dumps({'type': 'agent_token', 'token': token}, ensure_ascii=False)}\n\n"
+                        continue
 
-                        output = event.get("data", {}).get("output", {})
-                        messages = (
-                            output.get("messages", [])
-                            if isinstance(output, dict)
-                            else []
-                        )
-
-                        from langchain_core.messages import (
-                            AIMessage as _AIMsg,
-                        )
-                        from langchain_core.messages import (
-                            ToolMessage as _TMsg,
-                        )
-
-                        if not messages:
+                    # ── updates 模式：每完成一个节点产出 {节点名: state 增量} ──
+                    if not isinstance(data, dict):
+                        continue
+                    for node_name, update in data.items():
+                        if not isinstance(update, dict):
                             continue
-                        last = messages[-1]
-                        if isinstance(last, _TMsg):
-                            continue
-                        if isinstance(last, _AIMsg) and last.tool_calls:
-                            continue
+                        # agent 节点返回 messages 增量：若含 tool_calls 则模型决定调工具
+                        if node_name == "agent":
+                            msgs = update.get("messages") or []
+                            if msgs:
+                                last = msgs[-1]
+                                if isinstance(last, _AIMsg) and getattr(last, "tool_calls", None):
+                                    tool_called_this_turn = True
+                                    for _tc in last.tool_calls:
+                                        tname = _tc.get("name") if isinstance(_tc, dict) else getattr(_tc, "name", "")
+                                        if tname == "generate_chapter":
+                                            yield f"data: {json.dumps({'type': 'progress', 'step': 'generate_chapter', 'n': 1, 'total': 4, 'words': 0, 'eta': 0}, ensure_ascii=False)}\n\n"
+                                        elif tname == "generate_outline_extension":
+                                            yield f"data: {json.dumps({'type': 'extend_outline', 'step': 'extend_outline', 'n': 0, 'total': 1}, ensure_ascii=False)}\n\n"
+                                        yield f"data: {json.dumps({'type': 'tool_start', 'tool': tname}, ensure_ascii=False)}\n\n"
+                        # tool_calls 节点完成：工具执行结束，取 ToolMessage 输出推导业务事件
+                        elif node_name == "tool_calls":
+                            # 写工具被门控拦截时（gated_tool_node 返回 pending_review），
+                            # 必须推送审核卡，否则前端永远收不到 review_card、审批流卡死。
+                            if update.get("pending_review"):
+                                yield f"data: {json.dumps({'type': 'review_card', **update['pending_review']}, ensure_ascii=False)}\n\n"
+                            msgs = update.get("messages") or []
+                            for m in msgs:
+                                if not isinstance(m, _TMsg):
+                                    continue
+                                _out = m.content
+                                if isinstance(_out, dict):
+                                    _out = json.dumps(_out, ensure_ascii=False)
+                                if isinstance(_out, str) and _out.startswith("{"):
+                                    try:
+                                        _parsed = json.loads(_out)
+                                    except Exception:
+                                        _parsed = None
+                                    if isinstance(_parsed, dict):
+                                        if _parsed.get("status") == "pending_review":
+                                            node_results = _parsed.get("node_results", [])
+                                            if node_results:
+                                                last = node_results[-1]
+                                                qc = last.get("quality_check", {})
+                                                yield f"data: {json.dumps({'type': 'review_card', 'node_id': _parsed.get('pending_node_id', ''), 'node_label': _parsed.get('pending_node_label', ''), 'output_preview': last.get('output', '')[:1000], 'reason': qc.get('reason', ''), 'system_prompt': qc.get('system_prompt', '')}, ensure_ascii=False)}\n\n"
+                                        if _parsed.get("status") == "completed" and _parsed.get("progress_events"):
+                                            for prog in _parsed["progress_events"]:
+                                                yield f"data: {json.dumps({'type': 'progress', **prog}, ensure_ascii=False)}\n\n"
+                                # 每个工具执行结束各发一次 tool_end（带工具名），供前端复位工具状态条
+                                yield f"data: {json.dumps({'type': 'tool_end', 'tool': m.name}, ensure_ascii=False)}\n\n"
+                        # quality_gate 节点：工作流审计若产生 pending_review，推送审核卡
+                        elif node_name == "quality_gate":
+                            if update.get("pending_review"):
+                                yield f"data: {json.dumps({'type': 'review_card', **update['pending_review']}, ensure_ascii=False)}\n\n"
+                        # workflow_runner 原生节点：审计拦截产生的 pending_review 也要推送审核卡，
+                        # 否则前端只看到「触发审计拦截」文字、审核卡不弹（审批流卡死）。
+                        elif node_name == "workflow_runner":
+                            if update.get("pending_review"):
+                                yield f"data: {json.dumps({'type': 'review_card', **update['pending_review']}, ensure_ascii=False)}\n\n"
 
-                        reply = ""
-                        for msg in reversed(messages):
-                            if isinstance(msg, _TMsg):
-                                continue
-                            content = getattr(msg, "content", None)
-                            if content:
-                                reply = content
-                                break
-                        if not reply:
-                            reply = final_reply
-                        if not reply and agent_think_buffer:
-                            reply = "".join(agent_think_buffer)
-                        if reply:
-                            ai_msg = Message(
-                                conversation_id=conversation.id,
-                                role="assistant",
-                                content=reply,
-                            )
-                            session.add(ai_msg)
-                            await session.commit()
+                # ── 图执行结束：从 checkpointer 读取最终 state，提取最终回复 ──
+                reply = ""
+                try:
+                    snap = await graph.aget_state(config)
+                    final_state = snap.values if snap else {}
+                    final_messages = final_state.get("messages", [])
+                    logger.info(
+                        f"[stream_agent] 图结束: candidate_reply_ready={final_state.get('candidate_reply_ready')} "
+                        f"messages_len={len(final_messages)} 最后消息类型={type(final_messages[-1]).__name__ if final_messages else 'none'}"
+                    )
+                    if final_messages:
+                        last = final_messages[-1]
+                        if isinstance(last, _TMsg) or (
+                            isinstance(last, _AIMsg) and getattr(last, "tool_calls", None)
+                        ):
+                            last = None
+                            for m in reversed(final_messages):
+                                if isinstance(m, _TMsg):
+                                    continue
+                                if isinstance(m, _AIMsg) and getattr(m, "tool_calls", None):
+                                    continue
+                                # 只回退到 AI 消息；跳过用户消息，避免「AI 把用户问题原样复读」
+                                if isinstance(m, _HMsg):
+                                    continue
+                                content = getattr(m, "content", None)
+                                if content:
+                                    last = m
+                                    break
+                        if last is not None:
+                            content = getattr(last, "content", None) or ""
+                            reply = content if isinstance(content, str) else str(content)
+                except Exception as exc:
+                    logger.warning(f"读取最终回复失败: {exc}")
+                if not reply:
+                    reply = final_reply
+
+                if reply:
+                    ai_msg = Message(
+                        conversation_id=conversation.id,
+                        role="assistant",
+                        content=reply,
+                    )
+                    session.add(ai_msg)
+                    await session.commit()
+                try:
+                    from .tools.feedback_tools import _build_feedback_tools
+
+                    suggestion_tools = _build_feedback_tools(
+                        db_manager.with_db, model_config=model_config
+                    )
+                    suggestions = await suggestion_tools["proactive_suggestions"].ainvoke(
+                        {"user_id": user_id, "book_id": book_id}
+                    )
+                    # 建议去重：同一建议组合只在会话内推送一次（按 items 的签名比较），
+                    # 避免每次回复都重复推送同样的「情节线停滞/章节缺摘要」建议刷屏。
+                    _sig = json.dumps(suggestions, ensure_ascii=False, sort_keys=True) if suggestions else ""
+                    _prev_sig = (final_state or {}).get("suggestions_signature") or ""
+                    if suggestions and _sig != _prev_sig:
+                        yield f"data: {json.dumps({'type': 'suggestions', 'items': suggestions}, ensure_ascii=False)}\n\n"
                         try:
-                            from .tools.feedback_tools import (
-                                _build_feedback_tools,
-                            )
+                            await graph.aupdate_state(config, values={"suggestions_signature": _sig})
+                        except Exception:
+                            pass
+                except Exception as exc:
+                    logger.warning(f"SSE 推送建议失败: {exc}")
+                # 先推送 end，让前端立即结束流式（三点脉冲消失、streaming 定型）。
+                # 标题生成涉及一次模型调用（可能耗时数秒），放在 end 之后执行，
+                # 避免阻塞主回复流结束导致前端长时间显示「正在生成」指示器。
+                yield f"data: {json.dumps({'type': 'end', 'reply': reply}, ensure_ascii=False)}\n\n"
+                # 首条消息结束后生成会话标题（5-10 字）并直接写入数据库，
+                # 随后以 title_update 事件下发（此时流尚未关闭，前端仍会读取）。
+                if not is_resume and conversation.title == "新对话":
+                    try:
+                        generated = await _generate_title(model_config, body.message, reply)
+                        if generated:
+                            conversation.title = generated
+                            await session.commit()
+                            yield f"data: {json.dumps({'type': 'title_update', 'thread_id': thread_id, 'title': generated}, ensure_ascii=False)}\n\n"
+                    except Exception as exc:
+                        logger.warning(f"自动生成会话标题失败: {exc}")
 
-                            suggestion_tools = _build_feedback_tools(
-                                db_manager.with_db, model_config=model_config
-                            )
-                            suggestions = await suggestion_tools[
-                                "proactive_suggestions"
-                            ].ainvoke({"user_id": user_id, "book_id": book_id})
-                            if suggestions:
-                                yield f"data: {json.dumps({'type': 'suggestions', 'items': suggestions}, ensure_ascii=False)}\n\n"
-                        except Exception as exc:
-                            logger.warning(f"SSE 推送建议失败: {exc}")
-                        yield f"data: {json.dumps({'type': 'end', 'reply': reply}, ensure_ascii=False)}\n\n"
-                        # 首条消息结束后生成会话标题（5-10 字），放在 end 事件之后，
-                        # 避免阻塞主回复流结束导致前端长时间显示「生成中」指示器。
-                        if not is_resume and conversation.title == "新对话":
-                            try:
-                                generated = await _generate_title(
-                                    model_config, body.message, reply
-                                )
-                                if generated:
-                                    conversation.title = generated
-                                    await session.commit()
-                                    yield f"data: {json.dumps({'type': 'title_update', 'thread_id': thread_id, 'title': generated}, ensure_ascii=False)}\n\n"
-                            except Exception as exc:
-                                logger.warning(f"自动生成会话标题失败: {exc}")
-
-                        break
             except openai.APIStatusError as e:
                 logger.error(
                     f"stream agent 失败: API [{e.status_code}] "
@@ -694,12 +679,6 @@ async def stream_agent(
                 logger.exception("stream agent 失败")
                 yield f"data: {json.dumps({'type': 'error', 'message': '服务器内部错误'}, ensure_ascii=False)}\n\n"
             finally:
-                if custom_task is not None:
-                    custom_task.cancel()
-                    try:
-                        await custom_task
-                    except (asyncio.CancelledError, Exception):
-                        pass
                 await cleanup()
 
         return StreamingResponse(

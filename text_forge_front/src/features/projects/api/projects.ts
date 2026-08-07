@@ -74,18 +74,6 @@ export async function deleteBook(id: number, version?: number): Promise<void> {
   await apiClient.delete(`/api/books/${id}`, version ? { headers: { 'If-Match': String(version) } } : undefined);
 }
 
-export interface UpdateBookPayload {
-  title?: string;
-  description?: string;
-  genre?: string;
-  totalWordGoal?: number;
-}
-
-export async function updateBook(id: number, payload: UpdateBookPayload): Promise<Book> {
-  const { data } = await apiClient.put<Book>(`/api/books/${id}`, payload);
-  return data;
-}
-
 export interface BookDetail {
   book: Book;
   characters?: { id: number; name: string; description: string }[];
@@ -136,7 +124,18 @@ export async function saveBookContextConfig(id: number, config: BookContextConfi
   return data;
 }
 
-/** 把书籍绑定到某条创作流水线（工作流 id；省略则回退内置流水线） */
+export interface UpdateBookPayload {
+  title?: string;
+  description?: string;
+  genre?: string;
+  totalWordGoal?: number;
+}
+
+export async function updateBook(id: number, payload: UpdateBookPayload): Promise<Book> {
+  const { data } = await apiClient.patch<Book>(`/api/books/${id}`, payload);
+  return data;
+}
+
 export async function bindWorkflow(bookId: number, workflowId: string = BUILTIN_WORKFLOW_ID): Promise<void> {
   await apiClient.put(`/api/books/${bookId}`, { workflow_id: workflowId }).catch(() => {});
 }

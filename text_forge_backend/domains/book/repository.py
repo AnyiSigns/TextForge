@@ -25,8 +25,29 @@ class BookRepository(BaseRepository[Book]):
         return result.scalar_one_or_none()
 
     async def update_book(self, book_id: int, **kwargs) -> Book | None:
-        result = await self.update(book_id, **kwargs)
-        return result
+        # 注意：不能走 self.update（其签名是 book_id, user_id, data，缺少 user_id 会 TypeError）。
+        # 所有权校验已在 service 层完成，这里直接按字段更新。
+        instance = await self.get(book_id)
+        if not instance:
+            return None
+        for key, value in kwargs.items():
+            # workflow_id 允许设为 None 以解除绑定；其余字段仅在有值时才覆盖
+            if key == "workflow_id" or value is not None:
+                setattr(instance, key, value)
+        await self.session.flush()
+        await self.session.refresh(instance)
+        return instance
+
+    async def update(self, book_id: int, user_id: int, data: dict) -> Book | None:
+        instance = await self.get(book_id)
+        if not instance or instance.user_id != user_id:
+            return None
+        for key, value in data.items():
+            if value is not None:
+                setattr(instance, key, value)
+        await self.session.flush()
+        await self.session.refresh(instance)
+        return instance
 
 
 class CharacterRepository(BaseRepository[Character]):

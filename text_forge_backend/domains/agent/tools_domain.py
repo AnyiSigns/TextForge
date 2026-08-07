@@ -1,3 +1,4 @@
+import re
 from typing import Annotated, Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -6,6 +7,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
 from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 
 from config.logging import get_logger
 from core.model_factory import ModelFactory
@@ -74,7 +76,12 @@ def _build_lookup_tools(session_factory):
             vol_ids = list({r[0] for r in vol_res.fetchall()})
             if not vol_ids:
                 return []
-            ch_stmt = select(Chapter).where(Chapter.volume_id.in_(vol_ids)).order_by(Chapter.sort_order, Chapter.id)
+            ch_stmt = (
+                select(Chapter)
+                .where(Chapter.volume_id.in_(vol_ids))
+                .options(selectinload(Chapter.scene_events))
+                .order_by(Chapter.sort_order, Chapter.id)
+            )
             ch_res = await session.execute(ch_stmt)
             chapters = ch_res.scalars().all()
             if chapter_id is not None:
@@ -213,6 +220,56 @@ def _build_lookup_tools(session_factory):
                 for item in items
             ]
 
+    @tool
+    async def lookup_sim_branches(
+        branch_type: Annotated[str | None, "支线类型筛选：backstory/relationship/plot-thread/foreshadow-fill/voice-test"] = None,
+        query: Annotated[str | None, "搜索关键词，匹配支线标题或内容"] = None,
+        book_id: Annotated[int, InjectedState("active_book_id")] = 0,
+    ) -> list[dict]:
+        """查询书籍中的角色支线（角色模拟对话沉淀的结构化素材），可按类型和关键词筛选。
+
+        支线是角色模拟对话中沉淀的创作素材，类型包括：
+        backstory（角色背景）、relationship（关系线）、plot-thread（剧情线索）、
+        foreshadow-fill（伏笔揭示）、voice-test（语音测试）。
+
+        Args:
+            branch_type: 支线类型筛选，不传则返回全部。
+            query: 搜索关键词，匹配支线标题或内容。
+            book_id: 当前活动书籍 ID（自动注入）。
+        """
+        logger.debug(f"[tool] lookup_sim_branches  book_id={book_id}  branch_type={branch_type}")
+        from models.sim_room import SimBranch, SimRoom
+
+        async with session_factory() as session:
+            stmt = (
+                select(SimBranch)
+                .join(SimRoom, SimRoom.id == SimBranch.room_id)
+                .where(SimRoom.book_id == book_id)
+                .order_by(SimBranch.created_at.desc())
+            )
+            items = (await session.execute(stmt)).scalars().all()
+            if branch_type:
+                items = [item for item in items if item.branch_type == branch_type]
+            if query:
+                items = [
+                    item for item in items
+                    if query in (item.title or "") or query in (item.content or "")
+                ]
+            return [
+                {
+                    "id": item.id,
+                    "title": item.title,
+                    "content": item.content,
+                    "branch_type": item.branch_type,
+                    "related_character_ids": item.related_character_ids or [],
+                    "related_location_id": item.related_location_id,
+                    "related_event_id": item.related_event_id,
+                    "related_foreshadowing_id": item.related_foreshadowing_id,
+                    "created_at": item.created_at.isoformat() if item.created_at else "",
+                }
+                for item in items
+            ]
+
     return [
         lookup_characters,
         lookup_outline,
@@ -220,7 +277,47 @@ def _build_lookup_tools(session_factory):
         lookup_timeline,
         lookup_foreshadowing,
         lookup_plot_threads,
+        lookup_sim_branches,
     ]
+
+
+def _apply_unified_diff(old_text: str, diff_text: str) -> str:
+    """把标准 unified diff 应用到 old_text 上，返回新文本。
+
+    仅解析以 @@ 开头的 hunk；上下文行(' ')、删除行('-')、新增行('+')按规则重建。
+    不支持二进制补丁或带 rename 的 diff。hunk 越界或与正文不匹配时抛 ValueError。
+
+    Args:
+        old_text: 当前正文。
+        diff_text: 标准 unified diff 文本（含 @@ hunk 头）。
+
+    Returns:
+        应用 diff 后的新文本。
+    """
+    old_lines = old_text.split("\n")
+    hunks: list[dict] = []
+    cur: dict | None = None
+    for raw in diff_text.split("\n"):
+        if raw.startswith("@@"):
+            m = re.match(r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", raw)
+            if not m:
+                continue
+            cur = {"old_start": int(m.group(1)), "ops": []}
+            hunks.append(cur)
+        elif cur is not None and raw and raw[0] in ("+", "-", " "):
+            cur["ops"].append((raw[0], raw[1:]))
+        # 其余行（如 --- / +++ 文件头、空行）忽略
+    result = list(old_lines)
+    offset = 0
+    for h in hunks:
+        old_count = sum(1 for k, _ in h["ops"] if k in ("-", " "))
+        new_lines = [t for k, t in h["ops"] if k in ("+", " ")]
+        base = h["old_start"] - 1 + offset
+        if base < 0 or base + old_count > len(result):
+            raise ValueError(f"diff 位置越界（hunk 起始行 {h['old_start']}），可能不匹配当前正文")
+        result[base:base + old_count] = new_lines
+        offset += len(new_lines) - old_count
+    return "\n".join(result)
 
 
 def _normalize_status(value: str | None) -> str | None:
@@ -304,6 +401,7 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
                     "id": book.id, "title": book.title,
                     "description": book.description, "genre": book.genre,
                     "total_word_goal": book.total_word_goal, "current_word_count": book.current_word_count,
+                    "workflow_id": book.workflow_id,
                 },
                 "character_count": len(characters),
                 "characters": [
@@ -315,6 +413,39 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
                     {"id": v.id, "title": v.title, "summary": v.summary}
                     for v in volumes
                 ],
+            }
+
+    @tool
+    async def lookup_workflows(
+        user_id: Annotated[int, InjectedState("user_id")] = 0,
+    ) -> dict:
+        """查看当前用户可用的工作流列表（含内置模板）。
+
+        用户要求"按某工作流执行"但未给出工作流 ID 时，先调用本工具
+        查得 ID 与名称，再调用 execute_workflow。
+
+        Returns:
+            工作流列表：id / name / description / builtin / node_count。
+        """
+        logger.debug(f"[tool] lookup_workflows  user_id={user_id}")
+        from models.workflow import Workflow
+
+        async with session_factory() as session:
+            stmt = select(Workflow).where(
+                (Workflow.user_id == user_id) | (Workflow.builtin == True)  # noqa: E712
+            ).order_by(Workflow.builtin.desc(), Workflow.id)
+            workflows = (await session.execute(stmt)).scalars().all()
+            return {
+                "workflows": [
+                    {
+                        "id": w.id,
+                        "name": w.name,
+                        "description": w.description or "",
+                        "builtin": bool(w.builtin),
+                        "node_count": len(w.nodes or []),
+                    }
+                    for w in workflows
+                ]
             }
 
     TEXT_MODE_PROMPTS = {
@@ -640,7 +771,13 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
             stmt = stmt.order_by(ChapterContent.version.desc()).limit(1)
             content = (await session.execute(stmt)).scalar_one_or_none()
             if not content:
-                return {"error": "章节无正文内容", "chapter_id": chapter_id}
+                # 无正文时返回正常结构而非 error，避免被 quality_gate 计为工具失败、
+                # 诱发模型无谓的空转重试；Agent 据此应改用 write_chapter_content 落库。
+                return {
+                    "chapter_id": chapter_id, "version": 0,
+                    "word_count": 0, "truncated": False,
+                    "content": "", "note": "该章节暂无正文（工作流生成的内容尚未落库），如需要保存请调用 write_chapter_content 写入。",
+                }
             text = content.content or ""
             truncated = len(text) > max_chars
             return {
@@ -663,11 +800,138 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
                 return {"error": "章节不存在", "chapter_id": chapter_id}
             if ch.locked:
                 return {"error": "章节已锁定，无法写入", "chapter_id": chapter_id}
-            max_ver = (await session.execute(func.max(ChapterContent.version).where(ChapterContent.chapter_id == chapter_id))).scalar() or 0
+            max_ver = (await session.execute(select(func.max(ChapterContent.version)).where(ChapterContent.chapter_id == chapter_id))).scalar() or 0
             new_content = ChapterContent(chapter_id=chapter_id, content=content, version=max_ver + 1)
             session.add(new_content)
             await session.commit()
             return {"chapter_id": chapter_id, "version": new_content.version, "word_count": len(content)}
+
+    @tool
+    async def write_workflow_candidate(
+        chapter_id: Annotated[int, "目标章节 ID"],
+        node_id: Annotated[str, "候选节点 ID，从工作流执行结果的 content_nodes 中选取（如 writer/polish）"],
+        book_id: Annotated[int, InjectedState("active_book_id")] = 0,
+        workflow_result: Annotated[dict | None, InjectedState("workflow_result")] = None,
+        workflow_node_outputs: Annotated[dict | None, InjectedState("workflow_node_outputs")] = None,
+    ) -> dict:
+        """把工作流候选正文节点（content_nodes）的完整输出写入章节（落库）。
+
+        工作流执行完成后，Agent 只需把用户选定的节点 ID 传给本工具，
+        工具会直接从工作流执行结果中取出该节点的完整正文写入章节（新增版本，不覆盖），
+        无需在对话上下文中传输整篇正文，避免 token 损耗。
+
+        Args:
+            chapter_id: 目标章节 ID。
+            node_id: 用户选定节点的 node_id（从候选列表中的 node_id 字段选择）。
+            workflow_result: 工作流执行结果（InjectedState 自动注入），含 content_nodes。
+            workflow_node_outputs: 工作流各节点完整输出（跨回合持久化），fallback 数据源。
+        """
+        logger.debug(f"[tool] write_workflow_candidate  chapter_id={chapter_id}  node_id={node_id}  book_id={book_id}")
+        nodes = (workflow_result or {}).get("content_nodes") or []
+        node = next((n for n in nodes if n.get("node_id") == node_id), None)
+        content = (node or {}).get("output", "") if node else ""
+        node_label = (node or {}).get("node_label") or node_id
+        # workflow_result 可能在新回合被重置，fallback 到跨回合持久化的 workflow_node_outputs
+        if not content:
+            persisted = (workflow_node_outputs or {}).get(node_id) or {}
+            content = persisted.get("output", "") or ""
+            node_label = persisted.get("label") or node_label
+        if not node and not content:
+            return {
+                "error": f"候选节点 {node_id} 不存在，可用的候选节点：{', '.join(n.get('node_id', '') for n in nodes) or '无'}",
+                "chapter_id": chapter_id,
+            }
+        if not content or not content.strip():
+            return {"error": f"候选节点 {node_id} 输出为空，无法写入", "chapter_id": chapter_id}
+        async with session_factory() as session:
+            ch = (await session.execute(select(Chapter).where(Chapter.id == chapter_id))).scalar_one_or_none()
+            if not ch:
+                return {"error": "章节不存在", "chapter_id": chapter_id}
+            if ch.locked:
+                return {"error": "章节已锁定，无法写入", "chapter_id": chapter_id}
+            max_ver = (await session.execute(select(func.max(ChapterContent.version)).where(ChapterContent.chapter_id == chapter_id))).scalar() or 0
+            new_content = ChapterContent(chapter_id=chapter_id, content=content, version=max_ver + 1)
+            session.add(new_content)
+            await session.commit()
+            return {
+                "chapter_id": chapter_id,
+                "version": new_content.version,
+                "word_count": len(content),
+            }
+
+    @tool
+    async def edit_chapter_content(
+        chapter_id: Annotated[int, "章节ID"],
+        old_text: Annotated[str, "要被替换的原文片段，必须精确匹配当前最新正文中的内容（建议先 read_chapter_content 再编辑）"],
+        new_text: Annotated[str, "替换后的新文本"],
+        all_occurrences: Annotated[bool, "是否替换全部命中：True=替换所有命中；False=仅替换第一处"] = False,
+        book_id: Annotated[int, InjectedState("active_book_id")] = 0,
+    ) -> dict:
+        """精确修改章节正文：在最新版本正文中把 old_text 替换为 new_text，仍新增一个版本（不覆盖旧版本）；章节 locked=True 时拒绝。"""
+        logger.debug(f"[tool] edit_chapter_content  chapter_id={chapter_id}  book_id={book_id}")
+        if not old_text:
+            return {"error": "old_text 不能为空"}
+        async with session_factory() as session:
+            ch = (await session.execute(select(Chapter).where(Chapter.id == chapter_id))).scalar_one_or_none()
+            if not ch:
+                return {"error": "章节不存在", "chapter_id": chapter_id}
+            if ch.locked:
+                return {"error": "章节已锁定，无法修改", "chapter_id": chapter_id}
+            max_ver = (await session.execute(select(func.max(ChapterContent.version)).where(ChapterContent.chapter_id == chapter_id))).scalar() or 0
+            content_row = (await session.execute(
+                select(ChapterContent).where(ChapterContent.chapter_id == chapter_id, ChapterContent.version == max_ver)
+            )).scalar_one_or_none()
+            current = content_row.content or "" if content_row else ""
+            if old_text not in current:
+                return {"error": "未找到匹配的 old_text，请先用 read_chapter_content 读取最新正文后重试", "matched": 0}
+            count = current.count(old_text)
+            if all_occurrences:
+                replaced = current.replace(old_text, new_text)
+            else:
+                replaced = current.replace(old_text, new_text, 1)
+            new_content = ChapterContent(chapter_id=chapter_id, content=replaced, version=max_ver + 1)
+            session.add(new_content)
+            await session.commit()
+            return {
+                "chapter_id": chapter_id, "version": new_content.version,
+                "matched": count, "replaced_all": bool(all_occurrences),
+                "word_count": len(replaced), "preview": replaced[:200],
+            }
+
+    @tool
+    async def apply_chapter_diff(
+        chapter_id: Annotated[int, "章节ID"],
+        unified_diff: Annotated[str, "标准 unified diff 文本（含 @@ hunk 头），对最新正文做局部修改"],
+        book_id: Annotated[int, InjectedState("active_book_id")] = 0,
+    ) -> dict:
+        """用 unified diff 局部修改章节正文：解析 @@ hunk 并应用到最新版本，仍新增一个版本（不覆盖旧版本）；章节 locked=True 时拒绝。"""
+        logger.debug(f"[tool] apply_chapter_diff  chapter_id={chapter_id}  book_id={book_id}")
+        if not unified_diff or not unified_diff.strip():
+            return {"error": "unified_diff 不能为空"}
+        async with session_factory() as session:
+            ch = (await session.execute(select(Chapter).where(Chapter.id == chapter_id))).scalar_one_or_none()
+            if not ch:
+                return {"error": "章节不存在", "chapter_id": chapter_id}
+            if ch.locked:
+                return {"error": "章节已锁定，无法修改", "chapter_id": chapter_id}
+            max_ver = (await session.execute(select(func.max(ChapterContent.version)).where(ChapterContent.chapter_id == chapter_id))).scalar() or 0
+            content_row = (await session.execute(
+                select(ChapterContent).where(ChapterContent.chapter_id == chapter_id, ChapterContent.version == max_ver)
+            )).scalar_one_or_none()
+            current = content_row.content or "" if content_row else ""
+            try:
+                new_text = _apply_unified_diff(current, unified_diff)
+            except ValueError as exc:
+                return {"error": f"diff 应用失败: {exc}", "version": max_ver}
+            if new_text == current:
+                return {"error": "diff 未产生任何改动，请检查 hunk 是否匹配当前正文", "version": max_ver}
+            new_content = ChapterContent(chapter_id=chapter_id, content=new_text, version=max_ver + 1)
+            session.add(new_content)
+            await session.commit()
+            return {
+                "chapter_id": chapter_id, "version": new_content.version,
+                "word_count": len(new_text), "preview": new_text[:200],
+            }
 
     @tool
     async def search(
@@ -794,6 +1058,9 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
         create_outline,
         read_chapter_content,
         write_chapter_content,
+        write_workflow_candidate,
+        edit_chapter_content,
+        apply_chapter_diff,
         search,
         manage_memory,
     ]
@@ -820,13 +1087,3 @@ def build_tools(session_factory, model_config: dict | None = None) -> list:
     tools.append(build_extend_outline_tool(session_factory, model_config=model_config))
     tools.extend(_build_feedback_tools(session_factory, model_config=model_config).values())
     return tools
-
-
-def build_tool_node(session_factory, model_config: dict | None = None, extra_tools=None):
-    from langgraph.prebuilt import ToolNode
-
-    tools = build_tools(session_factory, model_config=model_config)
-    if extra_tools:
-        tools.extend(extra_tools)
-    logger.debug(f"[tool_node] 注册了 {len(tools)} 个工具")
-    return ToolNode(tools)

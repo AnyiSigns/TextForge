@@ -23,7 +23,21 @@ def build_generate_chapter_tool(session_factory, model_config: dict | None = Non
         instruction_hint: Annotated[str | None, "额外的创作提示，会追加到 instruction 末尾"] = None,
         book_id: Annotated[int, InjectedState("active_book_id")] = 0,
     ) -> dict:
-        """Generate chapter content based on the provided instruction and context."""
+        """生成指定章节的完整正文，并自动写入章节内容库（新增版本，不覆盖）。
+
+        依据书籍全局上下文（书名/简介/角色/全书大纲/关联伏笔/进行中情节线/地点/时间线）
+        与前一章衔接内容，按「规划→创作→反思」子图流程生成正文，直接落库。
+
+        Args:
+            chapter_id: 目标章节 ID，必须是当前书籍大纲中已存在的章节。
+            instruction: 创作指令，描述本章的写作要求（主题、冲突、情感走向等）。
+            instruction_hint: 额外的创作提示，会追加到 instruction 末尾。
+            book_id: 当前活动书籍 ID（自动注入）。
+
+        Returns:
+            成功返回 {"status": "completed", "chapter_id", "version", "word_count", ...}；
+            失败返回 {"status": "error", "message"}。
+        """
         logger.debug(f"[tool] generate_chapter  book_id={book_id}  chapter_id={chapter_id}  instruction_len={len(instruction)}")
         if instruction_hint:
             instruction = f"{instruction}\n\n创作提示：{instruction_hint}"

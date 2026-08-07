@@ -27,6 +27,7 @@ async function getModelConfigData() {
     const cfg = await fetchModelConfig();
     const main = cfg.textRoleModels?.main;
     if (!main) return null;
+    const search = cfg.searchConfig;
     return {
       main_config: {
         adapter: main.adapter,
@@ -34,6 +35,9 @@ async function getModelConfigData() {
         api_key: main.api_key,
         model_id: main.model_id,
       },
+      search_config: search && search.api_key
+        ? { provider: search.provider || 'bocha', api_key: search.api_key }
+        : undefined,
     };
   } catch {
     return null;
@@ -50,6 +54,7 @@ export async function generateWizardCards(
   step: number,
   previousCards?: Array<{ step: number; title: string; fields: Array<{ key: string; value: string }> }>,
   excludeTitles?: string[],
+  extraInstruction?: string,
 ): Promise<WizardCard[]> {
   const modelConfigData = await getModelConfigData();
   const { data } = await apiClient.post<WizardGenerateResponse>('/wizard/generate', {
@@ -58,6 +63,7 @@ export async function generateWizardCards(
     previous_cards: previousCards || [],
     exclude_titles: excludeTitles || [],
     model_config_data: modelConfigData,
+    extra_instruction: extraInstruction,
   });
   return data.cards ?? [];
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { ArrowUp, CircleStop, Plus, Shrink, BookOpen, PanelRightOpen, PanelRightClose, RefreshCw, Trash2, Search } from 'lucide-react';
+import { ArrowUp, CircleStop, Plus, Shrink, BookOpen, PanelRightOpen, PanelRightClose, RefreshCw, Trash2, Search, ChevronDown, X } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/shared/lib/cn';
 import { useBookDetailStore } from '../store';
@@ -80,8 +80,21 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
   const [workflowList, setWorkflowList] = useState<workflowApi.Workflow[]>([]);
   const [sessionSearch, setSessionSearch] = useState('');
   const [draftByThreadId, setDraftByThreadId] = useState<Map<string, string>>(new Map());
+  const [modelConfigured, setModelConfigured] = useState<boolean | null>(null);
+  const [expandedNodeCards, setExpandedNodeCards] = useState<Set<string>>(new Set());
+  const seenNodeIdsRef = useRef<Set<string>>(new Set());
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const { sendMessage, abort, resume, messagesEndRef } = useAgentSender();
+
+  useEffect(() => {
+    // 检查是否已配置主模型：未配置时展示引导条
+    import('@/shared/api/models').then(({ fetchModelConfig }) =>
+      fetchModelConfig().then((cfg) => {
+        const main = cfg.textRoleModels?.main;
+        setModelConfigured(!!main?.api_key && !!main?.base_url && !!main?.model_id);
+      }).catch(() => setModelConfigured(false)),
+    );
+  }, []);
 
   const bookId = useBookDetailStore((s) => s.bookId);
   const book = useBookDetailStore((s) => s.book);
@@ -89,7 +102,27 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
   const agentStreaming = useBookDetailStore((s) => s.agentStreaming);
   const agentStatus = useBookDetailStore((s) => s.agentStatus);
   const agentToolLog = useBookDetailStore((s) => s.agentToolLog);
+  const agentNodeStatuses = useBookDetailStore((s) => s.agentNodeStatuses);
+  const nodeOutputs = useBookDetailStore((s) => s.nodeOutputs);
   const agentThreadId = useBookDetailStore((s) => s.agentThreadId);
+
+  // 新出现的节点卡片自动展开（对应气泡可见），节点列表清空时复位
+  useEffect(() => {
+    if (agentNodeStatuses.length === 0) {
+      seenNodeIdsRef.current.clear();
+      setExpandedNodeCards(new Set());
+      return;
+    }
+    const fresh = agentNodeStatuses.filter((n) => !seenNodeIdsRef.current.has(n.nodeId));
+    if (fresh.length > 0) {
+      fresh.forEach((n) => seenNodeIdsRef.current.add(n.nodeId));
+      setExpandedNodeCards((prev) => {
+        const next = new Set(prev);
+        fresh.forEach((n) => next.add(n.nodeId));
+        return next;
+      });
+    }
+  }, [agentNodeStatuses]);
   const pendingReview = useBookDetailStore((s) => s.pendingReview);
   const addAgentMessage = useBookDetailStore((s) => s.addAgentMessage);
   const updateAgentStreamToken = useBookDetailStore((s) => s.updateAgentStreamToken);
@@ -98,6 +131,7 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
   const setAgentThreadId = useBookDetailStore((s) => s.setAgentThreadId);
   const setPendingReview = useBookDetailStore((s) => s.setPendingReview);
   const setCreativePhase = useBookDetailStore((s) => s.setCreativePhase);
+  const setAgentOpen = useBookDetailStore((s) => s.setAgentOpen);
 
   const fetchSessions = useCallback(async () => {
     setLoadingSessions(true);
@@ -195,6 +229,8 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
       agentMessages: state.agentMessages.map((m) =>
         m.type === 'streaming' ? { ...m, type: 'system' } : m
       ),
+      agentNodeStatuses: [],
+      nodeOutputs: {},
     }));
   };
 
@@ -210,6 +246,9 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
     useBookDetailStore.setState({
       agentMessages: [],
       agentToolLog: [],
+      agentNodeStatuses: [],
+      nodeOutputs: {},
+      pendingReview: null,
     });
     setAgentStreaming(false);
     setAgentStatus({ kind: 'idle' });
@@ -226,7 +265,7 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
       });
     }
     setAgentThreadId(s.threadId);
-    useBookDetailStore.setState({ agentMessages: [], agentStreaming: false, agentStatus: { kind: 'idle' }, agentToolLog: [] });
+    useBookDetailStore.setState({ agentMessages: [], agentStreaming: false, agentStatus: { kind: 'idle' }, agentToolLog: [], agentNodeStatuses: [], nodeOutputs: {}, pendingReview: null });
     setInput(draftByThreadId.get(s.threadId) || '');
     try {
       const msgs = await agentApi.fetchAgentMessages(s.id);
@@ -289,6 +328,10 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
   const handleReviewAction = async (action: 'accept' | 'retry' | 'edit' | 'terminate', editedContent?: string) => {
     if (!agentThreadId) return;
     setPendingReview(null);
+    // 清除消息流中的审核卡（review-card 是持久化消息，只清 store 不删消息卡片不会消失）
+    useBookDetailStore.setState((s) => ({
+      agentMessages: s.agentMessages.filter((m) => m.type !== 'review-card'),
+    }));
     try {
       await agentApi.submitReviewAction(agentThreadId, action, editedContent);
       await resume();
@@ -304,8 +347,7 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
   const placeholderText = book ? '输入创作指令…' : '输入消息…';
 
   const renderAgentMessage = (msg: (typeof agentMessages)[number], key: number) => {
-    if (msg.type === 'review-card' && msg.token) {
-      const reviewData = safeParseJSON(msg.token);
+    if (msg.type === 'review-card' && msg.token) {      const reviewData = safeParseJSON(msg.token);
       return reviewData ? (
         <ReviewCard key={key} data={reviewData as Record<string, unknown>} onAction={handleReviewAction} />
       ) : null;
@@ -313,6 +355,109 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
     if (msg.type === 'propose-cards' && msg.token) {
       const cardData = safeParseJSON(msg.token);
       return cardData ? <ProposeCards key={key} data={cardData as Record<string, unknown>} /> : null;
+    }
+    if (msg.type === 'node-output') {
+      return (
+        <div key={key} className="flex justify-start">
+          <div className="max-w-[88%] px-3 py-2 border-l-2 border-foreground/15 bg-[#1c1b1a]/[0.02] text-[13px] leading-relaxed">
+            {msg.label && (
+              <div className="text-[10px] text-foreground/40 mb-0.5 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-foreground/25 inline-block" />
+                {msg.label} · 节点输出
+              </div>
+            )}
+            {msg.content ? (
+              <MarkdownContent>{msg.content}</MarkdownContent>
+            ) : (
+              <span className="text-foreground/30 text-[12px]">节点执行中，正文实时生成…</span>
+            )}
+          </div>
+        </div>
+      );
+    }
+    if (msg.type === 'tool') {
+      // 工具卡片作为独立消息：running 显示「请求外援中」，done 显示「外援已找到 ✓」，
+      // 位置由插入时刻决定（工具在回复前开始 → 卡片在回复前），不随流式消息跳动。
+      const running = msg.toolStatus === 'running';
+      return (
+        <div key={key} className="flex justify-start">
+          <div className="mx-1 mb-1 flex items-center gap-2 rounded-lg border border-border/40 bg-background/40 px-3 py-1.5 text-[11px]">
+            {running ? (
+              <>
+                <span className="thinking-shimmer-text">{msg.tool === 'execute_workflow' || msg.tool === 'execute_workflow_node' ? '执行工作流中' : '请求外援中'}</span>
+                <span className="ml-auto inline-block h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-foreground/30 border-t-foreground/70" />
+              </>
+            ) : (
+              <>
+                <span className="text-foreground/60">{msg.tool === 'execute_workflow' || msg.tool === 'execute_workflow_node' ? '工作流已启动' : '外援已找到'}</span>
+                <span className="ml-auto text-foreground/70">✓</span>
+              </>
+            )}
+          </div>
+        </div>
+      );
+    }
+    if (msg.type === 'node') {
+      // 节点卡片同样作为独立消息：状态（running/completed/failed）+ 展开时展示 nodeOutputs 正文
+      const expanded = expandedNodeCards.has(msg.nodeId || '');
+      return (
+        <div key={key} className="flex justify-start">
+          <div className="w-full rounded-lg border border-border/40 bg-background/40 overflow-hidden">
+            <button
+              onClick={() => {
+                if (!msg.nodeId) return;
+                setExpandedNodeCards((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(msg.nodeId!)) next.delete(msg.nodeId!);
+                  else next.add(msg.nodeId!);
+                  return next;
+                });
+              }}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] bg-transparent border-none cursor-pointer hover:bg-muted/40 text-left"
+            >
+              {msg.nodeStatus === 'running' ? (
+                <>
+                  <span className="thinking-shimmer-text">{msg.label}</span>
+                  <span className="ml-auto inline-block h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-foreground/30 border-t-foreground/70" />
+                </>
+              ) : msg.nodeStatus === 'completed' ? (
+                <>
+                  <span className="text-foreground/70">{msg.label}</span>
+                  {msg.tokens !== undefined && (
+                    <span className="text-[10px] text-foreground/30 tabular-nums">{msg.tokens}t</span>
+                  )}
+                  <span className="ml-auto text-foreground/60">✓ 完成</span>
+                </>
+              ) : (
+                <>
+                  <span className="text-red-500/70">{msg.label}</span>
+                  <span className="ml-auto text-red-500/60">✗ 失败</span>
+                </>
+              )}
+              <ChevronDown size={11} strokeWidth={1.5} className={cn('shrink-0 text-foreground/30 transition-transform', expanded && 'rotate-180')} />
+            </button>
+            {expanded && (
+              <div className="px-3 pb-2 space-y-1">
+                {msg.nodeStatus === 'failed' && msg.reason && (
+                  <div className="text-[10px] text-red-500/60">失败原因：{msg.reason}</div>
+                )}
+                {msg.nodeStatus === 'completed' && msg.tokens !== undefined && (
+                  <div className="text-[10px] text-foreground/35">输出 {msg.tokens} tokens</div>
+                )}
+                {msg.nodeId && (msg.content || nodeOutputs[msg.nodeId]) ? (
+                  <div className="max-h-64 overflow-y-auto rounded-md border-l-2 border-foreground/15 bg-[#1c1b1a]/[0.02] px-2.5 py-2 text-[12px] leading-relaxed text-foreground/70">
+                    <MarkdownContent>{msg.content || nodeOutputs[msg.nodeId]}</MarkdownContent>
+                  </div>
+                ) : msg.nodeStatus === 'running' ? (
+                  <div className="text-[11px] text-foreground/30">节点执行中，正文实时生成…</div>
+                ) : (
+                  <div className="text-[10px] text-foreground/25">暂无输出</div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      );
     }
     if (msg.type === 'streaming') {
       const hasContent = !!msg.content;
@@ -395,8 +540,24 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
               <span className={cn('absolute bottom-0 right-0 w-1 h-1 border-r border-b', panelFullscreen ? 'border-foreground/60' : 'border-foreground/40')} />
             </span>
           </button>
+          <button
+            onClick={() => setAgentOpen(false)}
+            className="agent-icon-btn"
+            title="关闭面板"
+          >
+            <X size={14} strokeWidth={1.8} />
+          </button>
         </div>
       </div>
+
+      {modelConfigured === false && (
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-border/60 bg-destructive/[0.04]">
+          <span className="text-[11px] text-destructive/80 flex-1">尚未配置模型，AI 助手无法工作</span>
+          <Link href="/settings" className="text-[11px] font-medium text-foreground underline underline-offset-2 hover:opacity-70">
+            去设置
+          </Link>
+        </div>
+      )}
 
       <div className="ide-agent-main">
         <div className="ide-agent-chat">
@@ -439,35 +600,18 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
             )}
 
             {agentMessages
-              .filter((m) => m.type !== 'streaming')
-              .map((msg, idx) => renderAgentMessage(msg, idx))}
-            {agentToolLog.length > 0 && (() => {
-              const toolsPending =
-                agentToolLog.filter((e) => e.status === 'start').length -
-                  agentToolLog.filter((e) => e.status === 'end').length >
-                0;
-              const running = agentStreaming && toolsPending;
-              return (
-                <div className="mx-1 mb-1 flex items-center gap-2 rounded-lg border border-border/40 bg-background/40 px-3 py-1.5 text-[11px]">
-                  {running ? (
-                    <>
-                      <span className="thinking-shimmer-text">请求外援中</span>
-                      <span className="ml-auto inline-block h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-foreground/30 border-t-foreground/70" />
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-foreground/60">外援已找到</span>
-                      <span className="ml-auto text-foreground/70">✓</span>
-                    </>
-                  )}
-                </div>
-              );
-            })()}
-            {agentMessages
-              .filter((m) => m.type === 'streaming')
+              .filter((m) => {
+                // 工具卡片/节点卡片是独立消息（顺序由插入时刻决定），正常渲染；
+                // 旧 node-output 消息已迁移到节点卡片内部，过滤掉避免重复。
+                // streaming 消息也按数组原位渲染（不再单独沉底），避免流式结束后
+                // 消息从底部「跳回」原位造成卡片/文字上下跳动。
+                if (m.type === 'node-output') return false;
+                return true;
+              })
               .map((msg, idx) => renderAgentMessage(msg, idx))}
             <div ref={messagesEndRef} />
-            {agentStatus.kind === 'working' && agentStatus.label && (
+            {/* 工具卡片/节点卡片已作为独立消息渲染在消息流中（顺序由插入时刻决定） */}
+            {agentStatus.kind === 'working' && agentStatus.label && !agentMessages.some((m) => m.type === 'node') && (
               <div className="px-3 py-1.5 text-[11px]">
                 <span className="thinking-shimmer-text">{agentStatus.label}</span>
               </div>

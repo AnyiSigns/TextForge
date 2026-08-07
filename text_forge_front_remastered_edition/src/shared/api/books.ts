@@ -57,7 +57,7 @@ export async function deleteVolume(volumeId: number): Promise<void> {
 
 export async function createChapter(
   volumeId: number,
-  body: { title: string; summary?: string; characterIds?: number[]; locked?: boolean },
+  body: { title: string; summary?: string; locked?: boolean },
 ): Promise<Chapter> {
   const { data } = await apiClient.post<Chapter>(`/chapters/volumes/${volumeId}`, body);
   return data;

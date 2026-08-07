@@ -25,9 +25,13 @@ export function TimelineBar() {
 
   const openEditor = useEditorStore((s) => s.open);
 
+  const updateSceneEvent = useEntityStore((s) => s.updateSceneEvent);
+  const moveSceneEvent = useEntityStore((s) => s.moveSceneEvent);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(800);
   const draggingRef = useRef(false);
+  const draggingEventRef = useRef<{ id: number; startX: number; moved: boolean } | null>(null);
 
   // 计算全局时间范围
   const timeRange = useMemo(() => {
@@ -171,6 +175,38 @@ export function TimelineBar() {
     [setCursorTs, setSelectedEvent, openEditor],
   );
 
+  // 拖拽事件点重排：拖动时只更新本地时间轴位置，松手才落库
+  const handleEventPointerDown = (event: (typeof sceneEvents)[number], e: React.PointerEvent) => {
+    e.stopPropagation();
+    draggingEventRef.current = { id: event.id, startX: e.clientX, moved: false };
+    let lastTs = event.storyTs;
+    const onMove = (ev: PointerEvent) => {
+      if (!draggingEventRef.current || !containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const x = ev.clientX - rect.left;
+      const clampedX = Math.max(PADDING_X, Math.min(PADDING_X + innerWidth, x));
+      lastTs = xToTs(clampedX);
+      if (Math.abs(ev.clientX - draggingEventRef.current.startX) > 3) draggingEventRef.current.moved = true;
+      moveSceneEvent(event.id, lastTs);
+    };
+    const onUp = () => {
+      const drag = draggingEventRef.current;
+      draggingEventRef.current = null;
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      if (!drag) return;
+      if (drag.moved) {
+        updateSceneEvent(drag.id, { storyTs: lastTs });
+      } else {
+        setCursorTs(event.storyTs);
+        setSelectedEvent(drag.id);
+        openEditor('scene', drag.id);
+      }
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+
   const handleChapterClick = useCallback(
     (minTs: number) => {
       setCursorTs(minTs);
@@ -256,7 +292,7 @@ export function TimelineBar() {
             x={tsToX(event.storyTs)}
             isSelected={selectedEventId === event.id}
             isActive={event.storyTs <= cursorTs}
-            onClick={() => handleEventClick(event.id, event.storyTs)}
+            onPointerDown={(e) => handleEventPointerDown(event, e)}
           />
         ))}
 

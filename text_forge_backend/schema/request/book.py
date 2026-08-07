@@ -44,7 +44,6 @@ class ChapterRequest(BaseModel):
 
     title: str
     summary: str | None = None
-    character_ids: list[int] = Field(default_factory=list, alias="characterIds")
     locked: bool | None = None
     generation_batch: int | None = Field(default=None, alias="generationBatch")
 
@@ -54,7 +53,6 @@ class ChapterUpdate(BaseModel):
 
     title: str | None = None
     summary: str | None = None
-    character_ids: list[int] | None = Field(default=None, alias="characterIds")
     locked: bool | None = None
     generation_batch: int | None = Field(default=None, alias="generationBatch")
 

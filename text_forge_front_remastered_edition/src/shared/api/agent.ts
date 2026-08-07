@@ -9,11 +9,12 @@ interface AgentStartResult {
   type: string;
 }
 
-async function getModelConfigData() {
+export async function getModelConfigData() {
   try {
     const cfg = await fetchModelConfig();
     const main = cfg.textRoleModels?.main;
     if (!main) return null;
+    const search = cfg.searchConfig;
     return {
       main_config: {
         adapter: main.adapter,
@@ -21,6 +22,9 @@ async function getModelConfigData() {
         api_key: main.api_key,
         model_id: main.model_id,
       },
+      search_config: search && search.api_key
+        ? { provider: search.provider || 'bocha', api_key: search.api_key }
+        : undefined,
     };
   } catch {
     return null;
@@ -41,9 +45,10 @@ export async function streamAgent(
   threadId: string,
   message: string,
   onEvent: (event: SSEEvent) => void,
-  onDone: (finalReply: string) => void,
+  onDone: (finalReply: string, title?: string) => void,
   onError: (err: string) => void,
   abortSignal?: AbortSignal,
+  bookId?: number,
 ): Promise<void> {
   const token = getAccessToken();
   const modelConfigData = await getModelConfigData();
@@ -53,7 +58,12 @@ export async function streamAgent(
   const res = await fetch(`/api/agent/stream/${threadId}`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ thread_id: threadId, message, model_config_data: modelConfigData }),
+    body: JSON.stringify({
+      thread_id: threadId,
+      message,
+      model_config_data: modelConfigData,
+      book_id: bookId,
+    }),
     signal: abortSignal,
   });
 
@@ -81,9 +91,8 @@ export async function streamAgent(
             onEvent(event);
 
             if (event.type === 'end') {
-              onDone(event.reply || '');
-              // 不立即返回，继续读取后续事件（如 title_update），流结束自然退出，
-              // 以免丢失 end 之后推送的会话标题更新。
+              onDone(event.reply || '', (event as any).title);
+              // 不立即返回，继续读取后续事件，流结束自然退出。
             }
             if (event.type === 'error') {
               onError(event.message || '未知错误');
@@ -103,11 +112,12 @@ export async function streamAgent(
 export async function resumeAgent(
   threadId: string,
   onEvent: (event: SSEEvent) => void,
-  onDone: (finalReply: string) => void,
+  onDone: (finalReply: string, title?: string) => void,
   onError: (err: string) => void,
   abortSignal?: AbortSignal,
+  bookId?: number,
 ): Promise<void> {
-  await streamAgent(threadId, '', onEvent, onDone, onError, abortSignal);
+  await streamAgent(threadId, '', onEvent, onDone, onError, abortSignal, bookId);
 }
 
 export async function submitReviewAction(

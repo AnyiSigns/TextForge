@@ -61,14 +61,16 @@ export default function WorkflowListPage() {
           <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">内置模板</div>
           <div className="grid grid-cols-3 gap-3">
             {builtin.map((wf) => (
-              <Card key={wf.id} className="p-4 cursor-pointer hover:border-foreground/10 transition-colors">
-                <div className="flex items-center gap-2 mb-2">
-                  <GitBranch size={14} className="text-muted-foreground" />
-                  <span className="text-sm font-medium">{wf.name}</span>
-                </div>
-                <p className="text-[11px] text-muted-foreground line-clamp-2">{wf.description || '无描述'}</p>
-                <div className="text-[10px] text-muted-foreground mt-2">{wf.nodes?.length ?? 0} 个节点</div>
-              </Card>
+              <Link key={wf.id} href={`/workflow/${wf.id}`} className="no-underline text-foreground">
+                <Card className="p-4 cursor-pointer hover:border-foreground/10 transition-colors">
+                  <div className="flex items-center gap-2 mb-2">
+                    <GitBranch size={14} className="text-muted-foreground" />
+                    <span className="text-sm font-medium">{wf.name}</span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground line-clamp-2">{wf.description || '无描述'}</p>
+                  <div className="text-[10px] text-muted-foreground mt-2">{wf.nodes?.length ?? 0} 个节点</div>
+                </Card>
+              </Link>
             ))}
           </div>
         </div>

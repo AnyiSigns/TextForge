@@ -14,6 +14,7 @@ export { OutlinePanel } from './ui/OutlinePanel';
 
 export { ProcessNav } from './ui/ProcessNav';
 export { ProjectCard } from './ui/ProjectCard';
+export { ProjectEditDrawer } from './ui/ProjectEditDrawer';
 export { ProjectCharactersTab } from './ui/ProjectCharactersTab';
 export { ProjectExport } from './ui/ProjectExport';
 export { ProjectGuide } from './ui/ProjectGuide';

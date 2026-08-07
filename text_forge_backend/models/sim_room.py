@@ -19,7 +19,6 @@ class SimRoom(Base):
     summary: Mapped[str] = mapped_column(Text, nullable=True, comment="对话结束后的摘要")
     status: Mapped[str] = mapped_column(String(20), default="active", comment="房间状态: active/archived")
     round_count: Mapped[int] = mapped_column(Integer, default=0, comment="已经历的对话轮数")
-    setting: Mapped[str] = mapped_column(Text, nullable=True, comment="场景设定描述")
     location_id: Mapped[int] = mapped_column(ForeignKey("locations.id", ondelete="SET NULL"), nullable=True, comment="关联地点ID")
     related_event_ids: Mapped[list] = mapped_column(JSONB, default=[], comment="关联时间线事件ID列表")
     related_foreshadowing_ids: Mapped[list] = mapped_column(JSONB, default=[], comment="关联伏笔ID列表")

@@ -175,6 +175,30 @@ class BookService:
                 status_code=500, detail="更新书籍失败", error_code="UPDATE_BOOK_FAILED"
             )
 
+    async def patch_book(self, user_id: int, book_id: int, data: dict):
+        """部分更新书籍信息，需校验所有权。
+
+        Args:
+            user_id: 用户 ID。
+            book_id: 书籍 ID。
+            data: 要更新的字段字典。
+
+        Returns:
+            更新后的 Book 实例，不存在或无权访问返回 None。
+        """
+        try:
+            instance = await self.book_repo.update(book_id, user_id, data)
+            if not instance:
+                return None
+            await self.session.commit()
+            await self.session.refresh(instance)
+            return instance
+        except Exception:
+            logger.error("书籍更新失败", exc_info=True)
+            raise AppException(
+                status_code=500, detail="更新书籍失败", error_code="UPDATE_BOOK_FAILED"
+            )
+
     async def delete_book(self, user_id: int, book_id: int):
         """删除书籍，需校验所有权。
 

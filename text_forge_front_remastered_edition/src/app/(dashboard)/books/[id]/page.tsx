@@ -50,6 +50,13 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
     void loadFromApi(bookId);
   }, [bookId, loadFromApi]);
 
+  // Agent 生成/修改大纲（如 AI 追加章节）后刷新左侧大纲树
+  useEffect(() => {
+    const onRefresh = () => { void loadFromApi(bookId); };
+    window.addEventListener('textforge:refresh-outlines', onRefresh);
+    return () => window.removeEventListener('textforge:refresh-outlines', onRefresh);
+  }, [bookId, loadFromApi]);
+
   const handleAgentToggle = () => {
     const opening = !agentOpen;
     setAgentOpen(opening);
