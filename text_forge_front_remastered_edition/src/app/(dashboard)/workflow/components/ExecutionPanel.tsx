@@ -182,10 +182,10 @@ export function ExecutionPanel({ workflow, bookId, onClose }: ExecutionPanelProp
   const failedCount = statuses.filter((s) => s.status === 'failed').length;
 
   return (
-    <div className="border-t border-[#1c1b1a]/[0.08] bg-[#f4f3f0]">
-      <div className="flex items-center justify-between px-4 py-2 border-b border-[#1c1b1a]/[0.06]">
+    <div className="border-t border-border bg-background">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-border">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-[#1c1b1a]/30 shrink-0">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-foreground/30 shrink-0">
             运行面板
           </span>
           {/* 目标章节选择 */}
@@ -193,7 +193,7 @@ export function ExecutionPanel({ workflow, bookId, onClose }: ExecutionPanelProp
             value={targetChapterId}
             onChange={(e) => setTargetChapterId(e.target.value ? Number(e.target.value) : '')}
             disabled={running}
-            className="h-6 max-w-[180px] px-1.5 rounded text-[10px] bg-white border border-[#1c1b1a]/[0.10] focus:outline-none text-[#1c1b1a]/60 disabled:opacity-50"
+            className="h-6 max-w-[180px] px-1.5 rounded text-[10px] bg-card border border-border focus:outline-none text-foreground/60 disabled:opacity-50"
             title="选择目标章节后，工作流将按该章写作目标生成"
           >
             <option value="">目标章节：不限</option>
@@ -204,12 +204,12 @@ export function ExecutionPanel({ workflow, bookId, onClose }: ExecutionPanelProp
             ))}
           </select>
           {running && (
-            <span className="text-[10px] text-[#1c1b1a]/40 shrink-0">
+            <span className="text-[10px] text-foreground/40 shrink-0">
               {completedCount}/{statuses.length} 完成
             </span>
           )}
           {!running && completedCount > 0 && (
-            <span className="text-[10px] text-[#1c1b1a]/40 shrink-0">
+            <span className="text-[10px] text-foreground/40 shrink-0">
               完成 {completedCount}/{statuses.length}
               {failedCount > 0 && ` (${failedCount} 失败)`}
             </span>
@@ -220,7 +220,7 @@ export function ExecutionPanel({ workflow, bookId, onClose }: ExecutionPanelProp
             <button
               onClick={handleRun}
               disabled={!bookId}
-              className="flex items-center gap-1 h-7 px-3 rounded-md bg-[#1c1b1a] text-[#f4f3f0] text-xs font-medium border-none cursor-pointer hover:opacity-90 disabled:opacity-40"
+              className="flex items-center gap-1 h-7 px-3 rounded-md bg-foreground text-background text-xs font-medium border-none cursor-pointer hover:opacity-90 disabled:opacity-40"
               title={!bookId ? '未选择活动书籍' : undefined}
             >
               <Play size={12} /> 运行
@@ -228,14 +228,14 @@ export function ExecutionPanel({ workflow, bookId, onClose }: ExecutionPanelProp
           ) : (
             <button
               onClick={handleStop}
-              className="flex items-center gap-1 h-7 px-3 rounded-md bg-[#1c1b1a]/[0.06] text-[#1c1b1a] text-xs font-medium border border-[#1c1b1a]/[0.10] cursor-pointer hover:bg-[#1c1b1a]/[0.10]"
+              className="flex items-center gap-1 h-7 px-3 rounded-md bg-foreground/[0.06] text-foreground text-xs font-medium border border-border cursor-pointer hover:bg-foreground/[0.10]"
             >
               停止
             </button>
           )}
           <button
             onClick={onClose}
-            className="w-5 h-5 flex items-center justify-center rounded bg-transparent border-none cursor-pointer text-[#1c1b1a]/20 hover:text-[#1c1b1a]/50"
+            className="w-5 h-5 flex items-center justify-center rounded bg-transparent border-none cursor-pointer text-foreground/20 hover:text-foreground/50"
           >
             <X size={12} />
           </button>
@@ -248,34 +248,34 @@ export function ExecutionPanel({ workflow, bookId, onClose }: ExecutionPanelProp
             key={s.nodeId}
             className={cn(
               'flex items-center gap-2 px-2 py-1 rounded text-xs',
-              s.status === 'running' && 'bg-[#1c1b1a]/[0.04]',
+              s.status === 'running' && 'bg-foreground/[0.04]',
             )}
           >
             {s.status === 'completed' && (
-              <CheckCircle2 size={12} className="text-[#1c1b1a]/40 shrink-0" />
+              <CheckCircle2 size={12} className="text-foreground/40 shrink-0" />
             )}
             {s.status === 'failed' && (
               <XCircle size={12} className="text-red-500/60 shrink-0" />
             )}
             {s.status === 'running' && (
-              <Loader2 size={12} className="text-[#1c1b1a]/40 animate-spin shrink-0" />
+              <Loader2 size={12} className="text-foreground/40 animate-spin shrink-0" />
             )}
             {s.status === 'pending' && (
-              <div className="w-3 h-3 rounded-full border border-[#1c1b1a]/[0.12] shrink-0" />
+              <div className="w-3 h-3 rounded-full border border-foreground/[0.12] shrink-0" />
             )}
             <span
               className={cn(
                 'flex-1 truncate',
-                s.status === 'completed' && 'text-[#1c1b1a]/50',
+                s.status === 'completed' && 'text-foreground/50',
                 s.status === 'failed' && 'text-red-500/70',
-                s.status === 'running' && 'text-[#1c1b1a]/70 font-medium',
-                s.status === 'pending' && 'text-[#1c1b1a]/30',
+                s.status === 'running' && 'text-foreground/70 font-medium',
+                s.status === 'pending' && 'text-foreground/30',
               )}
             >
               {s.label}
             </span>
             {s.tokens !== undefined && (
-              <span className="text-[10px] text-[#1c1b1a]/25 tabular-nums shrink-0">
+              <span className="text-[10px] text-foreground/25 tabular-nums shrink-0">
                 {s.tokens}t
               </span>
             )}
@@ -286,15 +286,15 @@ export function ExecutionPanel({ workflow, bookId, onClose }: ExecutionPanelProp
             )}
           {s.output && (
             <div className="pl-8 pr-2 pb-2 -mt-1">
-              <div className="text-[10px] leading-relaxed text-[#1c1b1a]/45 bg-[#1c1b1a]/[0.03] rounded-md px-2 py-1.5 max-h-[80px] overflow-y-auto whitespace-pre-wrap break-words">
+              <div className="text-[10px] leading-relaxed text-foreground/45 bg-foreground/[0.03] rounded-md px-2 py-1.5 max-h-[80px] overflow-y-auto whitespace-pre-wrap break-words">
                 {s.output}
-                {s.status === 'running' && <span className="inline-block w-1 h-3 bg-[#1c1b1a]/30 ml-0.5 animate-pulse" />}
+                {s.status === 'running' && <span className="inline-block w-1 h-3 bg-foreground/30 ml-0.5 animate-pulse" />}
               </div>
             </div>
           )}
         </div>
       ))}        {statuses.length === 0 && (
-          <div className="text-[10px] text-[#1c1b1a]/25 text-center py-2">
+          <div className="text-[10px] text-foreground/25 text-center py-2">
             无节点
           </div>
         )}

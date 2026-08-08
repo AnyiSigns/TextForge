@@ -82,15 +82,15 @@ interface NodePaletteProps {
 
 export function NodePalette({ onDragStart }: NodePaletteProps) {
   return (
-    <div className="w-[200px] shrink-0 border-r border-[#1c1b1a]/[0.08] bg-[#f4f3f0] p-3 space-y-4 overflow-y-auto">
+    <div className="w-[200px] shrink-0 border-r border-border bg-background p-3 space-y-4 overflow-y-auto">
       {LAYER_GROUPS.map(({ key, label, icon: Icon }) => {
         const roles = ROLE_TEMPLATES.filter((t) => t.layer === key);
         if (roles.length === 0) return null;
         return (
           <div key={key}>
             <div className="flex items-center gap-1.5 mb-2">
-              <Icon size={12} className="text-[#1c1b1a]/30" />
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-[#1c1b1a]/30">
+              <Icon size={12} className="text-foreground/30" />
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-foreground/30">
                 {label}
               </span>
             </div>
@@ -100,13 +100,13 @@ export function NodePalette({ onDragStart }: NodePaletteProps) {
                   key={role.id}
                   draggable
                   onDragStart={(e) => onDragStart(e, role)}
-                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-md cursor-grab border border-dashed border-[#1c1b1a]/[0.08] hover:border-[#1c1b1a]/[0.15] hover:bg-[#1c1b1a]/[0.02] transition-colors"
+                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-md cursor-grab border border-dashed border-border hover:border-foreground/[0.15] hover:bg-foreground/[0.02] transition-colors"
                 >
-                  <Plus size={10} className="text-[#1c1b1a]/25" />
-                  <span className="text-[11px] font-medium text-[#1c1b1a]/60 truncate">
+                  <Plus size={10} className="text-foreground/25" />
+                  <span className="text-[11px] font-medium text-foreground/60 truncate">
                     {role.label}
                   </span>
-                  <span className="ml-auto text-[8px] text-[#1c1b1a]/25 shrink-0">
+                  <span className="ml-auto text-[8px] text-foreground/25 shrink-0">
                     {role.executor === 'audit' ? '审计' : '主模型'}
                   </span>
                 </div>

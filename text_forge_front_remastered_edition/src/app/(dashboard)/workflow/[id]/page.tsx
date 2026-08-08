@@ -157,8 +157,8 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
     source: e.from,
     target: e.to,
     type: 'smoothstep',
-    style: { stroke: '#1c1b1a', strokeWidth: 1, opacity: 0.25 },
-    markerEnd: { type: MarkerType.ArrowClosed, color: '#1c1b1a', width: 8, height: 8 },
+    style: { stroke: 'var(--foreground)', strokeWidth: 1, opacity: 0.25 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--foreground)', width: 8, height: 8 },
   }));
 
   const [nodes, setNodes, onNodesChange] = useNodesState(layoutNodes(initialNodes, initialEdges));
@@ -172,8 +172,8 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
       source: e.from,
       target: e.to,
       type: 'smoothstep',
-      style: { stroke: '#1c1b1a', strokeWidth: 1, opacity: 0.25 },
-      markerEnd: { type: MarkerType.ArrowClosed, color: '#1c1b1a', width: 8, height: 8 },
+      style: { stroke: 'var(--foreground)', strokeWidth: 1, opacity: 0.25 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--foreground)', width: 8, height: 8 },
     }));
     setNodes(layoutNodes(flowNodes, flowEdges));
     setEdges(flowEdges);
@@ -266,19 +266,19 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#faf9f7] glass-exempt">
-      <div className="flex items-center justify-between px-4 py-2 border-b border-[#1c1b1a]/[0.06] shrink-0 bg-[#f4f3f0]">
+    <div className="flex flex-col h-full bg-card glass-exempt">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-border shrink-0 bg-background">
         <div className="flex items-center gap-3">
-          <Link href="/workflow" className="text-[#1c1b1a]/30 hover:text-[#1c1b1a]/60">
+          <Link href="/workflow" className="text-foreground/30 hover:text-foreground/60">
             <ArrowLeft size={16} />
           </Link>
           <input
             value={workflow.name}
             onChange={(e) => setWorkflow((w) => ({ ...w, name: e.target.value }))}
-            className="text-sm font-medium bg-transparent border-none outline-none min-w-[150px] text-[#1c1b1a]"
+            className="text-sm font-medium bg-transparent border-none outline-none min-w-[150px] text-foreground"
             placeholder="工作流名称"
           />
-          <span className="text-[10px] text-[#1c1b1a]/25">
+          <span className="text-[10px] text-foreground/25">
             {workflow.nodes.length} 个节点 · {workflow.edges.length} 条连线
           </span>
         </div>
@@ -286,7 +286,7 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
           <select
             value={activeBookId ?? ''}
             onChange={(e) => setActiveBookId(e.target.value ? Number(e.target.value) : null)}
-            className="h-7 px-2 rounded-md text-[11px] bg-white border border-[#1c1b1a]/[0.10] text-[#1c1b1a] focus:outline-none cursor-pointer"
+            className="h-7 px-2 rounded-md text-[11px] bg-background border border-border text-foreground focus:outline-none cursor-pointer"
             title="选择执行目标书籍"
           >
             <option value="">选择目标书籍...</option>
@@ -296,14 +296,14 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
           </select>
           <button
             onClick={() => setShowExecution((v) => !v)}
-            className="flex items-center gap-1 h-7 px-3 rounded-md text-xs font-medium border border-[#1c1b1a]/[0.10] bg-white text-[#1c1b1a] cursor-pointer hover:bg-[#1c1b1a]/[0.02]"
+            className="flex items-center gap-1 h-7 px-3 rounded-md text-xs font-medium border border-border bg-background text-foreground cursor-pointer hover:bg-foreground/[0.02]"
           >
             <Play size={12} /> 运行
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex items-center gap-1 h-7 px-3 rounded-md bg-[#1c1b1a] text-[#f4f3f0] text-xs font-medium border-none cursor-pointer hover:opacity-90 disabled:opacity-50"
+            className="flex items-center gap-1 h-7 px-3 rounded-md bg-foreground text-background text-xs font-medium border-none cursor-pointer hover:opacity-90 disabled:opacity-50"
           >
             <Save size={12} /> {saving ? '保存中...' : '保存'}
           </button>
@@ -324,23 +324,23 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
             nodeTypes={nodeTypes}
             fitView
             fitViewOptions={{ padding: 0.3 }}
-            className="bg-[#faf9f7]"
-            style={{ background: '#faf9f7' }}
+            className="bg-card"
+            style={{ background: 'var(--card)' }}
             defaultEdgeOptions={{
               type: 'smoothstep',
-              style: { stroke: '#1c1b1a', strokeWidth: 1, opacity: 0.25 },
-              markerEnd: { type: MarkerType.ArrowClosed, color: '#1c1b1a', width: 8, height: 8 },
+              style: { stroke: 'var(--foreground)', strokeWidth: 1, opacity: 0.25 },
+              markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--foreground)', width: 8, height: 8 },
             }}
           >
             <Controls
-              className="!bg-white !border-[#1c1b1a]/[0.08] !rounded-lg !shadow-sm [&>button]:!bg-white [&>button]:!border-[#1c1b1a]/[0.08] [&>button]:!text-[#1c1b1a]/40"
+              className="!bg-background !border-border !rounded-lg !shadow-sm [&>button]:!bg-background [&>button]:!border-border [&>button]:!text-foreground/40"
             />
             <MiniMap
-              nodeColor="#1c1b1a"
-              maskColor="rgba(28,27,26,0.02)"
-              className="!bg-[#f4f3f0] !border-[#1c1b1a]/[0.08] !rounded-lg !shadow-sm"
+              nodeColor="var(--foreground)"
+              maskColor="color-mix(in srgb, var(--foreground) 4%, transparent)"
+              className="!bg-background !border-border !rounded-lg !shadow-sm"
             />
-            <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#1c1b1a" style={{ opacity: 0.04 }} />
+            <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--foreground)" style={{ opacity: 0.04 }} />
           </ReactFlow>
         </div>
 

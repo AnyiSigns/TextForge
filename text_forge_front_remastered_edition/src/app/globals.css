@@ -609,3 +609,11 @@ html.glass .glass-exempt * {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
+/* 豁免区内同时还原玻璃改动的卡片/边框变量为实色，避免半透明 */
+html.glass .glass-exempt {
+  --card: var(--background);
+  --popover: var(--background);
+  --secondary: var(--background);
+  --muted: var(--background);
+  --border: var(--input);
+}

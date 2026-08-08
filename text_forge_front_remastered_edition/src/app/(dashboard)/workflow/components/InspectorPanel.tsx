@@ -29,8 +29,8 @@ interface InspectorPanelProps {
 export function InspectorPanel({ node, onChange, onClose }: InspectorPanelProps) {
   if (!node) {
     return (
-      <div className="w-[280px] shrink-0 border-l border-[#1c1b1a]/[0.08] bg-[#f4f3f0] p-6 flex items-center justify-center">
-        <span className="text-[11px] text-[#1c1b1a]/30">选择一个节点编辑属性</span>
+      <div className="w-[280px] shrink-0 border-l border-border bg-background p-6 flex items-center justify-center">
+        <span className="text-[11px] text-foreground/30">选择一个节点编辑属性</span>
       </div>
     );
   }
@@ -44,30 +44,30 @@ export function InspectorPanel({ node, onChange, onClose }: InspectorPanelProps)
   };
 
   return (
-    <div className="w-[280px] shrink-0 border-l border-[#1c1b1a]/[0.08] bg-[#f4f3f0] overflow-y-auto">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#1c1b1a]/[0.06]">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-[#1c1b1a]/30">节点属性</span>
-        <button onClick={onClose} className="w-5 h-5 flex items-center justify-center rounded bg-transparent border-none cursor-pointer text-[#1c1b1a]/20 hover:text-[#1c1b1a]/50">
+    <div className="w-[280px] shrink-0 border-l border-border bg-background overflow-y-auto">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-foreground/30">节点属性</span>
+        <button onClick={onClose} className="w-5 h-5 flex items-center justify-center rounded bg-transparent border-none cursor-pointer text-foreground/20 hover:text-foreground/50">
           <X size={12} />
         </button>
       </div>
 
       <div className="p-4 space-y-4">
         <div>
-          <label className="text-[11px] text-[#1c1b1a]/50 block mb-1 font-medium">标签</label>
+          <label className="text-[11px] text-foreground/50 block mb-1 font-medium">标签</label>
           <input
             value={node.label}
             onChange={(e) => onChange({ label: e.target.value })}
-            className="w-full h-8 px-2 rounded-md text-xs bg-white border border-[#1c1b1a]/[0.10] focus:outline-none focus:border-[#1c1b1a]/[0.20]"
+            className="w-full h-8 px-2 rounded-md text-xs bg-card border border-border focus:outline-none focus:border-foreground/20"
           />
         </div>
 
         <div>
-          <label className="text-[11px] text-[#1c1b1a]/50 block mb-1 font-medium">执行器</label>
+          <label className="text-[11px] text-foreground/50 block mb-1 font-medium">执行器</label>
           <select
             value={node.executor || 'main'}
             onChange={(e) => onChange({ executor: e.target.value as WorkflowNode['executor'] })}
-            className="w-full h-8 px-2 rounded-md text-xs bg-white border border-[#1c1b1a]/[0.10] focus:outline-none"
+            className="w-full h-8 px-2 rounded-md text-xs bg-card border border-border focus:outline-none"
           >
             <option value="main">主生成模型</option>
             <option value="audit">审计模型</option>
@@ -75,34 +75,34 @@ export function InspectorPanel({ node, onChange, onClose }: InspectorPanelProps)
         </div>
 
         <div>
-          <label className="text-[11px] text-[#1c1b1a]/50 block mb-1 font-medium">
+          <label className="text-[11px] text-foreground/50 block mb-1 font-medium">
             系统提示词
           </label>
           <textarea
             value={node.systemPrompt || ''}
             onChange={(e) => onChange({ systemPrompt: e.target.value })}
             placeholder="定义该角色节点的写作要求..."
-            className="w-full h-28 px-2 py-1.5 rounded-md text-xs bg-white border border-[#1c1b1a]/[0.10] focus:outline-none focus:border-[#1c1b1a]/[0.20] resize-none"
+            className="w-full h-28 px-2 py-1.5 rounded-md text-xs bg-card border border-border focus:outline-none focus:border-foreground/20 resize-none"
           />
         </div>
 
         <div>
-          <label className="text-[11px] text-[#1c1b1a]/50 block mb-2 font-medium">
+          <label className="text-[11px] text-foreground/50 block mb-2 font-medium">
             上下文
           </label>
           <div className="space-y-1 max-h-[200px] overflow-y-auto">
             {ALL_CONTEXT_FIELDS.map((field) => (
               <label
                 key={field}
-                className="flex items-center gap-2 px-2 py-1 rounded cursor-pointer hover:bg-[#1c1b1a]/[0.02]"
+                className="flex items-center gap-2 px-2 py-1 rounded cursor-pointer hover:bg-foreground/[0.02]"
               >
                 <input
                   type="checkbox"
                   checked={contextFields.includes(field)}
                   onChange={() => toggleField(field)}
-                  className="w-3 h-3 rounded border-[#1c1b1a]/[0.15]"
+                  className="w-3 h-3 rounded border-border"
                 />
-                <span className="text-[11px] text-[#1c1b1a]/60">
+                <span className="text-[11px] text-foreground/60">
                   {CONTEXT_FIELD_LABELS[field] || field}
                 </span>
               </label>
@@ -110,7 +110,7 @@ export function InspectorPanel({ node, onChange, onClose }: InspectorPanelProps)
           </div>
           <button
             onClick={() => onChange({ contextFields: [] })}
-            className="w-full mt-2 py-1 text-[10px] text-[#1c1b1a]/30 hover:text-[#1c1b1a]/50 bg-transparent border border-dashed border-[#1c1b1a]/[0.08] rounded cursor-pointer"
+            className="w-full mt-2 py-1 text-[10px] text-foreground/30 hover:text-foreground/50 bg-transparent border border-dashed border-border rounded cursor-pointer"
           >
             自动匹配
           </button>
