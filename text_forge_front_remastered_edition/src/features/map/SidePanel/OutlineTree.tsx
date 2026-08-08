@@ -63,7 +63,8 @@ export function OutlineTree({ bookId }: OutlineTreeProps) {
   const toggleVolume = (id: number) => {
     setExpandedVolumes((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
@@ -71,11 +72,14 @@ export function OutlineTree({ bookId }: OutlineTreeProps) {
   const toggleChapter = (id: number) => {
     setExpandedChapters((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
 
+  // 时间线游标移动时自动展开命中章节：响应外部 store 变化且带早退守卫，
+  // 无法用渲染期调整（会与展开 Set 更新构成循环），属合法的 effect 副作用
   useEffect(() => {
     if (cursorTs <= 0) return;
     for (const vol of volumeData) {
@@ -84,6 +88,8 @@ export function OutlineTree({ bookId }: OutlineTreeProps) {
         const minTs = Math.min(...events.map((e) => e.storyTs));
         const maxTs = Math.max(...events.map((e) => e.storyTs));
         if (cursorTs >= minTs && cursorTs <= maxTs) {
+          // 响应外部 store 变化的自动展开副作用（无法用渲染期调整，避免与展开 Set 构成循环）
+          // eslint-disable-next-line react-hooks/set-state-in-effect
           setExpandedVolumes((prev) => {
             const next = new Set(prev);
             next.add(vol.volume.id);
@@ -131,7 +137,6 @@ export function OutlineTree({ bookId }: OutlineTreeProps) {
   const handleAddChapter = () => {
     if (!newChapterTitle.trim() || addChapterVolumeId === null) return;
     const nextId = Math.max(0, ...chapters.map((c) => c.id)) + 100;
-    const vol = volumes.find((v) => v.id === addChapterVolumeId);
     const order = chapters.filter((c) => c.volumeId === addChapterVolumeId).length + 1;
     addChapter({
       id: nextId,

@@ -1,31 +1,27 @@
 from typing import Annotated
 
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
 from config.logging import get_logger
 from core.auth import get_current
-from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
 from models.book import Book, Chapter, SceneEvent, Volume
 from schema.request.book import (
     BookRequest,
-    CreativeSettingRequest,
     LockChapterRequest,
     UpdateBookRequest,
 )
 from schema.response.book import (
-    BookResponse,
-    SceneEventResponse,
-    ChapterResponse,
-    CreativeSettingResponse,
-    VolumeResponse,
-)
-from schema.response.book import (
     BookDetailResponse,
     BookResponse,
+    ChapterResponse,
     ListCharactersResponse,
+    SceneEventResponse,
+    VolumeResponse,
 )
 from shared.database import db_manager
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from .chapter_service import ChapterService, chapter_db
 from .context_config_repository import BookContextConfigRepository

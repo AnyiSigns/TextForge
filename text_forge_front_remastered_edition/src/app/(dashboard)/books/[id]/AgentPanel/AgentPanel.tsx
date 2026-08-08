@@ -8,7 +8,7 @@ import { useBookDetailStore } from '../store';
 import { useAgentSender } from '@/features/agent/useAgentSender';
 import * as agentApi from '@/shared/api/agent';
 import * as workflowApi from '@/shared/api/workflows';
-import type { AgentConversation, AgentMessage } from '@/shared/api/types';
+import type { AgentConversation } from '@/shared/api/types';
 import { ReviewCard } from './ReviewCard';
 import { ProposeCards } from './ProposeCards';
 import { AgentMemoryManager } from './AgentMemoryManager';
@@ -28,7 +28,7 @@ function MarkdownContent({ children }: { children: string }) {
         ul: ({ children: c }) => <ul className="list-disc pl-4 my-1 space-y-0.5">{c}</ul>,
         ol: ({ children: c }) => <ol className="list-decimal pl-4 my-1 space-y-0.5">{c}</ol>,
         li: ({ children: c }) => <li>{c}</li>,
-        code: ({ children: c, className: cls }: any) => {
+        code: ({ children: c, className: cls }) => {
           const isInline = !cls;
           return isInline ? (
             <code className="px-1 py-0.5 bg-foreground/10 text-[12px]">{c}</code>
@@ -76,7 +76,7 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
   const [showMemoryManager, setShowMemoryManager] = useState(false);
   const [sessionsExpanded, setSessionsExpanded] = useState(true);
   const [sessions, setSessions] = useState<AgentConversation[]>([]);
-  const [loadingSessions, setLoadingSessions] = useState(false);
+  const [loadingSessions, setLoadingSessions] = useState(true);
   const [workflowList, setWorkflowList] = useState<workflowApi.Workflow[]>([]);
   const [sessionSearch, setSessionSearch] = useState('');
   const [draftByThreadId, setDraftByThreadId] = useState<Map<string, string>>(new Map());
@@ -101,16 +101,23 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
   const agentMessages = useBookDetailStore((s) => s.agentMessages);
   const agentStreaming = useBookDetailStore((s) => s.agentStreaming);
   const agentStatus = useBookDetailStore((s) => s.agentStatus);
-  const agentToolLog = useBookDetailStore((s) => s.agentToolLog);
   const agentNodeStatuses = useBookDetailStore((s) => s.agentNodeStatuses);
   const nodeOutputs = useBookDetailStore((s) => s.nodeOutputs);
   const agentThreadId = useBookDetailStore((s) => s.agentThreadId);
 
-  // 新出现的节点卡片自动展开（对应气泡可见），节点列表清空时复位
+  // 新出现的节点卡片自动展开（对应气泡可见），节点列表清空时复位。
+  // 清空复位用渲染期间调整（仅 setState）；seen 集合清理与新增展开走 effect（ref 写操作的合法位置）
+  const [prevStatusLen, setPrevStatusLen] = useState(agentNodeStatuses.length);
+  if (agentNodeStatuses.length === 0 && prevStatusLen !== 0) {
+    setPrevStatusLen(0);
+    setExpandedNodeCards(new Set());
+  } else if (agentNodeStatuses.length !== prevStatusLen) {
+    setPrevStatusLen(agentNodeStatuses.length);
+  }
+
   useEffect(() => {
     if (agentNodeStatuses.length === 0) {
       seenNodeIdsRef.current.clear();
-      setExpandedNodeCards(new Set());
       return;
     }
     const fresh = agentNodeStatuses.filter((n) => !seenNodeIdsRef.current.has(n.nodeId));
@@ -123,14 +130,12 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
       });
     }
   }, [agentNodeStatuses]);
-  const pendingReview = useBookDetailStore((s) => s.pendingReview);
   const addAgentMessage = useBookDetailStore((s) => s.addAgentMessage);
   const updateAgentStreamToken = useBookDetailStore((s) => s.updateAgentStreamToken);
   const setAgentStreaming = useBookDetailStore((s) => s.setAgentStreaming);
   const setAgentStatus = useBookDetailStore((s) => s.setAgentStatus);
   const setAgentThreadId = useBookDetailStore((s) => s.setAgentThreadId);
   const setPendingReview = useBookDetailStore((s) => s.setPendingReview);
-  const setCreativePhase = useBookDetailStore((s) => s.setCreativePhase);
   const setAgentOpen = useBookDetailStore((s) => s.setAgentOpen);
 
   const fetchSessions = useCallback(async () => {
@@ -143,9 +148,22 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
     finally { setLoadingSessions(false); }
   }, []);
 
+  // 书籍切换时重新进入加载态（渲染期间调整，React 会立即重渲染）
+  const [prevSessionsBookId, setPrevSessionsBookId] = useState(bookId);
+  if (bookId !== prevSessionsBookId) {
+    setPrevSessionsBookId(bookId);
+    setLoadingSessions(true);
+  }
+
   useEffect(() => {
-    void fetchSessions();
-  }, [fetchSessions, bookId]);
+    let alive = true;
+    agentApi.fetchAgentConversations().then((list) => {
+      if (!alive) return;
+      list.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+      setSessions(list);
+    }).catch(() => { /* ignore */ }).finally(() => { if (alive) setLoadingSessions(false); });
+    return () => { alive = false; };
+  }, [bookId]);
 
   useEffect(() => {
     const onRefreshSessions = () => { void fetchSessions(); };

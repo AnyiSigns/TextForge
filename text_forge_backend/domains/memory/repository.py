@@ -1,8 +1,9 @@
 
-from models.agent_memory import AgentMemory
 from sqlalchemy import delete as sqla_delete
 from sqlalchemy import func, literal_column, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from models.agent_memory import AgentMemory
 
 
 class AgentMemoryRepository:

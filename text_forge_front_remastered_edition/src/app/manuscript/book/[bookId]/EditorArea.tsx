@@ -58,7 +58,6 @@ export function EditorArea() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const selectionRangeRef = useRef<{ start: number; end: number } | null>(null);
-  const [wordCount, setWordCount] = useState(0);
   const [selectedText, setSelectedText] = useState('');
   const [suggest, setSuggest] = useState<SuggestState | null>(null);
   const [importChapters, setImportChapters] = useState<{ title: string; content: string }[] | null>(null);
@@ -66,18 +65,18 @@ export function EditorArea() {
 
   const {
     content, activeChapterId, activeChapterTitle, version,
-    dirty, saving, savedAt, showVersions, diffState, versions,
-    setContent, save, loadVersions, toggleVersions, clearDiff, showDiff,
+    showVersions, diffState, versions,
+    setContent, save, toggleVersions, clearDiff, showDiff,
     characters, creativeSetting, suggestionFrequency,
     volumes, bookTitle,
   } = useManuscriptStore();
 
   const charSuggestions = buildCharSuggestions(characters);
   const settingKeywords = buildSettingKeywords(creativeSetting);
+  const wordCount = content.length;
 
   const commitContent = useCallback((value: string) => {
     setContent(value);
-    setWordCount(value.length);
     if (textareaRef.current) textareaRef.current.value = value;
   }, [setContent]);
 
@@ -110,7 +109,6 @@ export function EditorArea() {
     const el = e.target;
     const value = el.value;
     setContent(value);
-    setWordCount(value.length);
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => { void save(); }, 2000);
 
@@ -231,7 +229,6 @@ export function EditorArea() {
       textareaRef.current.selectionStart = cursor;
       textareaRef.current.selectionEnd = cursor;
     }
-    setWordCount(content.length);
   }, [activeChapterId, content]);
 
   const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {

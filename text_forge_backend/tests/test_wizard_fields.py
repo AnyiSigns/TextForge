@@ -13,7 +13,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from domains.wizard import router as wizard_router
-from domains.wizard.router import _FIELD_LABEL_MAP, _extract_json, _to_candidate_fields
+from domains.wizard.router import _extract_json, _to_candidate_fields
 from main import app
 from models.book import Book, Chapter, Character, CreativeSetting, Location, Volume
 

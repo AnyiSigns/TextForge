@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { X, Plus } from 'lucide-react';
 import { useEntityStore } from '@/features/map/stores/entityStore';
 
@@ -9,7 +9,7 @@ interface CreativeSettingSidebarProps {
   onClose: () => void;
 }
 
-export function CreativeSettingSidebar({ bookId, onClose }: CreativeSettingSidebarProps) {
+export function CreativeSettingSidebar({ onClose }: CreativeSettingSidebarProps) {
   const [tone, setTone] = useState('');
   const [worldview, setWorldview] = useState('');
   const [writingTaboos, setWritingTaboos] = useState('');
@@ -18,22 +18,23 @@ export function CreativeSettingSidebar({ bookId, onClose }: CreativeSettingSideb
   const creativeSetting = useEntityStore((s) => s.creativeSetting);
   const updateCreativeSetting = useEntityStore((s) => s.updateCreativeSetting);
 
-  useEffect(() => {
-    if (creativeSetting) {
-      setTone(creativeSetting.tone || '');
-      setWorldview(creativeSetting.worldview || '');
-      setWritingTaboos(creativeSetting.writingTaboos || '');
-      if (creativeSetting.customDimensions && typeof creativeSetting.customDimensions === 'object') {
-        const fields = Object.entries(creativeSetting.customDimensions).map(([key, value]) => ({
-          key,
-          value: typeof value === 'string' ? value : JSON.stringify(value),
-        }));
-        setCustomFields(fields);
-      } else {
-        setCustomFields([]);
-      }
+  // 实体数据异步到达时同步本地编辑状态（渲染期间调整，React 会立即重渲染）
+  const [prevCreativeSetting, setPrevCreativeSetting] = useState(creativeSetting);
+  if (creativeSetting && prevCreativeSetting !== creativeSetting) {
+    setPrevCreativeSetting(creativeSetting);
+    setTone(creativeSetting.tone || '');
+    setWorldview(creativeSetting.worldview || '');
+    setWritingTaboos(creativeSetting.writingTaboos || '');
+    if (creativeSetting.customDimensions && typeof creativeSetting.customDimensions === 'object') {
+      const fields = Object.entries(creativeSetting.customDimensions).map(([key, value]) => ({
+        key,
+        value: typeof value === 'string' ? value : JSON.stringify(value),
+      }));
+      setCustomFields(fields);
+    } else {
+      setCustomFields([]);
     }
-  }, [creativeSetting]);
+  }
 
   const handleSave = async () => {
     setSaving(true);

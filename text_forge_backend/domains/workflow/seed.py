@@ -1,6 +1,7 @@
+from sqlalchemy import select
+
 from config.logging import get_logger
 from models.workflow import Workflow
-from sqlalchemy import select
 
 logger = get_logger(__name__)
 

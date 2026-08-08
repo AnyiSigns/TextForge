@@ -1,7 +1,8 @@
 from typing import Any
 
-from config.model_wrapper import ModelWrapper
 from langchain_core.language_models import BaseChatModel
+
+from config.model_wrapper import ModelWrapper
 
 
 class ModelFactory:
@@ -9,6 +10,12 @@ class ModelFactory:
 
     根据用户模型配置统一创建 main/audit/router/tool/embedding/vision 模型实例。
     """
+
+    # 动态在 __init__ 中 setattr 的属性，显式声明便于类型检查
+    main: BaseChatModel
+    audit: BaseChatModel
+    router: BaseChatModel
+    tool: BaseChatModel
 
     DETAILED = {
         ("main", "main_config"),

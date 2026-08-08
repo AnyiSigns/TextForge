@@ -1,9 +1,16 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from models.base import Base
+
+if TYPE_CHECKING:
+    from models.book import Book, Character
+    from models.conversation import Conversation
+    from models.document import Document
+    from models.workflow import Workflow
 
 
 class User(Base):

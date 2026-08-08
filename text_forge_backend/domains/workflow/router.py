@@ -2,17 +2,16 @@ import asyncio
 import json
 from typing import Annotated
 
-from core.auth import get_current
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.auth import get_current
 from domains.agent.workflow_scheduler import run_workflow as scheduler_run_workflow
-from shared.database import db_manager
-
 from schema.response.workflow import ListWorkflowsResponse, WorkflowDetailResponse
 from schema.workflow import Workflow
+from shared.database import db_manager
 
 from .service import WorkflowService, workflow_db
 

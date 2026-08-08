@@ -30,7 +30,6 @@ export function MapCanvas() {
   const clearError = useEntityStore((s) => s.clearError);
 
   const selectedCharacterId = useMapStore((s) => s.selectedCharacterId);
-  const selectCharacter = useMapStore((s) => s.selectCharacter);
   const navigateTo = useMapStore((s) => s.navigateTo);
   const openInitializer = useInitializerStore((s) => s.open);
   const selectedEventId = useTimelineStore((s) => s.selectedEventId);

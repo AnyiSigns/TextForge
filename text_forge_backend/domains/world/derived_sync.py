@@ -13,11 +13,12 @@
 import asyncio
 from functools import partial
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from config.logging import get_logger
 from models.book import Foreshadowing, PlotThread, SceneEvent
 from shared.database import db_manager
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 

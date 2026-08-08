@@ -9,7 +9,6 @@
 """
 import json
 import uuid
-from typing import Any
 
 from config.logging import get_logger
 
@@ -166,6 +165,7 @@ class GatingService:
                         # 附带当前书籍可用章节清单，让模型直接抄对 chapter_id
                         try:
                             from sqlalchemy import select
+
                             from models.book import Chapter, Volume
 
                             async with self._session_factory() as _s:

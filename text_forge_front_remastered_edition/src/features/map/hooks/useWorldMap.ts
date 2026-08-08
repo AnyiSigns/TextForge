@@ -91,14 +91,14 @@ function worldSpaceSpread(
 export function useWorldMap(
   containerRef: React.RefObject<HTMLDivElement | null>,
 ): UseWorldMapReturn {
-  const zoomRef = useRef<d3.ZoomBehavior<Element, unknown> | null>(null);
+  const zoomRef = useRef<d3.ZoomBehavior<HTMLDivElement, unknown> | null>(null);
   const [d3Transform, setD3Transform] = useState(d3.zoomIdentity);
   const [hoveredLocId, setHoveredLocId] = useState<number | null>(null);
+  const [viewportSize, setViewportSize] = useState({ width: 800, height: 600 });
 
   const focusedLocationId = useMapStore((s) => s.focusedLocationId);
   const userDriven = useMapStore((s) => s.userDriven);
   const clearUserDriven = useMapStore((s) => s.clearUserDriven);
-  const syncFocus = useMapStore((s) => s.syncFocus);
 
   const locations = useEntityStore((s) => s.locations);
   const characters = useEntityStore((s) => s.characters);
@@ -128,8 +128,8 @@ export function useWorldMap(
 
     if (candidates.length === 1) return candidates[0];
 
-    const vpCx = (containerRef.current?.clientWidth ?? 800) / 2;
-    const vpCy = (containerRef.current?.clientHeight ?? 600) / 2;
+    const vpCx = viewportSize.width / 2;
+    const vpCy = viewportSize.height / 2;
 
     let best = candidates[0];
     let bestDist = Infinity;
@@ -143,7 +143,7 @@ export function useWorldMap(
       }
     }
     return best;
-  }, [visibleLocations, k, d3Transform, containerRef]);
+  }, [visibleLocations, k, d3Transform, viewportSize]);
 
   const depth = focusedLocation?.depth ?? 0;
 
@@ -169,7 +169,7 @@ export function useWorldMap(
       const tx = vpW / 2 - target.cx * scale;
       const ty = vpH / 2 - target.cy * scale;
 
-      (d3.select(node) as any)
+      d3.select(node)
         .transition()
         .duration(600)
         .ease(d3.easeCubicInOut)
@@ -360,11 +360,25 @@ export function useWorldMap(
   useEffect(() => {
     const node = containerRef.current;
     if (!node) return;
+    const observer = new ResizeObserver(() => {
+      setViewportSize({
+        width: node.clientWidth || 800,
+        height: node.clientHeight || 600,
+      });
+    });
+    observer.observe(node);
+    setViewportSize({ width: node.clientWidth || 800, height: node.clientHeight || 600 });
+    return () => observer.disconnect();
+  }, [containerRef]);
+
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!node) return;
 
     const minRadius = worldLocations.length > 0
       ? Math.min(...worldLocations.map((l) => l.radius), 1)
       : 1;
-    const maxScale = Math.max(200, (node.clientWidth || 800) * 0.35 / minRadius);
+    const maxScale = Math.max(200, viewportSize.width * 0.35 / minRadius);
 
     const zoom = d3
       .zoom<HTMLDivElement, unknown>()
@@ -374,26 +388,25 @@ export function useWorldMap(
         setD3Transform(event.transform);
       });
 
-    (d3.select(node) as any).call(zoom);
-    zoomRef.current = zoom as any;
+    d3.select(node).call(zoom);
+    zoomRef.current = zoom;
 
     return () => {
       d3.select(node).on('.zoom', null);
       zoomRef.current = null;
     };
-  }, [containerRef, worldLocations]);
+  }, [containerRef, worldLocations, viewportSize.width]);
 
   useEffect(() => {
     if (userDriven && focusedLocationId !== null) {
-      const node = containerRef.current;
       zoomTo(focusedLocationId);
       setTimeout(() => clearUserDriven(), 700);
     }
-  }, [focusedLocationId, userDriven, zoomTo, clearUserDriven, containerRef]);
+  }, [focusedLocationId, userDriven, zoomTo, clearUserDriven]);
 
   useEffect(() => {
+    const node = containerRef.current;
     return () => {
-      const node = containerRef.current;
       if (node) d3.select(node).interrupt();
     };
   }, [containerRef]);

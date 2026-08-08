@@ -4,7 +4,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useInitializerStore } from '@/features/map/stores/initializerStore';
 import { useBookDetailStore } from '@/app/(dashboard)/books/[id]/store';
-import { useEntityStore } from '@/features/map/stores/entityStore';
 
 // 动态 import 的 API 模块全部 mock，捕获调用参数
 const worldApi = vi.hoisted(() => {
@@ -231,18 +230,6 @@ describe('初始化器字段映射（与后端 wizard label 对齐）', () => {
         ],
       }]],
     });
-    const { regenerateCandidates } = useInitializerStore.getState();
-    // 模拟 AI 生成返回（与后端 _FIELD_LABEL_MAP 一致）
-    vi.spyOn(await import('@/shared/api/wizard'), 'generateWizardCards')
-      .mockResolvedValue([{
-        title: '星辰纪元',
-        fields: [
-          { key: '文风基调', value: '史诗奇幻' },
-          { key: '世界观', value: '星辰之力驱动的世界' },
-          { key: '写作禁忌', value: '禁止现代科技' },
-          { key: '自定义字段', value: '[{"key":"战力体系","value":"星辰等级制"}]' },
-        ],
-      }]);
     // 直接注入候选（绕过 LLM），验证 regenerate 后的表单填充
     await useInitializerStore.getState().regenerateCandidates();
     // regenerateCandidates 会调 wizard API，mock 掉以直接注入

@@ -1,10 +1,11 @@
 ﻿from io import BytesIO
 from typing import Any
 
-from config.logging import get_logger
-from models.book import Book, Chapter, ChapterContent, Character, Volume
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from config.logging import get_logger
+from models.book import Book, Chapter, ChapterContent, Character, Volume
 
 logger = get_logger(__name__)
 

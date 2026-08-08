@@ -1,9 +1,10 @@
 import hashlib
 
-from config.logging import get_logger
-from models.web_search_cache import WebSearchCache
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from config.logging import get_logger
+from models.web_search_cache import WebSearchCache
 
 logger = get_logger(__name__)
 

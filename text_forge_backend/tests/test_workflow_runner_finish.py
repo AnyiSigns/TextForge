@@ -170,4 +170,4 @@ async def test_finish_pending_review_builds_review_card(monkeypatch):
     assert "你要写出" in pr["system_prompt"]
 
 
-from types import SimpleNamespace  # noqa: E402
+from types import SimpleNamespace

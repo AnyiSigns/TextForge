@@ -1,14 +1,15 @@
 """角色模拟导演图 — 循环对话 + 角色子Agent记忆 + 压缩 + 结束判断"""
+from collections.abc import AsyncGenerator
 from datetime import datetime
-from typing import Any, Annotated, AsyncGenerator, TypedDict
+from typing import Annotated, Any, TypedDict
+
+from langchain_core.messages import HumanMessage, SystemMessage
+from langgraph.graph import END, StateGraph
+from sqlalchemy import select, update
 
 from config.logging import get_logger
 from core.model_factory import ModelFactory
-from langchain_core.messages import HumanMessage, SystemMessage
-from langgraph.graph import END, StateGraph
 from shared.utils import merge_dicts as _merge_dicts
-from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -299,16 +300,6 @@ async def stitch_output_node(state: SimRoomState) -> dict[str, Any]:
 
 async def compress_memories_node(state: SimRoomState, bridge: dict[str, Any]) -> dict[str, Any]:
     if state["round_count"] % COMPRESS_EVERY != 0 or state["round_count"] == 0:
-        pending_output = {
-            "room_id": None,
-            "character_label": None,
-            "character_id": None,
-            "memory_type": "sim_character",
-            "source": None,
-            "content": None,
-            "priority": 0,
-            "is_compressed": False,
-        }
         return {"character_memories": state.get("character_memories", {})}
 
     execute_sql = bridge.get("execute_sql")

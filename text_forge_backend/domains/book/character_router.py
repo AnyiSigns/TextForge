@@ -1,16 +1,17 @@
 import os
 from typing import Annotated
 
+from fastapi import APIRouter, Depends, File, HTTPException, Path, Query, UploadFile
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from config.logging import get_logger
 from core.auth import get_current
-from fastapi import APIRouter, Depends, File, HTTPException, Path, Query, UploadFile
 from schema.request.character import CharacterRequest, CharacterUpdateRequest
 from schema.response.book import (
     CharacterResponse,
     ListCharactersResponse,
 )
 from shared.database import db_manager
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from .character_service import CharacterService, character_db
 

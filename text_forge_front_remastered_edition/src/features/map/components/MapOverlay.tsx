@@ -23,9 +23,7 @@ export function MapOverlay({
   characterPlacements,
   d3Transform,
   zoomTo,
-  hoveredLocId,
   setHoveredLocId,
-  hoveredCharId,
   setHoveredCharId,
   selectedCharacterId,
 }: MapOverlayProps) {

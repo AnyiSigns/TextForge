@@ -42,22 +42,22 @@ class PageResult(BaseModel, Generic[T]):
     page: int = Field(default=1, description="当前页码")
     page_size: int = Field(default=10, description="每页条目数")
 
-    @computed_field
     @property
+    @computed_field
     def total_pages(self) -> int:
         """计算总页数。"""
         if self.page_size <= 0:
             return 0
         return (self.total + self.page_size - 1) // self.page_size
 
-    @computed_field
     @property
+    @computed_field
     def has_next(self) -> bool:
         """是否有下一页。"""
         return self.page < self.total_pages
 
-    @computed_field
     @property
+    @computed_field
     def has_prev(self) -> bool:
         """是否有上一页。"""
         return self.page > 1

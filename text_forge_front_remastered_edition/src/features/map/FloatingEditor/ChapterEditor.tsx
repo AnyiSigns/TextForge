@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useEntityStore } from '@/features/map/stores/entityStore';
@@ -12,7 +12,7 @@ interface ChapterEditorProps {
   onClose: () => void;
 }
 
-export function ChapterEditor({ entityType, entityId, isNew, onClose }: ChapterEditorProps) {
+export function ChapterEditor({ entityType, entityId, onClose }: ChapterEditorProps) {
   const chapters = useEntityStore((s) => s.chapters);
   const volumes = useEntityStore((s) => s.volumes);
   const updateChapter = useEntityStore((s) => s.updateChapter);
@@ -27,14 +27,16 @@ export function ChapterEditor({ entityType, entityId, isNew, onClose }: ChapterE
   const [summary, setSummary] = useState('');
   const [locked, setLocked] = useState(false);
 
-  useEffect(() => {
-    if (!entity) return;
+  // 实体数据异步到达时同步本地编辑状态（渲染期间调整，React 会立即重渲染）
+  const [prevEntity, setPrevEntity] = useState(entity);
+  if (entity && prevEntity !== entity) {
+    setPrevEntity(entity);
     setTitle(entity.title ?? '');
     setSummary((entity.summary as string | null | undefined) ?? '');
     if (isChapter) {
-      setLocked((entity as any).locked ?? false);
+      setLocked(!!(entity as { locked?: boolean }).locked);
     }
-  }, [entityId, entity, isChapter]);
+  }
 
   const handleSave = () => {
     if (!entityId) return;

@@ -63,11 +63,11 @@ async def _finish_with_candidate(result: dict[str, Any], target_chapter_id: int 
                                 f"（第 {max_ver + 1} 版，{len(content)} 字）。如需改用其他节点输出，告诉我即可。"
                             )
                             logger.info(f"[workflow_runner] 自动沿用落库成功: chapter={target_chapter_id} node={preferred_node_id}")
-                            _persist_outputs: dict[str, dict] = {}
+                            _persist_outputs_preferred: dict[str, dict] = {}
                             for n in content_nodes:
                                 nid = n.get("node_id") or ""
                                 if nid:
-                                    _persist_outputs[nid] = {
+                                    _persist_outputs_preferred[nid] = {
                                         "output": n.get("output", ""),
                                         "label": n.get("node_label") or nid,
                                         "tokens": n.get("tokens", 0),
@@ -75,7 +75,7 @@ async def _finish_with_candidate(result: dict[str, Any], target_chapter_id: int 
                             return {
                                 "messages": [AIMessage(content=reply)],
                                 "workflow_result": result,
-                                "workflow_node_outputs": _persist_outputs,
+                                "workflow_node_outputs": _persist_outputs_preferred,
                                 "pending_workflow": None,
                                 "candidate_reply_ready": True,
                             }

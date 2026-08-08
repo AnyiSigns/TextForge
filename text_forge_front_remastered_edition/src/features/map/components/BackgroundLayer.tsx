@@ -30,7 +30,6 @@ export function BackgroundLayer({
   height,
   d3Transform,
   enterAlpha = 1,
-  leaveAlpha = 0,
 }: BackgroundLayerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const prevDepthRef = useRef(depth);

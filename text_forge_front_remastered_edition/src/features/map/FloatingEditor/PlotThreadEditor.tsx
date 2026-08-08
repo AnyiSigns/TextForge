@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { X, Plus } from 'lucide-react';
+import { useState } from 'react';
 import { useEntityStore } from '@/features/map/stores/entityStore';
 
 interface PlotThreadEditorProps {
@@ -27,16 +26,17 @@ export function PlotThreadEditor({ plotThreadId, isNew, onClose }: PlotThreadEdi
   const [progressNote, setProgressNote] = useState('');
   const [locked, setLocked] = useState(false);
 
-  useEffect(() => {
-    if (isNew) return;
-    if (!plotThread) return;
+  // 实体数据异步到达时同步本地编辑状态（渲染期间调整，React 会立即重渲染）
+  const [prevPlotThread, setPrevPlotThread] = useState(plotThread);
+  if (plotThread && prevPlotThread !== plotThread) {
+    setPrevPlotThread(plotThread);
     setName(plotThread.name || '');
     setDescription(plotThread.description || '');
     setType(plotThread.type || '');
     setParentThreadId(plotThread.parentThreadId ?? null);
     setProgressNote(plotThread.progressNote || '');
     setLocked(plotThread.locked || false);
-  }, [plotThread, isNew]);
+  }
 
   const handleSave = () => {
     const common = { name, description, type, parentThreadId, progressNote, locked };
@@ -62,7 +62,6 @@ export function PlotThreadEditor({ plotThreadId, isNew, onClose }: PlotThreadEdi
 
   const startChapter = chapters.find((c) => c.id === plotThread?.startChapterId);
   const endChapter = chapters.find((c) => c.id === plotThread?.endChapterId);
-  const parentThread = plotThreads.find((p) => p.id === parentThreadId);
 
   return (
     <div className="space-y-5">

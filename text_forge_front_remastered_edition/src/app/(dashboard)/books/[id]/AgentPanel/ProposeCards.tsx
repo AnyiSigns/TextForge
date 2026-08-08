@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { ChevronRight, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/shared/lib/cn';
@@ -41,7 +41,7 @@ export function ProposeCards({ data }: ProposeCardsProps) {
 
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
   const [executingId, setExecutingId] = useState<string | null>(null);
-  const cardTypes = (data.card_types as string[]) || [];
+  const cardTypes = useMemo(() => (data.card_types as string[]) || [], [data.card_types]);
   const reason = String(data.reason || '');
   const cards = (data.cards as CardProposal[]) || [];
 
@@ -116,7 +116,7 @@ export function ProposeCards({ data }: ProposeCardsProps) {
     } finally {
       setExecutingId(null);
     }
-  }, [bookId, loadCharacters, loadWorld, loadChapters, loadCreativeSetting, openCardDraw, setCreativePhase]);
+  }, [bookId, loadCharacters, loadWorld, loadChapters, loadCreativeSetting, openCardDraw, setCreativePhase, cardTypes]);
 
   return (
     <div className="mx-1 my-2 p-3 rounded-lg border border-foreground/10 bg-card">

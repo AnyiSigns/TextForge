@@ -1,6 +1,9 @@
 from types import SimpleNamespace
 from typing import Any
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from models.book import (
     Book,
     Chapter,
@@ -14,8 +17,6 @@ from models.book import (
     Volume,
 )
 from models.sim_room import SimBranch, SimRoom
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class StructuredRepository:

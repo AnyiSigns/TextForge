@@ -1,11 +1,12 @@
-from config.logging import get_logger
-from core.exceptions import AppException
 from fastapi import Depends
-from models.book import Chapter
-from shared.database import db_manager
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+
+from config.logging import get_logger
+from core.exceptions import AppException
+from models.book import Chapter
+from shared.database import db_manager
 
 from .chapter_repository import ChapterRepository
 

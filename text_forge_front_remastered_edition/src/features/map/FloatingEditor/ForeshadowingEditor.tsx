@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useEntityStore } from '@/features/map/stores/entityStore';
 
 interface ForeshadowingEditorProps {
@@ -26,15 +26,16 @@ export function ForeshadowingEditor({ foreshadowingId, isNew, onClose }: Foresha
   const [notes, setNotes] = useState('');
   const [locked, setLocked] = useState(false);
 
-  useEffect(() => {
-    if (isNew) return;
-    if (!foreshadowing) return;
+  // 实体数据异步到达时同步本地编辑状态（渲染期间调整，React 会立即重渲染）
+  const [prevForeshadowing, setPrevForeshadowing] = useState(foreshadowing);
+  if (foreshadowing && prevForeshadowing !== foreshadowing) {
+    setPrevForeshadowing(foreshadowing);
     setDescription(foreshadowing.description || '');
     setRelatedCharacterIds(foreshadowing.relatedCharacterIds || []);
     setRevealType(foreshadowing.revealType || 'gradual');
     setNotes(foreshadowing.notes || '');
     setLocked(foreshadowing.locked || false);
-  }, [foreshadowing, isNew]);
+  }
 
   const handleSave = () => {
     const common = { description, relatedCharacterIds, revealType, notes, locked };

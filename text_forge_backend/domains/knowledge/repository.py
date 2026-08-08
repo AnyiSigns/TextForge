@@ -1,10 +1,11 @@
 from typing import Any
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from config.logging import get_logger
 from models.document import Chunk, Document
 from shared.redis import cached_rag_search, set_rag_cache
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 

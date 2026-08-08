@@ -70,11 +70,12 @@ export function useSimRoomSocket(room: SimRoomDetail | null): UseSimRoomResult {
 
   const roomId = room?.id ?? null;
 
-  useEffect(() => {
+  // 房间切换时重置状态（渲染期间调整，React 会立即重渲染；effect 只负责 WS 连接）。
+  // prevRoomId 初始为哨兵 null，确保首次挂载也执行一次同步（历史消息/初始空状态）。
+  const [prevRoomId, setPrevRoomId] = useState<number | null>(null);
+  if (roomId !== prevRoomId) {
+    setPrevRoomId(roomId);
     if (!roomId) {
-      wsRef.current?.close();
-      wsRef.current = null;
-      pendingSendsRef.current = [];
       setMessages([]);
       setParticipants([]);
       setBranches([]);
@@ -84,20 +85,29 @@ export function useSimRoomSocket(room: SimRoomDetail | null): UseSimRoomResult {
       setBranching(false);
       setRoundCount(0);
       setMyRole('用户');
+    } else {
+      setMessages(room?.messages ?? []);
+      setParticipants(room?.participants ?? []);
+      setBranches(room?.branches ?? []);
+      setSuggestions([]);
+      setRoundCount(0);
+      setStreaming(false);
+      setBranching(false);
+      setMyRole('用户');
+    }
+  }
+
+  useEffect(() => {
+    if (!roomId) {
+      wsRef.current?.close();
+      wsRef.current = null;
+      pendingSendsRef.current = [];
       return;
     }
 
-    setMessages(room?.messages ?? []);
-    setParticipants(room?.participants ?? []);
-    setBranches(room?.branches ?? []);
-    setSuggestions([]);
-    setRoundCount(0);
+    pendingSendsRef.current = [];
     streamingRef.current = false;
     streamingSpeakerRef.current = null;
-    setStreaming(false);
-    setBranching(false);
-    setMyRole('用户');
-    pendingSendsRef.current = [];
 
     let cancelled = false;
 
@@ -244,8 +254,6 @@ export function useSimRoomSocket(room: SimRoomDetail | null): UseSimRoomResult {
       wsRef.current?.close();
       wsRef.current = null;
     };
-    // 仅在房间 id 变化时重建连接；room 对象的其余字段仅用于初始化首帧。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId]);
 
   // 统一发送入口：OPEN(1) 直发，CONNECTING(0) 暂存待 onopen 刷出，CLOSING(2)/CLOSED(3) 直接丢弃，

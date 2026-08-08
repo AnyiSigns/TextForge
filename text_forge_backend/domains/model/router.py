@@ -1,9 +1,10 @@
-from schema.request.model import TestConnectionRequest
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import Response
+
 from config.logging import get_logger
 from core.auth import get_current
-from fastapi import APIRouter, Body, Depends, HTTPException, Request
-from fastapi.responses import Response
-import httpx
+from schema.request.model import TestConnectionRequest
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/models", tags=["模型配置"])

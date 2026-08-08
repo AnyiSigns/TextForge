@@ -255,10 +255,10 @@ async def agent_call(state: UserAgentState) -> dict[str, Any]:
 
     # 工作流结果确认回合：若模型已直接产出询问回复（无工具调用），
     # 清空 workflow_result，使后续回合（用户选定正文后）能正常调用 write_chapter_content 落库。
-    _update: dict[str, Any] = {"messages": [result]}
+    _update_after_call: dict[str, Any] = {"messages": [result]}
     if state.get("workflow_result") and not tool_calls:
-        _update["workflow_result"] = None
-    return _update
+        _update_after_call["workflow_result"] = None
+    return _update_after_call
 
 
 def agent_router(state: UserAgentState) -> str:
@@ -356,7 +356,7 @@ def quality_gate_router(state: UserAgentState) -> str:
             break
     if fail_streak >= 3:
         logger.warning(
-            f"[quality_gate_router] 检测到连续 3 次工具失败，终止循环以防止无限压缩"
+            "[quality_gate_router] 检测到连续 3 次工具失败，终止循环以防止无限压缩"
         )
         return END
 
@@ -629,7 +629,7 @@ async def gated_tool_node(
 
     tools = {t.name: t for t in build_tools(session_factory, model_config=model_config)}
     tool_msgs: list[ToolMessage] = []
-    queue: list[dict] = []
+    pending_tool_queue: list[dict] = []
     # 将 state 中注入型参数（user_id / active_book_id → book_id）补齐到每个工具调用，
     # 因为此处是手动调用工具（GatingService），不会走 LangGraph ToolNode 的自动注入。
     # workflow_result / workflow_node_outputs 供 write_workflow_candidate 读取候选正文。
@@ -657,7 +657,7 @@ async def gated_tool_node(
             )
             continue
         if is_gated(name, args):
-            queue.append(
+            pending_tool_queue.append(
                 {"tool_name": name, "tool_args": args, "tool_id": tc.get("id", "")}
             )
             continue  # 拦截，不执行，等待审批
@@ -683,13 +683,13 @@ async def gated_tool_node(
             )
         )
 
-    if queue:
-        head = queue[0]
+    if pending_tool_queue:
+        head = pending_tool_queue[0]
         op = resolve_operation(head["tool_name"], head["tool_args"]) or ""
         pending_review = build_preview(op, head["tool_name"], head["tool_args"])
         return {
             "messages": tool_msgs,
-            "pending_tool": {"queue": queue},
+            "pending_tool": {"queue": pending_tool_queue},
             "pending_review": pending_review,
         }
     update: dict[str, Any] = {"messages": tool_msgs}

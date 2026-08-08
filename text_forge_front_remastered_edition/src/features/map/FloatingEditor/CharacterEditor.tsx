@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { useEntityStore } from '@/features/map/stores/entityStore';
 
@@ -30,13 +30,14 @@ export function CharacterEditor({ characterId, isNew, onClose }: CharacterEditor
   const [aliasInput, setAliasInput] = useState('');
   const [customFieldKey, setCustomFieldKey] = useState('');
   const [customFieldValue, setCustomFieldValue] = useState('');
-  const [relationshipChain, setRelationshipChain] = useState<Array<{ targetId: number; type: string; description: string }>>([]);
+  const [relationshipChain, setRelationshipChain] = useState<Array<{ targetId: number; type: string; description: string; _uid?: string }>>([]);
   const [customFields, setCustomFields] = useState<Record<string, unknown>>({});
   const [locked, setLocked] = useState(false);
 
-  useEffect(() => {
-    if (isNew) return;
-    if (!character) return;
+  // 实体数据异步到达时同步本地编辑状态（渲染期间调整，React 会立即重渲染）
+  const [prevCharacter, setPrevCharacter] = useState(character);
+  if (character && prevCharacter !== character) {
+    setPrevCharacter(character);
     setName(character.name);
     setRoleType(character.roleType);
     setDescription(character.description);
@@ -45,12 +46,13 @@ export function CharacterEditor({ characterId, isNew, onClose }: CharacterEditor
     setSpawnLocationId(character.spawnLocationId ?? 0);
     setAvatarUrl(character.avatarUrl ?? '');
     setAliases(character.aliases || []);
-    setRelationshipChain(character.relationshipChain || []);
+    setRelationshipChain((character.relationshipChain || []).map((r) => ({ ...r, _uid: crypto.randomUUID() })));
     setCustomFields(character.customFields || {});
     setLocked(character.locked || false);
-  }, [character, isNew]);
+  }
 
   const handleSave = () => {
+    const chainToSave = relationshipChain.map(({ _uid, ...rest }) => rest);
     if (isNew) {
       const nextId = Math.max(0, ...characters.map((c) => c.id)) + 100;
       addCharacter({
@@ -61,7 +63,7 @@ export function CharacterEditor({ characterId, isNew, onClose }: CharacterEditor
         description,
         roleType,
         status: status || '活跃',
-        relationshipChain: relationshipChain,
+        relationshipChain: chainToSave,
         locked,
         avatarUrl: avatarUrl || null,
         spawnLocationId: spawnLocationId || null,
@@ -76,7 +78,7 @@ export function CharacterEditor({ characterId, isNew, onClose }: CharacterEditor
         status,
         avatarUrl: avatarUrl || null,
         aliases,
-        relationshipChain,
+        relationshipChain: chainToSave,
         customFields,
         locked,
         spawnLocationId: spawnLocationId || null,
@@ -87,9 +89,6 @@ export function CharacterEditor({ characterId, isNew, onClose }: CharacterEditor
   };
 
   if (!isNew && !character) return null;
-
-  const spawnLocation = !isNew ? locations.find((l) => l.id === character?.spawnLocationId) : null;
-  const baseLocation = !isNew ? locations.find((l) => l.id === character?.baseLocationId) : null;
 
   return (
     <div className="space-y-5">
@@ -166,7 +165,7 @@ export function CharacterEditor({ characterId, isNew, onClose }: CharacterEditor
       <div className="space-y-2">
         <label className="text-[11px] font-medium text-muted-foreground">关系</label>
         {relationshipChain.map((rel, i) => (
-          <div key={i} className="flex items-center gap-1.5">
+          <div key={rel._uid ?? i} className="flex items-center gap-1.5">
             <select
               value={rel.targetId}
               onChange={(e) => {
@@ -212,7 +211,7 @@ export function CharacterEditor({ characterId, isNew, onClose }: CharacterEditor
           </div>
         ))}
         <button
-          onClick={() => setRelationshipChain([...relationshipChain, { targetId: 0, type: '', description: '' }])}
+          onClick={() => setRelationshipChain([...relationshipChain, { targetId: 0, type: '', description: '', _uid: crypto.randomUUID() }])}
           className="flex items-center gap-1 text-[11px] text-muted-foreground/50 hover:text-foreground/60 bg-transparent border-none cursor-pointer transition-colors"
         >
           <Plus size={10} />

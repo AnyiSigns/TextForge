@@ -6,9 +6,13 @@
 import json
 from collections.abc import AsyncGenerator
 
+from langchain_core.messages import HumanMessage, SystemMessage
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from config.logging import get_logger
 from core.model_factory import ModelFactory
-from langchain_core.messages import HumanMessage, SystemMessage
 from models.book import (
     Book,
     Chapter,
@@ -20,9 +24,6 @@ from models.book import (
     SceneEvent,
 )
 from models.story_flow import StoryFlow, StoryFlowNode
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import repository as repo
 from .prompts import (

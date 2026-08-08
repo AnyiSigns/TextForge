@@ -73,7 +73,6 @@ export function SimRoom({ bookId, bookTitle, onClose }: SimRoomProps) {
 
   const {
     messages,
-    participants,
     branches,
     suggestions,
     connected,
@@ -89,9 +88,15 @@ export function SimRoom({ bookId, bookTitle, onClose }: SimRoomProps) {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // 书籍切换时重新进入加载态（渲染期间调整，React 会立即重渲染）
+  const [prevBookId, setPrevBookId] = useState(bookId);
+  if (bookId !== prevBookId) {
+    setPrevBookId(bookId);
+    setLoadingRooms(true);
+  }
+
   useEffect(() => {
     let alive = true;
-    setLoadingRooms(true);
     listSimRooms(bookId)
       .then((rs) => {
         if (!alive) return;

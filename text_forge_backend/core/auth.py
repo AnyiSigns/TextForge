@@ -1,9 +1,9 @@
 from typing import Annotated
 
-from config.logging import get_logger
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from config.logging import get_logger
 from core.security import verify_token
 
 logger = get_logger(__name__)

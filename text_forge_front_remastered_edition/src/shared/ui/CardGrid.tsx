@@ -1,8 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { FlipCard } from '@/shared/ui/FlipCard';
-import { cn } from '@/shared/lib/cn';
 import type { Card } from '@/shared/api/wizard';
 
 interface CardGridProps {
@@ -23,24 +22,20 @@ export function CardGrid({
   cards, step, editable, selectable, selectedIndex,
   onSelect, onEdit, onRemove, confirmed,
 }: CardGridProps) {
-  const prevCount = useRef(-1);
   const [visible, setVisible] = useState<Set<number>>(new Set());
 
+  // 卡片清空时立即复位（渲染期间调整，React 会立即重渲染）
+  if (cards.length === 0 && visible.size !== 0) {
+    setVisible(new Set());
+  }
+
+  // 卡片逐张交错显现（异步 setTimeout 内 setState，不影响渲染期间规则）
   useEffect(() => {
-    if (cards.length === 0) {
-      prevCount.current = -1;
-      setVisible(new Set());
-      return;
-    }
-    const startIdx = prevCount.current === -1 ? 0 : prevCount.current;
-    const newCards = cards.slice(startIdx);
-    if (newCards.length === 0) return;
-    prevCount.current = cards.length;
-    newCards.forEach((_, offset) => {
-      const idx = startIdx + offset;
+    if (cards.length === 0) return;
+    cards.forEach((_, idx) => {
       setTimeout(() => {
         setVisible((prev) => new Set([...prev, idx]));
-      }, offset * STAGGER_DELAY);
+      }, idx * STAGGER_DELAY);
     });
   }, [cards]);
 

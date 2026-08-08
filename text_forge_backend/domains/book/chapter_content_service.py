@@ -1,8 +1,9 @@
+from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from config.logging import get_logger
 from core.exceptions import AppException
-from fastapi import Depends
 from shared.database import db_manager
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from .chapter_content_repository import ChapterContentRepository
 

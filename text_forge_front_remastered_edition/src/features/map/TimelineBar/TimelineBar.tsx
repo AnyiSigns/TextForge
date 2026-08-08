@@ -31,6 +31,7 @@ export function TimelineBar() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(800);
   const draggingRef = useRef(false);
+  const [cursorDragging, setCursorDragging] = useState(false);
   const draggingEventRef = useRef<{ id: number; startX: number; moved: boolean } | null>(null);
 
   // 计算全局时间范围
@@ -126,6 +127,7 @@ export function TimelineBar() {
     (e: React.MouseEvent) => {
       e.preventDefault();
       draggingRef.current = true;
+      setCursorDragging(true);
 
       const handleMouseMove = (ev: MouseEvent) => {
         if (!draggingRef.current || !containerRef.current) return;
@@ -155,6 +157,7 @@ export function TimelineBar() {
 
       const handleMouseUp = () => {
         draggingRef.current = false;
+        setCursorDragging(false);
         document.removeEventListener('mousemove', handleMouseMove);
         document.removeEventListener('mouseup', handleMouseUp);
       };
@@ -163,16 +166,6 @@ export function TimelineBar() {
       document.addEventListener('mouseup', handleMouseUp);
     },
     [innerWidth, xToTs, snapThreshold, sceneEvents, setCursorTs, tsToX, setSelectedEvent],
-  );
-
-  // 点击事件点
-  const handleEventClick = useCallback(
-    (eventId: number, ts: number) => {
-      setCursorTs(ts);
-      setSelectedEvent(eventId);
-      openEditor('scene', eventId);
-    },
-    [setCursorTs, setSelectedEvent, openEditor],
   );
 
   // 拖拽事件点重排：拖动时只更新本地时间轴位置，松手才落库
@@ -301,7 +294,7 @@ export function TimelineBar() {
           className="absolute top-0 h-full w-px bg-foreground/80 cursor-ew-resize z-20"
           style={{
             left: cursorX,
-            transition: draggingRef.current ? 'none' : 'left 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+            transition: cursorDragging ? 'none' : 'left 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
           }}
           onMouseDown={handleMouseDown}
         >

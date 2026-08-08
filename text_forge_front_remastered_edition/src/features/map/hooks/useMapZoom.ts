@@ -6,7 +6,7 @@ import { useMapStore } from '@/features/map/stores/mapStore';
 import { useEntityStore } from '@/features/map/stores/entityStore';
 
 export function useMapZoom(containerRef: React.RefObject<HTMLDivElement | null>) {
-  const zoomRef = useRef<d3.ZoomBehavior<Element, unknown> | null>(null);
+  const zoomRef = useRef<d3.ZoomBehavior<HTMLDivElement, unknown> | null>(null);
   const [d3Transform, setD3Transform] = useState(d3.zoomIdentity);
   const focusedLocationId = useMapStore((s) => s.focusedLocationId);
   const navigateTo = useMapStore((s) => s.navigateTo);
@@ -30,7 +30,7 @@ export function useMapZoom(containerRef: React.RefObject<HTMLDivElement | null>)
       requestAnimationFrame(() => {
         const node = containerRef.current;
         if (!node || !zoomRef.current) return;
-        (d3.select(node) as any).call(zoomRef.current.transform, d3.zoomIdentity);
+        d3.select(node).call(zoomRef.current.transform, d3.zoomIdentity);
       });
     },
     [locations, children.length, navigateTo, containerRef],
@@ -43,7 +43,7 @@ export function useMapZoom(containerRef: React.RefObject<HTMLDivElement | null>)
     requestAnimationFrame(() => {
       const node = containerRef.current;
       if (!node || !zoomRef.current) return;
-      (d3.select(node) as any).call(zoomRef.current.transform, d3.zoomIdentity);
+      d3.select(node).call(zoomRef.current.transform, d3.zoomIdentity);
     });
   }, [depth, goBack, containerRef]);
 
@@ -59,8 +59,8 @@ export function useMapZoom(containerRef: React.RefObject<HTMLDivElement | null>)
         setD3Transform(event.transform);
       });
 
-    (d3.select(node) as any).call(zoom);
-    zoomRef.current = zoom as any;
+    d3.select(node).call(zoom);
+    zoomRef.current = zoom;
 
     return () => {
       d3.select(node).on('.zoom', null);
@@ -72,7 +72,7 @@ export function useMapZoom(containerRef: React.RefObject<HTMLDivElement | null>)
   useEffect(() => {
     const node = containerRef.current;
     if (!node || !zoomRef.current) return;
-    (d3.select(node) as any).call(zoomRef.current.transform, d3.zoomIdentity);
+    d3.select(node).call(zoomRef.current.transform, d3.zoomIdentity);
   }, [focusedLocationId, containerRef]);
 
   return {

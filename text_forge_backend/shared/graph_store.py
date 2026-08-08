@@ -1,7 +1,8 @@
-from config.logging import get_logger
-from config.settings import settings
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from psycopg_pool import AsyncConnectionPool
+
+from config.logging import get_logger
+from config.settings import settings
 
 logger = get_logger(__name__)
 

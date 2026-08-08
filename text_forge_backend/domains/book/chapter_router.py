@@ -1,13 +1,14 @@
 from typing import Annotated
 
-from core.auth import get_current
 from fastapi import APIRouter, Depends, HTTPException, Path
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from core.auth import get_current
 from models.book import Book, Volume
 from schema.request.book import ChapterRequest, ChapterUpdate
 from schema.response.book import ChapterResponse
 from shared.database import db_manager
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from .chapter_service import ChapterService, chapter_db
 

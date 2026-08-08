@@ -18,9 +18,6 @@ import { PanelLeftOpen, MessageCircle, Bot, PenLine, Sparkles } from 'lucide-rea
 export default function MapPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const bookId = parseInt(id, 10);
-  if (isNaN(bookId)) {
-    return <div className="flex h-full items-center justify-center text-muted-foreground">无效的书籍 ID</div>;
-  }
   const setBookId = useBookDetailStore((s) => s.setBookId);
   const loadBook = useBookDetailStore((s) => s.loadBook);
   const setAgentContext = useBookDetailStore((s) => s.setAgentContext);
@@ -39,14 +36,17 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
   const loadFromApi = useEntityStore((s) => s.loadFromApi);
 
   useEffect(() => {
+    if (isNaN(bookId)) return;
     setBookId(bookId);
   }, [bookId, setBookId]);
 
   useEffect(() => {
+    if (isNaN(bookId)) return;
     void loadBook(bookId);
   }, [bookId, loadBook]);
 
   useEffect(() => {
+    if (isNaN(bookId)) return;
     void loadFromApi(bookId);
   }, [bookId, loadFromApi]);
 
@@ -56,6 +56,10 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
     window.addEventListener('textforge:refresh-outlines', onRefresh);
     return () => window.removeEventListener('textforge:refresh-outlines', onRefresh);
   }, [bookId, loadFromApi]);
+
+  if (isNaN(bookId)) {
+    return <div className="flex h-full items-center justify-center text-muted-foreground">无效的书籍 ID</div>;
+  }
 
   const handleAgentToggle = () => {
     const opening = !agentOpen;

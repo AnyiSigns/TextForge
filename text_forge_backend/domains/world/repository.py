@@ -1,8 +1,9 @@
 
-from models.book import Foreshadowing, Location, PlotThread, SceneEvent
 from sqlalchemy import delete as sqla_delete
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from models.book import Foreshadowing, Location, PlotThread, SceneEvent
 
 
 class WorldRepository:

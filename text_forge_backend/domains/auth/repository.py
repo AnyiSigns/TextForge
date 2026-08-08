@@ -1,9 +1,10 @@
 
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from models import UserToken
 from models.user import User
 from shared.base_repo import BaseRepository
-from sqlalchemy import delete, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class UserRepository(BaseRepository[User]):
@@ -142,16 +143,6 @@ class UserTokenRepository(BaseRepository[UserToken]):
             jti: JWT ID。
         """
         stmt = delete(UserToken).where(UserToken.jti == jti)
-        await self.session.execute(stmt)
-        await self.session.commit()
-
-    async def delete_by_user(self, user_id: int):
-        """删除用户所有 Token。
-
-        Args:
-            user_id: 用户 ID。
-        """
-        stmt = delete(UserToken).where(UserToken.user_id == user_id)
         await self.session.execute(stmt)
         await self.session.commit()
 

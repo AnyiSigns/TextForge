@@ -33,7 +33,7 @@ interface InitializerState {
   abortRef: AbortController | null;
   /** 已成功落库的步骤集合：回退再前进不重复保存；重新生成后清除对应标记 */
   savedSteps: Set<number>;
-  creativeForm: { name: string; tone: string; worldview: string; taboos: string; customFields: Array<{ key: string; value: string }> };
+  creativeForm: { name: string; tone: string; worldview: string; taboos: string; customFields: Array<{ key: string; value: string; _uid?: string }> };
 
   open: () => void;
   close: () => void;
@@ -50,10 +50,6 @@ function generateCandidates(step: number): Candidate[] {
   // 避免用户误锁假数据写入真实书籍。
   void step;
   return [];
-}
-
-interface InitError extends Error {
-  step?: string;
 }
 
 /* ── Step 1-6：Markdown 单份方案解析落库 ── */
@@ -317,7 +313,7 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
   stepText: {},
   abortRef: null,
   savedSteps: new Set<number>(),
-  creativeForm: { name: '', tone: '', worldview: '', taboos: '', customFields: [{ key: '战力体系', value: '' }, { key: '势力', value: '' }, { key: '交易单位', value: '' }] },
+  creativeForm: { name: '', tone: '', worldview: '', taboos: '', customFields: [{ key: '战力体系', value: '', _uid: crypto.randomUUID() }, { key: '势力', value: '', _uid: crypto.randomUUID() }, { key: '交易单位', value: '', _uid: crypto.randomUUID() }] },
 
   open: () => set({ isOpen: true, currentStep: 0, saving: false, error: null }),
 
@@ -385,7 +381,7 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
   },
 
   regenerateCandidates: async (extraInstruction?: string) => {
-    const { currentStep, candidates, lockedIds, confirmedIds, creativeForm } = get();
+    const { currentStep, candidates, lockedIds, confirmedIds } = get();
     const { useBookDetailStore } = await import('@/app/(dashboard)/books/[id]/store');
     const bookId = useBookDetailStore.getState().bookId;
     if (!bookId) {
@@ -402,8 +398,6 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
         }
       }
     }
-
-    console.log(`[wizard:store] step=${currentStep} previousCards=${JSON.stringify(previousCards.map(p => ({ step: p.step, title: p.title })))}`);
 
     // 当前步已锁定的标题，传给后端避免重复生成
     const excludeTitles = candidates[currentStep]
@@ -479,11 +473,11 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
         const taboos = first.fields.find((f) => f.key === '写作禁忌')?.value ?? '';
         const customRaw = first.fields.find((f) => f.key === '自定义字段')?.value ?? '';
 
-        let customFields: Array<{ key: string; value: string }> = [];
+        let customFields: Array<{ key: string; value: string; _uid?: string }> = [];
         try {
           const parsed = JSON.parse(customRaw);
           if (Array.isArray(parsed)) {
-            customFields = parsed.map((x: Record<string, string>) => ({ key: x.key || '', value: x.value || '' }));
+            customFields = parsed.map((x: Record<string, string>) => ({ key: x.key || '', value: x.value || '', _uid: crypto.randomUUID() }));
           }
         } catch {
           // 文本格式："键：值" 每行
@@ -491,10 +485,10 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
             .split('\n')
             .map((line) => {
               const idx = line.indexOf('：') >= 0 ? line.indexOf('：') : line.indexOf(':');
-              if (idx >= 0) return { key: line.slice(0, idx).trim(), value: line.slice(idx + 1).trim() };
+              if (idx >= 0) return { key: line.slice(0, idx).trim(), value: line.slice(idx + 1).trim(), _uid: crypto.randomUUID() };
               return null;
             })
-            .filter((x): x is { key: string; value: string } => x !== null && x.key.length > 0);
+            .filter((x): x is { key: string; value: string; _uid: string } => x !== null && x.key.length > 0);
         }
         set({
           generating: false,

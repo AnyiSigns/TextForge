@@ -37,6 +37,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [panelWidth, setPanelWidth] = useState(340);
   const [panelFullscreen, setPanelFullscreen] = useState(false);
   const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const [panelDragging, setPanelDragging] = useState(false);
 
   const [sidebarWidth, setSidebarWidth] = useState(224);
   const sidebarResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
@@ -45,6 +46,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const handleResizeDown = (e: React.MouseEvent) => {
     e.preventDefault();
     resizeRef.current = { startX: e.clientX, startWidth: panelWidth };
+    setPanelDragging(true);
     document.addEventListener('mousemove', handleResizeMove);
     document.addEventListener('mouseup', handleResizeUp);
   };
@@ -57,6 +59,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const handleResizeUp = () => {
     resizeRef.current = null;
+    setPanelDragging(false);
     document.removeEventListener('mousemove', handleResizeMove);
     document.removeEventListener('mouseup', handleResizeUp);
   };
@@ -99,11 +102,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }).catch(() => {});
   }, []);
 
-  useEffect(() => {
+  // 进入书籍详情页时自动折叠侧边栏（渲染期间调整，React 会立即重渲染）
+  const [prevPathname, setPrevPathname] = useState(pathname);
+  if (pathname !== prevPathname) {
+    setPrevPathname(pathname);
     if (pathname && pathname.startsWith('/books/') && pathname !== '/books') {
       setCollapsed(true);
     }
-  }, [pathname]);
+  }
 
   useEffect(() => {
     if (!userMenuOpen) return;
@@ -122,13 +128,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [userMenuOpen]);
 
   const agentActive = useBookDetailStore((s) => s.agentOpen);
-
-  const isBookDetail = pathname?.startsWith('/books/') && pathname !== '/books';
-
-  const toggleAgent = () => {
-    const store = useBookDetailStore.getState();
-    store.setAgentOpen(!store.agentOpen);
-  };
 
   const toggleSidebar = () => {
     if (collapsed) {
@@ -230,7 +229,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="app-right-panel" style={{ width: panelFullscreen ? undefined : panelWidth, flex: panelFullscreen ? 1 : undefined }}>
             {!panelFullscreen && (
               <div
-                className={cn('app-right-panel-handle', resizeRef.current && 'is-dragging')}
+                className={cn('app-right-panel-handle', panelDragging && 'is-dragging')}
                 onMouseDown={handleResizeDown}
               />
             )}

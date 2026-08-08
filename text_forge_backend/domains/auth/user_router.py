@@ -2,9 +2,10 @@ import os
 import uuid
 from typing import Annotated
 
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+
 from config.logging import get_logger
 from core.auth import get_current
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from schema.request.user import (
     ChangePasswordByEmailReq,
     ChangePasswordReq,

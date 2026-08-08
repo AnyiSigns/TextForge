@@ -1,8 +1,9 @@
 from typing import Any
 
-from config.logging import get_logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from config.logging import get_logger
 
 logger = get_logger(__name__)
 

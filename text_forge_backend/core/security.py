@@ -1,10 +1,11 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from config.logging import get_logger
-from config.settings import settings
 from jose import ExpiredSignatureError, JWTError, jwt
 from passlib.context import CryptContext
+
+from config.logging import get_logger
+from config.settings import settings
 
 logger = get_logger(__name__)
 

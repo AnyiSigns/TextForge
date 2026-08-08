@@ -1,12 +1,13 @@
 from contextlib import asynccontextmanager
 
-from config.logging import get_logger
-from config.settings import settings
 from fastapi import HTTPException
 from fastapi.exceptions import RequestValidationError
-from models import Base
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+from config.logging import get_logger
+from config.settings import settings
+from models import Base
 
 logger = get_logger(__name__)
 

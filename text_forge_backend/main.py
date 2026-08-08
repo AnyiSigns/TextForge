@@ -1,5 +1,8 @@
 from contextlib import asynccontextmanager
 
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
 from config.logging import get_logger
 from config.settings import settings
 from domains.agent.router import router as agent_router
@@ -25,8 +28,6 @@ from domains.workflow.router import router as workflow_router
 from domains.workflow.seed import seed_builtin_workflows
 from domains.world.router import router as world_router
 from domains.writing_session.router import router as writing_session_router
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from shared.database import db_manager
 from shared.graph_store import graph_pool_manager
 from shared.redis import redis_client

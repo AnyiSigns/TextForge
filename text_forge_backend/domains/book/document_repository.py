@@ -1,7 +1,8 @@
 
-from models.document import Chunk, Document
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from models.document import Chunk, Document
 
 
 class DocumentRepository:

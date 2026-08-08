@@ -1,7 +1,8 @@
 from fastapi import HTTPException
-from models.book import Book
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from models.book import Book
 
 
 async def assert_book_owner(book_id: int, user_id: int, session: AsyncSession):

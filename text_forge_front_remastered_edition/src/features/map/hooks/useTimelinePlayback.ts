@@ -9,6 +9,14 @@ export function useTimelinePlayback(
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const indexRef = useRef(0);
 
+  const stop = useCallback(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    indexRef.current = 0;
+  }, []);
+
   const start = useCallback(() => {
     if (intervalRef.current) return;
     indexRef.current = 0;
@@ -20,21 +28,13 @@ export function useTimelinePlayback(
       onTick(eventTimestamps[indexRef.current]);
       indexRef.current++;
     }, 1500);
-  }, [eventTimestamps, onTick]);
+  }, [eventTimestamps, onTick, stop]);
 
   const pause = useCallback(() => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
-  }, []);
-
-  const stop = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-    indexRef.current = 0;
   }, []);
 
   useEffect(() => {

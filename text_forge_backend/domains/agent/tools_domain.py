@@ -462,7 +462,7 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
 
         async with session_factory() as session:
             stmt = select(Workflow).where(
-                (Workflow.user_id == user_id) | (Workflow.builtin == True)  # noqa: E712
+                (Workflow.user_id == user_id) | (Workflow.builtin == True)
             ).order_by(Workflow.builtin.desc(), Workflow.id)
             workflows = (await session.execute(stmt)).scalars().all()
             return {

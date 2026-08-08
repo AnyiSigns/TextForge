@@ -1,7 +1,9 @@
 
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from core.auth import get_current
 from domains.book._owner_check import assert_book_owner
-from fastapi import APIRouter, Depends, HTTPException, Query
 from schema.request.world import (
     ForeshadowingRequest,
     ForeshadowingUpdate,
@@ -20,7 +22,6 @@ from schema.response.world import (
 )
 from shared.database import db_manager
 from shared.pagination import PageParams, PageResult
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from .service import WorldService
 

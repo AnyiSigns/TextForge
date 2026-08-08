@@ -1,8 +1,9 @@
-from models.book import Chapter
-from shared.base_repo import BaseRepository
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+
+from models.book import Chapter
+from shared.base_repo import BaseRepository
 
 
 def _chapter_stmt():

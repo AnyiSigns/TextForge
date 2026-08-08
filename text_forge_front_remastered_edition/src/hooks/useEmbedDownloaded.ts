@@ -1,27 +1,26 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { getDownloadedTiers, initDownloadedTiers, subscribeDownloaded } from '@/lib/rag/embed';
 
 export function useEmbedDownloaded(): string[] {
-  const [mounted, setMounted] = useState(false);
-  const [tiers, setTiers] = useState<string[]>([]);
+  // 通过 useSyncExternalStore 订阅已下载档位集合（模块级单一数据源），
+  // 无需在 effect 中同步 setState；挂载后异步初始化一次。
+  const [hydrated, setHydrated] = useState(false);
+  const tiers = useSyncExternalStore(
+    subscribeDownloaded,
+    () => getDownloadedTiers(),
+    () => [],
+  );
 
   useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    let unsub: (() => void) | null = null;
+    let active = true;
     initDownloadedTiers().then(() => {
-      setTiers(getDownloadedTiers());
-      unsub = subscribeDownloaded(() => {
-        setTiers(getDownloadedTiers());
-      });
+      if (active) setHydrated(true);
     });
-    return () => { if (unsub) unsub(); };
+    return () => { active = false; };
   }, []);
 
-  if (!mounted) return [];
+  if (!hydrated) return [];
   return tiers;
 }

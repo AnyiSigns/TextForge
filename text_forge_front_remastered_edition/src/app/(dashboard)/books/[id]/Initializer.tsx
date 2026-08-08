@@ -85,13 +85,13 @@ function StepCreativeSetting() {
       <div>
         <div className="flex items-center justify-between mb-1.5">
           <label className="text-[10px] font-semibold text-foreground/40 uppercase tracking-wider">自定义字段</label>
-          <button onClick={() => setCreativeForm({ customFields: [...creativeForm.customFields, { key: '', value: '' }] })}
+          <button onClick={() => setCreativeForm({ customFields: [...creativeForm.customFields, { key: '', value: '', _uid: crypto.randomUUID() }] })}
             className="w-4 h-4 flex items-center justify-center rounded bg-transparent border border-border cursor-pointer text-foreground/20 hover:text-foreground/50">
             <Plus size={10} />
           </button>
         </div>
         {creativeForm.customFields.map((f, i) => (
-          <div key={i} className="flex gap-1.5 mb-1.5">
+          <div key={f._uid ?? i} className="flex gap-1.5 mb-1.5">
             <input value={f.key}
               onChange={(e) => {
                 const updated = creativeForm.customFields.map((x, j) => j === i ? { ...x, key: e.target.value } : x);
@@ -270,7 +270,7 @@ function StepOutlinePreview() {
 
 export function Initializer() {
   const {
-    isOpen, currentStep, lockedIds,
+    isOpen, currentStep,
     close, nextStep, prevStep,
     regenerateCandidates, finish,
     saving, generating, streaming, error, clearError,

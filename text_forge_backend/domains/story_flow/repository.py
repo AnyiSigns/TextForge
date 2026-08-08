@@ -3,9 +3,10 @@
 所有查询均带 user_id 归属校验；节点与会话的对外序列化统一走
 to_dict / to_node_dict，避免字段漂移。
 """
-from models.story_flow import StoryFlow, StoryFlowNode
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from models.story_flow import StoryFlow, StoryFlowNode
 
 
 def flow_to_dict(flow: StoryFlow) -> dict:

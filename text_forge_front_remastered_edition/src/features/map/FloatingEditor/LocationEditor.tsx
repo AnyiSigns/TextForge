@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useEntityStore } from '@/features/map/stores/entityStore';
 
 interface LocationEditorProps {
@@ -28,9 +28,10 @@ export function LocationEditor({ locationId, isNew, onClose }: LocationEditorPro
   const [mapIcon, setMapIcon] = useState('');
   const [locked, setLocked] = useState(false);
 
-  useEffect(() => {
-    if (isNew) return;
-    if (!location) return;
+  // 实体数据异步到达时同步本地编辑状态（渲染期间调整，React 会立即重渲染）
+  const [prevLocation, setPrevLocation] = useState(location);
+  if (location && prevLocation !== location) {
+    setPrevLocation(location);
     setName(location.name);
     setType(location.type);
     setDescription(location.description);
@@ -41,11 +42,9 @@ export function LocationEditor({ locationId, isNew, onClose }: LocationEditorPro
     setAlternateOfId(location.alternateOfId ?? 0);
     setMapIcon(location.mapIcon ?? '');
     setLocked(!!location.locked);
-  }, [location, isNew]);
+  }
 
   if (!isNew && !location) return null;
-
-  const parent = !isNew ? locations.find((l) => l.id === location?.parentId) : null;
 
   const handleSave = () => {
     const attrs = Object.fromEntries(

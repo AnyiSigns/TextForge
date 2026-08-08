@@ -94,14 +94,14 @@ export const useEntityStore = create<EntityState>((set, get) => ({
       safe(fetchCreativeSetting(bookId)),
     ]);
 
-    const rb = results as PromiseSettledResult<any>[];
+    const rb = results as PromiseSettledResult<unknown>[];
     const book = rb[0].status === 'fulfilled' ? (rb[0].value as Book | null) : null;
     const characters = rb[1].status === 'fulfilled' ? (rb[1].value as Character[] | null) : null;
     const locations = rb[2].status === 'fulfilled' ? (rb[2].value as Location[] | null) : null;
     const sceneEvents = rb[3].status === 'fulfilled' ? (rb[3].value as SceneEvent[] | null) : null;
     const foreshadowings = rb[4].status === 'fulfilled' ? (rb[4].value as Foreshadowing[] | null) : null;
     const plotThreads = rb[5].status === 'fulfilled' ? (rb[5].value as PlotThread[] | null) : null;
-    const volsAndChapters = rb[6].status === 'fulfilled' ? (rb[6].value as Volume[] | null) : null;
+    const volsAndChapters = rb[6].status === 'fulfilled' ? (rb[6].value as (Volume & { chapters: Chapter[] })[] | null) : null;
     const creativeSetting = rb[7].status === 'fulfilled' ? (rb[7].value as { tone?: string; worldview?: string; writingTaboos?: string; customDimensions?: Record<string, unknown> } | null) : null;
 
     const errors = results
@@ -121,16 +121,16 @@ export const useEntityStore = create<EntityState>((set, get) => ({
             totalWordGoal: book.totalWordGoal || 0,
             currentWordCount: book.currentWordCount || 0,
             timeUnit: (book.timeUnit as 'day' | 'year' | 'hour') || 'day',
-            epochLabel: (book.epochLabel as any) || '',
+            epochLabel: book.epochLabel || '',
           }
         : get().book,
-      volumes: volsAndChapters ? (volsAndChapters.map((v: any) => ({ id: v.id, bookId: 1, title: v.title, summary: v.summary || '', sortOrder: v.sortOrder })) as any) : get().volumes,
-      chapters: volsAndChapters ? ((volsAndChapters as any[]).flatMap((v: any) => (v.chapters || []).map((ch: any) => ({ id: ch.id, volumeId: ch.volumeId, title: ch.title, summary: ch.summary || '', sortOrder: ch.sortOrder, characterIds: ch.characterIds || [], locked: ch.locked || false }))) as any) : get().chapters,
-      sceneEvents: (sceneEvents as any) ?? get().sceneEvents,
-      locations: (locations as any) ?? get().locations,
-      characters: (characters as any) ?? get().characters,
-      foreshadowings: (foreshadowings as any) ?? get().foreshadowings,
-      plotThreads: (plotThreads as any) ?? get().plotThreads,
+      volumes: volsAndChapters ? volsAndChapters.map((v) => ({ id: v.id, bookId: v.bookId, title: v.title, summary: v.summary || '', sortOrder: v.sortOrder })) : get().volumes,
+      chapters: volsAndChapters ? volsAndChapters.flatMap((v) => (v.chapters || []).map((ch) => ({ id: ch.id, volumeId: ch.volumeId, title: ch.title, summary: ch.summary || '', sortOrder: ch.sortOrder, characterIds: ch.characterIds || [], locked: ch.locked || false }))) : get().chapters,
+      sceneEvents: sceneEvents ?? get().sceneEvents,
+      locations: locations ?? get().locations,
+      characters: characters ?? get().characters,
+      foreshadowings: foreshadowings ?? get().foreshadowings,
+      plotThreads: plotThreads ?? get().plotThreads,
       creativeSetting: creativeSetting
         ? {
             tone: creativeSetting.tone || '',
@@ -157,7 +157,7 @@ export const useEntityStore = create<EntityState>((set, get) => ({
       ),
     }));
     import('@/shared/api/world').then(({ updateSceneEvent: apiUpdate }) =>
-      apiUpdate(id, patch as any, get().book?.id).catch(() => toast.error('事件更新失败'))
+      apiUpdate(id, patch, get().book?.id).catch(() => toast.error('事件更新失败'))
     );
   },
 
@@ -176,7 +176,7 @@ export const useEntityStore = create<EntityState>((set, get) => ({
       ),
     }));
     import('@/shared/api/world').then(({ updateLocation: apiUpdate }) =>
-      apiUpdate(id, patch as any, get().book?.id).catch(() => toast.error('地点更新失败'))
+      apiUpdate(id, patch, get().book?.id).catch(() => toast.error('地点更新失败'))
     );
   },
 
@@ -187,7 +187,7 @@ export const useEntityStore = create<EntityState>((set, get) => ({
       ),
     }));
     import('@/shared/api/characters').then(({ updateCharacter: apiUpdate }) =>
-      apiUpdate(id, patch as any).catch(() => toast.error('保存失败'))
+      apiUpdate(id, patch).catch(() => toast.error('保存失败'))
     );
   },
 
@@ -198,7 +198,7 @@ export const useEntityStore = create<EntityState>((set, get) => ({
       ),
     }));
     import('@/shared/api/world').then(({ updateForeshadowing: apiUpdate }) =>
-      apiUpdate(id, patch as any, get().book?.id).catch(() => toast.error('伏笔更新失败'))
+      apiUpdate(id, patch, get().book?.id).catch(() => toast.error('伏笔更新失败'))
     );
   },
 
@@ -209,7 +209,7 @@ export const useEntityStore = create<EntityState>((set, get) => ({
       ),
     }));
     import('@/shared/api/world').then(({ updatePlotThread: apiUpdate }) =>
-      apiUpdate(id, patch as any, get().book?.id).catch(() => toast.error('情节脉络更新失败'))
+      apiUpdate(id, patch, get().book?.id).catch(() => toast.error('情节脉络更新失败'))
     );
   },
 
@@ -220,7 +220,7 @@ export const useEntityStore = create<EntityState>((set, get) => ({
       ),
     }));
     import('@/shared/api/books').then(({ updateVolume: apiUpdate }) =>
-      apiUpdate(id, patch as any).catch(() => toast.error('保存失败'))
+      apiUpdate(id, patch).catch(() => toast.error('保存失败'))
     );
   },
 
@@ -231,7 +231,7 @@ export const useEntityStore = create<EntityState>((set, get) => ({
       ),
     }));
     import('@/shared/api/books').then(({ updateChapter: apiUpdate }) =>
-      apiUpdate(id, patch as any).catch(() => toast.error('保存失败'))
+      apiUpdate(id, patch).catch(() => toast.error('保存失败'))
     );
   },
 
@@ -240,10 +240,10 @@ export const useEntityStore = create<EntityState>((set, get) => ({
     set((state) => ({ locations: [...state.locations, loc] }));
     const bookId = get().book?.id;
     import('@/shared/api/world').then(({ createLocation }) =>
-      createLocation({ ...loc, bookId: bookId ?? loc.bookId } as any).then((real) => {
+      createLocation({ ...loc, bookId: bookId ?? loc.bookId }).then((real) => {
         set((state) => ({
           locations: state.locations.map((l) =>
-            l.id === tempId ? { ...(real as any), id: real.id ?? tempId } : l,
+            l.id === tempId ? { ...real, id: real.id ?? tempId } : l,
           ),
         }));
       }).catch(() => toast.error('保存失败'))
@@ -254,10 +254,10 @@ export const useEntityStore = create<EntityState>((set, get) => ({
     const tempId = ch.id;
     set((state) => ({ characters: [...state.characters, ch] }));
     import('@/shared/api/characters').then(({ createCharacter }) =>
-      createCharacter(ch as any).then((real) => {
+      createCharacter(ch).then((real) => {
         set((state) => ({
           characters: state.characters.map((c) =>
-            c.id === tempId ? { ...(real as any), id: real.id ?? tempId } : c,
+            c.id === tempId ? { ...real, id: real.id ?? tempId } : c,
           ),
         }));
       }).catch(() => toast.error('保存失败'))
@@ -268,10 +268,10 @@ export const useEntityStore = create<EntityState>((set, get) => ({
     const tempId = ev.id;
     set((state) => ({ sceneEvents: [...state.sceneEvents, ev] }));
     import('@/shared/api/world').then(({ createSceneEvent }) =>
-      createSceneEvent(ev as any).then((real) => {
+      createSceneEvent(ev).then((real) => {
         set((state) => ({
           sceneEvents: state.sceneEvents.map((e) =>
-            e.id === tempId ? { ...(real as any), id: real.id ?? tempId } : e,
+            e.id === tempId ? { ...real, id: real.id ?? tempId } : e,
           ),
         }));
       }).catch(() => toast.error('保存失败'))
@@ -282,10 +282,10 @@ export const useEntityStore = create<EntityState>((set, get) => ({
     const tempId = pt.id;
     set((state) => ({ plotThreads: [...state.plotThreads, pt] }));
     import('@/shared/api/world').then(({ createPlotThread }) =>
-      createPlotThread(pt as any).then((real) => {
+      createPlotThread(pt).then((real) => {
         set((state) => ({
           plotThreads: state.plotThreads.map((p) =>
-            p.id === tempId ? { ...(real as any), id: real.id ?? tempId } : p,
+            p.id === tempId ? { ...real, id: real.id ?? tempId } : p,
           ),
         }));
       }).catch(() => toast.error('保存失败'))
@@ -296,10 +296,10 @@ export const useEntityStore = create<EntityState>((set, get) => ({
     const tempId = fw.id;
     set((state) => ({ foreshadowings: [...state.foreshadowings, fw] }));
     import('@/shared/api/world').then(({ createForeshadowing }) =>
-      createForeshadowing(fw as any).then((real) => {
+      createForeshadowing(fw).then((real) => {
         set((state) => ({
           foreshadowings: state.foreshadowings.map((f) =>
-            f.id === tempId ? { ...(real as any), id: real.id ?? tempId } : f,
+            f.id === tempId ? { ...real, id: real.id ?? tempId } : f,
           ),
         }));
       }).catch(() => toast.error('保存失败'))
@@ -313,7 +313,7 @@ export const useEntityStore = create<EntityState>((set, get) => ({
       createChapter(ch.volumeId, { title: ch.title, summary: ch.summary ?? undefined, locked: ch.locked || false }).then((real) => {
         set((state) => ({
           chapters: state.chapters.map((c) =>
-            c.id === tempId ? { ...(real as any), id: real.id ?? tempId } : c,
+            c.id === tempId ? { ...real, id: real.id ?? tempId } : c,
           ),
         }));
       }).catch(() => toast.error('保存失败'))
@@ -328,7 +328,7 @@ export const useEntityStore = create<EntityState>((set, get) => ({
       createVolume(bookId, vol.title, vol.summary).then((real) => {
         set((state) => ({
           volumes: state.volumes.map((v) =>
-            v.id === tempId ? { ...(real as any), id: real.id ?? tempId } : v,
+            v.id === tempId ? { ...real, id: real.id ?? tempId } : v,
           ),
         }));
       }).catch(() => toast.error('保存失败'))

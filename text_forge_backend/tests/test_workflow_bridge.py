@@ -5,9 +5,9 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-from models.workflow import Workflow
 
 from domains.agent.tools.workflow_bridge_tools import build_workflow_bridge_tools
+from models.workflow import Workflow
 
 
 class ScalarResult:

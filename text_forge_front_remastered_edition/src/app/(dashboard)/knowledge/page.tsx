@@ -42,6 +42,8 @@ export default function KnowledgePage() {
     setPersonal(localDocs.filter((d) => d.scope === 'personal'));
   }, []);
 
+  // refresh 为纯异步加载（首个 await 之前无同步 setState），effect 仅触发请求，属合法数据获取模式
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void refresh(); }, [refresh]);
 
   const pendingReindex = personal.filter((d) => d.status === 'indexing').length;
@@ -91,7 +93,7 @@ export default function KnowledgePage() {
       await ragClient.uploadPersonal(file);
       toast.success('上传成功');
       await refresh();
-    } catch (err) {
+    } catch {
       toast.error('上传失败');
     } finally { setLoading(false); e.target.value = ''; }
   };

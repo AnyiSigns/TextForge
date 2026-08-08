@@ -20,7 +20,6 @@ export function useAgentSender() {
   const setAgentStreaming = useBookDetailStore((s) => s.setAgentStreaming);
   const setAgentStatus = useBookDetailStore((s) => s.setAgentStatus);
   const agentToolLog = useBookDetailStore((s) => s.agentToolLog);
-  const pushToolLog = useBookDetailStore((s) => s.pushToolLog);
   const clearToolLog = useBookDetailStore((s) => s.clearToolLog);
   const upsertNodeStatus = useBookDetailStore((s) => s.upsertNodeStatus);
   const clearNodeStatuses = useBookDetailStore((s) => s.clearNodeStatuses);
@@ -95,8 +94,8 @@ export function useAgentSender() {
           break;
         }
         case 'node_start': {
-          const nodeId = (event as any).node_id || (event as any).label || '';
-          const label = (event as any).label || nodeId;
+          const nodeId = event.node_id || event.label || '';
+          const label = event.label || nodeId;
           setAgentStatus({ kind: 'working', label: `正在执行: ${label}` });
           upsertNodeStatus({ nodeId, label, status: 'running' });
           // 节点卡片同样作为独立消息插入消息流，紧跟触发它的工具卡片之后
@@ -112,15 +111,15 @@ export function useAgentSender() {
         }
         case 'node_stream': {
           // 事件只有 node_id（无 label），按 nodeId 累积到 nodeOutputs（状态卡片展开时在卡片内部展示）
-          const nodeId = (event as any).node_id || '';
+          const nodeId = event.node_id || '';
           setNodeOutput(nodeId, event.token || '');
           break;
         }
         case 'node_end': {
-          const nodeId = (event as any).node_id || (event as any).label || '';
-          const label = (event as any).label || nodeId;
-          upsertNodeStatus({ nodeId, label, status: 'completed', tokens: (event as any).tokens });
-          updateNodeMessage(nodeId, { label, nodeStatus: 'completed', tokens: (event as any).tokens });
+          const nodeId = event.node_id || event.label || '';
+          const label = event.label || nodeId;
+          upsertNodeStatus({ nodeId, label, status: 'completed', tokens: event.tokens });
+          updateNodeMessage(nodeId, { label, nodeStatus: 'completed', tokens: event.tokens });
           // 把流式累积的节点输出固化到节点卡片消息自身（content），
           // 否则新消息开始时 clearNodeOutputs() 会清空 nodeOutputs，卡片展开只剩「暂无输出」。
           const accumulated = useBookDetailStore.getState().nodeOutputs?.[nodeId] || '';
@@ -131,9 +130,9 @@ export function useAgentSender() {
         }
         case 'node_fail': {
           // 节点失败必须让用户看到，不能静默
-          const nodeId = (event as any).node_id || (event as any).label || '';
-          const label = (event as any).label || nodeId;
-          const reason = (event as any).reason || '';
+          const nodeId = event.node_id || event.label || '';
+          const label = event.label || nodeId;
+          const reason = event.reason || '';
           upsertNodeStatus({ nodeId, label, status: 'failed', reason });
           updateNodeMessage(nodeId, { label, nodeStatus: 'failed', reason });
           addAgentMessage({
@@ -158,14 +157,14 @@ export function useAgentSender() {
             content: '',
             type: 'propose-cards',
             token: JSON.stringify({
-              card_types: (event as any).card_types,
-              reason: (event as any).reason,
-              cards: (event as any).cards,
+              card_types: event.card_types,
+              reason: event.reason,
+              cards: event.cards,
             }),
           });
-          if ((event as any).card_types?.includes('world_setup') || (event as any).card_types?.includes('character_intro')) {
+          if (event.card_types?.includes('world_setup') || event.card_types?.includes('character_intro')) {
             setCreativePhase('worldbuilding');
-          } else if ((event as any).card_types?.includes('plot_direction')) {
+          } else if (event.card_types?.includes('plot_direction')) {
             setCreativePhase('outlining');
           }
           break;
@@ -176,17 +175,17 @@ export function useAgentSender() {
           break;
         case 'suggestions': {
           // 创作建议必须展示给用户（后端每条回复后都会推送）
-          const items = (event as any).items;
+          const items = event.items;
           if (Array.isArray(items) && items.length > 0) {
             const lines = items
-              .map((it: any) => {
+              .map((it) => {
                 const typeLabel: Record<string, string> = {
                   summary_missing: '章节缺少摘要',
                   foreshadowing_due: '伏笔待回收',
                   plot_thread_stalled: '情节线停滞',
                   pacing_imbalance: '节奏失衡',
                 };
-                const label = typeLabel[it?.type] || it?.type || '建议';
+                const label = typeLabel[it?.type || ''] || it?.type || '建议';
                 const message = it?.message || it?.suggestion || '';
                 return `· ${label}：${message}`;
               })
@@ -196,15 +195,15 @@ export function useAgentSender() {
           break;
         }
         case 'title_update':
-          if ((event as any).thread_id && (event as any).title) {
+          if (event.thread_id && event.title) {
             window.dispatchEvent(new CustomEvent('textforge:agent-title', {
-              detail: { threadId: (event as any).thread_id, title: (event as any).title },
+              detail: { threadId: event.thread_id, title: event.title },
             }));
           }
           break;
       }
     },
-    [addAgentMessage, updateAgentStreamToken, setPendingReview, setAgentStatus, setCreativePhase, pushToolLog, clearToolLog, commitStreamingMessage, upsertNodeStatus, setNodeOutput, updateToolMessage, updateNodeMessage],
+    [addAgentMessage, updateAgentStreamToken, setPendingReview, setAgentStatus, setCreativePhase, commitStreamingMessage, upsertNodeStatus, setNodeOutput, updateToolMessage, updateNodeMessage],
   );
 
   const sendMessage = useCallback(
@@ -280,7 +279,7 @@ export function useAgentSender() {
         setAgentStreaming(false);
       }
     },
-    [agentStreaming, agentThreadId, bookId, addAgentMessage, setAgentStreaming, setAgentThreadId, handleSSEEvent, setAgentStatus, updateAgentStreamToken, notifyOutlineRefresh, clearToolLog, pushToolLog, commitStreamingMessage, clearNodeStatuses, clearNodeOutputs],
+    [agentStreaming, agentThreadId, bookId, addAgentMessage, setAgentStreaming, setAgentThreadId, handleSSEEvent, setAgentStatus, updateAgentStreamToken, notifyOutlineRefresh, commitStreamingMessage, clearToolLog, clearNodeStatuses, clearNodeOutputs],
   );
 
   const abort = useCallback(() => {
@@ -333,7 +332,7 @@ export function useAgentSender() {
       commitStreamingMessage();
       setAgentStreaming(false);
     }
-  }, [agentThreadId, bookId, addAgentMessage, handleSSEEvent, notifyOutlineRefresh, setAgentStreaming, clearToolLog, commitStreamingMessage]);
+  }, [agentThreadId, bookId, addAgentMessage, handleSSEEvent, notifyOutlineRefresh, setAgentStreaming, setAgentStatus, updateAgentStreamToken, clearToolLog, clearNodeStatuses, clearNodeOutputs, commitStreamingMessage]);
 
   useEffect(() => {
     const el = messagesEndRef.current?.parentElement;

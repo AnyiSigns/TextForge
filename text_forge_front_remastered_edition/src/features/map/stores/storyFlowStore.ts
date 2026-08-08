@@ -440,7 +440,7 @@ export const useStoryFlowStore = create<StoryFlowState>((set, get) => ({
   },
 
   finishFlow: async () => {
-    const { flowId, status } = get();
+    const { flowId } = get();
     if (!flowId) return '';
     let config: Awaited<ReturnType<typeof getModelConfigData>>;
     try {

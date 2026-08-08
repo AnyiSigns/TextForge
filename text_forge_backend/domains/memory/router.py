@@ -1,6 +1,8 @@
 
-from core.auth import get_current
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from core.auth import get_current
 from schema.request.memory import (
     AgentMemoryRequest,
     AgentMemorySearchRequest,
@@ -9,7 +11,6 @@ from schema.request.memory import (
 from schema.response.memory import AgentMemoryResponse
 from shared.database import db_manager
 from shared.pagination import PageParams, PageResult
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from .service import AgentMemoryService
 

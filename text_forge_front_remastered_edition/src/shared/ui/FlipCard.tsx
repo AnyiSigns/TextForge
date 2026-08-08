@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect, useRef, useLayoutEffect } from 'react';
+import { useState, useMemo, useRef, useLayoutEffect } from 'react';
 import { cn } from '@/shared/lib/cn';
 import type { Card, CardField } from '@/shared/api/wizard';
 
@@ -27,19 +27,13 @@ const FIELD_DISPLAY: Record<string, string> = {
 
 function displayName(key: string): string { return FIELD_DISPLAY[key] || key; }
 
-const STEP_LABELS_MAP: Record<string, string> = {
-  creative_setting: '创意设定', locations: '地点', characters: '角色',
-  character_relations: '关系', timeline_foreshadowing: '时间线',
-  plot_threads: '剧情线', outline: '大纲',
-};
-
 const STEP_ICONS: Record<string, string> = {
   creative_setting: '\u2726', locations: '\u25C8', characters: '\u265F',
   character_relations: '\u26AD', timeline_foreshadowing: '\u25F7',
   plot_threads: '\u2727', outline: '\u2261',
 };
 
-export function FlipCard({ card, index, total, step, editable, selected, onSelect, onEdit, onRemove, confirmed }: FlipCardProps) {
+export function FlipCard({ card, index, total, step, selected, onSelect, onEdit, onRemove, confirmed }: FlipCardProps) {
   const [editedFields, setEditedFields] = useState<CardField[]>(card.fields);
   const isCreativeSetting = step === 'creative_setting';
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -53,35 +47,41 @@ export function FlipCard({ card, index, total, step, editable, selected, onSelec
   }, [isCreativeSetting, editedFields]);
 
   const [customDims, setCustomDims] = useState<CustomDim[]>([]);
-  const nextIdRef = useRef(0);
 
-  useEffect(() => { setEditedFields(card.fields); }, [card]);
-
-  useEffect(() => {
-    if (!isCreativeSetting) return;
-    const f = card.fields.find((f) => f.key === '自定义维度' || f.key === 'custom_dimensions');
-    if (!f) { setCustomDims([]); return; }
-    const raw = typeof f.value === 'string' ? f.value : JSON.stringify(f.value ?? '');
-    let entries: CustomDim[];
-    try {
-      if (raw.trim().startsWith('{') || raw.trim().startsWith('[')) {
-        const parsed = JSON.parse(raw);
-        const obj = typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
-          ? parsed as Record<string, unknown> : {};
-        entries = Object.entries(obj).map(([k, v], i) => ({ id: i + 100, key: k, value: String(v ?? '') }));
+  // 卡片数据异步到达时同步本地编辑状态（渲染期间调整，React 会立即重渲染）
+  const [prevCard, setPrevCard] = useState(card);
+  if (card !== prevCard) {
+    setPrevCard(card);
+    setEditedFields(card.fields);
+    if (isCreativeSetting) {
+      const f = card.fields.find((f) => f.key === '自定义维度' || f.key === 'custom_dimensions');
+      if (!f) {
+        setCustomDims([]);
       } else {
-        const lines = raw.split('\n').filter((l) => l.trim());
-        entries = lines.map((line, i) => {
-          const sep = line.indexOf('：') >= 0 ? '：' : ':';
-          const idx = line.indexOf(sep);
-          if (idx > 0) return { id: i + 100, key: line.slice(0, idx).trim(), value: line.slice(idx + 1).trim() };
-          return { id: i + 100, key: line.trim(), value: '' };
-        });
+        const raw = typeof f.value === 'string' ? f.value : JSON.stringify(f.value ?? '');
+        let entries: CustomDim[];
+        try {
+          if (raw.trim().startsWith('{') || raw.trim().startsWith('[')) {
+            const parsed = JSON.parse(raw);
+            const obj = typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+              ? parsed as Record<string, unknown> : {};
+            entries = Object.entries(obj).map(([k, v], i) => ({ id: i + 100, key: k, value: String(v ?? '') }));
+          } else {
+            const lines = raw.split('\n').filter((l) => l.trim());
+            entries = lines.map((line, i) => {
+              const sep = line.indexOf('：') >= 0 ? '：' : ':';
+              const idx = line.indexOf(sep);
+              if (idx > 0) return { id: i + 100, key: line.slice(0, idx).trim(), value: line.slice(idx + 1).trim() };
+              return { id: i + 100, key: line.trim(), value: '' };
+            });
+          }
+        } catch { entries = []; }
+        setCustomDims(entries);
       }
-    } catch { entries = []; }
-    setCustomDims(entries);
-    nextIdRef.current = 200 + entries.length;
-  }, [card, isCreativeSetting]);
+    } else {
+      setCustomDims([]);
+    }
+  }
 
   useLayoutEffect(() => {
     if (!scrollRef.current) return;
@@ -119,7 +119,7 @@ export function FlipCard({ card, index, total, step, editable, selected, onSelec
   };
 
   const addCustomDim = () => {
-    const newId = nextIdRef.current++;
+    const newId = customDims.length > 0 ? Math.max(...customDims.map((d) => d.id)) + 1 : 101;
     updateCustomDims([...customDims, { id: newId, key: '', value: '' }]);
   };
 

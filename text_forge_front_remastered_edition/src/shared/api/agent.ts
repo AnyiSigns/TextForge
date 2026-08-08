@@ -2,7 +2,7 @@ import { apiClient } from './client';
 import { authedFetch } from './authFetch';
 import { fetchModelConfig } from '@/shared/api/models';
 import { readSSE } from './sse';
-import type { SSEEvent, AgentConversation, AgentMessage } from './types';
+import type { SSEEvent, AgentConversation, AgentMessage, AgentMemory } from './types';
 
 interface AgentStartResult {
   thread_id: string;
@@ -71,15 +71,16 @@ export async function streamAgent(
     throw err;
   }
 
-  await readSSE(res, (event) => {
-    onEvent(event as unknown as SSEEvent);
+  await readSSE(res, (rawEvent) => {
+    const event = rawEvent as unknown as SSEEvent;
+    onEvent(event);
 
     if (event.type === 'end') {
-      onDone((event as any).reply || '', (event as any).title);
+      onDone(event.reply || '', event.title);
       // 不立即返回，继续读取后续事件，流结束自然退出。
     }
     if (event.type === 'error') {
-      onError((event as any).message || '未知错误');
+      onError(event.message || '未知错误');
     }
   });
 }
@@ -105,9 +106,25 @@ export async function submitReviewAction(
 }
 
 
+interface ConversationRaw {
+  id: number;
+  user_id: number;
+  title: string;
+  thread_id: string;
+  update_at: string;
+}
+
+interface MessageRaw {
+  conversation_id: number;
+  role: string;
+  content: string;
+  think?: string | null;
+  create_at: string;
+}
+
 export async function fetchAgentConversations(): Promise<AgentConversation[]> {
-  const { data } = await apiClient.get<any[]>('/agent/conversations');
-  return (data as any[]).map((c: any) => ({
+  const { data } = await apiClient.get<ConversationRaw[]>('/agent/conversations');
+  return (data ?? []).map((c) => ({
     id: c.id,
     userId: c.user_id,
     title: c.title,
@@ -117,12 +134,12 @@ export async function fetchAgentConversations(): Promise<AgentConversation[]> {
 }
 
 export async function fetchAgentMessages(conversationId: number): Promise<AgentMessage[]> {
-  const { data } = await apiClient.get<any[]>('/agent/conversations/' + conversationId + '/messages');
-  return (data as any[]).map((m: any) => ({
+  const { data } = await apiClient.get<MessageRaw[]>('/agent/conversations/' + conversationId + '/messages');
+  return (data ?? []).map((m) => ({
     conversationId: m.conversation_id,
     role: m.role,
     content: m.content,
-    think: m.think,
+    think: m.think || undefined,
     createdAt: m.create_at,
   }));
 }
@@ -135,9 +152,9 @@ export async function deleteConversation(id: number): Promise<void> {
   }
 }
 
-export async function searchAgentMemories(bookId: number, query: string): Promise<any[]> {
+export async function searchAgentMemories(bookId: number, query: string): Promise<AgentMemory[]> {
   try {
-    const { data } = await apiClient.post<any[]>('/agent-memories/search', { q: query, book_id: bookId });
+    const { data } = await apiClient.post<AgentMemory[]>('/agent-memories/search', { q: query, book_id: bookId });
     return Array.isArray(data) ? data : [];
   } catch {
     return [];
@@ -161,4 +178,3 @@ export async function streamCompress(
     onEvent(event as unknown as SSEEvent);
   });
 }
-

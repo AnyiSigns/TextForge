@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Plus, Pencil, Trash2, Lock } from 'lucide-react';
 import { useEntityStore } from '@/features/map/stores/entityStore';
 import { useEditorStore } from '@/features/map/stores/editorStore';

@@ -6,6 +6,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
+
 from domains.story_flow import service
 from domains.story_flow.repository import flow_to_dict, node_to_dict
 from models.book import Book, Chapter, SceneEvent

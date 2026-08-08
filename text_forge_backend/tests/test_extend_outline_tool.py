@@ -15,9 +15,19 @@ import json
 from types import SimpleNamespace
 
 import pytest
-from models.book import Book, Chapter, Character, CreativeSetting, Foreshadowing, Location, PlotThread, SceneEvent, Volume
 
 from domains.agent.tools import extend_outline_tool as tool_mod
+from models.book import (
+    Book,
+    Chapter,
+    Character,
+    CreativeSetting,
+    Foreshadowing,
+    Location,
+    PlotThread,
+    SceneEvent,
+    Volume,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -151,7 +161,7 @@ class ScalarSession:
         self._value = value
 
     async def execute(self, stmt):
-        return SimpleNamespace(scalar=lambda: self._value, scalars=lambda: SimpleNamespace(all=lambda: []),
+        return SimpleNamespace(scalar=lambda: self._value, scalars=lambda: SimpleNamespace(all=list),
                                scalar_one_or_none=lambda: None)
 
 

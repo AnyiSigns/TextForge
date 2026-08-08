@@ -20,6 +20,20 @@ interface NodeStatus {
   output?: string;
 }
 
+interface WorkflowStreamEvent {
+  event?: string;
+  type?: string;
+  node_id?: string;
+  token?: string;
+  tokens?: number;
+  reason?: string;
+  result?: {
+    status?: string;
+    message?: string;
+    pending_node_label?: string;
+  };
+}
+
 interface ExecutionPanelProps {
   workflow: Workflow;
   bookId?: number;
@@ -51,7 +65,10 @@ export function ExecutionPanel({ workflow, bookId, onClose }: ExecutionPanelProp
     (v.chapters ?? []).map((c) => ({ id: c.id, label: `${v.title} / ${c.title}` })),
   );
 
-  useEffect(() => {
+  // 工作流切换时重置节点状态（渲染期间调整，React 会立即重渲染）
+  const [prevWorkflowId, setPrevWorkflowId] = useState(workflow.id);
+  if (workflow.id !== prevWorkflowId) {
+    setPrevWorkflowId(workflow.id);
     setStatuses(
       workflow.nodes.map((n) => ({
         nodeId: n.id,
@@ -59,7 +76,7 @@ export function ExecutionPanel({ workflow, bookId, onClose }: ExecutionPanelProp
         status: 'pending',
       })),
     );
-  }, [workflow.id]);
+  }
 
   const handleRun = useCallback(async () => {
     setRunning(true);
@@ -68,7 +85,7 @@ export function ExecutionPanel({ workflow, bookId, onClose }: ExecutionPanelProp
     const controller = new AbortController();
     setAbortController(controller);
 
-    const applyEvent = (data: any) => {
+    const applyEvent = (data: WorkflowStreamEvent) => {
       const nodeId = data?.node_id as string | undefined;
       switch (data?.event ?? data?.type) {
         case 'node_start':

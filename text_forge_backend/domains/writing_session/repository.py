@@ -1,10 +1,11 @@
 from datetime import datetime, timedelta
 from typing import Any
 
-from models.writing_session import WritingSession
-from shared.base_repo import BaseRepository
 from sqlalchemy import Date, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from models.writing_session import WritingSession
+from shared.base_repo import BaseRepository
 
 
 class WritingSessionRepository(BaseRepository[WritingSession]):

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { X, GitCompare } from 'lucide-react';
 import { cn } from '@/shared/lib/cn';
 
@@ -20,9 +20,12 @@ interface VersionHistoryProps {
 export function VersionHistory({ versions, currentVersion, onCompare, onClose }: VersionHistoryProps) {
   const [selectedVersions, setSelectedVersions] = useState<number[]>([]);
 
-  useEffect(() => {
+  // 版本数量变化时清空选择（渲染期间调整，React 会立即重渲染）
+  const [prevCount, setPrevCount] = useState(versions.length);
+  if (versions.length !== prevCount) {
+    setPrevCount(versions.length);
     setSelectedVersions([]);
-  }, [versions.length]);
+  }
 
   const toggleSelect = (v: number) => {
     setSelectedVersions((prev) => {

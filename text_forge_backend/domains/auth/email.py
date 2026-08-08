@@ -2,9 +2,10 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 import aiosmtplib
+from pydantic import EmailStr
+
 from config.logging import get_logger
 from config.settings import settings
-from pydantic import EmailStr
 
 logger = get_logger(__name__)
 

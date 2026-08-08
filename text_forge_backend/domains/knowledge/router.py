@@ -1,11 +1,12 @@
 from typing import Annotated
 
-from core.auth import get_current
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from core.auth import get_current
 from schema.request.knowledge import KnowledgeSearchRequest
 from schema.response.knowledge import KnowledgeChunk, KnowledgeSearchResponse
 from shared.database import db_manager
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from .service import KnowledgeService
 

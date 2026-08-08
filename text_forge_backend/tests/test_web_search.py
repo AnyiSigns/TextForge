@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+
 from domains.agent.web_search_service import WebSearchService
 
 
@@ -81,7 +82,6 @@ def patch_httpx(monkeypatch, response: FakeResponse):
             super().__init__(response)
 
     monkeypatch.setattr("httpx.AsyncClient", FakeAsyncClient)
-    return None
 
 
 @pytest.mark.asyncio

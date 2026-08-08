@@ -349,6 +349,8 @@ export function StoryFlow() {
                 className="text-left flex gap-2.5 items-start p-3 rounded-xl border border-border/40 bg-background/40 hover:border-foreground/20 hover:bg-foreground/[0.02] hover:shadow-sm transition-all cursor-pointer"
               >
                 {c.avatarUrl ? (
+                  // 用户自定义远程头像 URL，next/image 需配置任意远程域名白名单，此处用 img 合理
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img src={c.avatarUrl} alt={c.name} className="w-9 h-9 rounded-full object-cover flex-shrink-0" />
                 ) : (
                   <span className="w-9 h-9 rounded-full bg-foreground/[0.06] flex items-center justify-center text-[13px] font-medium text-foreground/60 flex-shrink-0">

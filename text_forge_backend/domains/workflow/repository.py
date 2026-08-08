@@ -1,7 +1,8 @@
-from models.workflow import Workflow
-from shared.base_repo import BaseRepository
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from models.workflow import Workflow
+from shared.base_repo import BaseRepository
 
 
 class WorkflowRepository(BaseRepository[Workflow]):
@@ -19,7 +20,7 @@ class WorkflowRepository(BaseRepository[Workflow]):
     async def get_list_workflow(self, user_id: int):
         """查询用户工作流列表（含全局内置模板 builtin=True）。"""
         stmt = select(Workflow).where(
-            (Workflow.user_id == user_id) | (Workflow.builtin == True)  # noqa: E712
+            (Workflow.user_id == user_id) | (Workflow.builtin == True)
         )
         result = await self.session.execute(stmt)
         return result.scalars().all()
@@ -28,7 +29,7 @@ class WorkflowRepository(BaseRepository[Workflow]):
         """根据 ID 查询单个工作流（内置模板对所有用户可见）。"""
         stmt = select(Workflow).where(
             Workflow.id == workflow_id,
-            (Workflow.user_id == user_id) | (Workflow.builtin == True),  # noqa: E712
+            (Workflow.user_id == user_id) | (Workflow.builtin == True),
         )
         instance = await self.session.execute(stmt)
         return instance.scalar_one_or_none()

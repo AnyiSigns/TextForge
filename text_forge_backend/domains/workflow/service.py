@@ -1,9 +1,10 @@
 from typing import Annotated
 
-from config.logging import get_logger
 from fastapi import Depends, HTTPException
-from shared.database import db_manager
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from config.logging import get_logger
+from shared.database import db_manager
 
 from .repository import WorkflowRepository
 

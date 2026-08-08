@@ -281,6 +281,7 @@ export interface SSEEvent {
   summary?: string;
   removed_count?: number;
   remaining_count?: number;
+  items?: Array<{ type?: string; message?: string; suggestion?: string }>;
 }
 
 export interface BookContextConfig {

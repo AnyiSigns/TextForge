@@ -5,7 +5,6 @@ import { LocationMarker } from './LocationMarker';
 import { CharacterAvatar } from './CharacterAvatar';
 import type { Location, Character } from '@/shared/api/types';
 import { useEntityStore } from '@/features/map/stores/entityStore';
-import { useMapStore } from '@/features/map/stores/mapStore';
 
 interface VisibleCharInfo {
   character: Character;

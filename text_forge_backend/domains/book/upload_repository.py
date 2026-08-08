@@ -3,11 +3,12 @@ import os
 import uuid
 
 import sqlalchemy
-from core.model_factory import ModelFactory
 from fastapi import UploadFile
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from models.document import Chunk, Document
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from core.model_factory import ModelFactory
+from models.document import Chunk, Document
 
 
 async def compute_md5(content: bytes) -> str:

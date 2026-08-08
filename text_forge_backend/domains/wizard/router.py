@@ -7,17 +7,17 @@ import json
 import re
 from typing import Annotated
 
-from config.logging import get_logger
-from core.auth import get_current
-from core.model_factory import ModelFactory
 from fastapi import APIRouter, Depends, HTTPException
 from langchain_core.messages import HumanMessage, SystemMessage
-from models.book import Book, Chapter, CreativeSetting, Volume
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from config.logging import get_logger
+from core.auth import get_current
+from core.model_factory import ModelFactory
+from models.book import Book, Chapter, CreativeSetting, Volume
 from shared.database import db_manager
-from shared.utils import truncate_text
 
 from .prompts import STEP_PROMPTS
 

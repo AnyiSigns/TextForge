@@ -30,7 +30,6 @@ export default function BooksListPage() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    setLoading(true);
     booksApi.fetchBooks().then((list) => { setBooks(list); setLoading(false); }).catch(() => setLoading(false));
   }, []);
 
@@ -181,7 +180,8 @@ export default function BooksListPage() {
                   checked={selectedIds.has(book.id)}
                   onChange={(e) => {
                     const s = new Set(selectedIds);
-                    e.target.checked ? s.add(book.id) : s.delete(book.id);
+                    if (e.target.checked) s.add(book.id);
+                    else s.delete(book.id);
                     setSelectedIds(s);
                   }}
                   className="w-3.5 h-3.5 rounded border-border accent-accent cursor-pointer shrink-0"

@@ -1,4 +1,3 @@
-import asyncio
 import json
 import uuid
 from datetime import datetime, timezone
@@ -572,7 +571,6 @@ async def stream_agent(
                             if msgs:
                                 last = msgs[-1]
                                 if isinstance(last, _AIMsg) and getattr(last, "tool_calls", None):
-                                    tool_called_this_turn = True
                                     for _tc in last.tool_calls:
                                         tname = _tc.get("name") if isinstance(_tc, dict) else getattr(_tc, "name", "")
                                         if tname == "generate_chapter":
@@ -611,12 +609,7 @@ async def stream_agent(
                                 # 每个工具执行结束各发一次 tool_end（带工具名），供前端复位工具状态条
                                 yield f"data: {json.dumps({'type': 'tool_end', 'tool': m.name}, ensure_ascii=False)}\n\n"
                         # quality_gate 节点：工作流审计若产生 pending_review，推送审核卡
-                        elif node_name == "quality_gate":
-                            if update.get("pending_review"):
-                                yield _sse_review_card(update["pending_review"])
-                        # workflow_runner 原生节点：审计拦截产生的 pending_review 也要推送审核卡，
-                        # 否则前端只看到「触发审计拦截」文字、审核卡不弹（审批流卡死）。
-                        elif node_name == "workflow_runner":
+                        elif node_name == "quality_gate" or node_name == "workflow_runner":
                             if update.get("pending_review"):
                                 yield _sse_review_card(update["pending_review"])
 

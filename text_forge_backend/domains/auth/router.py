@@ -2,10 +2,11 @@ import uuid
 from datetime import datetime, timezone
 from typing import Annotated
 
+from fastapi import APIRouter, Depends, HTTPException
+
 from config.logging import get_logger
 from config.settings import settings
 from core.security import create_token, verify_token
-from fastapi import APIRouter, Depends, HTTPException
 from schema.request.auth import (
     EmailRequest,
     RefreshRequest,

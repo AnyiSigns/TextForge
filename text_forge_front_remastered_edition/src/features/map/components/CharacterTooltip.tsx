@@ -19,20 +19,25 @@ export function CharacterTooltip({
   screenY,
   visible,
 }: CharacterTooltipProps) {
-  const [show, setShow] = useState(false);
+  const [delayedShow, setDelayedShow] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (visible) {
-      timerRef.current = setTimeout(() => setShow(true), 200);
+      timerRef.current = setTimeout(() => setDelayedShow(true), 200);
     } else {
       if (timerRef.current) clearTimeout(timerRef.current);
-      setShow(false);
+      // 立即隐藏走派生（visible && delayedShow），此处复位延迟标记为合法的 effect 清理
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setDelayedShow(false);
     }
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, [visible]);
+
+  // 立即隐藏由 visible 派生（不依赖 effect 中的同步 setState），延迟显示走 timer
+  const show = visible && delayedShow;
 
   if (!show) return null;
 

@@ -11,8 +11,6 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_moonshot import ChatMoonshot
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
-
-
 from langchain_qwq import ChatQwQ
 
 
@@ -155,7 +153,7 @@ class ModelWrapper:
     @staticmethod
     def _create_stability_vision(config: dict[str, Any]):
         try:
-            from langchain_community.llms.stability_ai_image_gen import (
+            from langchain_community.llms.stability_ai_image_gen import (  # type: ignore[import-not-found]
                 StabilityAIImageGeneration,
             )
 
@@ -171,9 +169,9 @@ class ModelWrapper:
     @staticmethod
     def _create_replicate_vision(config: dict[str, Any]):
         try:
-            from langchain_replicate import Replicate
+            from langchain_replicate import Replicate  # type: ignore[import-not-found]
 
-            kwargs = {
+            kwargs: dict[str, Any] = {
                 "model": config.get("model_id")
                 or "stability-ai/stable-diffusion:db21e45d3f7023abc2a46ee38a23973f6dce16bb082a930b0c49861f96d1e5bf",
                 "input": {},

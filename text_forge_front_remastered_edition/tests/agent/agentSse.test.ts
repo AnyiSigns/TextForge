@@ -9,6 +9,13 @@ import { streamAgent } from '@/shared/api/agent';
 
 vi.mock('@/shared/stores/authStore', () => ({
   getAccessToken: () => 'test-token',
+  useAuthStore: {
+    getState: () => ({
+      hasHydrated: true,
+      accessToken: 'test-token',
+      refreshAccessToken: async () => true,
+    }),
+  },
 }));
 
 vi.mock('@/shared/api/models', () => ({

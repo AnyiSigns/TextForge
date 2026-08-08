@@ -1,11 +1,14 @@
 from typing import Annotated
-from config.logging import get_logger
+
 from fastapi import Depends
-from models.book import Book
-from shared.database import db_manager
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from config.logging import get_logger
 from core.exceptions import AppException
+from models.book import Book
+from shared.database import db_manager
+
 from .repository import (
     BookRepository,
     CharacterRepository,

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useEntityStore } from '@/features/map/stores/entityStore';
 import { useEditorStore } from '@/features/map/stores/editorStore';
 
@@ -71,31 +71,33 @@ export function SceneEditor({ eventId, isNew, onClose }: SceneEditorProps) {
     return maxTs + 1;
   };
 
-  useEffect(() => {
+  // 实体数据异步到达时同步本地编辑状态（渲染期间调整，React 会立即重渲染）
+  const [prevSyncKey, setPrevSyncKey] = useState<{ key: string; prefill: number | null }>({ key: 'none', prefill: null });
+  const syncKey = isNew ? 'new' : event ? String(event.id) : 'loading';
+  if (syncKey !== prevSyncKey.key || (isNew && prefillChapterId !== prevSyncKey.prefill)) {
+    setPrevSyncKey({ key: syncKey, prefill: prefillChapterId });
     if (isNew) {
       setChapterId(prefillChapterId ?? null);
       setCompletedPlotThreadIds([]);
       setResolvedForeshadowingIds([]);
       setPlantedForeshadowingIds([]);
-      return;
+    } else if (event) {
+      setTitle(event.title);
+      setContent(event.content ?? '');
+      setStoryLabel(event.storyLabel ?? '');
+      setEventType(event.eventType);
+      setChapterId(event.chapterId);
+      setLocationId(event.locationId);
+      setCharacterIds(event.characterIds || []);
+      setPlotThreadIds(event.plotThreadIds || []);
+      setCompletedPlotThreadIds(event.completedPlotThreadIds || []);
+      setResolvedForeshadowingIds(event.resolvedForeshadowingIds || []);
+      // 仅在本场景实体挂载时初始化埋下伏笔，避免 foreshadowings 列表刷新覆盖用户编辑
+      setPlantedForeshadowingIds(
+        foreshadowings.filter((f) => f.relatedEventId === eventId).map((f) => f.id),
+      );
     }
-    if (!event) return;
-    setTitle(event.title);
-    setContent(event.content ?? '');
-    setStoryLabel(event.storyLabel ?? '');
-    setEventType(event.eventType);
-    setChapterId(event.chapterId);
-    setLocationId(event.locationId);
-    setCharacterIds(event.characterIds || []);
-    setPlotThreadIds(event.plotThreadIds || []);
-    setCompletedPlotThreadIds(event.completedPlotThreadIds || []);
-    setResolvedForeshadowingIds(event.resolvedForeshadowingIds || []);
-    // 仅在本场景实体挂载时初始化埋下伏笔，避免 foreshadowings 列表刷新覆盖用户编辑
-    setPlantedForeshadowingIds(
-      foreshadowings.filter((f) => f.relatedEventId === eventId).map((f) => f.id),
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [event, isNew, prefillChapterId, eventId]);
+  }
 
   if (!isNew && !event) return null;
 
@@ -225,7 +227,7 @@ export function SceneEditor({ eventId, isNew, onClose }: SceneEditorProps) {
       </div>
 
       <div className="space-y-1.5">
-        <label className="text-[11px] font-medium text-muted-foreground">关联情节线（勾选"完结"表示情节线在本场景结束）</label>
+        <label className="text-[11px] font-medium text-muted-foreground">关联情节线（勾选&ldquo;完结&rdquo;表示情节线在本场景结束）</label>
         <div className="max-h-[120px] overflow-y-auto space-y-0.5">
           {plotThreads.map((pt) => {
             const linked = plotThreadIds.includes(pt.id);

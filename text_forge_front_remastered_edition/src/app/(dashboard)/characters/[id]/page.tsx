@@ -21,9 +21,16 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  // 路由参数变化时重新进入加载态（渲染期间调整，React 会立即重渲染）
+  const [prevCharacterId, setPrevCharacterId] = useState(characterId);
+  if (characterId !== prevCharacterId) {
+    setPrevCharacterId(characterId);
+    setLoading(true);
+    setCharacter(null);
+  }
+
   useEffect(() => {
     if (isNaN(characterId)) return;
-    setLoading(true);
     characterApi.fetchCharacter(characterId)
       .then((data) => {
         setCharacter(data);
@@ -94,6 +101,8 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center text-xl font-semibold shrink-0 overflow-hidden">
               {avatarPreview ? (
+                // 用户自定义远程头像 URL，next/image 需配置任意远程域名白名单，此处用 img 合理
+                // eslint-disable-next-line @next/next/no-img-element
                 <img src={avatarPreview} alt={character.name} className="w-full h-full object-cover" />
               ) : (
                 character.name.charAt(0)

@@ -1,11 +1,12 @@
 
+from sqlalchemy import delete as sqla_delete
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from config.logging import get_logger
 from core.model_factory import ModelFactory
 from models.document import Document
 from shared.redis import delete_rag_cache
-from sqlalchemy import delete as sqla_delete
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from .repository import VectorRepository
 

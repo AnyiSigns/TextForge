@@ -71,7 +71,7 @@ def _build_feedback_tools(session_factory, model_config: dict | None = None):
             patterns["positive"] = positive
             patterns["negative"] = negative
             patterns["ratio"] = f"{positive}:{negative}" if feedback_items else "0:0"
-            chapters = {}
+            chapters: dict[int, dict[str, int]] = {}
             for item in feedback_items:
                 cid = item.get("chapter_id")
                 if not cid:

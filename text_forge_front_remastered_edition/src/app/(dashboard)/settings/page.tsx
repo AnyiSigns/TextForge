@@ -85,7 +85,6 @@ export default function SettingsPage() {
   const [originalEmail, setOriginalEmail] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
   const [emailCode, setEmailCode] = useState('');
-  const [sendingEmailCode, setSendingEmailCode] = useState(false);
 
   const [oldPwd, setOldPwd] = useState('');
   const [newPwd, setNewPwd] = useState('');
@@ -134,6 +133,8 @@ export default function SettingsPage() {
   };
 
   useEffect(() => {
+    // SSR 水合一次性守卫：mounted 用于避免服务端/客户端渲染差异，非级联渲染来源
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
     userApi.fetchProfile().then((p) => {
       setUserName(p.username || '');
@@ -237,7 +238,7 @@ export default function SettingsPage() {
       if (res.ok) {
         toast.success('连接成功', { description: res.content?.slice(0, 60) });
       }
-    } catch (e) {
+    } catch {
       toast.error('连接失败');
     } finally {
       setTestingRole(null);

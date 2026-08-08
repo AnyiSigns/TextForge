@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState, useRef, use } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Save, Play, X } from 'lucide-react';
+import { ArrowLeft, Save, Play } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import {
@@ -137,13 +137,19 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
     booksApi.fetchBooks().then((list) => setBookOptions(list)).catch(() => {});
   }, []);
 
+  // 新建工作流时立即建立空文档（渲染期间调整，React 会立即重渲染）
+  const [prevIsNew, setPrevIsNew] = useState(isNew);
+  if (isNew && !prevIsNew) {
+    setPrevIsNew(true);
+    setWorkflow({ id: makeNodeId(), name: '未命名工作流', nodes: [], edges: [] });
+  }
+
   useEffect(() => {
-    if (isNew) {
-      const newId = makeNodeId();
-      setWorkflow({ id: newId, name: '未命名工作流', nodes: [], edges: [] });
-      loadedRef.current = true;
-      return;
-    }
+    if (isNew) loadedRef.current = true;
+  }, [isNew]);
+
+  useEffect(() => {
+    if (isNew) return;
     workflowApi.getWorkflow(id).then((wf) => {
       setWorkflow(wf);
       if (wf.nodes?.[0]) setSelectedNodeId(wf.nodes[0].id);

@@ -1,13 +1,14 @@
 import uuid
 from datetime import datetime
 
+from fastapi import Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from config.logging import get_logger
 from config.settings import settings
 from core.security import create_token, encode_pwd, verify_pwd
-from fastapi import Depends, HTTPException
 from shared.database import db_manager
 from shared.redis import redis_client
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from .repository import (
     UserRepository,

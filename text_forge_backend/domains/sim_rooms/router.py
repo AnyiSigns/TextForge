@@ -1,7 +1,15 @@
 """角色模拟房间后端路由"""
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    WebSocket,
+    WebSocketDisconnect,
+)
+
 from config.logging import get_logger
 
 logger = get_logger(__name__)
@@ -12,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.auth import get_current
 from core.model_factory import ModelFactory
 from core.security import verify_token
-from domains.sim_rooms.graph import stream_sim_round, MAX_ROUNDS
+from domains.sim_rooms.graph import MAX_ROUNDS, stream_sim_round
 from models.agent_memory import AgentMemory
 from models.book import Character, Foreshadowing, Location, PlotThread, SceneEvent
 from models.sim_room import SimBranch, SimMessage, SimParticipant, SimRoom
@@ -664,7 +672,7 @@ async def room_websocket(websocket: WebSocket, room_id: int, model_config: str |
                     try:
                         llm = ModelFactory(parsed_model_config or {})
                         result = await llm.main.ainvoke(
-                            f"请为以下角色模拟对话生成一段简洁摘要（200字内）：\n\n" +
+                            "请为以下角色模拟对话生成一段简洁摘要（200字内）：\n\n" +
                             "\n".join(recent_history[-10:])
                         )
                         summary = result.content if hasattr(result, "content") else str(result)

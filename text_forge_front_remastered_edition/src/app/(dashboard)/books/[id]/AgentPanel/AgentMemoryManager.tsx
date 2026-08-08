@@ -19,7 +19,7 @@ export function AgentMemoryManager({ bookId, onClose }: AgentMemoryManagerProps)
   const [newType, setNewType] = useState('note');
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<any[] | null>(null);
+  const [searchResults, setSearchResults] = useState<AgentMemory[] | null>(null);
   const [searching, setSearching] = useState(false);
 
   const loadMemories = async () => {
@@ -31,7 +31,21 @@ export function AgentMemoryManager({ bookId, onClose }: AgentMemoryManagerProps)
     finally { setLoading(false); }
   };
 
-  useEffect(() => { void loadMemories(); }, [bookId]);
+  // 书籍切换时重新进入加载态（渲染期间调整，React 会立即重渲染）
+  const [prevBookId, setPrevBookId] = useState(bookId);
+  if (bookId !== prevBookId) {
+    setPrevBookId(bookId);
+    setLoading(true);
+  }
+
+  useEffect(() => {
+    let alive = true;
+    agentMemoryApi.fetchAgentMemories(bookId)
+      .then((data) => { if (alive) setMemories(data); })
+      .catch(() => toast.error('加载记忆失败'))
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [bookId]);
 
   const handleSearch = useCallback(async () => {
     if (!searchQuery.trim()) return;
@@ -107,9 +121,9 @@ export function AgentMemoryManager({ bookId, onClose }: AgentMemoryManagerProps)
               {searchResults.length === 0 ? (
                 <div className="text-[11px] text-muted-foreground/50">无结果</div>
               ) : (
-                searchResults.map((r: any, i: number) => (
+                searchResults.map((r, i) => (
                   <div key={i} className="text-[11px] text-foreground/70 leading-relaxed mb-2 pb-2 border-b border-border/20 last:border-0 last:mb-0 last:pb-0">
-                    <span className="text-[10px] text-muted-foreground/50 mr-2">{r.memoryType || r.type}</span>
+                    <span className="text-[10px] text-muted-foreground/50 mr-2">{r.memoryType}</span>
                     {r.content}
                   </div>
                 ))

@@ -1,7 +1,8 @@
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from config.logging import get_logger
 from shared.pagination import PageParams, PageResult
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from .derived_sync import schedule_recompute
 from .repository import WorldRepository

@@ -106,7 +106,18 @@ export function AgentDock() {
   const agentMessages = useBookDetailStore((s) => s.agentMessages);
   const agentStreaming = useBookDetailStore((s) => s.agentStreaming);
 
-  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(() => {
+    try {
+      const raw = localStorage.getItem(AGENT_POS_KEY);
+      if (raw) {
+        const p = JSON.parse(raw);
+        if (typeof p.x === 'number' && typeof p.y === 'number') return p as { x: number; y: number };
+      }
+    } catch { /* ignore */ }
+    return typeof window !== 'undefined'
+      ? { x: window.innerWidth - 56, y: Math.round(window.innerHeight * 0.4) }
+      : null;
+  });
   const [hovering, setHovering] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [inputText, setInputText] = useState('');
@@ -119,17 +130,6 @@ export function AgentDock() {
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const captureRef = useRef<{ kind: 'chapter' | 'selection'; chapterId?: number; start?: number; end?: number } | null>(null);
   const wasStreamingRef = useRef(false);
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(AGENT_POS_KEY);
-      if (raw) {
-        const p = JSON.parse(raw);
-        if (typeof p.x === 'number' && typeof p.y === 'number') { setPos(p); return; }
-      }
-    } catch { /* ignore */ }
-    setPos({ x: window.innerWidth - 56, y: Math.round(window.innerHeight * 0.4) });
-  }, []);
 
   // 捕获 Agent 结果（整章写入 / 选中文本改写），生成审核卡
   useEffect(() => {
