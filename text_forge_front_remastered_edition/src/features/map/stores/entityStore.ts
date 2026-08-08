@@ -339,7 +339,10 @@ export const useEntityStore = create<EntityState>((set, get) => ({
     try {
       const { deleteLocation } = await import('@/shared/api/world');
       await deleteLocation(id, get().book?.id ?? 1);
-    } catch { toast.error('地点删除失败'); }
+    } catch {
+      toast.error('地点删除失败');
+      return; // 删除失败保持本地状态不变，避免前后端不一致
+    }
     set((state) => ({
       locations: state.locations.filter((l) => l.id !== id),
       characters: state.characters.map((c) => ({
@@ -358,7 +361,10 @@ export const useEntityStore = create<EntityState>((set, get) => ({
     try {
       const { deleteCharacter } = await import('@/shared/api/characters');
       await deleteCharacter(id);
-    } catch { toast.error('删除失败'); }
+    } catch {
+      toast.error('删除失败');
+      return; // 删除失败保持本地状态不变
+    }
     set((state) => ({
       characters: state.characters.filter((c) => c.id !== id),
       sceneEvents: state.sceneEvents.map((e) => ({
@@ -373,7 +379,10 @@ export const useEntityStore = create<EntityState>((set, get) => ({
     try {
       const { deleteSceneEvent } = await import('@/shared/api/world');
       await deleteSceneEvent(id, get().book?.id ?? 1);
-    } catch { toast.error('删除失败'); }
+    } catch {
+      toast.error('删除失败');
+      return; // 删除失败保持本地状态不变
+    }
     set((state) => ({
       sceneEvents: state.sceneEvents.filter((e) => e.id !== id),
     }));
@@ -383,7 +392,10 @@ export const useEntityStore = create<EntityState>((set, get) => ({
     try {
       const { deleteForeshadowing } = await import('@/shared/api/world');
       await deleteForeshadowing(id, get().book?.id ?? 1);
-    } catch { toast.error('删除失败'); }
+    } catch {
+      toast.error('删除失败');
+      return; // 删除失败保持本地状态不变
+    }
     set((state) => ({
       foreshadowings: state.foreshadowings.filter((f) => f.id !== id),
     }));
@@ -393,7 +405,10 @@ export const useEntityStore = create<EntityState>((set, get) => ({
     try {
       const { deletePlotThread } = await import('@/shared/api/world');
       await deletePlotThread(id, get().book?.id ?? 1);
-    } catch { toast.error('删除失败'); }
+    } catch {
+      toast.error('删除失败');
+      return; // 删除失败保持本地状态不变
+    }
     set((state) => ({
       plotThreads: state.plotThreads.filter((p) => p.id !== id),
     }));
@@ -403,7 +418,10 @@ export const useEntityStore = create<EntityState>((set, get) => ({
     try {
       const { deleteVolume } = await import('@/shared/api/books');
       await deleteVolume(id);
-    } catch { toast.error('删除失败'); }
+    } catch {
+      toast.error('删除失败');
+      return; // 删除失败保持本地状态不变
+    }
     set((state) => {
       const removedChapterIds = new Set(
         state.chapters.filter((ch) => ch.volumeId === id).map((ch) => ch.id),
@@ -420,7 +438,10 @@ export const useEntityStore = create<EntityState>((set, get) => ({
     try {
       const { deleteChapter } = await import('@/shared/api/books');
       await deleteChapter(id);
-    } catch { toast.error('删除失败'); }
+    } catch {
+      toast.error('删除失败');
+      return; // 删除失败保持本地状态不变
+    }
     set((state) => ({
       chapters: state.chapters.filter((ch) => ch.id !== id),
       sceneEvents: state.sceneEvents.filter((e) => e.chapterId !== id),

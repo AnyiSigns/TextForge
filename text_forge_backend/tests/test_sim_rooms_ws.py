@@ -200,7 +200,7 @@ def test_ws_full_round_protocol(monkeypatch, client):
     session = make_room_session()
     install_ws_deps(monkeypatch, session, final_output="夜色渐深")
 
-    with client.websocket_connect("/api/sim-rooms/1/ws?token=t1") as ws:
+    with client.websocket_connect("/api/sim-rooms/1/ws", subprotocols=["t1"]) as ws:
         first = json.loads(ws.receive_text())
         assert first["type"] == "connected"
 
@@ -236,7 +236,7 @@ def test_ws_opening_prompt(monkeypatch, client):
     session = make_empty_room_session()
     install_ws_deps(monkeypatch, session, final_output="夜色渐深")
 
-    with client.websocket_connect("/api/sim-rooms/1/ws?token=t1") as ws:
+    with client.websocket_connect("/api/sim-rooms/1/ws", subprotocols=["t1"]) as ws:
         types = []
         payloads = []
         # connected + 开局（stream_start/stream_token/turn_done/suggestions）
@@ -258,7 +258,7 @@ def test_ws_auto_end(monkeypatch, client):
     session = make_room_session()
     install_ws_deps(monkeypatch, session, final_output="结束", should_end=True)
 
-    with client.websocket_connect("/api/sim-rooms/1/ws?token=t1") as ws:
+    with client.websocket_connect("/api/sim-rooms/1/ws", subprotocols=["t1"]) as ws:
         ws.receive_text()  # connected
         ws.send_text(json.dumps({"type": "chat", "content": "散场吧", "speakAs": "director"}))
         types = []
@@ -276,7 +276,7 @@ def test_ws_auto_advance(monkeypatch, client):
     session = make_room_session()
     install_ws_deps(monkeypatch, session, final_output="夜色渐深")
 
-    with client.websocket_connect("/api/sim-rooms/1/ws?token=t1") as ws:
+    with client.websocket_connect("/api/sim-rooms/1/ws", subprotocols=["t1"]) as ws:
         ws.receive_text()  # connected
         ws.send_text(json.dumps({"type": "auto_advance", "turns": 2}))
 
@@ -299,7 +299,7 @@ def test_ws_auto_advance_clamps_turns(monkeypatch, client):
     session = make_room_session()
     install_ws_deps(monkeypatch, session, final_output="夜色渐深")
 
-    with client.websocket_connect("/api/sim-rooms/1/ws?token=t1") as ws:
+    with client.websocket_connect("/api/sim-rooms/1/ws", subprotocols=["t1"]) as ws:
         ws.receive_text()  # connected
         ws.send_text(json.dumps({"type": "auto_advance", "turns": 99}))
 
@@ -318,7 +318,7 @@ def test_ws_branch_creation(monkeypatch, client):
     session = make_room_session()
     install_ws_deps(monkeypatch, session)
 
-    with client.websocket_connect("/api/sim-rooms/1/ws?token=t1") as ws:
+    with client.websocket_connect("/api/sim-rooms/1/ws", subprotocols=["t1"]) as ws:
         ws.receive_text()  # connected
         ws.send_text(json.dumps({"type": "branch", "branchType": "plot-thread"}))
         msg = json.loads(ws.receive_text())
@@ -335,7 +335,7 @@ def test_ws_branch_keeps_full_related_ids(monkeypatch, client):
     session = make_user_char_room_session()
     install_ws_deps(monkeypatch, session)
 
-    with client.websocket_connect("/api/sim-rooms/1/ws?token=t1") as ws:
+    with client.websocket_connect("/api/sim-rooms/1/ws", subprotocols=["t1"]) as ws:
         ws.receive_text()  # connected
         ws.send_text(json.dumps({"type": "branch", "branchType": "plot-thread"}))
         msg = json.loads(ws.receive_text())
@@ -355,7 +355,7 @@ def test_ws_branch_includes_user_character(monkeypatch, client):
     session = make_user_char_room_session()
     install_ws_deps(monkeypatch, session)
 
-    with client.websocket_connect("/api/sim-rooms/1/ws?token=t1") as ws:
+    with client.websocket_connect("/api/sim-rooms/1/ws", subprotocols=["t1"]) as ws:
         ws.receive_text()  # connected
         ws.send_text(json.dumps({"type": "branch", "branchType": "relationship"}))
         msg = json.loads(ws.receive_text())

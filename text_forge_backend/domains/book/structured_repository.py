@@ -1,4 +1,5 @@
-﻿from typing import Any
+from types import SimpleNamespace
+from typing import Any
 
 from models.book import (
     Book,
@@ -157,8 +158,18 @@ class StructuredRepository:
             merged = []
             for ch in chapter_rows.values():
                 cc = content_map.get(ch.id)
-                ch.summary = cc.content if cc else ""
-                merged.append(ch)
+                # 注意：绝不能写 ch.summary = cc.content 修改 ORM 实例——
+                # 会话内其他逻辑（甚至提交 flush）会读到被污染的字段。
+                # 返回轻量命名对象，把正文放在 content 属性供渲染层使用。
+                merged.append(
+                    SimpleNamespace(
+                        id=ch.id,
+                        title=ch.title,
+                        summary=ch.summary or "",
+                        content=cc.content if cc else "",
+                        sort_order=ch.sort_order,
+                    )
+                )
             return merged
 
         if field == "outline_structure":

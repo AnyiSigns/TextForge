@@ -1,7 +1,17 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -180,6 +190,10 @@ class Chapter(Base):
 
 class ChapterContent(Base):
     __tablename__ = "chapter_contents"
+    # 同一章节内版本号唯一：并发写入（agent 工具 + 用户手动保存）时防止产生重复版本
+    __table_args__ = (
+        UniqueConstraint("chapter_id", "version", name="uq_chapter_contents_chapter_version"),
+    )
 
     id: Mapped[int] = mapped_column(
         primary_key=True, autoincrement=True, comment="章节内容ID"
@@ -335,7 +349,7 @@ class SceneEvent(Base):
         comment="所属书籍ID",
     )
     chapter_id: Mapped[int] = mapped_column(
-        ForeignKey("chapters.id", ondelete="SET NULL"),
+        ForeignKey("chapters.id", ondelete="CASCADE"),
         nullable=True,
         index=True,
         comment="所属章节ID",

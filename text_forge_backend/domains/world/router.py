@@ -38,6 +38,7 @@ async def list_locations(
     page_params: PageParams = Depends(),
     service: WorldService = Depends(world_db),
 ):
+    await assert_book_owner(book_id, user_id, service.repo.session)
     return await service.list_locations_page(book_id, page_params)
 
 
@@ -85,6 +86,7 @@ async def list_scene_events(
     page_params: PageParams = Depends(),
     service: WorldService = Depends(world_db),
 ):
+    await assert_book_owner(book_id, user_id, service.repo.session)
     return await service.list_scene_events_page(book_id, page_params)
 
 
@@ -106,6 +108,7 @@ async def update_scene_event(
     request: SceneEventUpdate = ...,
     service: WorldService = Depends(world_db),
 ):
+    await assert_book_owner(book_id, user_id, service.repo.session)
     instance = await service.update_scene_event(event_id, book_id, request.model_dump(by_alias=False, exclude_unset=True))
     if not instance:
         raise HTTPException(status_code=404, detail="事件不存在")
@@ -119,6 +122,7 @@ async def delete_scene_event(
     book_id: int = Query(...),
     service: WorldService = Depends(world_db),
 ):
+    await assert_book_owner(book_id, user_id, service.repo.session)
     await service.delete_scene_event(event_id, book_id)
     return {"ok": True}
 
@@ -131,6 +135,7 @@ async def list_foreshadowings(
     page_params: PageParams = Depends(),
     service: WorldService = Depends(world_db),
 ):
+    await assert_book_owner(book_id, user_id, service.repo.session)
     return await service.list_foreshadowings_page(book_id, page_params, status=status)
 
 
@@ -152,6 +157,7 @@ async def update_foreshadowing(
     request: ForeshadowingUpdate = ...,
     service: WorldService = Depends(world_db),
 ):
+    await assert_book_owner(book_id, user_id, service.repo.session)
     instance = await service.update_foreshadowing(item_id, book_id, request.model_dump(by_alias=False, exclude_unset=True))
     if not instance:
         raise HTTPException(status_code=404, detail="伏笔不存在")
@@ -165,6 +171,7 @@ async def delete_foreshadowing(
     book_id: int = Query(...),
     service: WorldService = Depends(world_db),
 ):
+    await assert_book_owner(book_id, user_id, service.repo.session)
     await service.delete_foreshadowing(item_id, book_id)
     return {"ok": True}
 
@@ -176,6 +183,7 @@ async def list_plot_threads(
     page_params: PageParams = Depends(),
     service: WorldService = Depends(world_db),
 ):
+    await assert_book_owner(book_id, user_id, service.repo.session)
     return await service.list_plot_threads_page(book_id, page_params)
 
 
@@ -197,6 +205,7 @@ async def update_plot_thread(
     request: PlotThreadUpdate = ...,
     service: WorldService = Depends(world_db),
 ):
+    await assert_book_owner(book_id, user_id, service.repo.session)
     instance = await service.update_plot_thread(item_id, book_id, request.model_dump(by_alias=False, exclude_unset=True))
     if not instance:
         raise HTTPException(status_code=404, detail="情节脉络不存在")
@@ -210,5 +219,6 @@ async def delete_plot_thread(
     book_id: int = Query(...),
     service: WorldService = Depends(world_db),
 ):
+    await assert_book_owner(book_id, user_id, service.repo.session)
     await service.delete_plot_thread(item_id, book_id)
     return {"ok": True}

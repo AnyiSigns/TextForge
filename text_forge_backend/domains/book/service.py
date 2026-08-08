@@ -212,7 +212,7 @@ class BookService:
             删除成功返回 True，否则返回 False。
         """
         instance = await self.book_repo.get(book_id)
-        if instance.user_id != user_id:
+        if not instance or instance.user_id != user_id:
             return False
         try:
             await self.book_repo.delete(book_id)

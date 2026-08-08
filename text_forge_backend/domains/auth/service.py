@@ -92,8 +92,18 @@ class UserAuthService:
                 return None, None, None, "邮箱未验证，请先验证邮箱"
 
             at_jti = str(uuid.uuid4())
+            # 携带当前密码版本号：改密后版本递增，改密前签发的 access token 全部失效
+            try:
+                pwd_ver = int(await redis_client.get(f"auth:pwd_ver:{user.id}") or 0)
+            except Exception:
+                pwd_ver = 0
             access_token = create_token(
-                {"sub": str(user.id), "user_name": user.user_name, "jti": at_jti},
+                {
+                    "sub": str(user.id),
+                    "user_name": user.user_name,
+                    "jti": at_jti,
+                    "pwd_ver": pwd_ver,
+                },
                 expire=settings.JWT_ACCESS_TIME,
             )
 
@@ -134,6 +144,7 @@ class UserAuthService:
         new_hash_pwd = encode_pwd(new_pwd)
         user.hash_password = new_hash_pwd
         await self.session.commit()
+        await self._invalidate_all_tokens(user_id)
 
     async def change_password_by_email(self, email: str, code: str, new_pwd: str):
         """通过邮箱验证码更改密码。
@@ -155,6 +166,26 @@ class UserAuthService:
         new_hash_pwd = encode_pwd(new_pwd)
         user.hash_password = new_hash_pwd
         await self.session.commit()
+        await self._invalidate_all_tokens(user.id)
+
+    async def _invalidate_all_tokens(self, user_id: int):
+        """改密后使该用户全部 token 失效：递增密码版本号 + 删除所有 refresh token。
+
+        Args:
+            user_id: 用户 ID。
+        """
+        try:
+            # 版本号递增：改密前签发的 access token（pwd_ver 更小）全部失效
+            pipe = redis_client.pipeline()
+            pipe.incr(f"auth:pwd_ver:{user_id}")
+            pipe.expire(f"auth:pwd_ver:{user_id}", 2592000)  # 30 天
+            await pipe.execute()
+            # 删除全部 refresh token（DB + Redis 集合）
+            await self.token_repo.delete_by_user(user_id)
+            await self.session.commit()
+            await redis_client.delete(f"refresh_token_{user_id}")
+        except Exception as exc:
+            logger.warning(f"改密后 token 失效处理失败（版本号仍已递增，refresh 接口受控）: {exc}")
 
 
 async def user_db_serve(db: AsyncSession = Depends(db_manager.get_db)):

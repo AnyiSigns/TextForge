@@ -71,54 +71,67 @@ async def _get_conversation(
     return result.scalar_one_or_none()
 
 
-async def _load_recent_messages(
-    session: AsyncSession, conversation_id: int, limit: int = 10
-) -> list[dict]:
-    """加载指定对话的最近消息，按时间正序返回。"""
-    stmt = (
-        select(Message)
-        .where(Message.conversation_id == conversation_id)
-        .order_by(Message.create_at.desc())
-        .limit(limit)
-    )
-    result = await session.execute(stmt)
-    messages = list(result.scalars().all())
-    messages.reverse()
-    return [
-        {"type": "human" if m.role == "user" else "ai", "content": m.content}
-        for m in messages
-    ]
+def _sse_review_card(pending_review: dict) -> str:
+    """构造 review_card SSE 事件，output_preview 截断到 1000 字防止撑爆 SSE 通道。
+
+    Args:
+        pending_review: state 中的 pending_review 字典。
+
+    Returns:
+        SSE data 行字符串。
+    """
+    payload = dict(pending_review)
+    preview = payload.get("output_preview") or ""
+    if isinstance(preview, str) and len(preview) > 1000:
+        payload["output_preview"] = preview[:1000] + "\n…（已截断）"
+    return f"data: {json.dumps({'type': 'review_card', **payload}, ensure_ascii=False)}\n\n"
 
 
-async def _acquire_book_lock(book_id: int, user_id: int) -> tuple[bool, str]:
-    """为书籍获取分布式锁，返回 (是否获取成功, 锁键)。"""
+async def _acquire_book_lock(book_id: int, user_id: int) -> tuple[bool, str, str]:
+    """为书籍获取分布式锁，返回 (是否获取成功, 锁键, 持有者标识)。
+
+    锁键固定为 ``agent:book_lock:{user_id}:{book_id}``，值写入本次请求的
+    持有者标识（holder_id），利用 SET NX 保证同一本书在同一时刻只有
+    一个 Agent 会话能持有锁；释放时校验持有者，避免误删他人锁。
+    """
     if not book_id:
-        return (True, "")
+        return (True, "", "")
+    holder_id = uuid.uuid4().hex
+    key = f"agent:book_lock:{user_id}:{book_id}"
     try:
-        key = f"agent:book_lock:{user_id}:{book_id}:{uuid.uuid4().hex}"
         result = await redis_client.set(
-            key, "1", ex=3600, nx=True
+            key, holder_id, ex=3600, nx=True
         )  # 锁过期时间，3600秒（1小时），防止长时间占锁
-        return (result is True, key)
+        return (result is True, key, holder_id)
     except Exception as exc:
         logger.error(f"获取书籍锁失败: {exc}")
-        return (False, "")
+        return (False, "", "")
 
 
-async def _release_book_lock(book_id: int, user_id: int, lock_key: str | None = None):
-    """释放先前获取的书籍分布式锁。"""
-    if not book_id:
+async def _release_book_lock(
+    book_id: int,
+    user_id: int,
+    lock_key: str | None = None,
+    holder_id: str | None = None,
+):
+    """释放先前获取的书籍分布式锁。
+
+    仅当锁值仍为本请求持有的 holder_id 时才删除（Lua 原子判断），
+    防止并发场景下误删另一会话重新获取的锁。
+    """
+    if not book_id or not lock_key:
         return
     try:
-        if lock_key:
-            await redis_client.delete(lock_key)
+        if holder_id:
+            script = (
+                "if redis.call('GET', KEYS[1]) == ARGV[1] "
+                "then return redis.call('DEL', KEYS[1]) else return 0 end"
+            )
+            await redis_client.eval(script, 1, lock_key, holder_id)
         else:
-            pattern = f"agent:book_lock:{user_id}:{book_id}:*"
-            keys = []
-            async for key in redis_client.scan_iter(pattern):
-                keys.append(key)
-            if keys:
-                await redis_client.delete(*keys)
+            # 兼容旧调用：无持有者信息时仅删除固定锁键（不再扫描模式删除，
+            # 避免误删同书籍其他会话的锁）。
+            await redis_client.delete(lock_key)
     except Exception as exc:
         logger.error(f"释放书籍锁失败: {exc}")
 
@@ -148,17 +161,23 @@ async def _prepare_agent_state(
     session.add(user_msg)
     await session.commit()
 
-    recent_messages = await _load_recent_messages(session, conversation.id, limit=10)
-
     book_id = conversation.book_id or 0
-    # 前端携带当前书籍时修正会话绑定，避免旧会话 book_id=0 导致「无法访问书籍信息」
+    # 前端携带当前书籍时修正会话绑定，避免旧会话 book_id=0 导致「无法访问书籍信息」。
+    # 必须先校验归属：book_id_override 来自请求体，若不校验，攻击者可将会话绑定到
+    # 他人书籍，使 Agent 在他人书籍上执行读写工具（IDOR）。
     if book_id_override:
+        from domains.book._owner_check import assert_book_owner
+
+        await assert_book_owner(book_id_override, user_id, session)
         if conversation.book_id != book_id_override:
             conversation.book_id = book_id_override
             await session.commit()
         book_id = book_id_override
     state: UserAgentState = {
-        "messages": recent_messages,
+        # 仅传入本条新消息，而非从 DB 重载最近 N 条：LangGraph checkpoint 已持有
+        # 完整历史（含工具调用中间消息），若再把 DB 消息作为输入，会被 add_messages
+        # reducer 按新 ID 追加，导致历史重复累积、上下文膨胀。
+        "messages": [{"type": "human", "content": message}],
         "user_id": user_id,
         "active_book_id": book_id,
         "model_config": model_config,
@@ -167,7 +186,6 @@ async def _prepare_agent_state(
         "previous_chapter_content": None,
         "cross_chapter_context": {},
         "compressed_context": None,
-        "message_count_at_compress": None,
         "active_workflow_id": None,
         "pending_review": None,
         "review_decision": None,
@@ -183,7 +201,9 @@ async def _prepare_agent_state(
         "workflow_result": None,
         "pending_workflow": None,
         "pending_tool": None,
-        "suggestions_signature": None,
+        # 注意：suggestions_signature / message_count_at_compress 不在新回合重置，
+        # 缺省 key 时 LangGraph 保留 checkpoint 旧值，跨轮建议去重与压缩计数才能生效；
+        # 若此处强制置 None 会覆盖 checkpoint 值，导致去重失效、每轮重复推送建议。
     }
 
     if book_id:
@@ -313,6 +333,7 @@ async def respond_to_agent(
     if not model_config or not model_config.get("main_config"):
         raise HTTPException(status_code=400, detail="用户模型配置未设置")
     lock_key = None
+    holder_id = None
     locked = False
     book_id = None
     try:
@@ -320,7 +341,7 @@ async def respond_to_agent(
             session, user_id, body.thread_id, body.message, model_config, body.book_id
         )
         if book_id:
-            locked, lock_key = await _acquire_book_lock(book_id, user_id)
+            locked, lock_key, holder_id = await _acquire_book_lock(book_id, user_id)
             if not locked:
                 raise HTTPException(
                     status_code=503, detail="该书籍正在进行 Agent 任务，请稍后再试"
@@ -354,7 +375,7 @@ async def respond_to_agent(
         return {"reply": ai_message, "thread_id": body.thread_id}
     finally:
         if book_id:
-            await _release_book_lock(book_id, user_id, lock_key)
+            await _release_book_lock(book_id, user_id, lock_key, holder_id)
 
 
 @router.post("/stream/{thread_id}")
@@ -368,12 +389,13 @@ async def stream_agent(
     if not model_config or not model_config.get("main_config"):
         raise HTTPException(status_code=400, detail="用户模型配置未设置")
     lock_key = None
+    holder_id = None
     locked = False
     book_id = None
 
     async def cleanup():
         if book_id:
-            await _release_book_lock(book_id, user_id, lock_key)
+            await _release_book_lock(book_id, user_id, lock_key, holder_id)
 
     try:
         is_resume = not body.message
@@ -448,6 +470,13 @@ async def stream_agent(
                         "terminate_chapter_id": None,
                         "active_workflow_id": None,
                         "workflow_node_outputs": {},
+                        # 关键：工作流审计拦截时 _finish_with_candidate 会把
+                        # candidate_reply_ready 置 True（_entry_router 见之立即 END），
+                        # 续跑必须重置为 False，否则用户审核决定永远不会被 agent 处理；
+                        # workflow_result 同样必须清空，否则 gated_tool_node 的
+                        # 「候选确认回合」守卫会拦截 retry/continue 所需的工具调用。
+                        "candidate_reply_ready": False,
+                        "workflow_result": None,
                     }
                 elif review_decision == "retry":
                     messages.append(
@@ -474,13 +503,17 @@ async def stream_agent(
                     "pending_review": None,
                     "review_decision": None,
                     "edited_content": None,
+                    # 同 terminate 分支：审计拦截续跑必须清 candidate_reply_ready 与
+                    # workflow_result，否则图在 _entry_router 立即 END、审核决定失效。
+                    "candidate_reply_ready": False,
+                    "workflow_result": None,
                 }
         else:
             conversation, state, book_id = await _prepare_agent_state(
                 session, user_id, thread_id, body.message, model_config, body.book_id
             )
         if book_id:
-            locked, lock_key = await _acquire_book_lock(book_id, user_id)
+            locked, lock_key, holder_id = await _acquire_book_lock(book_id, user_id)
             if not locked:
                 raise HTTPException(
                     status_code=503, detail="该书籍正在进行 Agent 任务，请稍后再试"
@@ -552,7 +585,7 @@ async def stream_agent(
                             # 写工具被门控拦截时（gated_tool_node 返回 pending_review），
                             # 必须推送审核卡，否则前端永远收不到 review_card、审批流卡死。
                             if update.get("pending_review"):
-                                yield f"data: {json.dumps({'type': 'review_card', **update['pending_review']}, ensure_ascii=False)}\n\n"
+                                yield _sse_review_card(update["pending_review"])
                             msgs = update.get("messages") or []
                             for m in msgs:
                                 if not isinstance(m, _TMsg):
@@ -580,12 +613,12 @@ async def stream_agent(
                         # quality_gate 节点：工作流审计若产生 pending_review，推送审核卡
                         elif node_name == "quality_gate":
                             if update.get("pending_review"):
-                                yield f"data: {json.dumps({'type': 'review_card', **update['pending_review']}, ensure_ascii=False)}\n\n"
+                                yield _sse_review_card(update["pending_review"])
                         # workflow_runner 原生节点：审计拦截产生的 pending_review 也要推送审核卡，
                         # 否则前端只看到「触发审计拦截」文字、审核卡不弹（审批流卡死）。
                         elif node_name == "workflow_runner":
                             if update.get("pending_review"):
-                                yield f"data: {json.dumps({'type': 'review_card', **update['pending_review']}, ensure_ascii=False)}\n\n"
+                                yield _sse_review_card(update["pending_review"])
 
                 # ── 图执行结束：从 checkpointer 读取最终 state，提取最终回复 ──
                 reply = ""
@@ -766,19 +799,22 @@ async def manual_compress(
             from domains.memory.repository import AgentMemoryRepository
 
             memory_repo = AgentMemoryRepository(session)
-            await memory_repo.create(
-                user_id=user_id,
-                data={
-                    "book_id": conversation.book_id,
-                    "memory_type": "context_summary",
-                    "content": summary,
-                    "source": "manual_compress",
-                    "meta": {
-                        "thread_id": body.thread_id,
-                        "compressed_at": datetime.now(timezone.utc).isoformat(),
-                    },
+            memory_payload = {
+                "book_id": conversation.book_id,
+                "memory_type": "context_summary",
+                "content": summary,
+                "source": "manual_compress",
+                "meta": {
+                    "thread_id": body.thread_id,
+                    "compressed_at": datetime.now(timezone.utc).isoformat(),
                 },
-            )
+            }
+            # 摘要同步生成向量嵌入，保证语义检索可命中压缩摘要
+            try:
+                memory_payload["embedding"] = await llm.embedding.aembed_query(summary[:2000])
+            except Exception as exc:
+                logger.warning(f"压缩摘要 embedding 生成失败: {exc}")
+            await memory_repo.create(user_id=user_id, data=memory_payload)
         except Exception as exc:
             logger.warning(f"保存压缩摘要到 AgentMemory 失败: {exc}")
 

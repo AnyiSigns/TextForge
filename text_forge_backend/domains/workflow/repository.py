@@ -86,7 +86,12 @@ class WorkflowRepository(BaseRepository[Workflow]):
             await self.session.commit()
             await self.session.refresh(instance)
         if not instance:
-            instance = await self.create_workflow(user_id=user_id, data=update_data)
+            # 新建时保证 id 与路径一致：请求体可能不带 id 字段，
+            # 直接透传会导致 create_workflow 里 data["id"] KeyError
+            # 或 id 不一致导致下方返回 None（404）。
+            create_data = dict(update_data)
+            create_data["id"] = workflow_id
+            instance = await self.create_workflow(user_id=user_id, data=create_data)
         if instance.id != workflow_id:
             return None
         return instance

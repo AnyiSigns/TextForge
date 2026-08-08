@@ -65,6 +65,9 @@ class WritingSessionService:
         instance = await self.repo.get(session_id)
         if not instance or instance.user_id != user_id:
             return None
+        # 幂等：已结束的会话不允许重复结束（重复提交会覆盖字数/时长统计）
+        if instance.ended_at is not None:
+            return self._to_dict(instance)
         instance.words_written = words_written
         instance.duration_seconds = duration_seconds
         instance.ended_at = datetime.now()

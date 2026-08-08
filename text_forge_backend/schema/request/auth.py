@@ -15,6 +15,7 @@ class RefreshRequest(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     refresh_token: str
+    access_token: str | None = None  # 登出时可选携带：将其加入黑名单立即失效
 
 
 class UserLogin(EmailRequest):

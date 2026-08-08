@@ -67,6 +67,9 @@ class ChapterContentRepository(BaseRepository[ChapterContent]):
     async def create_content(self, chapter_id: int, content: str):
         """创建新版本章节内容。
 
+        版本号在 (chapter_id, version) 唯一约束下计算：若并发写入撞号
+        （max+1 竞态），捕获唯一冲突后重算版本号重试一次，避免 500。
+
         Args:
             chapter_id: 章节 ID。
             content: 正文内容。
@@ -74,11 +77,23 @@ class ChapterContentRepository(BaseRepository[ChapterContent]):
         Returns:
             新创建的章节内容实例。
         """
-        next_version = await self._next_version(chapter_id)
-        instance = await self.add(chapter_id=chapter_id, content=content, version=next_version)
-        await self.session.commit()
-        await self.session.refresh(instance)
-        return instance
+        from sqlalchemy.exc import IntegrityError
+
+        for attempt in range(2):
+            next_version = await self._next_version(chapter_id)
+            instance = await self.add(
+                chapter_id=chapter_id, content=content, version=next_version
+            )
+            try:
+                await self.session.commit()
+                await self.session.refresh(instance)
+                return instance
+            except IntegrityError:
+                # 并发写入撞号：回滚后重试一次（重新计算 max+1）
+                await self.session.rollback()
+                if attempt == 0:
+                    continue
+                raise
 
     async def _next_version(self, chapter_id: int) -> int:
         """计算下一个版本号。

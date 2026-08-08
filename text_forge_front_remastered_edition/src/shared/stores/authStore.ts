@@ -81,7 +81,8 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true });
         try {
           const rt = get().refreshToken;
-          if (rt) await authApi.logoutApi(rt);
+          const at = get().accessToken;
+          if (rt) await authApi.logoutApi(rt, at ?? undefined);
         } finally {
           clearRefreshCookie();
           set({

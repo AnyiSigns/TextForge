@@ -50,11 +50,11 @@ export async function refreshTokenApi(refreshToken: string): Promise<RefreshResp
   return res.json();
 }
 
-export async function logoutApi(refreshToken: string): Promise<void> {
+export async function logoutApi(refreshToken: string, accessToken?: string): Promise<void> {
   await fetch('/api/auth/logout', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refresh_token: refreshToken }),
+    body: JSON.stringify({ refresh_token: refreshToken, access_token: accessToken ?? null }),
     credentials: 'include',
   }).catch(() => {});
 }

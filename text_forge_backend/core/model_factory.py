@@ -37,30 +37,6 @@ class ModelFactory:
 
         self.search_config = user_config.get("search_config") or {}
 
-    def get_embedding_dimension(self) -> int:
-        """获取 embedding 维度。
-
-        Returns:
-             embedding 向量维度。
-        """
-        embedding_config = self.user_config.get("embedding_config") or {}
-        adapter = embedding_config.get("adapter", "")
-        model_id = embedding_config.get("model_id", "")
-        known_dims = {
-            "dashscope": 1024,
-            "alibabacloud": 1024,
-            "cohere": 1024,
-            "huggingface": 1024,
-            "baidu": 768,
-        }
-        if "text-embedding-v4" in model_id:
-            return 1024
-        if "bge" in model_id:
-            return 768
-        if "multilingual" in model_id:
-            return 1024
-        return known_dims.get(adapter, 1536)
-
     def _get_create_model(self, config: dict[str, Any]) -> BaseChatModel:
         """创建或从缓存获取模型实例。
 

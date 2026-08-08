@@ -30,7 +30,7 @@ class EmailService:
                 port=settings.EMAIL_PORT,
                 username=settings.EMAIL_USERNAME,
                 password=settings.EMAIL_PASSWORD,
-                use_tls=settings.EMAIL_USE_TSL,
+                use_tls=settings.EMAIL_USE_TLS,
                 start_tls=settings.EMAIL_START_TLS,
                 timeout=settings.EMAIL_TIME_OUT,
             )

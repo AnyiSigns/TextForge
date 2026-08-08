@@ -41,9 +41,14 @@ apiClient.interceptors.response.use(
       if (ok) {
         const newToken = useAuthStore.getState().accessToken;
         if (newToken) {
-          // 保留原始请求头（含 multipart 的 Content-Type / boundary），仅刷新 Authorization
+          // 保留原始请求头，仅刷新 Authorization
           const headers: Record<string, string> = { ...(originalRequest.headers || {}) };
           headers.Authorization = `Bearer ${newToken}`;
+          // multipart 重试必须移除旧的 Content-Type（含旧 boundary）：
+          // 重新序列化 FormData 时 axios 会生成新的 boundary，保留旧头会导致 400。
+          if (originalRequest.data instanceof FormData) {
+            delete headers['Content-Type'];
+          }
           const retryConfig = {
             method: originalRequest.method,
             url: originalRequest.url,

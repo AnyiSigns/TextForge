@@ -9,6 +9,8 @@ from schema.response.book import (
     CharacterResponse,
     ListCharactersResponse,
 )
+from shared.database import db_manager
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from .character_service import CharacterService, character_db
 
@@ -34,7 +36,13 @@ async def create_character(
     request: CharacterRequest,
     user_id: Annotated[int, Depends(get_current)],
     character_service: Annotated[CharacterService, Depends(character_db)],
+    session: Annotated[AsyncSession, Depends(db_manager.get_db)],
 ):
+    # 校验书籍归属：book_id 来自请求体，若不校验可向他人书籍注入角色
+    from domains.book._owner_check import assert_book_owner
+
+    if request.book_id is not None:
+        await assert_book_owner(request.book_id, user_id, session)
     data = request.model_dump(by_alias=False)
     character = await character_service.create_character(user_id=user_id, **data)
     if not character:

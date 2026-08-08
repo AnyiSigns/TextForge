@@ -156,6 +156,8 @@ class AgentMemoryRepository:
         """
         stmt = select(AgentMemory, AgentMemory.embedding.cosine_distance(query_embedding).label("distance"))
         stmt = stmt.where(AgentMemory.user_id == user_id)
+        # 跳过未生成 embedding 的旧记忆（NULL 向量不参与距离计算）
+        stmt = stmt.where(AgentMemory.embedding.isnot(None))
         if book_id is not None:
             stmt = stmt.where(AgentMemory.book_id == book_id)
         else:

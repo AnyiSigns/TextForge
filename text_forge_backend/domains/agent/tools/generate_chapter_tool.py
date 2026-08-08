@@ -1,4 +1,4 @@
-﻿from typing import Annotated, Any
+from typing import Annotated, Any
 
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
@@ -65,11 +65,17 @@ def build_generate_chapter_tool(session_factory, model_config: dict | None = Non
             locations = await world_repo.list_locations(book_id)
             scene_events = await world_repo.list_scene_events(book_id)
 
-            chapter_stmt = select(Chapter).where(Chapter.id == chapter_id)
+            chapter_stmt = (
+                select(Chapter)
+                .join(Volume, Chapter.volume_id == Volume.id)
+                .where(Chapter.id == chapter_id, Volume.book_id == book_id)
+            )
             chapter_result = await session.execute(chapter_stmt)
             chapter = chapter_result.scalar_one_or_none()
             if not chapter:
-                return {"status": "error", "message": "章节不存在"}
+                return {"status": "error", "message": "章节不存在或不属于当前书籍"}
+            if getattr(chapter, "locked", False):
+                return {"status": "error", "message": "章节已锁定，禁止生成覆盖正文，请先解锁"}
 
             existing_content = ""
             content_stmt = (
@@ -212,15 +218,44 @@ def build_generate_chapter_tool(session_factory, model_config: dict | None = Non
                 return {"status": "error", "message": "生成内容为空"}
 
             try:
-                new_version = (latest_content.version + 1) if latest_content else 1
-                new_content = ChapterContent(
-                    chapter_id=chapter_id,
-                    content=generated_text.strip(),
-                    version=new_version,
-                )
-                session.add(new_content)
-                await session.commit()
-                await session.refresh(new_content)
+                from sqlalchemy import func
+                from sqlalchemy.exc import IntegrityError
+
+                # 版本号在 (chapter_id, version) 唯一约束下计算：并发写入撞号时
+                # 捕获 IntegrityError 重算版本号重试一次，避免 500 与重复版本。
+                for attempt in range(2):
+                    if attempt > 0:
+                        # 重试时重新查询最新版本：撞号意味着已有新版本提交，
+                        # 必须基于新 max 计算，否则重试仍使用同一版本号再次失败。
+                        max_ver = (
+                            await session.execute(
+                                select(func.max(ChapterContent.version)).where(
+                                    ChapterContent.chapter_id == chapter_id
+                                )
+                            )
+                        ).scalar() or 0
+                        new_version = max_ver + 1
+                    else:
+                        new_version = (
+                            (latest_content.version + 1) if latest_content else 1
+                        )
+                    new_content = ChapterContent(
+                        chapter_id=chapter_id,
+                        content=generated_text.strip(),
+                        version=new_version,
+                    )
+                    session.add(new_content)
+                    try:
+                        await session.commit()
+                        await session.refresh(new_content)
+                        break
+                    except IntegrityError:
+                        await session.rollback()
+                        if attempt == 0:
+                            continue
+                        raise
+                else:  # pragma: no cover
+                    raise RuntimeError("生成内容保存失败（版本冲突重试后仍失败）")
                 return {
                     "status": "completed",
                     "book_id": book_id,

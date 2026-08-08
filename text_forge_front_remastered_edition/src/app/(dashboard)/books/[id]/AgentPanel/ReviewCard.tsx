@@ -6,7 +6,7 @@ import { cn } from '@/shared/lib/cn';
 
 interface ReviewCardProps {
   data: Record<string, unknown>;
-  onAction: (action: 'accept' | 'retry' | 'edit' | 'terminate', editedContent?: string) => void;
+  onAction: (action: 'accept' | 'retry' | 'edit' | 'terminate', editedContent?: string, chapterId?: number) => void;
 }
 
 export function ReviewCard({ data, onAction }: ReviewCardProps) {
@@ -16,6 +16,8 @@ export function ReviewCard({ data, onAction }: ReviewCardProps) {
   const nodeLabel = String(data.node_label || data.node_id || '');
   const reason = String(data.reason || '输出不符合该角色节点的写作要求');
   const outputPreview = String(data.output_preview || '').slice(0, 300);
+  // 后端审计拦截卡携带目标章节；「终止并生成正文」需回传定位落库章节
+  const targetChapterId = typeof data.target_chapter_id === 'number' ? data.target_chapter_id : undefined;
 
   return (
     <div className="mx-1 my-2 p-3 rounded-lg border border-destructive/40 bg-destructive/5">
@@ -72,7 +74,7 @@ export function ReviewCard({ data, onAction }: ReviewCardProps) {
               <Pencil size={12} /> 自定义
             </button>
           </div>
-          <button onClick={() => onAction('terminate')}
+          <button onClick={() => onAction('terminate', undefined, targetChapterId)}
             className="w-full h-7 rounded-md border border-destructive/40 bg-transparent text-muted-foreground text-xs cursor-pointer hover:bg-destructive/10 hover:text-destructive flex items-center justify-center gap-1"
           >
             <FileText size={12} /> 终止并生成正文

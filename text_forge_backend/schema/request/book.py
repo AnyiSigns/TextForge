@@ -73,6 +73,14 @@ class ChapterContentRequest(BaseModel):
     content: str
 
 
+class LockChapterRequest(BaseModel):
+    """章节锁定/解锁请求体（lock 字段可选，缺省时切换当前状态）。"""
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    locked: bool | None = None
+
+
 class CreativeSettingRequest(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 

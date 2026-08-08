@@ -325,7 +325,7 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
     }
   };
 
-  const handleReviewAction = async (action: 'accept' | 'retry' | 'edit' | 'terminate', editedContent?: string) => {
+  const handleReviewAction = async (action: 'accept' | 'retry' | 'edit' | 'terminate', editedContent?: string, chapterId?: number) => {
     if (!agentThreadId) return;
     setPendingReview(null);
     // 清除消息流中的审核卡（review-card 是持久化消息，只清 store 不删消息卡片不会消失）
@@ -333,7 +333,8 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
       agentMessages: s.agentMessages.filter((m) => m.type !== 'review-card'),
     }));
     try {
-      await agentApi.submitReviewAction(agentThreadId, action, editedContent);
+      // 终止生成正文时回传审核卡携带的目标章节（如工作流执行时的 target_chapter_id）
+      await agentApi.submitReviewAction(agentThreadId, action, editedContent, chapterId);
       await resume();
     } catch {
       setAgentStreaming(false);

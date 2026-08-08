@@ -424,8 +424,11 @@ export default function SettingsPage() {
             <div className="pt-4 border-t border-border space-y-3">
               <label className="text-[11px] text-muted-foreground block">通过旧密码修改</label>
               <div className="relative">
-                <input type={showOldPwd ? 'text' : 'password'} value={oldPwd} onChange={(e) => setOldPwd(e.target.value)}
-                  placeholder="旧密码" autoComplete="off"
+                {/* readOnly 初始状态阻止浏览器自动填充旧密码；聚焦时解除只读 */}
+                <input type={showOldPwd ? 'text' : 'password'} value={oldPwd}
+                  onChange={(e) => setOldPwd(e.target.value)}
+                  onFocus={(e) => { e.target.readOnly = false; }}
+                  readOnly placeholder="旧密码" autoComplete="new-password"
                   className="w-full h-8 pl-2.5 pr-8 rounded-md text-xs bg-background border border-border focus:outline-none focus:border-foreground/30 transition-colors" />
                 <button type="button" onClick={() => setShowOldPwd(!showOldPwd)}
                   className="absolute right-2 top-1/2 -translate-y-1/2 bg-transparent border-none cursor-pointer text-muted-foreground">

@@ -144,7 +144,12 @@ let streamRaf: number | null = null;
 function pushStreamToken(token: string) {
   streamBuffer += token;
   if (streamRaf === null) {
-    streamRaf = requestAnimationFrame(() => {
+    // SSR/非浏览器环境无 requestAnimationFrame，直接落状态（服务端仅预渲染，实际不触发流式）
+    const raf =
+      typeof requestAnimationFrame === 'function'
+        ? requestAnimationFrame
+        : (cb: FrameRequestCallback) => setTimeout(() => cb(0), 16) as unknown as number;
+    streamRaf = raf(() => {
       streamRaf = null;
       const text = streamBuffer;
       streamBuffer = '';
@@ -155,7 +160,11 @@ function pushStreamToken(token: string) {
 
 function clearStreamBuffer() {
   if (streamRaf !== null) {
-    cancelAnimationFrame(streamRaf);
+    if (typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(streamRaf);
+    } else {
+      clearTimeout(streamRaf);
+    }
     streamRaf = null;
   }
   streamBuffer = '';

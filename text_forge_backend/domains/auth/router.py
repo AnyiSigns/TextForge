@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 from typing import Annotated
 
 from config.logging import get_logger
@@ -32,6 +33,7 @@ async def logout(
     request: RefreshRequest,
     user_serve: Annotated[UserAuthService, Depends(user_db_serve)],
 ):
+    """登出：删除 refresh token，并将 access token 加入黑名单立即失效。"""
     payload = verify_token(request.refresh_token)
     if not payload:
         raise HTTPException(status_code=401, detail="令牌无效")
@@ -39,6 +41,23 @@ async def logout(
     jti = payload.get("jti")
     await user_serve.token_repo.delete_user_and_jti(user_id, jti)
     await redis_client.srem(f"refresh_token_{user_id}", request.refresh_token)
+    # access token 黑名单：jti → 黑名单，TTL 取 access 剩余有效期（默认 15 分钟）
+    access_token = request.access_token
+    if access_token:
+        at_payload = verify_token(access_token)
+        at_jti = at_payload.get("jti") if at_payload else None
+        if at_jti:
+            try:
+                exp_ts = at_payload.get("exp")
+                ttl = (
+                    max(int(exp_ts) - int(datetime.now(timezone.utc).timestamp()), 1)
+                    if exp_ts
+                    else int(settings.JWT_ACCESS_TIME.total_seconds())
+                )
+                await redis_client.setex(f"auth:at_blacklist:{at_jti}", ttl, "1")
+            except Exception as exc:
+                logger.warning(f"access token 黑名单写入失败: {exc}")
+    return {"ok": True}
 
 
 @router.post("/refresh", response_model=RefreshResponse)
@@ -59,8 +78,18 @@ async def refresh_at(
     if not await redis_client.sismember(f"refresh_token_{user_id}", request.refresh_token):
         raise HTTPException(status_code=401, detail="令牌不存在")
     at_jti = str(uuid.uuid4())
+    # 携带当前密码版本号：改密后版本递增，旧 access token 立即失效
+    try:
+        pwd_ver = int(await redis_client.get(f"auth:pwd_ver:{user.id}") or 0)
+    except Exception:
+        pwd_ver = 0
     access_token = create_token(
-        {"sub": str(user.id), "user_name": user.user_name, "jti": at_jti},
+        {
+            "sub": str(user.id),
+            "user_name": user.user_name,
+            "jti": at_jti,
+            "pwd_ver": pwd_ver,
+        },
         expire=settings.JWT_ACCESS_TIME,
     )
     user = UserResponse.model_validate(user)
@@ -115,11 +144,35 @@ async def verify_email(
 async def user_login(
     request: UserLogin, user_serve: Annotated[UserAuthService, Depends(user_db_serve)]
 ):
+    # 登录失败限流：防止暴力破解。按邮箱计数，成功即清零；窗口 15 分钟。
+    LOGIN_FAIL_WINDOW = 900  # 15 分钟
+    LOGIN_FAIL_MAX = 10
+    fail_key = f"auth:login:fail:{request.email.lower()}"
+    try:
+        fail_count = int(await redis_client.get(fail_key) or 0)
+    except Exception:
+        fail_count = 0
+    if fail_count >= LOGIN_FAIL_MAX:
+        raise HTTPException(
+            status_code=429, detail="登录失败次数过多，请 15 分钟后再试"
+        )
+
     user, access_token, refresh_token, msg = await user_serve.user_login(
         email=request.email, pwd=request.password
     )
     if msg:
+        try:
+            pipe = redis_client.pipeline()
+            pipe.incr(fail_key)
+            pipe.expire(fail_key, LOGIN_FAIL_WINDOW)
+            await pipe.execute()
+        except Exception as exc:
+            logger.warning(f"登录失败计数失败: {exc}")
         status_code = 403 if "邮箱未验证" in msg else 401
         raise HTTPException(status_code=status_code, detail=msg)
+    try:
+        await redis_client.delete(fail_key)
+    except Exception:
+        pass
     user = UserResponse.model_validate(user)
     return TokenRes(access_token=access_token, refresh_token=refresh_token, user=user)  # type: ignore

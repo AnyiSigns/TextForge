@@ -125,6 +125,16 @@ class UserTokenRepository(BaseRepository[UserToken]):
         await self.session.execute(stmt)
         await self.session.commit()
 
+    async def delete_by_user(self, user_id: int):
+        """删除该用户全部 Token（改密后使用）。
+
+        Args:
+            user_id: 用户 ID。
+        """
+        stmt = delete(UserToken).where(UserToken.user_id == user_id)
+        await self.session.execute(stmt)
+        await self.session.commit()
+
     async def delete_by_jti(self, jti: str):
         """根据 JTI 删除 Token。
 

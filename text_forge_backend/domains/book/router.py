@@ -7,6 +7,7 @@ from models.book import Book, Chapter, SceneEvent, Volume
 from schema.request.book import (
     BookRequest,
     CreativeSettingRequest,
+    LockChapterRequest,
     UpdateBookRequest,
 )
 from schema.response.book import (
@@ -139,10 +140,8 @@ async def book_characters(
     result, msg = await book_service.book_characters(user_id, id)
     if msg:
         raise HTTPException(status_code=404, detail=msg)
+    # 仅记录数量，不打印角色明细（含别名/自定义字段等敏感信息）
     logger.info(f"book_characters: user_id={user_id} book_id={id} count={len(result)}")
-    if result:
-        first = result[0]
-        logger.info(f"book_characters sample: id={first.id} name={first.name} aliases={first.aliases!r} status={first.status!r} custom_fields={first.custom_fields!r} created_at={first.created_at!r} updated_at={first.updated_at!r}")
     try:
         return ListCharactersResponse(characters=result)
     except Exception as e:
@@ -255,18 +254,23 @@ async def toggle_chapter_lock(
     chapter_id: Annotated[int, Path(description="章节ID")],
     user_id: Annotated[int, Depends(get_current)],
     session: Annotated[AsyncSession, Depends(db_manager.get_db)],
-    body: Annotated[dict, Body(...)],
+    body: LockChapterRequest,
 ):
     stmt = select(Book).where(Book.id == id, Book.user_id == user_id)
     res = await session.execute(stmt)
     if not res.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="书籍不存在或无权访问")
-    ch_stmt = select(Chapter).where(Chapter.id == chapter_id)
+    # 校验章节确实属于该书：仅按 chapter_id 查询，攻击者可锁定/解锁他人书籍的章节
+    ch_stmt = (
+        select(Chapter)
+        .join(Volume, Chapter.volume_id == Volume.id)
+        .where(Chapter.id == chapter_id, Volume.book_id == id)
+    )
     ch_res = await session.execute(ch_stmt)
     chapter = ch_res.scalar_one_or_none()
     if not chapter:
         raise HTTPException(status_code=404, detail="章节不存在")
-    chapter.locked = body.get("locked", not chapter.locked)
+    chapter.locked = body.locked if body.locked is not None else not chapter.locked
     await session.commit()
     return {"id": chapter_id, "locked": chapter.locked}
 

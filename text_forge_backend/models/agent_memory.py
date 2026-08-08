@@ -40,8 +40,10 @@ class AgentMemory(Base):
     )
     priority: Mapped[int] = mapped_column(Integer, default=5, comment="优先级")
     source: Mapped[str] = mapped_column(String(64), nullable=False, comment="来源")
+    # 向量维度不固定：用户可配置不同嵌入模型（512/768/1024/1536 等），
+    # 用 Vector(None) 让 pgvector 按实际写入维度存储，避免维度不匹配报错。
     embedding: Mapped[list[float] | None] = mapped_column(
-        Vector(1536), nullable=True, comment="向量嵌入"
+        Vector(None), nullable=True, comment="向量嵌入"
     )
     meta: Mapped[dict] = mapped_column(JSONB, default={}, comment="元数据")
     created_at: Mapped[datetime] = mapped_column(

@@ -105,15 +105,6 @@ export async function submitReviewAction(
 }
 
 
-export async function patchAgentState(threadId: string, values: Record<string, unknown>): Promise<void> {
-  await apiClient.patch(`/agent/state/${threadId}`, values);
-}
-
-export async function agentRespond(threadId: string, message: string): Promise<SSEEvent> {
-  const res = await apiClient.post<SSEEvent>('/agent/respond', { threadId, message });
-  return res.data;
-}
-
 export async function fetchAgentConversations(): Promise<AgentConversation[]> {
   const { data } = await apiClient.get<any[]>('/agent/conversations');
   return (data as any[]).map((c: any) => ({
@@ -139,7 +130,9 @@ export async function fetchAgentMessages(conversationId: number): Promise<AgentM
 export async function deleteConversation(id: number): Promise<void> {
   try {
     await apiClient.delete(`/agent/conversations/${id}`);
-  } catch { /* endpoint may not exist yet */ }
+  } catch {
+    // 删除失败静默（会话仍在，用户可重试）
+  }
 }
 
 export async function searchAgentMemories(bookId: number, query: string): Promise<any[]> {

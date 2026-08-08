@@ -104,9 +104,9 @@ export function useSimRoomSocket(room: SimRoomDetail | null): UseSimRoomResult {
     const connect = async () => {
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
       const token = useAuthStore.getState().accessToken;
-      let wsUrl = `${proto}//${location.host}/api/sim-rooms/${roomId}/ws${
-        token ? `?token=${encodeURIComponent(token)}` : ''
-      }`;
+      // token 走 Sec-WebSocket-Protocol（subprotocol）传递：浏览器 WebSocket 无法
+      // 自定义请求头，放 query 会让 JWT 进入访问日志/浏览器历史，存在泄露风险。
+      let wsUrl = `${proto}//${location.host}/api/sim-rooms/${roomId}/ws`;
       // 用户模型配置仅存浏览器 IndexedDB，后端无服务端配置；经 WS query 传入供 LLM 初始化
       try {
         const modelConfig = await getModelConfigData();
@@ -118,7 +118,7 @@ export function useSimRoomSocket(room: SimRoomDetail | null): UseSimRoomResult {
         // 配置缺失时后端会返回「没有配置提供商」，由用户先在设置页配置模型
       }
       if (cancelled) return;
-      const ws = new WebSocket(wsUrl);
+      const ws = new WebSocket(wsUrl, token ? [token] : []);
       ws.onopen = () => {
         setConnected(true);
         const pending = pendingSendsRef.current;

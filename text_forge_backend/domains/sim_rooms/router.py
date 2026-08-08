@@ -487,10 +487,13 @@ async def room_websocket(websocket: WebSocket, room_id: int, model_config: str |
             return
 
         token = None
-        token_param = websocket.query_params.get("token")
-        if token_param:
-            token = token_param
-        else:
+        # 认证凭证优先从 Sec-WebSocket-Protocol（subprotocol）读取：浏览器 WebSocket
+        # 无法自定义请求头，token 放 query 会进入访问日志/代理日志（敏感泄露）；
+        # JWT 为 base64url 字符集，合法作为 subprotocol 值。
+        sec_protocol = websocket.headers.get("sec-websocket-protocol", "")
+        if sec_protocol:
+            token = sec_protocol.split(",")[0].strip()
+        if not token:
             auth_header = websocket.headers.get("authorization", "")
             if auth_header.startswith("Bearer "):
                 token = auth_header[len("Bearer "):]

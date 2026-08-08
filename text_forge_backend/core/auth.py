@@ -22,7 +22,7 @@ async def get_current(
         当前用户 ID。
 
     Raises:
-        HTTPException: 令牌缺失、无效或过期时抛出 401。
+        HTTPException: 令牌缺失、无效、过期、已登出或改密后旧令牌时抛出 401。
     """
     if credentials is None:
         logger.error("令牌不在请求头中", exc_info=True)
@@ -57,4 +57,31 @@ async def get_current(
             detail="令牌中无JTI",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # 登出黑名单：logout 时按 jti 加入黑名单，登出后的 access token 立即失效
+    try:
+        from shared.redis import redis_client
+
+        if await redis_client.exists(f"auth:at_blacklist:{jti}"):
+            logger.warning(f"已登出令牌被拒绝使用: user={user_id}")
+            raise HTTPException(
+                status_code=401,
+                detail="令牌已失效，请重新登录",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        # 改密版本号：修改密码后版本递增，改密前签发的所有 token 立即失效。
+        # Redis 不可用时跳过校验（降级放行），保证登录流程不因缓存故障中断。
+        current_ver = int(await redis_client.get(f"auth:pwd_ver:{user_id}") or 0)
+        token_ver = int(payload.get("pwd_ver") or 0)
+        if current_ver > token_ver:
+            logger.warning(f"改密后旧令牌被拒绝使用: user={user_id}")
+            raise HTTPException(
+                status_code=401,
+                detail="密码已修改，请重新登录",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning(f"令牌校验附加检查失败（放行）: {exc}")
     return int(user_id)

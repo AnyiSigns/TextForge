@@ -319,6 +319,48 @@ def _normalize_status(value: str | None) -> str | None:
     return aliases.get(value, value)
 
 
+async def _append_chapter_content_version(
+    session, chapter_id: int, content: str
+):
+    """追加章节内容新版本（version = 最新 + 1），并发撞号时自动重试一次。
+
+    在 (chapter_id, version) 唯一约束下，两个并发写入同时计算 max+1 时，
+    后提交的一方会触发 IntegrityError；捕获后回滚并重算版本号重试，
+    避免 500 与重复版本。
+
+    Args:
+        session: 数据库会话。
+        chapter_id: 章节 ID。
+        content: 正文内容。
+
+    Returns:
+        新创建的 ChapterContent 实例。
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    for attempt in range(2):
+        max_ver = (
+            await session.execute(
+                select(func.max(ChapterContent.version)).where(
+                    ChapterContent.chapter_id == chapter_id
+                )
+            )
+        ).scalar() or 0
+        new_content = ChapterContent(
+            chapter_id=chapter_id, content=content, version=max_ver + 1
+        )
+        session.add(new_content)
+        try:
+            await session.commit()
+            return new_content
+        except IntegrityError:
+            await session.rollback()
+            if attempt == 0:
+                continue
+            raise
+    raise RuntimeError("追加章节版本失败")  # pragma: no cover
+
+
 async def _extract_entities_from_text(model_config, content: str) -> dict:
     """从原始文本一次性抽取人物/地点/事件，供 create_entities 的 source_text 模式使用。
 
@@ -687,9 +729,16 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
                 schedule_recompute(book_id)
                 return {"id": inst.id, "kind": kind, "updated": payload}
             if kind == "chapter":
-                inst = (await session.execute(select(Chapter).where(Chapter.id == item_id))).scalar_one_or_none()
+                # 校验章节归属当前书籍：仅按 id 查询会允许越权更新他人书籍的章节
+                inst = (
+                    await session.execute(
+                        select(Chapter)
+                        .join(Volume, Chapter.volume_id == Volume.id)
+                        .where(Chapter.id == item_id, Volume.book_id == book_id)
+                    )
+                ).scalar_one_or_none()
                 if not inst:
-                    return {"error": "章节不存在", "item_id": item_id}
+                    return {"error": "章节不存在或不属于当前书籍", "item_id": item_id}
                 if inst.locked:
                     return {"error": "章节已锁定，无法更新", "item_id": item_id}
                 for k, v in payload.items():
@@ -793,10 +842,9 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
                 return {"error": "章节不存在", "chapter_id": chapter_id}
             if ch.locked:
                 return {"error": "章节已锁定，无法写入", "chapter_id": chapter_id}
-            max_ver = (await session.execute(select(func.max(ChapterContent.version)).where(ChapterContent.chapter_id == chapter_id))).scalar() or 0
-            new_content = ChapterContent(chapter_id=chapter_id, content=content, version=max_ver + 1)
-            session.add(new_content)
-            await session.commit()
+            new_content = await _append_chapter_content_version(
+                session, chapter_id, content
+            )
             return {"chapter_id": chapter_id, "version": new_content.version, "word_count": len(content)}
 
     @tool
@@ -842,10 +890,9 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
                 return {"error": "章节不存在", "chapter_id": chapter_id}
             if ch.locked:
                 return {"error": "章节已锁定，无法写入", "chapter_id": chapter_id}
-            max_ver = (await session.execute(select(func.max(ChapterContent.version)).where(ChapterContent.chapter_id == chapter_id))).scalar() or 0
-            new_content = ChapterContent(chapter_id=chapter_id, content=content, version=max_ver + 1)
-            session.add(new_content)
-            await session.commit()
+            new_content = await _append_chapter_content_version(
+                session, chapter_id, content
+            )
             return {
                 "chapter_id": chapter_id,
                 "version": new_content.version,
@@ -882,9 +929,9 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
                 replaced = current.replace(old_text, new_text)
             else:
                 replaced = current.replace(old_text, new_text, 1)
-            new_content = ChapterContent(chapter_id=chapter_id, content=replaced, version=max_ver + 1)
-            session.add(new_content)
-            await session.commit()
+            new_content = await _append_chapter_content_version(
+                session, chapter_id, replaced
+            )
             return {
                 "chapter_id": chapter_id, "version": new_content.version,
                 "matched": count, "replaced_all": bool(all_occurrences),
@@ -918,9 +965,9 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
                 return {"error": f"diff 应用失败: {exc}", "version": max_ver}
             if new_text == current:
                 return {"error": "diff 未产生任何改动，请检查 hunk 是否匹配当前正文", "version": max_ver}
-            new_content = ChapterContent(chapter_id=chapter_id, content=new_text, version=max_ver + 1)
-            session.add(new_content)
-            await session.commit()
+            new_content = await _append_chapter_content_version(
+                session, chapter_id, new_text
+            )
             return {
                 "chapter_id": chapter_id, "version": new_content.version,
                 "word_count": len(new_text), "preview": new_text[:200],
@@ -934,7 +981,7 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
         doc_ids: Annotated[list | None, "限定文档ID列表（mode=docs 时），对应 documents.id"] = None,
         book_id: Annotated[int, InjectedState("active_book_id")] = 0,
     ) -> list[dict]:
-        """统一检索入口：mode=docs 语义检索公开文档库，mode=web 联网搜索。"""
+        """统一检索入口：mode=docs 语义检索公开文档库（全库公开文档，文档无书籍归属概念），mode=web 联网搜索。"""
         logger.debug(f"[tool] search  mode={mode}  query={query}  book_id={book_id}")
         if mode == "web":
             async with session_factory() as session:
@@ -957,8 +1004,8 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
             rag_filter = {"query": query}
             if doc_ids:
                 rag_filter["doc_ids"] = [str(d) for d in doc_ids]
-            elif book_id:
-                rag_filter["book_id"] = book_id
+            # 注意：文档库为全局公开库（Document 无 book_id 列，检索范围不受当前书籍影响），
+            # 如需限定范围请使用 doc_ids。
             items = await vector_repo.search_external_books(query_embedding=embedding, rag_filter=rag_filter, top_k=top_k)
             return [
                 {
@@ -1000,6 +1047,7 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
                     content=content, related_chapter_id=related_chapter_id,
                     related_character_ids=related_character_ids or [], priority=priority,
                     source="agent_self_reflection", meta=meta or {},
+                    model_config=model_config,
                 )
                 return {"memory_id": mem.id}
         if mode == "recall":
@@ -1036,6 +1084,14 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
             async with session_factory() as session:
                 svc = AgentMemoryService(session)
                 payload = {k: v for k, v in {"memory_type": memory_type, "content": content, "priority": priority, "meta": meta}.items() if v is not None}
+                if content:
+                    try:
+                        from core.model_factory import ModelFactory
+
+                        payload["embedding"] = await ModelFactory(model_config or {}).embedding.aembed_query(content[:2000])
+                    except Exception:
+                        # 生成失败时不清空已有 embedding（避免覆盖为 NULL 导致语义检索丢失旧向量）
+                        pass
                 mem = await svc.update_memory(user_id=user_id, memory_id=memory_id, data=payload)
                 if not mem:
                     return {"ok": False, "detail": "记忆不存在"}

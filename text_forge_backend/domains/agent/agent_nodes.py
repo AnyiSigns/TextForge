@@ -189,26 +189,41 @@ async def agent_call(state: UserAgentState) -> dict[str, Any]:
             except Exception:
                 pass
 
-    async for chunk in bound_llm.astream(
-        [SystemMessage(system_prompt)] + state["messages"]
-    ):
-        accumulated = chunk if accumulated is None else accumulated + chunk
-        full_content += chunk.content or ""
-        reasoning = getattr(chunk, "reasoning_content", None) or (
-            chunk.additional_kwargs or {}
-        ).get("reasoning_content", "")
-        if reasoning:
-            full_reasoning += reasoning
-            if not think_started:
-                think_started = True
-                _emit("think_start", elapsed=0)
-            _emit("agent_reasoning", token=reasoning)
-        token = chunk.content or ""
-        if token:
-            if think_started and not think_ended:
-                think_ended = True
-                _emit("agent_think_end")
-            _emit("agent_token", token=token)
+    try:
+        async for chunk in bound_llm.astream(
+            [SystemMessage(system_prompt)] + state["messages"]
+        ):
+            accumulated = chunk if accumulated is None else accumulated + chunk
+            full_content += chunk.content or ""
+            reasoning = getattr(chunk, "reasoning_content", None) or (
+                chunk.additional_kwargs or {}
+            ).get("reasoning_content", "")
+            if reasoning:
+                full_reasoning += reasoning
+                if not think_started:
+                    think_started = True
+                    _emit("think_start", elapsed=0)
+                _emit("agent_reasoning", token=reasoning)
+            token = chunk.content or ""
+            if token:
+                if think_started and not think_ended:
+                    think_ended = True
+                    _emit("agent_think_end")
+                _emit("agent_token", token=token)
+    except Exception as exc:
+        # 兜底：模型调用失败（网络/鉴权/超时/配额等）不能让整个图崩溃断流，
+        # 转为可见的 AIMessage 错误回复；同时清空一次性状态避免后续回合卡在守卫里。
+        logger.error(f"[agent_call] 模型调用失败: {exc}", exc_info=True)
+        _emit("agent_think_end")
+        result = AIMessage(
+            content=f"抱歉，模型调用失败，请稍后重试或检查模型配置。（{exc}）"
+        )
+        _update: dict[str, Any] = {"messages": [result]}
+        if state.get("workflow_result"):
+            _update["workflow_result"] = None
+        if state.get("pending_workflow"):
+            _update["pending_workflow"] = None
+        return _update
 
     if think_started and not think_ended:
         _emit("agent_think_end")

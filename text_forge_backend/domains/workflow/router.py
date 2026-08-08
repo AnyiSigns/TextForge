@@ -3,11 +3,13 @@ import json
 from typing import Annotated
 
 from core.auth import get_current
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from domains.agent.workflow_scheduler import run_workflow as scheduler_run_workflow
+from shared.database import db_manager
 
 from schema.response.workflow import ListWorkflowsResponse, WorkflowDetailResponse
 from schema.workflow import Workflow
@@ -74,6 +76,8 @@ async def run_workflow_endpoint(
     body: ExecuteWorkflowRequest,
     user_id: Annotated[int, Depends(get_current)],
     workflow_service: Annotated[WorkflowService, Depends(workflow_db)],
+    session: Annotated[AsyncSession, Depends(db_manager.get_db)],
+    request: Request,
 ):
     """直接执行完整工作流（不走 Agent LLM 决策，确定性执行）。
 
@@ -85,6 +89,11 @@ async def run_workflow_endpoint(
     await workflow_service.get_workflow_detail(workflow_id, user_id)
     if not body.book_id:
         raise HTTPException(status_code=400, detail="未选择活动书籍")
+    # 校验书籍归属：body.book_id 来自请求体，若不校验，任何登录用户都可对
+    # 他人书籍执行工作流（把他人大纲/角色等数据注入 LLM 上下文）。
+    from domains.book._owner_check import assert_book_owner
+
+    await assert_book_owner(body.book_id, user_id, session)
     model_config = body.model_config_data or {}
     if not model_config.get("main_config"):
         raise HTTPException(status_code=400, detail="用户模型配置未设置")
@@ -105,26 +114,44 @@ async def run_workflow_endpoint(
             )
         )
 
-        while True:
-            try:
-                event = queue.get_nowait()
-            except asyncio.QueueEmpty:
-                if task.done():
+        try:
+            while True:
+                # 客户端断开时立即取消后台任务，避免任务继续占用 LLM/DB 资源
+                if await request.is_disconnected():
+                    task.cancel()
                     break
                 try:
-                    event = await asyncio.wait_for(queue.get(), timeout=30)
-                except asyncio.TimeoutError:
+                    event = queue.get_nowait()
+                except asyncio.QueueEmpty:
                     if task.done():
                         break
-                    continue
-            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                    try:
+                        event = await asyncio.wait_for(queue.get(), timeout=30)
+                    except asyncio.TimeoutError:
+                        if task.done():
+                            break
+                        continue
+                # 统一 SSE 事件命名：scheduler 事件用 event 键（node_start 等），
+                # 与 agent 流的 type 键不一致；补发 type 字段，前端两种读取均兼容。
+                if isinstance(event, dict) and "type" not in event and "event" in event:
+                    event = {**event, "type": event["event"]}
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
-        result = (
-            task.result()
-            if not task.cancelled()
-            else {"status": "error", "message": "执行已取消"}
-        )
-        yield f"data: {json.dumps({'type': 'done', 'result': result}, ensure_ascii=False)}\n\n"
+            result = (
+                task.result()
+                if not task.cancelled()
+                else {"status": "error", "message": "执行已取消"}
+            )
+            # 统一 SSE 事件命名：scheduler 事件用 event 键（node_start 等），
+            # 与 agent 流的 type 键不一致；补发 type 字段，前端两种读取均兼容。
+            yield f"data: {json.dumps({'type': 'done', 'result': result}, ensure_ascii=False)}\n\n"
+        except asyncio.CancelledError:
+            # 流被中断（连接关闭）时取消任务并重新抛出，交给 Starlette 收尾
+            task.cancel()
+            raise
+        finally:
+            if not task.done():
+                task.cancel()
 
     return StreamingResponse(
         event_stream(),

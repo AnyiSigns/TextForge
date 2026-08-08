@@ -34,6 +34,12 @@ export async function readSSE(
       }
     }
   } finally {
-    reader.releaseLock();
+    // 流被取消（abort）或已自然结束时，reader 的锁可能已被自动释放，
+    // 此时再 releaseLock 会抛 InvalidStateError，需保护避免未处理异常。
+    try {
+      reader.releaseLock();
+    } catch {
+      // 忽略：锁已释放
+    }
   }
 }

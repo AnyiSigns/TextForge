@@ -25,14 +25,15 @@ export const useMapStore = create<MapState>((set) => ({
   navigateTo: (id) =>
     set((state) => ({
       focusedLocationId: id,
-      history: [...state.history, id],
+      // 连续点击同一地点不重复入栈，避免 history 膨胀
+      history: state.history[state.history.length - 1] === id ? state.history : [...state.history, id],
       userDriven: true,
     })),
 
   syncFocus: (id) =>
     set((state) => ({
       focusedLocationId: id,
-      history: [...state.history, id],
+      history: state.history[state.history.length - 1] === id ? state.history : [...state.history, id],
     })),
 
   clearUserDriven: () => set({ userDriven: false }),

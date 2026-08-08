@@ -103,6 +103,8 @@ async def _finish_with_candidate(result: dict[str, Any], target_chapter_id: int 
             "output_preview": result.get("output", "") or (_last.get("output") or "")[:1000],
             "reason": _qc.get("reason", "输出质量不满足角色节点要求"),
             "system_prompt": _qc.get("system_prompt", ""),
+            # 携带目标章节：用户点「终止并生成正文」时前端可回传，供 review_action 定位落库章节
+            "target_chapter_id": target_chapter_id,
         }
         reply = f"工作流在节点「{node_label}」触发审计拦截，需要您审核后再继续。请查看审核卡进行确认。"
     elif not content_nodes:
@@ -208,16 +210,29 @@ async def workflow_runner_node(state: dict[str, Any]) -> dict[str, Any]:
                     context_fields = pending.get("context_fields")
                     if context_fields:
                         node_def = {**node_def, "context_fields": context_fields}
-                    res = await scheduler_execute_node(
-                        node_def=node_def,
-                        book_id=book_id,
-                        model_config=model_config,
-                        node_id=node_id,
-                        upstream_outputs=pending.get("upstream_outputs"),
-                        personal_rag_results=state.get("personal_rag_results"),
-                        on_progress=_on_progress,
-                        target_chapter_id=target_chapter_id,
-                    )
+                    try:
+                        res = await scheduler_execute_node(
+                            node_def=node_def,
+                            book_id=book_id,
+                            model_config=model_config,
+                            node_id=node_id,
+                            upstream_outputs=pending.get("upstream_outputs"),
+                            personal_rag_results=state.get("personal_rag_results"),
+                            on_progress=_on_progress,
+                            target_chapter_id=target_chapter_id,
+                        )
+                    except Exception as exc:
+                        # 兜底：单节点执行异常转 error 结果，避免整个图崩溃断流
+                        logger.exception(f"[workflow_runner] 单节点执行未捕获异常: {exc}")
+                        res = {
+                            "success": False,
+                            "output": "",
+                            "needs_review": False,
+                            "quality_check": {
+                                "passed": False,
+                                "reason": f"节点执行异常: {exc}",
+                            },
+                        }
                     result = {
                         "node_id": node_id,
                         "node_label": node_label,
@@ -241,13 +256,23 @@ async def workflow_runner_node(state: dict[str, Any]) -> dict[str, Any]:
                         result["content_nodes"] = []
         return await _finish_with_candidate(result, target_chapter_id, state.get("preferred_workflow_node"))
 
-    result = await scheduler_run_workflow(
-        workflow_id=workflow_id,
-        book_id=book_id,
-        model_config=model_config,
-        on_progress=_on_progress,
-        personal_rag_results=state.get("personal_rag_results"),
-        seed_upstream_outputs=pending.get("upstream_outputs"),
-        target_chapter_id=target_chapter_id,
-    )
+    try:
+        result = await scheduler_run_workflow(
+            workflow_id=workflow_id,
+            book_id=book_id,
+            model_config=model_config,
+            on_progress=_on_progress,
+            personal_rag_results=state.get("personal_rag_results"),
+            seed_upstream_outputs=pending.get("upstream_outputs"),
+            target_chapter_id=target_chapter_id,
+        )
+    except Exception as exc:
+        # 兜底：调度器未捕获异常（如配置/LLM 层外的意外错误）不能让整个图崩溃，
+        # 转为 error 结果走候选确认收尾，用户可见错误信息而非断流。
+        logger.exception(f"[workflow_runner] 工作流执行未捕获异常: {exc}")
+        result = {
+            "status": "error",
+            "message": f"工作流执行异常: {exc}",
+            "content_nodes": [],
+        }
     return await _finish_with_candidate(result, target_chapter_id, state.get("preferred_workflow_node"))

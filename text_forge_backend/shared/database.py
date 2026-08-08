@@ -33,6 +33,33 @@ def _sync_missing_columns(sync_conn):
                     f"ALTER TABLE scene_events ADD COLUMN {col_name} {col_ddl}"
                 )
                 logger.info(f"已为 scene_events 表补充列 {col_name}")
+        # scene_events.chapter_id 外键语义统一为「删除章节时级联删除事件」：
+        # 早期版本是 SET NULL，与 ORM cascade="all,delete-orphan" 及前端
+        # removeChapter/removeVolume 的行为矛盾（ORM 删事件、DB 却置空），
+        # 存量库需幂等迁移外键。
+        try:
+            fks = inspect(sync_conn).get_foreign_keys("scene_events")
+            chapter_fk = next(
+                (
+                    f
+                    for f in fks
+                    if f.get("constrained_columns") == ["chapter_id"]
+                    and f.get("referred_table") == "chapters"
+                ),
+                None,
+            )
+            if chapter_fk and chapter_fk.get("options", {}).get("ondelete") != "CASCADE":
+                fk_name = chapter_fk["name"]
+                sync_conn.exec_driver_sql(
+                    f'ALTER TABLE scene_events DROP CONSTRAINT "{fk_name}"'
+                )
+                sync_conn.exec_driver_sql(
+                    "ALTER TABLE scene_events ADD CONSTRAINT scene_events_chapter_id_fkey "
+                    "FOREIGN KEY (chapter_id) REFERENCES chapters (id) ON DELETE CASCADE"
+                )
+                logger.info("已迁移 scene_events.chapter_id 外键为 ON DELETE CASCADE")
+        except Exception as e:
+            logger.warning(f"scene_events 外键迁移跳过: {e}")
     if "sim_branches" in tables:
         existing = {c["name"] for c in inspect(sync_conn).get_columns("sim_branches")}
         for col_name, col_ddl in (
@@ -45,6 +72,44 @@ def _sync_missing_columns(sync_conn):
                     f"ALTER TABLE sim_branches ADD COLUMN {col_name} {col_ddl}"
                 )
                 logger.info(f"已为 sim_branches 表补充列 {col_name}")
+    # chapter_contents 版本号唯一约束：存量库 create_all 不会添加新约束，
+    # 需幂等补充（并发写入防止重复版本）。
+    if "chapter_contents" in tables:
+        try:
+            constraints = {
+                c["name"]
+                for c in inspect(sync_conn).get_unique_constraints("chapter_contents")
+            }
+            if "uq_chapter_contents_chapter_version" not in constraints:
+                # 先清理历史重复版本（保留 id 最大的一条），否则建约束会失败
+                sync_conn.exec_driver_sql(
+                    "DELETE FROM chapter_contents a USING chapter_contents b "
+                    "WHERE a.chapter_id = b.chapter_id AND a.version = b.version "
+                    "AND a.id < b.id"
+                )
+                sync_conn.exec_driver_sql(
+                    "ALTER TABLE chapter_contents "
+                    "ADD CONSTRAINT uq_chapter_contents_chapter_version "
+                    "UNIQUE (chapter_id, version)"
+                )
+                logger.info("已为 chapter_contents 表补充 (chapter_id, version) 唯一约束")
+            else:
+                logger.debug("chapter_contents 唯一约束已存在，跳过")
+        except Exception as e:
+            logger.warning(f"chapter_contents 唯一约束补充跳过: {e}")
+    # agent_memories.embedding 维度：早期硬编码 Vector(1536)，与用户配置的
+    # 任意维度嵌入模型不兼容；迁移为不定维度 vector。
+    if "agent_memories" in tables:
+        try:
+            cols = {c["name"]: c for c in inspect(sync_conn).get_columns("agent_memories")}
+            emb_col = cols.get("embedding")
+            if emb_col and emb_col.get("type") and "vector(" in str(emb_col["type"]).lower():
+                sync_conn.exec_driver_sql(
+                    "ALTER TABLE agent_memories ALTER COLUMN embedding TYPE vector"
+                )
+                logger.info("已迁移 agent_memories.embedding 为不定维度 vector")
+        except Exception as e:
+            logger.warning(f"agent_memories.embedding 维度迁移跳过: {e}")
 
 
 class DBManager:

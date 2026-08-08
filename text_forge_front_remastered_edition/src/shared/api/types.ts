@@ -252,12 +252,6 @@ export interface KnowledgeDoc {
   content?: string;
 }
 
-export interface LockResult {
-  entityType: string;
-  entityId: number;
-  locked: boolean;
-}
-
 export interface SSEEvent {
   type: 'token' | 'agent_token' | 'agent_reasoning' | 'think_start' | 'agent_think_end' | 'tool_start' | 'tool_end' | 'progress' |
         'node_start' | 'node_stream' | 'node_end' | 'node_fail' |
