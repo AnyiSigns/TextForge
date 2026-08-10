@@ -7,6 +7,7 @@ import { Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/shared/stores/authStore';
 import { cn } from '@/shared/lib/cn';
+import { getApiErrorMessage, showApiError } from '@/shared/lib/apiError';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -40,13 +41,13 @@ export default function LoginPage() {
       toast.success('登录成功');
       router.push(getRedirect());
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '登录失败';
+      const msg = getApiErrorMessage(err, '登录失败');
       if (msg.includes('邮箱未验证')) {
-        toast.error('邮箱未验证', { description: '请先验证邮箱后再登录' });
+        showApiError(err, '邮箱未验证');
         router.push(`/verify-email?email=${encodeURIComponent(email)}`);
         return;
       }
-      toast.error('登录失败', { description: msg });
+      showApiError(err, '登录失败');
     } finally {
       setIsLoading(false);
     }

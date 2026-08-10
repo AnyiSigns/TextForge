@@ -137,11 +137,21 @@ class CharacterService:
 
     async def upload_character_avatar(self, character_id: int, file: UploadFile):
         if not file.content_type or not file.content_type.startswith("image/"):
-            raise HTTPException(status_code=400, detail="请上传图片文件")
+            raise HTTPException(status_code=400, detail="请上传图片文件（JPG / PNG / WebP / GIF）")
 
         ext = os.path.splitext(file.filename or "")[1].lower()
         if ext not in (".png", ".jpg", ".jpeg", ".gif", ".webp"):
-            ext = ".png"
+            raise HTTPException(status_code=400, detail="仅支持 JPG / PNG / WebP / GIF 格式的头像")
+
+        # 体积校验：先探测大小，避免把超大文件读进内存
+        try:
+            await file.seek(0, 2)
+            size = await file.tell()
+            await file.seek(0)
+        except Exception:
+            size = None
+        if size is not None and size > 5 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="头像文件过大，请压缩到 5MB 以内")
 
         filename = f"char_{character_id}_{uuid.uuid4().hex[:8]}{ext}"
         save_dir = os.path.join(

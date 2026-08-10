@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { toast } from 'sonner';
 import { useMapStore } from './mapStore';
+import { getApiErrorMessage } from '@/shared/lib/apiError';
 import type {
   Book,
   Volume,
@@ -157,7 +158,7 @@ export const useEntityStore = create<EntityState>((set, get) => ({
       ),
     }));
     import('@/shared/api/world').then(({ updateSceneEvent: apiUpdate }) =>
-      apiUpdate(id, patch, get().book?.id).catch(() => toast.error('事件更新失败'))
+      apiUpdate(id, patch, get().book?.id).catch((e) => toast.error(getApiErrorMessage(e, '事件更新失败')))
     );
   },
 
@@ -176,7 +177,7 @@ export const useEntityStore = create<EntityState>((set, get) => ({
       ),
     }));
     import('@/shared/api/world').then(({ updateLocation: apiUpdate }) =>
-      apiUpdate(id, patch, get().book?.id).catch(() => toast.error('地点更新失败'))
+      apiUpdate(id, patch, get().book?.id).catch((e) => toast.error(getApiErrorMessage(e, '地点更新失败')))
     );
   },
 
@@ -187,7 +188,7 @@ export const useEntityStore = create<EntityState>((set, get) => ({
       ),
     }));
     import('@/shared/api/characters').then(({ updateCharacter: apiUpdate }) =>
-      apiUpdate(id, patch).catch(() => toast.error('保存失败'))
+      apiUpdate(id, patch).catch((e) => toast.error(getApiErrorMessage(e, '保存失败')))
     );
   },
 
@@ -198,7 +199,7 @@ export const useEntityStore = create<EntityState>((set, get) => ({
       ),
     }));
     import('@/shared/api/world').then(({ updateForeshadowing: apiUpdate }) =>
-      apiUpdate(id, patch, get().book?.id).catch(() => toast.error('伏笔更新失败'))
+      apiUpdate(id, patch, get().book?.id).catch((e) => toast.error(getApiErrorMessage(e, '伏笔更新失败')))
     );
   },
 
@@ -209,7 +210,7 @@ export const useEntityStore = create<EntityState>((set, get) => ({
       ),
     }));
     import('@/shared/api/world').then(({ updatePlotThread: apiUpdate }) =>
-      apiUpdate(id, patch, get().book?.id).catch(() => toast.error('情节脉络更新失败'))
+      apiUpdate(id, patch, get().book?.id).catch((e) => toast.error(getApiErrorMessage(e, '情节脉络更新失败')))
     );
   },
 
@@ -220,7 +221,7 @@ export const useEntityStore = create<EntityState>((set, get) => ({
       ),
     }));
     import('@/shared/api/books').then(({ updateVolume: apiUpdate }) =>
-      apiUpdate(id, patch).catch(() => toast.error('保存失败'))
+      apiUpdate(id, patch).catch((e) => toast.error(getApiErrorMessage(e, '保存失败')))
     );
   },
 
@@ -231,7 +232,7 @@ export const useEntityStore = create<EntityState>((set, get) => ({
       ),
     }));
     import('@/shared/api/books').then(({ updateChapter: apiUpdate }) =>
-      apiUpdate(id, patch).catch(() => toast.error('保存失败'))
+      apiUpdate(id, patch).catch((e) => toast.error(getApiErrorMessage(e, '保存失败')))
     );
   },
 
@@ -246,7 +247,7 @@ export const useEntityStore = create<EntityState>((set, get) => ({
             l.id === tempId ? { ...real, id: real.id ?? tempId } : l,
           ),
         }));
-      }).catch(() => toast.error('保存失败'))
+      }).catch((e) => toast.error(getApiErrorMessage(e, '保存失败')))
     );
   },
 
@@ -260,7 +261,7 @@ export const useEntityStore = create<EntityState>((set, get) => ({
             c.id === tempId ? { ...real, id: real.id ?? tempId } : c,
           ),
         }));
-      }).catch(() => toast.error('保存失败'))
+      }).catch((e) => toast.error(getApiErrorMessage(e, '保存失败')))
     );
   },
 
@@ -274,7 +275,7 @@ export const useEntityStore = create<EntityState>((set, get) => ({
             e.id === tempId ? { ...real, id: real.id ?? tempId } : e,
           ),
         }));
-      }).catch(() => toast.error('保存失败'))
+      }).catch((e) => toast.error(getApiErrorMessage(e, '保存失败')))
     );
   },
 
@@ -288,7 +289,7 @@ export const useEntityStore = create<EntityState>((set, get) => ({
             p.id === tempId ? { ...real, id: real.id ?? tempId } : p,
           ),
         }));
-      }).catch(() => toast.error('保存失败'))
+      }).catch((e) => toast.error(getApiErrorMessage(e, '保存失败')))
     );
   },
 
@@ -302,7 +303,7 @@ export const useEntityStore = create<EntityState>((set, get) => ({
             f.id === tempId ? { ...real, id: real.id ?? tempId } : f,
           ),
         }));
-      }).catch(() => toast.error('保存失败'))
+      }).catch((e) => toast.error(getApiErrorMessage(e, '保存失败')))
     );
   },
 
@@ -316,7 +317,7 @@ export const useEntityStore = create<EntityState>((set, get) => ({
             c.id === tempId ? { ...real, id: real.id ?? tempId } : c,
           ),
         }));
-      }).catch(() => toast.error('保存失败'))
+      }).catch((e) => toast.error(getApiErrorMessage(e, '保存失败')))
     );
   },
 
@@ -331,7 +332,7 @@ export const useEntityStore = create<EntityState>((set, get) => ({
             v.id === tempId ? { ...real, id: real.id ?? tempId } : v,
           ),
         }));
-      }).catch(() => toast.error('保存失败'))
+      }).catch((e) => toast.error(getApiErrorMessage(e, '保存失败')))
     );
   },
 

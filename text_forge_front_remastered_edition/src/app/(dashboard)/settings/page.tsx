@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { useTheme } from 'next-themes';
 import { Card } from '@/shared/ui/card';
 import { cn } from '@/shared/lib/cn';
+import { showApiError } from '@/shared/lib/apiError';
 import * as userApi from '@/shared/api/user';
 import * as modelApi from '@/shared/api/models';
 import { EMBED_TIERS, downloadEmbedModel, deleteEmbedModel, cancelEmbedDownload } from '@/lib/rag/embed';
@@ -208,8 +209,8 @@ export default function SettingsPage() {
     try {
       await modelApi.saveModelConfig({ textRoleModels, embeddingModel: embedModel, visionModel: vision, searchConfig: search });
       toast.success('已保存');
-    } catch {
-      toast.error('保存失败');
+    } catch (e) {
+      showApiError(e, '保存失败');
     }
   };
 
@@ -236,8 +237,8 @@ export default function SettingsPage() {
       if (res.ok) {
         toast.success('连接成功', { description: res.content?.slice(0, 60) });
       }
-    } catch {
-      toast.error('连接失败');
+    } catch (e) {
+      showApiError(e, '连接失败');
     } finally {
       setTestingRole(null);
     }
@@ -250,8 +251,8 @@ export default function SettingsPage() {
     try {
       await downloadEmbedModel(id, (p) => setEmbedProgress(p));
       toast.success('本地检索模型已就绪，切换精度请前往知识库页面');
-    } catch {
-      toast.error('下载失败');
+    } catch (e) {
+      showApiError(e, '下载失败');
     } finally {
       setEmbedDownloading(false);
       setEmbedDownloadId(null);
@@ -264,8 +265,8 @@ export default function SettingsPage() {
     try {
       await deleteEmbedModel(id);
       toast.success('已删除');
-    } catch {
-      toast.error('删除失败');
+    } catch (e) {
+      showApiError(e, '删除失败');
     } finally {
       setEmbedDeleting(null);
     }

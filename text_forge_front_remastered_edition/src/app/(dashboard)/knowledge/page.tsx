@@ -5,6 +5,7 @@ import { Upload, FileText, Trash2, BookOpen, Globe2, FolderOpen, Search, Eye, Do
 import { toast } from 'sonner';
 import { Card } from '@/shared/ui/card';
 import { cn } from '@/shared/lib/cn';
+import { showApiError } from '@/shared/lib/apiError';
 import { ragClient, type KbDocMeta } from '@/lib/knowledge';
 import { EMBED_TIERS } from '@/lib/rag/embed';
 import { resetForTier, reindexAll } from '@/lib/rag/vectorStore';
@@ -93,8 +94,8 @@ export default function KnowledgePage() {
       await ragClient.uploadPersonal(file);
       toast.success('上传成功');
       await refresh();
-    } catch {
-      toast.error('上传失败');
+    } catch (e) {
+      showApiError(e, '上传失败');
     } finally { setLoading(false); e.target.value = ''; }
   };
 
@@ -104,7 +105,7 @@ export default function KnowledgePage() {
       await ragClient.removePersonal(doc.id);
       toast.success('已删除');
       await refresh();
-    } catch { toast.error('删除失败'); }
+    } catch (e) { showApiError(e, '删除失败'); }
   };
 
   const preview = (doc: KbDocMeta) => {
@@ -125,7 +126,7 @@ export default function KnowledgePage() {
       await ragClient.uploadPublic(file);
       toast.success('已上传到公共文档库');
       await refresh();
-    } catch { toast.error('上传失败'); }
+    } catch (e) { showApiError(e, '上传失败'); }
     finally { setPublicUploading(false); e.target.value = ''; }
   };
 
@@ -135,7 +136,7 @@ export default function KnowledgePage() {
       await ragClient.removePublic(doc.id);
       toast.success('已删除');
       await refresh();
-    } catch { toast.error('删除失败'); }
+    } catch (e) { showApiError(e, '删除失败'); }
   };
 
   return (

@@ -8,6 +8,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from config.logging import get_logger, request_id_var
 from config.settings import settings
+from core.errors import register_exception_handlers
 from domains.agent.router import router as agent_router
 from domains.auth.router import router as auth_router
 from domains.auth.user_router import router as user_router
@@ -81,6 +82,9 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+# 全局异常处理：未捕获异常只向客户端返回通用友好文案，内部细节仅记录日志。
+register_exception_handlers(app)
 
 
 class RequestContextMiddleware(BaseHTTPMiddleware):

@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config.logging import get_logger
 from config.settings import settings
 from core.auth import get_current
+from core.errors import classify_agent_error
 from core.model_factory import ModelFactory
 from models.book import Book, Chapter, Volume
 from models.conversation import Conversation, Message
@@ -481,8 +482,9 @@ async def respond_to_agent(
             logger.error("agent respond 空闲超时")
             raise HTTPException(status_code=504, detail="生成超时，请稍后重试")
         except Exception as exc:
-            logger.error(f"agent respond 失败: {exc}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Agent 执行失败")
+            app_exc = classify_agent_error(exc)
+            logger.error(f"agent respond 失败 (code={app_exc.error_code}): {exc}", exc_info=True)
+            raise app_exc
         final_messages = result.get("messages", [])
         ai_message = ""
         from langchain_core.messages import AIMessage, ToolMessage
@@ -940,16 +942,10 @@ async def stream_agent(
                     except Exception as exc:
                         logger.warning(f"自动生成会话标题失败: {exc}")
 
-            except openai.APIStatusError as e:
-                logger.error(
-                    f"stream agent 失败: API [{e.status_code}] "
-                    f"request_id={e.response.headers.get('x-request-id', 'N/A')} "
-                    f"body={e.body!r}"
-                )
-                yield f"data: {json.dumps({'type': 'error', 'message': f'模型服务异常 ({e.status_code})'}, ensure_ascii=False)}\n\n"
-            except Exception:
-                logger.exception("stream agent 失败")
-                yield f"data: {json.dumps({'type': 'error', 'message': '服务器内部错误'}, ensure_ascii=False)}\n\n"
+            except Exception as e:
+                app_exc = classify_agent_error(e)
+                logger.error(f"stream agent 失败 (code={app_exc.error_code}): {e}", exc_info=True)
+                yield f"data: {json.dumps({'type': 'error', 'message': app_exc.detail}, ensure_ascii=False)}\n\n"
             finally:
                 # 关闭底层图迭代器，避免空闲超时/断连 break 后生成器残留
                 if _ag_iter is not None:

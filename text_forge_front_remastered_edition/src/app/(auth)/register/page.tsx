@@ -7,6 +7,7 @@ import { Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/shared/stores/authStore';
 import { cn } from '@/shared/lib/cn';
+import { showApiError } from '@/shared/lib/apiError';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -32,8 +33,7 @@ export default function RegisterPage() {
       toast.success('注册成功', { description: '验证邮件已发送到你的邮箱' });
       router.push(`/verify-email?email=${encodeURIComponent(email)}`);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '注册失败';
-      toast.error('注册失败', { description: msg });
+      showApiError(err, '注册失败');
     } finally {
       setIsLoading(false);
     }

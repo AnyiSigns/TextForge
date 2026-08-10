@@ -3,7 +3,11 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from config.logging import get_logger
 from core.auth import get_current
+from core.errors import classify_upload_error
+
+logger = get_logger(__name__)
 from schema.request.knowledge import KnowledgeSearchRequest
 from schema.response.knowledge import KnowledgeChunk, KnowledgeSearchResponse
 from shared.database import db_manager
@@ -11,6 +15,10 @@ from shared.database import db_manager
 from .service import KnowledgeService
 
 router = APIRouter(prefix="/knowledge", tags=["知识库"])
+
+# 文档上传体积上限（10MB）；超出时返回友好提示而非 413 原始错误。
+KNOWLEDGE_DOC_MAX_BYTES = 10 * 1024 * 1024
+KNOWLEDGE_DOC_ALLOWED_EXT = ("txt", "md", "markdown", "json", "csv")
 
 
 @router.post("/search", response_model=KnowledgeSearchResponse)
@@ -51,12 +59,37 @@ async def upload_public_document(
         raise HTTPException(status_code=400, detail="文件名不能为空")
 
     ext = (file.filename.rsplit(".", 1)[-1] if "." in file.filename else "").lower()
-    if ext not in ("txt", "md", "markdown", "json", "csv"):
-        raise HTTPException(status_code=400, detail="暂不支持该文件类型")
+    if ext not in KNOWLEDGE_DOC_ALLOWED_EXT:
+        raise HTTPException(
+            status_code=400,
+            detail="暂不支持该文件类型，仅支持 TXT / Markdown / JSON / CSV。",
+        )
+
+    # 体积校验：上传前先探一下文件大小，避免读到内存才报错
+    try:
+        await file.seek(0, 2)
+        size = await file.tell()
+        await file.seek(0)
+    except Exception:
+        size = None
+    if size is not None and size > KNOWLEDGE_DOC_MAX_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail="文件体积过大，请压缩或拆分后上传（上限 10MB）。",
+        )
 
     model_config = json.loads(model_config_json) if model_config_json else None
     service = KnowledgeService(session)
-    result = await service.upload_public(file, emb_config=model_config.get("embedding_config") if model_config else None)
+    try:
+        result = await service.upload_public(
+            file, emb_config=model_config.get("embedding_config") if model_config else None
+        )
+    except Exception as exc:
+        # 文件解析/编码等可控异常 → 具体友好提示；其余归为内部错误不泄露
+        if isinstance(exc, ValueError):
+            raise classify_upload_error(exc)
+        logger.error(f"知识库文档上传失败: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail="文档上传失败，请稍后重试。")
     return result
 
 

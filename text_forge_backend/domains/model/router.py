@@ -4,6 +4,7 @@ from fastapi.responses import Response
 
 from config.logging import get_logger
 from core.auth import get_current
+from core.errors import classify_model_error
 from schema.request.model import TestConnectionRequest
 
 logger = get_logger(__name__)
@@ -66,8 +67,10 @@ async def test_model_connection(
         result = await model.ainvoke("hello")
         return {"ok": True, "content": getattr(result, "content", str(result))}
     except Exception as exc:
-        logger.error(f"模型连接测试失败: {exc}")
-        raise HTTPException(status_code=400, detail=f"连接失败：{exc}")
+        # 仅向前端返回具体友好提示（密钥/额度/网络等），不泄露原始异常详情
+        app_exc = classify_model_error(exc)
+        logger.error(f"模型连接测试失败 (code={app_exc.error_code}): {exc}")
+        raise app_exc
 
 
 @router.get("/proxy/{path:path}")
