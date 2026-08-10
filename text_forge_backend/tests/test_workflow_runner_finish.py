@@ -167,7 +167,11 @@ async def test_finish_pending_review_builds_review_card(monkeypatch):
     assert pr["node_id"] == "writer"
     assert pr["node_label"] == "执笔写手"
     assert "输出未达角色设定要求" in pr["reason"]
-    assert "你要写出" in pr["system_prompt"]
+    # 安全脱敏（任务 27c）：审核卡不得携带工作流节点 system_prompt
+    assert "system_prompt" not in pr
+    assert "你要写出" not in str(pr)
+    # 目标章节随卡下发，供「终止并生成正文」定位落库
+    assert pr["target_chapter_id"] == 74
 
 
 from types import SimpleNamespace

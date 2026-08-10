@@ -15,7 +15,7 @@ class FakeResult:
     """模拟 SQLAlchemy execute 的返回结果。"""
 
     def __init__(self, scalars=None, one=None, scalar=None):
-        self._scalars = scalars or []
+        self._scalars = list(scalars) if isinstance(scalars, list) else (scalars or [])
         self._one = one
         self._scalar = scalar if scalar is not None else (one if one is not None else None)
 
@@ -24,7 +24,9 @@ class FakeResult:
         return self._scalar
 
     def scalar_one_or_none(self):
-        """返回单条结果或 None（select(Book) 等）。"""
+        """返回单条结果或 None（select(Book) 等）。值为列表时按单行语义取首项。"""
+        if isinstance(self._one, list):
+            return self._one[0] if len(self._one) == 1 else None
         return self._one
 
     def scalars(self):
@@ -40,6 +42,14 @@ class FakeResult:
         return [(s.id,) for s in self._scalars]
 
 
+def _max_columns(stmt):
+    """识别 select(func.max(Col)) 聚合查询，返回 (列名列表) 或 None。"""
+    for c in getattr(stmt, "selected_columns", ()):
+        if getattr(c, "name", "") == "max":
+            return [clause.name for clause in c.clauses]
+    return None
+
+
 class FakeSession:
     """按查询实体类型分发结果的假会话。
 
@@ -52,6 +62,7 @@ class FakeSession:
         self.added: list = []
         self.committed = False
         self.flushed = False
+        self.rolled_back = False
         self._id_counter = 1000
 
     def _entity_of(self, stmt):
@@ -72,26 +83,43 @@ class FakeSession:
 
     async def execute(self, stmt):
         entity = self._entity_of(stmt)
+        max_cols = _max_columns(stmt)
+        if max_cols is not None:
+            values = self.rows.get(entity)
+            if isinstance(values, list) and values:
+                nums = [
+                    getattr(o, max_cols[0], None)
+                    for o in values
+                    if isinstance(getattr(o, max_cols[0], None), (int, float))
+                ]
+                return FakeResult(scalar=max(nums) if nums else None)
+            return FakeResult(scalar=None)
         value = self.rows.get(entity)
-        if isinstance(value, list):
-            return FakeResult(scalars=value)
-        return FakeResult(one=value, scalar=value)
+        return FakeResult(scalars=value, one=value, scalar=value)
 
     def add(self, obj):
         """收集新增对象（工具 flush 后依赖其 id）。"""
         self.added.append(obj)
 
     async def flush(self):
-        """模拟 flush：为无 id 的新对象分配自增 id。"""
+        """模拟 flush：为无 id 的新对象分配自增 id，并把新增对象并入 rows，
+        使后续 func.max 聚合查询能看到本次事务内新建的对象。"""
         self.flushed = True
         for obj in self.added:
             if getattr(obj, "id", None) is None:
                 obj.id = self._id_counter
                 self._id_counter += 1
+            current = self.rows.setdefault(type(obj), [])
+            if isinstance(current, list) and obj not in current:
+                current.append(obj)
 
     async def commit(self):
         """模拟提交。"""
         self.committed = True
+
+    async def rollback(self):
+        """模拟回滚。"""
+        self.rolled_back = True
 
 
 class _SessionCM:

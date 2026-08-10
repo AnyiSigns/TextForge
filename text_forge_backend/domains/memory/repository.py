@@ -117,7 +117,7 @@ class AgentMemoryRepository:
         await self.session.execute(stmt)
         await self.session.commit()
 
-    async def search_fulltext(self, user_id: int, query: str, book_id: int | None = None, memory_type: str | None = None) -> list[AgentMemory]:
+    async def search_fulltext(self, user_id: int, query: str, book_id: int | None = None, memory_type: str | None = None, source: str | None = None) -> list[AgentMemory]:
         """全文检索记忆。
 
         Args:
@@ -125,6 +125,7 @@ class AgentMemoryRepository:
             query: 查询关键词。
             book_id: 书籍 ID，可选。
             memory_type: 记忆类型，可选。
+            source: 来源过滤（agent_self_reflection/user_manual/manual/context_summary 等），可选。
 
         Returns:
             匹配的 AgentMemory 实例列表。
@@ -136,13 +137,15 @@ class AgentMemoryRepository:
             stmt = stmt.where(AgentMemory.book_id.is_(None))
         if memory_type:
             stmt = stmt.where(AgentMemory.memory_type == memory_type)
+        if source:
+            stmt = stmt.where(AgentMemory.source == source)
         if query:
             stmt = stmt.where(AgentMemory.content.ilike(f"%{query}%"))
         stmt = stmt.order_by(AgentMemory.priority.desc(), AgentMemory.updated_at.desc())
         result = await self.session.execute(stmt)
         return result.scalars().all()
 
-    async def search_semantic(self, user_id: int, query_embedding: list[float], book_id: int | None = None, memory_type: str | None = None, top_k: int = 5):
+    async def search_semantic(self, user_id: int, query_embedding: list[float], book_id: int | None = None, memory_type: str | None = None, top_k: int = 5, source: str | None = None):
         """语义检索记忆。
 
         Args:
@@ -151,6 +154,7 @@ class AgentMemoryRepository:
             book_id: 书籍 ID，可选。
             memory_type: 记忆类型，可选。
             top_k: 返回结果数。
+            source: 来源过滤（agent_self_reflection/user_manual/manual/context_summary 等），可选。
 
         Returns:
             (AgentMemory, distance) 元组列表。
@@ -165,6 +169,8 @@ class AgentMemoryRepository:
             stmt = stmt.where(AgentMemory.book_id.is_(None))
         if memory_type:
             stmt = stmt.where(AgentMemory.memory_type == memory_type)
+        if source:
+            stmt = stmt.where(AgentMemory.source == source)
         stmt = stmt.order_by(literal_column("distance")).limit(top_k)
         result = await self.session.execute(stmt)
         rows = result.all()

@@ -146,8 +146,20 @@ export function useAgentSender() {
         case 'extend_outline':
           setAgentStatus({ kind: 'working', label: '追加章节大纲中...' });
           break;
+        case 'subgraph_start':
+          // supervisor 路由事件（任务 23）：显示「正在进入 xx 阶段」徽标
+          setAgentStatus({
+            kind: 'working',
+            label: event.label ? `正在进入「${event.label}」阶段` : '正在进入创作子图',
+          });
+          break;
         case 'progress':
-          setAgentStatus({ kind: 'working', label: '生成章节中...' });
+          setAgentStatus({
+            kind: 'working',
+            label: (event as { n?: number; total?: number }).total
+              ? `生成章节中 ${event.n ?? 0}/${event.total}...`
+              : '生成章节中...',
+          });
           break;
         case 'propose_cards':
           setPendingReview(null);
@@ -283,14 +295,15 @@ export function useAgentSender() {
         if (!aborted) {
           const errMsg = (err as Error)?.message || 'Agent 请求失败，请重试。';
           const lockConflict = (err as Error & { status?: number })?.status === 503;
-          // 书籍锁冲突（503）时附带原消息，供面板渲染「解除占用并重试」操作
+          // 任务 22：所有错误都附带原消息，供面板渲染「重试」按钮；
+          // 书籍锁冲突（503）时额外提示可解除占用。
           addAgentMessage({
             role: 'assistant',
             content: lockConflict
               ? `${errMsg}。若确认没有其他任务正在运行，可点击「解除占用并重试」。`
               : errMsg,
             type: 'error',
-            ...(lockConflict ? { retryMessage: msg } : {}),
+            retryMessage: msg,
           });
           setAgentStatus({ kind: 'error', message: errMsg });
         }

@@ -68,6 +68,12 @@ class Message(Base):
     )
     content: Mapped[str] = mapped_column(Text, nullable=False, comment="回答内容")
     think: Mapped[str] = mapped_column(Text, nullable=True, comment="思考内容")
+    # 任务 32：事件卡片消息（review-card 等）持久化。type 为卡片类型，
+    # token 存整张卡片的 JSON（前端据此还原审核卡）。
+    type: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="", comment="消息类型（空为普通消息，review-card/propose-cards 等为卡片）"
+    )
+    token: Mapped[str | None] = mapped_column(Text, nullable=True, comment="卡片消息的 JSON 载荷")
 
     create_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), nullable=False, comment="消息发送时间"

@@ -28,15 +28,16 @@ interface CardProposal {
 
 interface ProposeCardsProps {
   data: Record<string, unknown>;
+  /** 任务 32：plot_direction 等写库类卡片改走 agent 消息（过 supervisor 路由 + 门控），由父面板注入 */
+  onSendMessage?: (msg: string) => void;
 }
 
-export function ProposeCards({ data }: ProposeCardsProps) {
+export function ProposeCards({ data, onSendMessage }: ProposeCardsProps) {
   const openCardDraw = useBookDetailStore((s) => s.openCardDraw);
   const setCreativePhase = useBookDetailStore((s) => s.setCreativePhase);
   const bookId = useBookDetailStore((s) => s.bookId);
   const loadCharacters = useBookDetailStore((s) => s.loadCharacters);
   const loadWorld = useBookDetailStore((s) => s.loadWorld);
-  const loadChapters = useBookDetailStore((s) => s.loadChapters);
   const loadCreativeSetting = useBookDetailStore((s) => s.loadCreativeSetting);
 
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
@@ -81,19 +82,14 @@ export function ProposeCards({ data }: ProposeCardsProps) {
           toast.success('地点已创建');
           break;
         }
-        // 故事走向：创建 Volume + Chapter
+        // 故事走向：改为发自然语言消息走 outlining 子图（过 supervisor 路由 + 门控，
+        // 不再绕过 agent 直连 API —— 任务 32）
         case 'plot_direction': {
-          const volumes = await booksApi.fetchVolumes(bookId);
-          if (volumes.length === 0) {
-            const vol = await booksApi.createVolume(bookId, title || '第一卷', summary);
-            await booksApi.createChapter(vol.id, { title: '第一章', summary: summary || title });
+          if (onSendMessage) {
+            onSendMessage(`请根据以下故事方向为当前书籍规划/追加章节大纲（卷→章）：${title}。${summary ? `\n概要：${summary}` : ''}`);
           } else {
-            const lastVol = volumes[volumes.length - 1];
-            await booksApi.createChapter(lastVol.id, { title: title || '新章节', summary: summary || title });
+            toast.info('请在大纲面板中创建章节');
           }
-          await loadChapters();
-          setCreativePhase('outlining');
-          toast.success('章节已创建');
           break;
         }
         // 伏笔：创建 Foreshadowing
@@ -111,12 +107,14 @@ export function ProposeCards({ data }: ProposeCardsProps) {
         default:
           toast.info('暂不支持此卡片类型的自动执行');
       }
-    } catch {
-      toast.error('执行失败，请重试');
+    } catch (err) {
+      // 错误信息具体化（任务约束）：透出后端/网络错误原因，而非笼统「执行失败」
+      const reason_ = (err as Error)?.message || String(err || '未知错误');
+      toast.error(`执行失败：${reason_}`);
     } finally {
       setExecutingId(null);
     }
-  }, [bookId, loadCharacters, loadWorld, loadChapters, loadCreativeSetting, openCardDraw, setCreativePhase, cardTypes]);
+  }, [bookId, loadCharacters, loadWorld, loadCreativeSetting, openCardDraw, setCreativePhase, cardTypes, onSendMessage]);
 
   return (
     <div className="mx-1 my-2 p-3 rounded-lg border border-foreground/10 bg-card">

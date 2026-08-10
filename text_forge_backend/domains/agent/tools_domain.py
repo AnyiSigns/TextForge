@@ -18,19 +18,32 @@ from domains.world.constants import (
     normalize_foreshadowing_status,
     normalize_plot_thread_status,
 )
-from domains.world.derived_sync import schedule_recompute
+from domains.world.derived_sync import recompute_derived, schedule_recompute
 from domains.world.repository import WorldRepository
 from models.book import (
     Book,
     Chapter,
     ChapterContent,
     Character,
+    CreativeSetting,
+    Foreshadowing,
+    Location,
+    PlotThread,
+    SceneEvent,
     Volume,
 )
 
 from .web_search_service import WebSearchService
 
 logger = get_logger(__name__)
+
+
+def _trunc(text: Any, max_len: int) -> str:
+    """按列宽截断单字段（超长截断并静默降级，与 extend_outline_tool 同法）。"""
+    if text is None:
+        return ""
+    s = str(text).strip()
+    return s if len(s) <= max_len else s[:max_len]
 
 
 def _build_lookup_tools(session_factory):
@@ -58,42 +71,6 @@ def _build_lookup_tools(session_factory):
                     "avatar_url": c.avatar_url, "locked": c.locked,
                 }
                 for c in characters
-            ]
-
-    @tool
-    async def lookup_outline(
-        chapter_id: Annotated[int | None, "指定章节ID，为空则返回全部章节"] = None,
-        book_id: Annotated[int, InjectedState("active_book_id")] = 0,
-    ) -> list[dict]:
-        """查询书籍的大纲结构，返回卷和章节信息。
-
-        Args:
-            chapter_id: 指定要查询的章节ID，为空则返回全部章节。
-        """
-        logger.debug(f"[tool] lookup_outline  book_id={book_id}  chapter_id={chapter_id}")
-        async with session_factory() as session:
-            vol_stmt = select(Chapter.volume_id).join(Chapter.volume).join(Volume.book).where(Book.id == book_id)
-            vol_res = await session.execute(vol_stmt)
-            vol_ids = list({r[0] for r in vol_res.fetchall()})
-            if not vol_ids:
-                return []
-            ch_stmt = (
-                select(Chapter)
-                .where(Chapter.volume_id.in_(vol_ids))
-                .options(selectinload(Chapter.scene_events))
-                .order_by(Chapter.sort_order, Chapter.id)
-            )
-            ch_res = await session.execute(ch_stmt)
-            chapters = ch_res.scalars().all()
-            if chapter_id is not None:
-                chapters = [c for c in chapters if c.id == chapter_id]
-            return [
-                {
-                    "id": c.id, "title": c.title, "content": "",
-                    "summary": c.summary or "", "sort_order": c.sort_order,
-                    "character_ids": c.character_ids or [], "locked": c.locked,
-                }
-                for c in chapters
             ]
 
     @tool
@@ -260,7 +237,6 @@ def _build_lookup_tools(session_factory):
 
     return [
         lookup_characters,
-        lookup_outline,
         lookup_locations,
         lookup_timeline,
         lookup_foreshadowing,
@@ -410,10 +386,10 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
         user_id: Annotated[int, InjectedState("user_id")] = 0,
         book_id: Annotated[int, InjectedState("active_book_id")] = 0,
     ) -> dict:
-        """获取当前书籍的完整上下文，包括基本信息、角色列表和卷宗结构。
+        """获取当前书籍的完整上下文：基本信息、创作设定、角色列表与完整大纲树（卷→章→场景事件概要，不含正文）。
 
         Returns:
-            包含 book、characters、volumes 及数量统计的字典。
+            包含 book、creative_setting、characters、volumes（含各卷 chapters 及各章 scene_events 概要）的字典。
         """
         logger.debug(f"[tool] get_book_context  user_id={user_id}  book_id={book_id}")
         async with session_factory() as session:
@@ -426,6 +402,62 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
             characters = (await session.execute(char_stmt)).scalars().all()
             vol_stmt = select(Volume).where(Volume.book_id == book_id).order_by(Volume.sort_order, Volume.id)
             volumes = (await session.execute(vol_stmt)).scalars().all()
+            creative_stmt = select(CreativeSetting).where(CreativeSetting.book_id == book_id)
+            creative = (await session.execute(creative_stmt)).scalar_one_or_none()
+            volumes_out = []
+            for v in volumes:
+                ch_stmt = (
+                    select(Chapter)
+                    .where(Chapter.volume_id == v.id)
+                    .order_by(Chapter.sort_order, Chapter.id)
+                )
+                chapters = (await session.execute(ch_stmt)).scalars().all()
+                chapters_out = []
+                for ch in chapters:
+                    ev_stmt = (
+                        select(SceneEvent)
+                        .where(SceneEvent.chapter_id == ch.id)
+                        .order_by(SceneEvent.sort_order, SceneEvent.id)
+                    )
+                    events = (await session.execute(ev_stmt)).scalars().all()
+                    chapters_out.append(
+                        {
+                            "id": ch.id,
+                            "title": ch.title,
+                            "summary": ch.summary,
+                            "sort_order": ch.sort_order,
+                            "generation_batch": ch.generation_batch,
+                            "character_ids": ch.character_ids,
+                            # 上下文保护：每章最多返回 20 个场景事件概要，避免护栏上限
+                            # （50 章 × 200 事件）下全量返回撑爆模型上下文
+                            "scene_events": [
+                                {
+                                    "id": ev.id,
+                                    "title": ev.title,
+                                    "content": (ev.content or "")[:200],
+                                    "event_type": ev.event_type,
+                                    "story_label": ev.story_label,
+                                    "story_ts": ev.story_ts,
+                                    "location_id": ev.location_id,
+                                    "character_ids": ev.character_ids or [],
+                                    "plot_thread_ids": ev.plot_thread_ids or [],
+                                    "completed_plot_thread_ids": ev.completed_plot_thread_ids or [],
+                                    "resolved_foreshadowing_ids": ev.resolved_foreshadowing_ids or [],
+                                }
+                                for ev in events[:20]
+                            ],
+                            "scene_event_total": len(events),
+                        }
+                    )
+                volumes_out.append(
+                    {
+                        "id": v.id,
+                        "title": v.title,
+                        "summary": v.summary,
+                        "sort_order": v.sort_order,
+                        "chapters": chapters_out,
+                    }
+                )
             return {
                 "book": {
                     "id": book.id, "title": book.title,
@@ -433,16 +465,18 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
                     "total_word_goal": book.total_word_goal, "current_word_count": book.current_word_count,
                     "workflow_id": book.workflow_id,
                 },
+                "creative_setting": {
+                    "tone": creative.tone, "worldview": creative.worldview,
+                    "writing_taboos": creative.writing_taboos,
+                    "custom_dimensions": creative.custom_dimensions or {},
+                } if creative else None,
                 "character_count": len(characters),
                 "characters": [
                     {"id": c.id, "name": c.name, "role_type": c.role_type, "description": c.description}
                     for c in characters
                 ],
                 "volume_count": len(volumes),
-                "volumes": [
-                    {"id": v.id, "title": v.title, "summary": v.summary}
-                    for v in volumes
-                ],
+                "volumes": volumes_out,
             }
 
     @tool
@@ -691,13 +725,17 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
         "chapter": {"title", "summary", "character_ids"},
         "character": {"name", "description", "role_type", "aliases", "status", "relationship_chain", "locked"},
         "location": {"name", "type", "description", "parent_id", "attributes", "locked"},
+        "book": {"title", "description", "genre", "total_word_goal"},
+        "volume": {"title", "summary"},
+        "creative_setting": {"tone", "worldview", "writing_taboos", "custom_dimensions"},
     }
 
     @tool
     async def update_entity(
-        kind: Annotated[str, "实体类型：foreshadowing/plot_thread/timeline/chapter/character/location"],
+        kind: Annotated[str, "实体类型：foreshadowing/plot_thread/timeline/chapter/character/location/book/volume/creative_setting"],
         item_id: Annotated[int, "要更新的实体ID"],
         data: Annotated[dict, "要更新的字段字典（仅接受该类型允许的字段，无效字段被忽略）"],
+        user_id: Annotated[int, InjectedState("user_id")] = 0,
         book_id: Annotated[int, InjectedState("active_book_id")] = 0,
     ) -> dict:
         """按类型更新世界观实体。字段按类型白名单过滤；chapter 类型在 locked=True 时拒绝。"""
@@ -758,44 +796,255 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
                     setattr(inst, k, v)
                 await session.commit()
                 return {"id": inst.id, "kind": "character", "updated": payload}
+            if kind == "book":
+                inst = (await session.execute(select(Book).where(Book.id == item_id, Book.user_id == user_id))).scalar_one_or_none()
+                if not inst:
+                    return {"error": "书籍不存在或无权访问", "item_id": item_id}
+                for k, v in payload.items():
+                    setattr(inst, k, v)
+                await session.commit()
+                return {"id": inst.id, "kind": "book", "updated": payload}
+            if kind == "volume":
+                inst = (await session.execute(select(Volume).where(Volume.id == item_id, Volume.book_id == book_id))).scalar_one_or_none()
+                if not inst:
+                    return {"error": "卷不存在或不属于当前书籍", "item_id": item_id}
+                for k, v in payload.items():
+                    setattr(inst, k, v)
+                await session.commit()
+                return {"id": inst.id, "kind": "volume", "updated": payload}
+            if kind == "creative_setting":
+                inst = (await session.execute(select(CreativeSetting).where(CreativeSetting.book_id == book_id))).scalar_one_or_none()
+                if not inst:
+                    inst = CreativeSetting(book_id=book_id)
+                    session.add(inst)
+                for k, v in payload.items():
+                    setattr(inst, k, v)
+                await session.commit()
+                return {"id": inst.id, "kind": "creative_setting", "updated": payload}
             return {"error": f"不支持的 kind: {kind}"}
 
     @tool
-    async def create_outline(
-        mode: Annotated[str, "创建类型：volume(卷)/chapter(章节)"],
-        title: Annotated[str, "卷或章节的标题"],
-        summary: Annotated[str | None, "可选：卷简介或章节摘要（由 Agent 注入）"] = None,
-        volume_id: Annotated[int | None, "目标卷ID（mode=chapter 必填）"] = None,
-        sort_order: Annotated[int | None, "排序位置，缺省则追加到末尾"] = None,
+    async def build_outline(
+        volumes: Annotated[list, "大纲结构：卷列表。每卷 {title, summary?, chapters?:[{title, summary?, scene_events?:[{title, event_type?, description?, location_id?, location_name?, location_type?, story_label?, story_ts?, character_ids?, character_names?, plot_thread_ids?, plot_thread_names?, completed_plot_thread_ids?, completed_plot_thread_names?, resolved_foreshadowing_ids?, resolved_foreshadowing_titles?}]}]}"],
         book_id: Annotated[int, InjectedState("active_book_id")] = 0,
     ) -> dict:
-        """创建大纲结构：volume 建卷（可带简介），chapter 在指定卷下建章节（可带摘要）。"""
-        logger.debug(f"[tool] create_outline  mode={mode}  book_id={book_id}  title={title}")
-        if not title or not title.strip():
-            return {"error": "title 不能为空"}
+        """一次性创建完整书籍大纲：多卷 × 多章 × 多场景事件，单事务落库。
+
+        场景事件支持按名称引用已有角色/地点/情节线/伏笔（数字 ID 优先于名称）；
+        地点名未命中自动新建（缺省类型"未分类"）；角色/情节线/伏笔未命中跳过并写入 warnings。
+        数量护栏：卷≤5、章≤50、场景事件≤200，超限直接拒绝并提示分次创建。
+        伏笔无 title 字段，resolved_foreshadowing_titles 按伏笔描述子串匹配。
+        """
+        logger.debug(f"[tool] build_outline  book_id={book_id}  volumes={len(volumes) if isinstance(volumes, list) else 'invalid'}")
+        if not isinstance(volumes, list) or not volumes:
+            return {"error": "volumes 不能为空，请提供至少一卷"}
+        if not all(isinstance(v, dict) for v in volumes):
+            return {"error": "volumes 每项必须是对象 {title, chapters?}"}
+        total_chapters = sum(len(v.get("chapters") or []) for v in volumes if isinstance(v, dict))
+        total_events = sum(
+            len(ch.get("scene_events") or [])
+            for v in volumes if isinstance(v, dict)
+            for ch in (v.get("chapters") or []) if isinstance(ch, dict)
+        )
+        if len(volumes) > 5:
+            return {"error": f"卷数量 {len(volumes)} 超过护栏上限（≤5），请分次创建：先建前几卷，确认后再继续。", "guardrail": "volumes<=5"}
+        if total_chapters > 50:
+            return {"error": f"章节总数 {total_chapters} 超过护栏上限（≤50），请分次创建。", "guardrail": "chapters<=50"}
+        if total_events > 200:
+            return {"error": f"场景事件总数 {total_events} 超过护栏上限（≤200），请分次创建。", "guardrail": "scene_events<=200"}
+        warnings: list = []
+        volume_ids: list = []
+        chapter_ids: list = []
+        event_ids: list = []
+        volumes_created = chapters_created = events_created = new_locations = 0
         async with session_factory() as session:
-            if mode == "volume":
-                vols = (await session.execute(select(Volume).where(Volume.book_id == book_id).order_by(Volume.sort_order.desc()))).scalars().all()
-                order = sort_order if sort_order is not None else (vols[0].sort_order + 1 if vols else 1)
-                vol = Volume(book_id=book_id, title=title.strip(), summary=summary or "", sort_order=order)
-                session.add(vol)
-                await session.flush()
+            chars = {
+                c.name: c.id
+                for c in (await session.execute(select(Character).where(Character.book_id == book_id))).scalars().all()
+            }
+            char_id_set = set(chars.values())
+            locs = {
+                l.name: l.id
+                for l in (await session.execute(select(Location).where(Location.book_id == book_id))).scalars().all()
+            }
+            threads = {
+                t.name: t.id
+                for t in (await session.execute(select(PlotThread).where(PlotThread.book_id == book_id))).scalars().all()
+            }
+            thread_id_set = set(threads.values())
+            foreshadowings = (await session.execute(select(Foreshadowing).where(Foreshadowing.book_id == book_id))).scalars().all()
+            foreshadowing_by_id = {f.id: f for f in foreshadowings}
+            max_ts_raw = (await session.execute(select(func.max(SceneEvent.story_ts)).where(SceneEvent.book_id == book_id))).scalar()
+            base_ts = float(max_ts_raw) if isinstance(max_ts_raw, (int, float)) else 0.0
+            last_vol_order_raw = (await session.execute(select(func.max(Volume.sort_order)).where(Volume.book_id == book_id))).scalar()
+            last_vol_order = int(last_vol_order_raw) if isinstance(last_vol_order_raw, (int, float)) else 0
+            created_location_names: dict = {}
+            try:
+                for vi, v in enumerate(volumes):
+                    if not isinstance(v, dict):
+                        warnings.append(f"第 {vi + 1} 卷格式无效，已跳过")
+                        continue
+                    v_title = _trunc(v.get("title"), 100)
+                    if not v_title:
+                        warnings.append(f"第 {vi + 1} 卷 title 为空，已跳过")
+                        continue
+                    vol = Volume(
+                        book_id=book_id,
+                        title=v_title,
+                        summary=_trunc(v.get("summary"), 500),
+                        sort_order=int(last_vol_order or 0) + vi + 1,
+                    )
+                    session.add(vol)
+                    await session.flush()
+                    volume_ids.append(vol.id)
+                    volumes_created += 1
+                    for ci, ch in enumerate(v.get("chapters") or []):
+                        if not isinstance(ch, dict):
+                            warnings.append(f"卷「{v_title}」第 {ci + 1} 章格式无效，已跳过")
+                            continue
+                        ch_title = _trunc(ch.get("title"), 200)
+                        if not ch_title:
+                            warnings.append(f"卷「{v_title}」存在 title 为空的章节，已跳过")
+                            continue
+                        last_ch_order_raw = (await session.execute(select(func.max(Chapter.sort_order)).where(Chapter.volume_id == vol.id))).scalar()
+                        last_ch_order = int(last_ch_order_raw) if isinstance(last_ch_order_raw, (int, float)) else 0
+                        chapter = Chapter(
+                            volume_id=vol.id,
+                            title=ch_title,
+                            summary=_trunc(ch.get("summary"), 500),
+                            sort_order=last_ch_order + 1,
+                            locked=False,
+                            generation_batch=1,
+                        )
+                        session.add(chapter)
+                        await session.flush()
+                        chapter_ids.append(chapter.id)
+                        chapters_created += 1
+                        for si, ev in enumerate(ch.get("scene_events") or []):
+                            if not isinstance(ev, dict):
+                                warnings.append(f"章节「{ch_title}」存在格式无效的场景事件，已跳过")
+                                continue
+                            ev_title = _trunc(ev.get("title"), 200)
+                            if not ev_title:
+                                warnings.append(f"章节「{ch_title}」存在 title 为空的场景事件，已跳过")
+                                continue
+                            location_id = None
+                            loc_id = ev.get("location_id")
+                            if isinstance(loc_id, int) and loc_id:
+                                valid = (await session.execute(select(Location.id).where(Location.id == loc_id, Location.book_id == book_id))).scalar_one_or_none()
+                                if valid:
+                                    location_id = loc_id
+                                else:
+                                    warnings.append(f"场景「{ev_title[:50]}」的 location_id={loc_id} 不属于当前书籍，已忽略")
+                            if location_id is None:
+                                loc_name = _trunc(ev.get("location_name"), 200)
+                                if loc_name:
+                                    if loc_name in created_location_names:
+                                        location_id = created_location_names[loc_name]
+                                    elif loc_name in locs:
+                                        location_id = locs[loc_name]
+                                    else:
+                                        new_loc = Location(
+                                            book_id=book_id,
+                                            name=loc_name,
+                                            type=_trunc(ev.get("location_type"), 50) or "未分类",
+                                            description="",
+                                            locked=False,
+                                        )
+                                        session.add(new_loc)
+                                        await session.flush()
+                                        location_id = new_loc.id
+                                        locs[loc_name] = location_id
+                                        created_location_names[loc_name] = location_id
+                                        new_locations += 1
+                            resolved_char_ids: list = []
+                            for cid in (ev.get("character_ids") or []):
+                                if isinstance(cid, int) and cid in char_id_set and cid not in resolved_char_ids:
+                                    resolved_char_ids.append(cid)
+                            for cname in (ev.get("character_names") or []):
+                                if cname in chars and chars[cname] not in resolved_char_ids:
+                                    resolved_char_ids.append(chars[cname])
+                                elif cname not in chars:
+                                    warnings.append(f"场景「{ev_title[:50]}」未找到角色「{cname}」，已跳过（可用 create_entities 或 lookup_characters 确认）")
+                            resolved_thread_ids: list = []
+                            for tid in (ev.get("plot_thread_ids") or []):
+                                if isinstance(tid, int) and tid in thread_id_set and tid not in resolved_thread_ids:
+                                    resolved_thread_ids.append(tid)
+                            for tname in (ev.get("plot_thread_names") or []):
+                                if tname in threads and threads[tname] not in resolved_thread_ids:
+                                    resolved_thread_ids.append(threads[tname])
+                                elif tname not in threads:
+                                    warnings.append(f"场景「{ev_title[:50]}」未找到情节线「{tname}」，已跳过（可用 lookup_plot_threads 确认）")
+                            completed_thread_ids: list = []
+                            for tid in (ev.get("completed_plot_thread_ids") or []):
+                                if isinstance(tid, int) and tid in thread_id_set and tid not in completed_thread_ids:
+                                    completed_thread_ids.append(tid)
+                            for tname in (ev.get("completed_plot_thread_names") or []):
+                                if tname in threads and threads[tname] not in completed_thread_ids:
+                                    completed_thread_ids.append(threads[tname])
+                                elif tname not in threads:
+                                    warnings.append(f"场景「{ev_title[:50]}」未找到待完结情节线「{tname}」，已跳过（可用 lookup_plot_threads 确认）")
+                            resolved_foreshadowing_ids: list = []
+                            for fid in (ev.get("resolved_foreshadowing_ids") or []):
+                                if isinstance(fid, int) and fid in foreshadowing_by_id and fid not in resolved_foreshadowing_ids:
+                                    resolved_foreshadowing_ids.append(fid)
+                            for fdesc in (ev.get("resolved_foreshadowing_titles") or []):
+                                fdesc = _trunc(fdesc, 200)
+                                if not fdesc:
+                                    continue
+                                match = next(
+                                    (f.id for f in foreshadowings if fdesc in (f.description or "")),
+                                    None,
+                                )
+                                if match is not None and match not in resolved_foreshadowing_ids:
+                                    resolved_foreshadowing_ids.append(match)
+                                else:
+                                    warnings.append(f"场景「{ev_title[:50]}」未找到伏笔「{fdesc[:50]}」（按描述匹配，可用 lookup_foreshadowing 确认）")
+                            ts = ev.get("story_ts")
+                            if isinstance(ts, (int, float)):
+                                ts = float(ts)
+                            else:
+                                base_ts += 1
+                                ts = base_ts
+                            event = SceneEvent(
+                                book_id=book_id,
+                                chapter_id=chapter.id,
+                                title=ev_title,
+                                content=_trunc(ev.get("description"), 500),
+                                event_type=_trunc(ev.get("event_type"), 50) or "scene",
+                                story_ts=ts,
+                                story_label=_trunc(ev.get("story_label"), 200) or None,
+                                location_id=location_id,
+                                character_ids=resolved_char_ids,
+                                plot_thread_ids=resolved_thread_ids,
+                                completed_plot_thread_ids=completed_thread_ids,
+                                resolved_foreshadowing_ids=resolved_foreshadowing_ids,
+                                sort_order=si + 1,
+                            )
+                            session.add(event)
+                            await session.flush()
+                            event_ids.append(event.id)
+                            events_created += 1
                 await session.commit()
-                return {"kind": "volume", "id": vol.id, "title": vol.title, "summary": vol.summary, "sort_order": vol.sort_order}
-            if mode == "chapter":
-                if not volume_id:
-                    return {"error": "mode=chapter 需要 volume_id"}
-                vol = (await session.execute(select(Volume).where(Volume.id == volume_id, Volume.book_id == book_id))).scalar_one_or_none()
-                if not vol:
-                    return {"error": "卷不存在", "volume_id": volume_id}
-                chs = (await session.execute(select(Chapter).where(Chapter.volume_id == volume_id).order_by(Chapter.sort_order.desc()))).scalars().all()
-                order = sort_order if sort_order is not None else (chs[0].sort_order + 1 if chs else 1)
-                ch = Chapter(volume_id=volume_id, title=title.strip(), summary=summary or "", sort_order=order, locked=False, generation_batch=1)
-                session.add(ch)
-                await session.flush()
-                await session.commit()
-                return {"kind": "chapter", "id": ch.id, "volume_id": volume_id, "title": ch.title, "summary": ch.summary, "sort_order": ch.sort_order}
-            return {"error": f"不支持的 mode: {mode}"}
+            except Exception as exc:
+                await session.rollback()
+                logger.error(f"build_outline 事务失败，已回滚: {exc}", exc_info=True)
+                return {"error": f"大纲创建失败，已回滚，未写入任何数据: {exc}"}
+            try:
+                await recompute_derived(session, book_id)
+            except Exception as exc:
+                logger.warning(f"build_outline 派生重算失败（已落库数据不回滚）: {exc}")
+        return {
+            "book_id": book_id,
+            "volumes_created": volumes_created,
+            "chapters_created": chapters_created,
+            "events_created": events_created,
+            "locations_created": new_locations,
+            "volume_ids": volume_ids,
+            "chapter_ids": chapter_ids,
+            "event_ids": event_ids,
+            "warnings": warnings,
+        }
 
     @tool
     async def read_chapter_content(
@@ -804,7 +1053,7 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
         max_chars: Annotated[int, "返回内容的最大字符数"] = 8000,
         book_id: Annotated[int, InjectedState("active_book_id")] = 0,
     ) -> dict:
-        """读取章节正文内容（缺省最新版本），解决 lookup_outline 的 content 恒为空问题。"""
+        """读取章节正文内容（缺省最新版本）。"""
         logger.debug(f"[tool] read_chapter_content  chapter_id={chapter_id}  book_id={book_id}")
         async with session_factory() as session:
             stmt = select(ChapterContent).where(ChapterContent.chapter_id == chapter_id)
@@ -1023,18 +1272,23 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
     async def manage_memory(
         mode: Annotated[str, "操作：save/recall/list/forget/update"],
         content: Annotated[str | None, "记忆内容（save 必填）"] = None,
-        memory_type: Annotated[str, "记忆类型：preference/character/plot/world"] = "preference",
+        memory_type: Annotated[str, "记忆类型：character/plot/world/note（创作偏好等非角色/情节/世界设定类用 note 并可在 meta.kind 标注）"] = "note",
         memory_id: Annotated[int | None, "记忆ID（recall 按类型筛选/list 按类型/forget/update 必填）"] = None,
         query: Annotated[str | None, "检索文本（recall 必填）"] = None,
         top_k: Annotated[int, "返回数量"] = 5,
         priority: Annotated[int, "优先级"] = 5,
         meta: Annotated[dict | None, "附加元数据"] = None,
+        source: Annotated[str | None, "来源过滤（recall/list 可选）：agent_self_reflection/user_manual/manual/context_summary 等，缺省不过滤"] = None,
         related_character_ids: Annotated[list | None, "关联角色ID"] = None,
         related_chapter_id: Annotated[int | None, "关联章节ID"] = None,
         user_id: Annotated[int, InjectedState("user_id")] = 0,
         book_id: Annotated[int, InjectedState("active_book_id")] = 0,
     ) -> Any:
-        """统一管理 Agent 长期记忆：保存/检索/列出/删除/更新。recall 先语义后全文回退。"""
+        """统一管理 Agent 长期记忆：保存/检索/列出/删除/更新。recall 先语义后全文回退。
+
+        记忆类型四类：character（角色）/plot（情节）/world（世界）/note（笔记与创作偏好）。
+        context_summary 为系统内部类（压缩摘要），普通 recall 一般无需指定。
+        """
         logger.debug(f"[tool] manage_memory  mode={mode}  book_id={book_id}")
         effective_book_id = book_id or None
         if mode == "save":
@@ -1057,12 +1311,12 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
                 svc = AgentMemoryService(session)
                 results = await svc.search_memories(
                     user_id=user_id, mode="semantic", query=query, book_id=effective_book_id,
-                    memory_type=memory_type, top_k=top_k, model_config=model_config,
+                    memory_type=memory_type, top_k=top_k, model_config=model_config, source=source,
                 )
                 if not results:
                     results = await svc.search_memories(
                         user_id=user_id, mode="fulltext", query=query, book_id=effective_book_id,
-                        memory_type=memory_type, top_k=top_k, model_config=None,
+                        memory_type=memory_type, top_k=top_k, model_config=None, source=source,
                     )
                 return results
         if mode == "list":
@@ -1104,7 +1358,7 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
         review_text,
         create_entities,
         update_entity,
-        create_outline,
+        build_outline,
         read_chapter_content,
         write_chapter_content,
         write_workflow_candidate,
@@ -1112,6 +1366,7 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
         apply_chapter_diff,
         search,
         manage_memory,
+        lookup_workflows,
     ]
 
 

@@ -25,5 +25,5 @@ class ReviewActionRequest(BaseModel):
 
     thread_id: str = Field(alias="threadId")
     action: Literal["retry", "accept", "edit", "terminate"]
-    edited_content: str | None = Field(default=None, alias="editedContent")
+    edited_content: str | None = Field(default=None, alias="editedContent", max_length=10000)
     chapter_id: int | None = Field(default=None, alias="chapterId")

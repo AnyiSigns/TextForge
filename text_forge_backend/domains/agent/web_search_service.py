@@ -1,5 +1,7 @@
 import hashlib
+from datetime import datetime, timedelta
 
+from sqlalchemy import delete as sqla_delete
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -7,6 +9,9 @@ from config.logging import get_logger
 from models.web_search_cache import WebSearchCache
 
 logger = get_logger(__name__)
+
+# 搜索缓存有效期：24 小时（博查结果时效性有限，超期需重新搜索）
+_CACHE_TTL_HOURS = 24
 
 
 class WebSearchService:
@@ -57,7 +62,7 @@ class WebSearchService:
             top_k: 返回结果数。
 
         Returns:
-            搜索结果列表，失败返回错误信息列表。
+            搜索结果列表，失败返回带具体原因的错误信息列表。
         """
         import httpx
         try:
@@ -70,7 +75,15 @@ class WebSearchService:
                         "Content-Type": "application/json",
                     },
                 )
-                res.raise_for_status()
+                if res.status_code != 200:
+                    # 按状态码区分错误原因（错误信息具体化，且避免被 quality_gate 计为工具失败）
+                    if res.status_code in (401, 403):
+                        return [{"error": "博查搜索 API Key 无效或无权限，请检查模型配置中的搜索 key", "query": query}]
+                    if res.status_code == 429:
+                        return [{"error": "博查搜索触发限流，请稍后重试", "query": query}]
+                    if res.status_code >= 500:
+                        return [{"error": "博查搜索服务暂时不可用，请稍后重试", "query": query}]
+                    return [{"error": f"博查搜索失败（HTTP {res.status_code}）", "query": query}]
                 data = res.json()
                 return [
                     {
@@ -80,23 +93,32 @@ class WebSearchService:
                     }
                     for r in (((data.get("data") or {}).get("webPages") or {}).get("value", []) or [])[:top_k]
                 ]
+        except httpx.TimeoutException:
+            logger.warning("web_search 请求超时")
+            return [{"error": "博查搜索请求超时，请稍后重试", "query": query}]
         except Exception as exc:
             logger.warning(f"web_search 失败: {exc}")
             return [{"error": "搜索失败", "query": query}]
 
     async def _get_cache(self, query_hash: str) -> list[dict] | None:
-        """查询搜索缓存。
+        """查询搜索缓存；超过 24h 的旧缓存视为过期（删除并返回 None）。
 
         Args:
             query_hash: 查询哈希。
 
         Returns:
-            缓存结果列表，不存在返回 None。
+            缓存结果列表，不存在或已过期返回 None。
         """
         stmt = select(WebSearchCache).where(WebSearchCache.query_hash == query_hash)
         result = await self.session.execute(stmt)
         cache = result.scalar_one_or_none()
         if cache:
+            created = cache.created_at
+            if created and (datetime.now() - created) > timedelta(hours=_CACHE_TTL_HOURS):
+                logger.info(f"web_search 缓存过期，删除并重新搜索: {query_hash[:8]}")
+                await self.session.execute(sqla_delete(WebSearchCache).where(WebSearchCache.id == cache.id))
+                await self.session.commit()
+                return None
             cache.hit_count += 1
             await self.session.commit()
             return cache.results

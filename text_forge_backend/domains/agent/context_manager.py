@@ -118,4 +118,5 @@ async def auto_compress_node(state: UserAgentState, session_factory=None) -> dic
 
 
 def compress_router(state: UserAgentState) -> str:
-    return "compress" if _should_compress(state) else "agent"
+    """压缩后回 supervisor（状态机单一出口）；压缩触发判断在 quality_gate_router 已做。"""
+    return "supervisor"

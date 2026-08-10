@@ -714,7 +714,7 @@ async def stream_agent(
             model_config=model_config,
             checkpointer=graph_pool_manager.checkpoint,
         )
-        config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 20}
+        config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 100}
 
         async def event_generator():
             _ag_iter = None
@@ -722,6 +722,9 @@ async def stream_agent(
                 yield ":\n\n"
                 final_reply = ""
                 tool_called_this_turn = False
+                # 任务 32：收集本回合推送的审核卡，回合结束统一落库为卡片消息，
+                # 使历史会话能还原审核卡（Message 表新增 type/token 列）
+                _card_payloads: list[dict] = []
                 # 单迭代器：stream_mode=["updates","custom"]，二者按真实执行顺序交错产出，
                 # 消除此前「astream(custom) 独立任务 + astream_events 主循环」双通道的
                 # 事件竞态与 node_start/node_end 重复推送问题。
@@ -758,6 +761,7 @@ async def stream_agent(
                             "node_stream",
                             "node_end",
                             "node_fail",
+                            "subgraph_start",
                         ):
                             yield f"data: {json.dumps({'type': etype, **data}, ensure_ascii=False)}\n\n"
                         elif etype == "think_start":
@@ -780,22 +784,31 @@ async def stream_agent(
                     for node_name, update in data.items():
                         if not isinstance(update, dict):
                             continue
-                        # agent 节点返回 messages 增量：若含 tool_calls 则模型决定调工具
-                        if node_name == "agent":
+                        # agent/子图节点返回 messages 增量：若含 tool_calls 则模型决定调工具
+                        if node_name in ("agent", "worldbuilding", "outlining", "drafting", "revising"):
                             msgs = update.get("messages") or []
                             if msgs:
                                 last = msgs[-1]
                                 if isinstance(last, _AIMsg) and getattr(
                                     last, "tool_calls", None
                                 ):
-                                    for _tc in last.tool_calls:
+                                    # 任务 14：按本轮 generate_chapter 调用次数给出真实 N/M 进度
+                                    # （单章生成的真实进度仍由 progress_events 透传）
+                                    _gcs = [
+                                        t for t in last.tool_calls
+                                        if (t.get("name") if isinstance(t, dict) else getattr(t, "name", "")) == "generate_chapter"
+                                    ]
+                                    _gc_total = max(len(_gcs), 1)
+                                    _gc_n = 0
+                                    for _gi, _tc in enumerate(last.tool_calls):
                                         tname = (
                                             _tc.get("name")
                                             if isinstance(_tc, dict)
                                             else getattr(_tc, "name", "")
                                         )
                                         if tname == "generate_chapter":
-                                            yield f"data: {json.dumps({'type': 'progress', 'step': 'generate_chapter', 'n': 1, 'total': 4, 'words': 0, 'eta': 0}, ensure_ascii=False)}\n\n"
+                                            _gc_n += 1
+                                            yield f"data: {json.dumps({'type': 'progress', 'step': 'generate_chapter', 'n': _gc_n, 'total': _gc_total, 'words': 0, 'eta': 0}, ensure_ascii=False)}\n\n"
                                         elif tname == "generate_outline_extension":
                                             yield f"data: {json.dumps({'type': 'extend_outline', 'step': 'extend_outline', 'n': 0, 'total': 1}, ensure_ascii=False)}\n\n"
                                         yield f"data: {json.dumps({'type': 'tool_start', 'tool': tname}, ensure_ascii=False)}\n\n"
@@ -804,6 +817,7 @@ async def stream_agent(
                             # 写工具被门控拦截时（gated_tool_node 返回 pending_review），
                             # 必须推送审核卡，否则前端永远收不到 review_card、审批流卡死。
                             if update.get("pending_review"):
+                                _card_payloads.append(update["pending_review"])
                                 yield _sse_review_card(update["pending_review"])
                             msgs = update.get("messages") or []
                             for m in msgs:
@@ -817,22 +831,11 @@ async def stream_agent(
                                         _parsed = json.loads(_out)
                                     except Exception:
                                         _parsed = None
-                                    if isinstance(_parsed, dict):
-                                        if _parsed.get("status") == "pending_review":
-                                            node_results = _parsed.get(
-                                                "node_results", []
-                                            )
-                                            if node_results:
-                                                last = node_results[-1]
-                                                qc = last.get("quality_check", {})
-                                                yield f"data: {json.dumps({'type': 'review_card', 'node_id': _parsed.get('pending_node_id', ''), 'node_label': _parsed.get('pending_node_label', ''), 'output_preview': last.get('output', '')[:1000], 'reason': qc.get('reason', ''), 'system_prompt': qc.get('system_prompt', '')}, ensure_ascii=False)}\n\n"
-                                        if _parsed.get(
-                                            "status"
-                                        ) == "completed" and _parsed.get(
-                                            "progress_events"
-                                        ):
-                                            for prog in _parsed["progress_events"]:
-                                                yield f"data: {json.dumps({'type': 'progress', **prog}, ensure_ascii=False)}\n\n"
+                                    if isinstance(_parsed, dict) and _parsed.get(
+                                        "status"
+                                    ) == "completed" and _parsed.get("progress_events"):
+                                        for prog in _parsed["progress_events"]:
+                                            yield f"data: {json.dumps({'type': 'progress', **prog}, ensure_ascii=False)}\n\n"
                                 # 每个工具执行结束各发一次 tool_end（带工具名），供前端复位工具状态条
                                 yield f"data: {json.dumps({'type': 'tool_end', 'tool': m.name}, ensure_ascii=False)}\n\n"
                         # quality_gate 节点：工作流审计若产生 pending_review，推送审核卡
@@ -841,6 +844,7 @@ async def stream_agent(
                             or node_name == "workflow_runner"
                         ):
                             if update.get("pending_review"):
+                                _card_payloads.append(update["pending_review"])
                                 yield _sse_review_card(update["pending_review"])
 
                 # ── 图执行结束：从 checkpointer 读取最终 state，提取最终回复 ──
@@ -892,6 +896,22 @@ async def stream_agent(
                     )
                     session.add(ai_msg)
                     await session.commit()
+                # 任务 32：审核卡落库为卡片消息（历史会话可还原）
+                if _card_payloads:
+                    try:
+                        for _card in _card_payloads:
+                            session.add(
+                                Message(
+                                    conversation_id=conversation.id,
+                                    role="assistant",
+                                    content="",
+                                    type="review-card",
+                                    token=json.dumps(_card, ensure_ascii=False),
+                                )
+                            )
+                        await session.commit()
+                    except Exception as exc:
+                        logger.warning(f"审核卡消息落库失败: {exc}")
                 try:
                     from .tools.feedback_tools import _build_feedback_tools
 
@@ -999,6 +1019,23 @@ async def cancel_stream(
     task = _stream_tasks.get(thread_id)
     if task and not task.done():
         task.cancel()
+        # 清理 checkpoint 中的 pending 三件套：abort 后若用户 resume（无消息续跑），
+        # 不会继续执行被拦截的写工具（计划任务 11）。新消息路径已由
+        # _prepare_agent_state 一次性重置，二者不冲突。
+        try:
+            checkpoint = graph_pool_manager.checkpoint
+            if checkpoint:
+                _config = {"configurable": {"thread_id": thread_id}}
+                await checkpoint.aupdate_state(
+                    _config,
+                    values={
+                        "pending_tool": None,
+                        "pending_review": None,
+                        "pending_workflow": None,
+                    },
+                )
+        except Exception as exc:
+            logger.warning(f"[cancel_stream] 清理 pending 状态失败: {exc}")
         return {"ok": True}
     return {"ok": False}
 

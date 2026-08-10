@@ -34,7 +34,7 @@ _TOOL_OP = {
     "apply_chapter_diff": OP_CHAPTER_DIFF,
     "create_entities": OP_ENTITY_CREATE,
     "update_entity": OP_ENTITY_UPDATE,
-    "create_outline": OP_OUTLINE_CREATE,
+    "build_outline": OP_OUTLINE_CREATE,
 }
 
 # 审批时支持"编辑后采纳"的操作（其入参含可直接覆盖的 content 字段）
@@ -115,8 +115,27 @@ def build_preview(operation: str, tool_name: str, args: dict) -> dict:
         preview = "；".join(parts) or "（无具体内容预览）"
     elif tool_name == "update_entity":
         preview = f"kind={args.get('kind')} item_id={args.get('item_id')}\n{json.dumps(args.get('data', {}), ensure_ascii=False)[:800]}"
-    elif tool_name == "create_outline":
-        preview = f"mode={args.get('mode')} title={args.get('title')}\nsummary={args.get('summary')}"
+    elif tool_name == "build_outline":
+        vols = args.get("volumes") if isinstance(args.get("volumes"), list) else []
+        total_chapters = sum(len(v.get("chapters") or []) for v in vols if isinstance(v, dict))
+        total_events = sum(
+            len(c.get("scene_events") or [])
+            for v in vols if isinstance(v, dict)
+            for c in (v.get("chapters") or []) if isinstance(c, dict)
+        )
+        lines = [f"将创建 {len(vols)} 卷 / {total_chapters} 章 / {total_events} 个场景事件"]
+        shown = 0
+        for v in vols:
+            if not isinstance(v, dict):
+                continue
+            title = str(v.get("title") or "未命名卷")[:50]
+            ch_cnt = len(v.get("chapters") or [])
+            lines.append(f"- {title}（{ch_cnt} 章）")
+            shown += 1
+            if shown >= 10:
+                lines.append(f"...（其余 {len(vols) - shown} 卷略）")
+                break
+        preview = "\n".join(lines)
     elif tool_name == "manage_memory":
         preview = f"mode={args.get('mode')}\n{str(args.get('content', ''))[:800]}"
     else:
@@ -126,7 +145,6 @@ def build_preview(operation: str, tool_name: str, args: dict) -> dict:
         "node_label": f"工具调用：{tool_name}",
         "output_preview": preview,
         "reason": "该操作会修改书籍数据，需你确认后才会执行",
-        "system_prompt": "",
     }
 
 

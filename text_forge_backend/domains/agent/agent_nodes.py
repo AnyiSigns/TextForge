@@ -1,7 +1,8 @@
 import json
+import re
 from typing import Any
 
-from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.graph import END
 
 from config.logging import get_logger
@@ -10,8 +11,31 @@ from shared.utils import truncate_text
 
 from .agent_state import UserAgentState
 from .context_manager import _should_compress
+from .subgraph_prompts import CHAT_PROMPT, SUBGRAPH_PROMPTS, SUPERVISOR_PROMPT
 
 logger = get_logger(__name__)
+
+SUBGRAPH_NAMES = ("worldbuilding", "outlining", "drafting", "revising")
+
+SUBGRAPH_LABELS = {
+    "worldbuilding": "世界观构建",
+    "outlining": "大纲规划",
+    "drafting": "正文撰写",
+    "revising": "整体修订",
+    "chat": "闲聊",
+}
+
+
+def _emit_custom(state: UserAgentState, etype: str, **kw) -> None:
+    """向 custom 通道写结构化事件（前端状态栏/进度/日志共用）。"""
+    try:
+        from langgraph.config import get_stream_writer
+
+        writer = get_stream_writer()
+        if writer is not None:
+            writer({"event": etype, **kw})
+    except Exception:
+        pass
 
 AGENT_SYSTEM_PROMPT = """你是 TextForge Agent，一位专业的 小说/网文 创作AI助手。
 
@@ -21,8 +45,8 @@ AGENT_SYSTEM_PROMPT = """你是 TextForge Agent，一位专业的 小说/网文 
 
 ### 1. initializing（初始化）
 - 目标：了解书籍基本设定，建立创作基础。
-- 使用 get_book_context 查看当前书籍信息；用 lookup_outline 查看是否已有大纲。
-- 若没有任何大纲结构（无卷无章），用 create_outline(mode="volume", title="第一卷", summary="...") 创建首卷，再用 create_outline(mode="chapter", volume_id=<卷ID>, title="第一章 ...", summary="...") 创建首章。
+- 使用 get_book_context 查看当前书籍信息（含完整大纲树：卷→章→场景事件概要）。
+- 若没有任何大纲结构（无卷无章），用 build_outline(volumes=[{title:"第一卷", summary:"...", chapters:[{title:"第一章", summary:"..."}]}]) 一次性创建卷和章节（也可附 scene_events 场景事件）。
 - 若角色/地点/世界观设定为空，建议进入 worldbuilding 阶段。
 
 ### 2. worldbuilding（世界观构建）
@@ -35,7 +59,7 @@ AGENT_SYSTEM_PROMPT = """你是 TextForge Agent，一位专业的 小说/网文 
 
 ### 3. outlining（大纲规划）
 - 目标：规划卷和章节结构，确定故事主线和支线。
-- 用 lookup_outline 查看当前大纲（按卷→章）；用 create_outline 新建卷或章节（可注入 summary）。
+- 用 get_book_context 查看当前大纲（按卷→章，含场景事件概要）；用 build_outline 一次性新建多卷/多章（可注入 summary 与 scene_events）。
 - 用 lookup_plot_threads 管理剧情线索，update_entity(kind="plot_thread", ...) 更新进展。
 - 用 lookup_foreshadowing 规划伏笔，update_entity(kind="foreshadowing", ...) 回收伏笔。
 - 用 update_entity(kind="chapter", item_id=..., data={summary: "..."}) 为章节补摘要。
@@ -46,8 +70,8 @@ AGENT_SYSTEM_PROMPT = """你是 TextForge Agent，一位专业的 小说/网文 
 - 目标：逐章生成正文内容。
 - 核心工具：generate_chapter 生成章节内容（精确指定 chapter_id、自动落库）；execute_workflow_node 执行工作流单个节点；execute_workflow 批量执行完整工作流。
 - **工作流执行规则（必须遵守）**：用户要求按工作流执行时——若消息中含 (ID: xxx)，必须直接调用 execute_workflow(workflow_id="xxx")，并立即执行，不得以"工作流 ID 为空/未提供"为由拒绝或反问；若用户只给了工作流名称而未给 ID，必须先调用 lookup_workflows 查询列表确定对应 ID，再调用 execute_workflow；若用户完全未指定工作流，则直接调用 execute_workflow()（不传 workflow_id），此时自动使用当前书籍绑定的工作流。
-- **逐章生成规则**：用户指定"写第X章/从X到Y章"时，先确定章节（已存在则取 chapter_id，不存在先用 create_outline 建章）。用工作流逐章生成时，每章调用一次 execute_workflow(target_chapter_id=该章ID)，不要一次请求多章。工作流完成后**不要直接落库**：把候选正文节点（content_nodes）展示给用户（只需展示 node_label 与摘要），询问用哪个节点的输出作为该章正文；用户选定后调用 write_workflow_candidate(chapter_id=该章ID, node_id=用户选定的节点ID) 落库——该工具会自动从工作流结果取完整正文写入，**不要把完整正文复述进工具参数，也不要调用 generate_chapter 补全**；generate_chapter 路径已自动落库，无需再写。
-- **参数必填提醒**：read_chapter_content / write_chapter_content / edit_chapter_content / apply_chapter_diff 都必须显式传入 chapter_id 数字（从 lookup_outline 或 get_book_context 的结果中读取，如 chapter_id=44）。禁止不传 chapter_id 就调用这些工具，否则工具会返回参数校验错误。
+- **逐章生成规则**：用户指定"写第X章/从X到Y章"时，先确定章节（已存在则取 chapter_id，不存在先用 build_outline 建章）。用工作流逐章生成时，每章调用一次 execute_workflow(target_chapter_id=该章ID)，不要一次请求多章。工作流完成后**不要直接落库**：把候选正文节点（content_nodes）展示给用户（只需展示 node_label 与摘要），询问用哪个节点的输出作为该章正文；用户选定后调用 write_workflow_candidate(chapter_id=该章ID, node_id=用户选定的节点ID) 落库——该工具会自动从工作流结果取完整正文写入，**不要把完整正文复述进工具参数，也不要调用 generate_chapter 补全**；generate_chapter 路径已自动落库，无需再写。
+- **参数必填提醒**：read_chapter_content / write_chapter_content / edit_chapter_content / apply_chapter_diff 都必须显式传入 chapter_id 数字（从 get_book_context 的结果中读取，如 chapter_id=44）。禁止不传 chapter_id 就调用这些工具，否则工具会返回参数校验错误。
 - 生成前用 get_proactive_suggestions 检查遗漏（缺摘要、未回收伏笔等）。
 - 生成后用 review_text(mode="consistency") 检查与设定一致性，review_text(mode="grammar") 检查语法。
 - 需要修改时：read_chapter_content 读取正文 → transform_text(mode="polish"/"rewrite"/"expand"/"summarize"/"alternatives") 加工 → write_chapter_content 写回（一律新增版本，不覆盖）。
@@ -61,9 +85,9 @@ AGENT_SYSTEM_PROMPT = """你是 TextForge Agent，一位专业的 小说/网文 
 - 修改完成后告知用户修订完毕。
 
 ## 工具速查（共 23 个，调用前先理解参数）
-- 查询：lookup_characters / lookup_outline / lookup_locations / lookup_timeline / lookup_foreshadowing / lookup_plot_threads
-- 上下文：get_book_context
-- 大纲结构：create_outline（mode=volume|chapter，可带 summary）
+- 查询：lookup_characters / lookup_locations / lookup_timeline / lookup_foreshadowing / lookup_plot_threads
+- 上下文：get_book_context（含完整大纲树与创作设定）
+- 大纲结构：build_outline（一次调用建多卷×多章×多场景事件，单事务落库）
 - 实体创建：create_entities（characters/locations/scene_events/foreshadows/plot_threads，支持 source_text 抽取）
 - 实体更新：update_entity（kind: foreshadowing/plot_thread/timeline/chapter/character/location）
 - 正文读写：read_chapter_content / write_chapter_content / write_workflow_candidate（工作流候选正文落库，只需传 chapter_id+node_id）/ edit_chapter_content（精确替换某段 old_text→new_text）/ apply_chapter_diff（用 unified diff 局部修改）
@@ -91,16 +115,16 @@ AGENT_SYSTEM_PROMPT = """你是 TextForge Agent，一位专业的 小说/网文 
 - 工具调用完成后，用自然语言向用户报告结果，不要直接输出原始字段名或 JSON。
 - 如果决定调用工具，请以一句完整的话结束，再进行工具调用。
 - 每完成一个操作后，主动判断当前是否应切换阶段，并在回复中提出建议。
-- 调用 generate_chapter 时，先用 lookup_outline 确认章节存在。
+- 调用 generate_chapter 时，先用 get_book_context 确认章节存在。
 - 先分析、理解、确认用户的需求，再进行下一步操作。
 - 如果要生成完整的单篇正文，字数控制在3000-5000字
-- 所有会修改书籍数据的工具（write_chapter_content / edit_chapter_content / apply_chapter_diff / create_entities / update_entity / create_outline / manage_memory 的写入类）在调用后需经用户确认才会真正生效；修改正文前务必先 read_chapter_content 取得最新内容，确保 old_text 精确匹配。
+- 所有会修改书籍数据的工具（write_chapter_content / edit_chapter_content / apply_chapter_diff / create_entities / update_entity / build_outline / manage_memory 的写入类）在调用后需经用户确认才会真正生效；修改正文前务必先 read_chapter_content 取得最新内容，确保 old_text 精确匹配。
 - 严禁向用户提及上面提到的工具名及任何内部参数"""
 
 
-async def agent_call(state: UserAgentState) -> dict[str, Any]:
+async def agent_call(state: UserAgentState, subgraph: str = "outlining") -> dict[str, Any]:
     llm = ModelFactory(state["model_config"])
-    system_prompt = AGENT_SYSTEM_PROMPT
+    system_prompt = SUBGRAPH_PROMPTS.get(subgraph) or AGENT_SYSTEM_PROMPT
 
     user_id = state.get("user_id")
     book_id = state.get("active_book_id", 0) or 0
@@ -145,7 +169,7 @@ async def agent_call(state: UserAgentState) -> dict[str, Any]:
             f"\n【本回合唯一任务 = 落库确认】这是本轮工作流执行完成的唯一回复机会。"
             f"你必须把上面 content_nodes 中的候选正文（node_label + 摘要）逐一列给用户，"
             f"明确询问用户选择哪个节点的输出作为本章正文，并等待用户答复。"
-            f"【禁止事项】本回合严禁调用任何工具（包括 read_chapter_content / write_chapter_content / write_workflow_candidate / lookup_outline 等），"
+            f"【禁止事项】本回合严禁调用任何工具（包括 read_chapter_content / write_chapter_content / write_workflow_candidate / get_book_context 等），"
             f"禁止自行落库，禁止用工具验证——直接展示候选正文并提问即可。"
             f"用户选定后，下一回合你只需调用 write_workflow_candidate(chapter_id=该章ID, node_id=用户选定的节点ID) 落库，"
             f"不要在工具参数中复述完整正文。"
@@ -261,6 +285,117 @@ async def agent_call(state: UserAgentState) -> dict[str, Any]:
     return _update_after_call
 
 
+def _extract_route(text: str) -> str:
+    """从 supervisor LLM 输出中提取路由；解析失败或非法路由回 chat。"""
+    if not text:
+        return "chat"
+    m = re.search(r"\{[^{}]*\"route\"[^{}]*\}", text)
+    if m:
+        try:
+            data = json.loads(m.group(0))
+            route = data.get("route")
+            if route in ("chat", *SUBGRAPH_NAMES):
+                return route
+        except (json.JSONDecodeError, TypeError):
+            pass
+    # 非 JSON 时按关键词兜底
+    low = text.lower()
+    for name in ("worldbuilding", "outlining", "drafting", "revising"):
+        if name in low:
+            return name
+    return "chat"
+
+
+async def guardrail_node(state: UserAgentState) -> dict[str, Any]:
+    """入口护栏：空消息/超长消息直接拦截返回提示，其余无操作。
+
+    仅在最后一条是新的用户消息时生效；resume 等回合最后一条为 ToolMessage/AIMessage，直接放行。
+    """
+    messages = state.get("messages", [])
+    if messages and isinstance(messages[-1], HumanMessage):
+        content = (messages[-1].content or "").strip()
+        if not content:
+            return {"messages": [AIMessage(content="消息不能为空，请输入你想让 Agent 帮你做的事。")]}
+        if len(content) > 6000:
+            return {
+                "messages": [
+                    AIMessage(
+                        content=f"消息过长（{len(content)} 字，上限 6000 字），请拆分后分多次发送。"
+                    )
+                ]
+            }
+    return {}
+
+
+async def supervisor_node(state: UserAgentState) -> dict[str, Any]:
+    """supervisor：仅当最后一条是新的用户消息时做 LLM 意图分类，写入 state.subgraph。
+
+    其余回合（resume / 工具循环回跳）不调 LLM，直接沿用现有 subgraph，
+    避免对 ToolMessage 内容做无谓分类（计划风险表「supervisor 对 ToolMessage 瞎分类」）。
+    """
+    messages = state.get("messages", [])
+    if not messages or not isinstance(messages[-1], HumanMessage):
+        return {}
+    resume = state.get("resume_from_subgraph")
+    if resume in SUBGRAPH_NAMES:
+        return {"subgraph": resume}
+    content = (messages[-1].content or "").strip()
+    if not content:
+        return {"subgraph": "chat"}
+    route = "chat"
+    try:
+        llm = ModelFactory(state["model_config"])
+        result = await llm.main.ainvoke(
+            [SystemMessage(content=SUPERVISOR_PROMPT), HumanMessage(content=content[:2000])]
+        )
+        text = result.content if hasattr(result, "content") else str(result)
+        route = _extract_route(text)
+    except Exception as exc:
+        logger.warning(f"[supervisor_node] 意图分类失败，默认 chat: {exc}")
+        route = "chat"
+    _emit_custom(state, "subgraph_start", subgraph=route, label=SUBGRAPH_LABELS.get(route, route))
+    return {"subgraph": route}
+
+
+def supervisor_router(state: UserAgentState) -> str:
+    """supervisor 路由：状态机单一出口。
+
+    - 候选正文确认就绪 → END
+    - 已审批写工具（pending_tool.decision）→ tool_calls（直达执行，不再分类）
+    - 排队工作流 → workflow_runner
+    - 待审核卡 → END（人类在环）
+    - 否则回到当前子图继续；无子图上下文 → END
+    """
+    if state.get("candidate_reply_ready"):
+        return END
+    pending = state.get("pending_tool")
+    if pending and pending.get("decision"):
+        return "tool_calls"
+    if state.get("pending_workflow"):
+        return "workflow_runner"
+    if state.get("pending_review"):
+        return END
+    sub = state.get("subgraph")
+    if sub in SUBGRAPH_NAMES:
+        return sub
+    if sub == "chat":
+        return "chat"
+    return END
+
+
+async def chat_node(state: UserAgentState) -> dict[str, Any]:
+    """chat 内联节点：1 步快路径，不绑定工具，无工具循环。"""
+    llm = ModelFactory(state["model_config"])
+    reply = ""
+    try:
+        result = await llm.main.ainvoke([SystemMessage(content=CHAT_PROMPT)] + state["messages"])
+        reply = result.content if hasattr(result, "content") else str(result)
+    except Exception as exc:
+        logger.error(f"[chat_node] 模型调用失败: {exc}", exc_info=True)
+        reply = f"抱歉，模型调用失败，请稍后重试或检查模型配置。（{exc}）"
+    return {"messages": [AIMessage(content=reply)]}
+
+
 def agent_router(state: UserAgentState) -> str:
     """Agent 路由函数。
 
@@ -310,7 +445,7 @@ def agent_router(state: UserAgentState) -> str:
                 "apply_chapter_diff",
                 "create_entities",
                 "update_entity",
-                "create_outline",
+                "build_outline",
                 "manage_memory",
                 "execute_workflow",
                 "execute_workflow_node",
@@ -337,7 +472,8 @@ def quality_gate_router(state: UserAgentState) -> str:
         state: Agent 状态。
 
     Returns:
-        END（触发审核中断）、compress（需要压缩上下文）或 agent（继续对话）。
+        END（触发审核中断）、compress（需要压缩上下文）、workflow_runner（排队工作流）
+        或 supervisor（回 supervisor 再路由，状态机单一出口）。
     """
     pending_review = state.get("pending_review")
     if pending_review:
@@ -367,23 +503,26 @@ def quality_gate_router(state: UserAgentState) -> str:
         return END
 
     # 防死循环（关键）：统计最近连续工具调用轮数（成功+失败）。
-    # 若模型持续自主调用查询类工具（get_book_context/lookup_outline 等）且始终不结束，
-    # 连续 ≥4 轮直接终止本次图执行，避免「思考→调成功工具→再思考」无限循环。
+    # 若模型持续自主调用查询类工具（get_book_context 等）且始终不结束，
+    # 连续 ≥N 轮直接终止本次图执行，避免「思考→调成功工具→再思考」无限循环。
+    # 阈值按子图归属放宽：drafting 会合法并行读多章（read_chapter_content × 4+），
+    # 提高上限避免误杀；其余子图保持 4。
     tool_rounds = 0
     for msg in reversed(messages):
         if isinstance(msg, ToolMessage):
             tool_rounds += 1
         else:
             break
-    if tool_rounds >= 4:
+    tool_round_limit = 8 if state.get("subgraph") == "drafting" else 4
+    if tool_rounds >= tool_round_limit:
         logger.warning(
-            f"[quality_gate_router] 连续 {tool_rounds} 轮工具调用未结束，终止循环"
+            f"[quality_gate_router] 子图={state.get('subgraph')} 连续 {tool_rounds} 轮工具调用未结束，终止循环"
         )
         return END
 
     if _should_compress(state):
         return "compress"
-    return "agent"
+    return "supervisor"
 
 
 def _is_tool_error(msg: ToolMessage) -> bool:
@@ -440,7 +579,6 @@ async def quality_gate_node(state: UserAgentState) -> dict[str, Any]:
             "node_label": result.get("node_label", ""),
             "output_preview": result.get("output", "")[:1000],
             "reason": quality_check.get("reason", "输出质量不满足角色节点要求"),
-            "system_prompt": quality_check.get("system_prompt", ""),
         }
         return {"pending_review": pending_review}
 
@@ -454,19 +592,9 @@ async def quality_gate_node(state: UserAgentState) -> dict[str, Any]:
             }
             return {"workflow_node_outputs": {node_id: node_output}}
 
-    if result.get("status") == "pending_review":
-        pending_node_id = result.get("pending_node_id", "")
-        pending_node_label = result.get("pending_node_label", "")
-        qc = (result.get("node_results", [{}])[-1]).get("quality_check", {})
-        pending_review = {
-            "node_id": pending_node_id,
-            "node_label": pending_node_label,
-            "workflow_id": result.get("workflow_id", ""),
-            "output_preview": "",
-            "reason": qc.get("reason", "输出质量不满足角色节点要求"),
-            "system_prompt": qc.get("system_prompt", ""),
-        }
-        return {"pending_review": pending_review}
+    # 注：status == "pending_review" 分支已删除——execute_workflow/execute_workflow_node
+    # 已 bridge 化（只返回 status="queued"），pending_review 仅由 workflow_runner_node
+    # 消费 scheduler 返回后构造，ToolMessage 中永远不会出现该状态，原分支为死代码。
 
     if result.get("status") == "completed" and result.get("node_results"):
         accumulated: dict = {}

@@ -103,7 +103,6 @@ async def _finish_with_candidate(result: dict[str, Any], target_chapter_id: int 
             "workflow_id": result.get("workflow_id", ""),
             "output_preview": result.get("output", "") or (_last.get("output") or "")[:1000],
             "reason": _qc.get("reason", "输出质量不满足角色节点要求"),
-            "system_prompt": _qc.get("system_prompt", ""),
             # 携带目标章节与所属工作流：用户审核决策后续跑时据此精确重跑该节点，
             # 避免 LLM 臆测节点 ID（如误把审计角色 auditor 当作工作流节点）。
             "target_chapter_id": target_chapter_id,
@@ -120,7 +119,6 @@ async def _finish_with_candidate(result: dict[str, Any], target_chapter_id: int 
             "workflow_id": result.get("workflow_id", ""),
             "output_preview": (result.get("output") or "")[:1000],
             "reason": _qc.get("reason", "输出质量不满足角色节点要求"),
-            "system_prompt": _qc.get("system_prompt", ""),
             "target_chapter_id": target_chapter_id,
         }
         reply = f"工作流在节点「{node_label}」触发审计拦截，需要您审核后再继续。请查看审核卡进行确认。"

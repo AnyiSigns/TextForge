@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
 import pytest
 
 from domains.agent.web_search_service import WebSearchService
 
 
 class FakeCache:
-    def __init__(self, results):
+    def __init__(self, results, created_at=None):
         self.results = results
         self.hit_count = 0
+        self.created_at = created_at or datetime.now()
+        self.id = 1
 
 
 class FakeSession:
@@ -20,6 +24,7 @@ class FakeSession:
         self.committed = 0
         self.flushed = 0
         self.refreshed = 0
+        self.deleted = []
 
     async def execute(self, stmt):
         cache = self.cache
@@ -46,11 +51,11 @@ class FakeSession:
 class FakeResponse:
     def __init__(self, payload, status=200):
         self._payload = payload
-        self._status = status
+        self.status_code = status
 
     def raise_for_status(self):
-        if self._status >= 400:
-            raise RuntimeError(f"HTTP {self._status}")
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
 
     def json(self):
         return self._payload
@@ -103,13 +108,48 @@ async def test_search_success_parses_results(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_search_network_error_returns_error_entry(monkeypatch):
-    """网络异常 → 返回错误条目而非抛错（Agent 工具可继续）。"""
+    """HTTP 500 → 返回具体错误条目而非抛错（Agent 工具可继续）。"""
     fake = FakeResponse({}, status=500)
     patch_httpx(monkeypatch, fake)
     session = FakeSession()
     results = await WebSearchService(session).search("查询", "sk-test")
     assert len(results) == 1
     assert "error" in results[0]
+    assert "不可用" in results[0]["error"]
+
+
+@pytest.mark.asyncio
+async def test_search_auth_error_is_specific(monkeypatch):
+    """401 → 提示 API Key 无效（错误信息具体化）。"""
+    fake = FakeResponse({}, status=401)
+    patch_httpx(monkeypatch, fake)
+    session = FakeSession()
+    results = await WebSearchService(session).search("查询", "sk-test")
+    assert "API Key 无效" in results[0]["error"]
+
+
+@pytest.mark.asyncio
+async def test_search_rate_limit_error_is_specific(monkeypatch):
+    """429 → 提示限流。"""
+    fake = FakeResponse({}, status=429)
+    patch_httpx(monkeypatch, fake)
+    session = FakeSession()
+    results = await WebSearchService(session).search("查询", "sk-test")
+    assert "限流" in results[0]["error"]
+
+
+@pytest.mark.asyncio
+async def test_search_cache_expired_revalidates(monkeypatch):
+    """缓存超过 24h → 视为过期删除并重新搜索。"""
+    cached = [{"title": "过期结果", "snippet": "s", "url": "u"}]
+    old_cache = FakeCache(cached, created_at=datetime.now() - timedelta(hours=25))
+    fake = FakeResponse({"data": {"webPages": {"value": [{"name": "新结果", "summary": "x", "url": "y"}]}}})
+    patch_httpx(monkeypatch, fake)
+    session = FakeSession(cache=old_cache)
+
+    results = await WebSearchService(session).search("相同查询", "sk-test")
+    assert results[0]["title"] == "新结果"
+    assert old_cache.hit_count == 0  # 未命中旧缓存
 
 
 @pytest.mark.asyncio

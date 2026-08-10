@@ -115,6 +115,20 @@ def _sync_missing_columns(sync_conn):
     # 单 conversation_id 索引 + 内存排序在大数据量下退化为排序开销，补复合索引。
     if "messages" in tables:
         try:
+            _mcols = {c["name"] for c in inspect(sync_conn).get_columns("messages")}
+            # 任务 32：事件卡片消息持久化所需列（type/token）
+            for _col, _ddl in (
+                ("type", "VARCHAR(32) NOT NULL DEFAULT ''"),
+                ("token", "TEXT"),
+            ):
+                if _col not in _mcols:
+                    sync_conn.exec_driver_sql(
+                        f"ALTER TABLE messages ADD COLUMN {_col} {_ddl}"
+                    )
+                    logger.info(f"已为 messages 表补充列 {_col}")
+        except Exception as e:
+            logger.warning(f"messages 事件卡片列补充跳过: {e}")
+        try:
             exists = sync_conn.exec_driver_sql(
                 "SELECT 1 FROM pg_indexes WHERE indexname = 'ix_messages_conversation_create'"
             ).fetchone()

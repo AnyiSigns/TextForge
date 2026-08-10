@@ -144,6 +144,8 @@ interface MessageRaw {
   role: string;
   content: string;
   think?: string | null;
+  type?: string;
+  token?: string | null;
   create_at: string;
 }
 
@@ -165,6 +167,8 @@ export async function fetchAgentMessages(conversationId: number): Promise<AgentM
     role: m.role,
     content: m.content,
     think: m.think || undefined,
+    type: m.type || undefined,
+    token: m.token || undefined,
     createdAt: m.create_at,
   }));
 }

@@ -113,18 +113,25 @@ export function AgentDock() {
   // 初始位置延迟到挂载后读取（避免 SSR/CSR 因 window 分支产生 hydration mismatch）：
   // 服务端与客户端的首次渲染都返回 null（不渲染按钮），挂载后再从 localStorage 或
   // 默认右下角位置赋值，保证两端 HTML 一致。
+  // setState 放入微任务，规避 react-hooks/set-state-in-effect 同步 setState 告警
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(AGENT_POS_KEY);
-      if (raw) {
-        const p = JSON.parse(raw);
-        if (typeof p.x === 'number' && typeof p.y === 'number') {
-          setPos(p as { x: number; y: number });
-          return;
+    let alive = true;
+    const read = () => {
+      if (!alive) return;
+      try {
+        const raw = localStorage.getItem(AGENT_POS_KEY);
+        if (raw) {
+          const p = JSON.parse(raw);
+          if (typeof p.x === 'number' && typeof p.y === 'number') {
+            setPos(p as { x: number; y: number });
+            return;
+          }
         }
-      }
-    } catch { /* ignore */ }
-    setPos({ x: window.innerWidth - 56, y: Math.round(window.innerHeight * 0.4) });
+      } catch { /* ignore */ }
+      setPos({ x: window.innerWidth - 56, y: Math.round(window.innerHeight * 0.4) });
+    };
+    const id = window.setTimeout(read, 0);
+    return () => { alive = false; window.clearTimeout(id); };
   }, []);
   const [hovering, setHovering] = useState(false);
   const [pinned, setPinned] = useState(false);

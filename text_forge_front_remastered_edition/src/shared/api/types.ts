@@ -222,6 +222,9 @@ export interface AgentMessage {
   role: string;
   content: string;
   think?: string;
+  /** 任务 32：事件卡片消息（review-card 等）持久化还原 */
+  type?: string;
+  token?: string;
   createdAt: string;
 }
 
@@ -254,13 +257,16 @@ export interface KnowledgeDoc {
 
 export interface SSEEvent {
   type: 'token' | 'agent_token' | 'agent_reasoning' | 'think_start' | 'agent_think_end' | 'tool_start' | 'tool_end' | 'progress' |
-        'node_start' | 'node_stream' | 'node_end' | 'node_fail' |
+        'node_start' | 'node_stream' | 'node_end' | 'node_fail' | 'subgraph_start' |
         'propose_cards' | 'review_card' | 'suggestions' | 'extend_outline' | 'title_update' | 'compress_done' | 'end' | 'error';
   token?: string;
   tool?: string;
   step?: string;
   node_id?: string;
   label?: string;
+  subgraph?: string;
+  n?: number;
+  total?: number;
   message?: string;
   reply?: string;
   cards?: unknown[];

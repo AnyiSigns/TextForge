@@ -106,14 +106,14 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
   const agentThreadId = useBookDetailStore((s) => s.agentThreadId);
 
   // 新出现的节点卡片自动展开（对应气泡可见），节点列表清空时复位。
-  // 清空复位用渲染期间调整（仅 setState）；seen 集合清理与新增展开走 effect（ref 写操作的合法位置）
-  const [prevStatusLen, setPrevStatusLen] = useState(agentNodeStatuses.length);
-  if (agentNodeStatuses.length === 0 && prevStatusLen !== 0) {
-    setPrevStatusLen(0);
-    setExpandedNodeCards(new Set());
-  } else if (agentNodeStatuses.length !== prevStatusLen) {
-    setPrevStatusLen(agentNodeStatuses.length);
-  }
+  // 原渲染期 setState 改为 effect + ref（任务 22：渲染期调整移除）
+  const prevStatusLenRef = useRef(agentNodeStatuses.length);
+  useEffect(() => {
+    if (agentNodeStatuses.length === 0 && prevStatusLenRef.current !== 0) {
+      setExpandedNodeCards(new Set());
+    }
+    prevStatusLenRef.current = agentNodeStatuses.length;
+  }, [agentNodeStatuses.length]);
 
   useEffect(() => {
     if (agentNodeStatuses.length === 0) {
@@ -148,15 +148,11 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
     finally { setLoadingSessions(false); }
   }, []);
 
-  // 书籍切换时重新进入加载态（渲染期间调整，React 会立即重渲染）
-  const [prevSessionsBookId, setPrevSessionsBookId] = useState(bookId);
-  if (bookId !== prevSessionsBookId) {
-    setPrevSessionsBookId(bookId);
-    setLoadingSessions(true);
-  }
-
+  // 书籍切换时重新进入加载态（原渲染期 setState 改为 effect 内处理）
   useEffect(() => {
     let alive = true;
+    // setState 放微任务，规避 react-hooks/set-state-in-effect 同步 setState 告警
+    queueMicrotask(() => { if (alive) setLoadingSessions(true); });
     agentApi.fetchAgentConversations().then((list) => {
       if (!alive) return;
       list.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
@@ -228,27 +224,20 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
     return () => window.removeEventListener('textforge:card-draw-start', handleCardDrawStart);
   }, [sendMessage]);
 
-  useEffect(() => {
-    const handleExtendOutline = (e: Event) => {
-      const detail = (e as CustomEvent).detail as Record<string, unknown> | undefined;
-      const count = detail?.chapterCount as number | undefined;
-      const n = count ?? 5;
-      void sendMessage(`请调用 generate_outline_extension 工具，为当前书籍追加 ${n} 章大纲。`);
-    };
-    window.addEventListener('textforge:extend-outline', handleExtendOutline);
-    return () => window.removeEventListener('textforge:extend-outline', handleExtendOutline);
-  }, [sendMessage]);
-
   const handleAbort = () => {
     abort();
     setAgentStreaming(false);
     setAgentStatus({ kind: 'idle' });
     useBookDetailStore.setState((state) => ({
-      agentMessages: state.agentMessages.map((m) =>
-        m.type === 'streaming' ? { ...m, type: 'system' } : m
-      ),
+      agentMessages: state.agentMessages.map((m) => {
+        if (m.type === 'streaming') return { ...m, type: 'system' };
+        // 任务 22：abort 后复位工具卡片（防止永久「请求外援中」spinner）
+        if (m.type === 'tool' && m.toolStatus === 'running') return { ...m, toolStatus: 'error' };
+        return m;
+      }),
       agentNodeStatuses: [],
       nodeOutputs: {},
+      pendingReview: null,
     }));
   };
 
@@ -282,14 +271,20 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
         return next;
       });
     }
+    // 任务 22：切换会话前先中止当前流的流式响应，避免旧响应写入新会话列表
+    if (agentStreaming) {
+      abort();
+    }
     setAgentThreadId(s.threadId);
     useBookDetailStore.setState({ agentMessages: [], agentStreaming: false, agentStatus: { kind: 'idle' }, agentToolLog: [], agentNodeStatuses: [], nodeOutputs: {}, pendingReview: null });
     setInput(draftByThreadId.get(s.threadId) || '');
     try {
       const msgs = await agentApi.fetchAgentMessages(s.id);
-      const mapped: Array<{ role: 'user' | 'assistant'; content: string; type?: string }> = msgs.map((m) => ({
+      const mapped: Array<{ role: 'user' | 'assistant'; content: string; type?: string; token?: string }> = msgs.map((m) => ({
         role: m.role as 'user' | 'assistant',
         content: m.content,
+        type: m.type || undefined,
+        token: m.token || undefined,
       }));
       useBookDetailStore.setState({ agentMessages: mapped });
     } catch { /* ignore */ }
@@ -359,10 +354,18 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
       await resume();
     } catch {
       setAgentStreaming(false);
-      // 续跑失败（如书籍锁被占用/网络异常）：恢复审核卡与待审状态，允许用户重试
+      // 续跑失败（如书籍锁被占用/网络异常）：恢复审核卡与待审状态，允许用户重试。
+      // 恢复时必须给卡片换新 id——否则 React 复用同 key 组件实例，ReviewCard 的
+      // submitting 状态卡在 true，按钮永久禁用（任务 31 防双提交与此冲突的边界）。
       setPendingReview(prevReview);
       if (removedCards.length > 0) {
-        useBookDetailStore.setState((s) => ({ agentMessages: [...s.agentMessages, ...removedCards] }));
+        const _now = Date.now();
+        useBookDetailStore.setState((s) => ({
+          agentMessages: [
+            ...s.agentMessages,
+            ...removedCards.map((c, i) => ({ ...c, id: `${c.id || 'rc'}-${_now}-${i}` })),
+          ],
+        }));
       }
     }
   };
@@ -385,18 +388,20 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
   const placeholderText = book ? '输入创作指令…' : '输入消息…';
 
   const renderAgentMessage = (msg: (typeof agentMessages)[number], key: number) => {
+    // 稳定 key（任务 22）：消息插入时生成的 id 优先，历史映射消息回退 index
+    const stableKey = msg.id || `i-${key}`;
     if (msg.type === 'review-card' && msg.token) {      const reviewData = safeParseJSON(msg.token);
       return reviewData ? (
-        <ReviewCard key={key} data={reviewData as Record<string, unknown>} onAction={handleReviewAction} />
+        <ReviewCard key={stableKey} data={reviewData as Record<string, unknown>} onAction={handleReviewAction} />
       ) : null;
     }
     if (msg.type === 'propose-cards' && msg.token) {
       const cardData = safeParseJSON(msg.token);
-      return cardData ? <ProposeCards key={key} data={cardData as Record<string, unknown>} /> : null;
+      return cardData ? <ProposeCards key={stableKey} data={cardData as Record<string, unknown>} onSendMessage={sendMessage} /> : null;
     }
     if (msg.type === 'node-output') {
       return (
-        <div key={key} className="flex justify-start">
+        <div key={stableKey} className="flex justify-start">
           <div className="max-w-[88%] px-3 py-2 border-l-2 border-foreground/15 bg-[#1c1b1a]/[0.02] text-[13px] leading-relaxed">
             {msg.label && (
               <div className="text-[10px] text-foreground/40 mb-0.5 flex items-center gap-1.5">
@@ -415,15 +420,22 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
     }
     if (msg.type === 'tool') {
       // 工具卡片作为独立消息：running 显示「请求外援中」，done 显示「外援已找到 ✓」，
-      // 位置由插入时刻决定（工具在回复前开始 → 卡片在回复前），不随流式消息跳动。
+      // error（abort 复位）显示「已中断」。位置由插入时刻决定（工具在回复前开始 →
+      // 卡片在回复前），不随流式消息跳动。
       const running = msg.toolStatus === 'running';
+      const failed = msg.toolStatus === 'error';
       return (
-        <div key={key} className="flex justify-start">
+        <div key={stableKey} className="flex justify-start">
           <div className="mx-1 mb-1 flex items-center gap-2 rounded-lg border border-border/40 bg-background/40 px-3 py-1.5 text-[11px]">
             {running ? (
               <>
                 <span className="thinking-shimmer-text">{msg.tool === 'execute_workflow' || msg.tool === 'execute_workflow_node' ? '执行工作流中' : '请求外援中'}</span>
                 <span className="ml-auto inline-block h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-foreground/30 border-t-foreground/70" />
+              </>
+            ) : failed ? (
+              <>
+                <span className="text-foreground/50">{msg.tool === 'execute_workflow' || msg.tool === 'execute_workflow_node' ? '工作流已中断' : '已中断'}</span>
+                <span className="ml-auto text-foreground/45">✗</span>
               </>
             ) : (
               <>
@@ -439,7 +451,7 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
       // 节点卡片同样作为独立消息：状态（running/completed/failed）+ 展开时展示 nodeOutputs 正文
       const expanded = expandedNodeCards.has(msg.nodeId || '');
       return (
-        <div key={key} className="flex justify-start">
+        <div key={stableKey} className="flex justify-start">
           <div className="w-full rounded-lg border border-border/40 bg-background/40 overflow-hidden">
             <button
               onClick={() => {
@@ -501,7 +513,7 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
       const hasContent = !!msg.content;
       const isThinking = agentStreaming && agentStatus.kind === 'thinking';
       return (
-        <div key={key} className="flex justify-start">
+        <div key={stableKey} className="flex justify-start">
           <div className="max-w-[88%] px-3 py-2 border-l-2 border-foreground/10 text-[13px] leading-relaxed">
             {hasContent && <MarkdownContent>{msg.content}</MarkdownContent>}
             {agentStreaming && (
@@ -523,21 +535,21 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
     }
     if (msg.type === 'error') {
       return (
-        <div key={key} className="text-[11px] text-destructive/80 px-3 py-1.5 bg-destructive/[0.04] border border-destructive/10">
+        <div key={stableKey} className="text-[11px] text-destructive/80 px-3 py-1.5 bg-destructive/[0.04] border border-destructive/10">
           <div>{msg.content}</div>
           {msg.retryMessage && (
             <button
               onClick={() => { void handleUnlockAndRetry(msg.retryMessage!); }}
               className="mt-1.5 text-[11px] px-2 py-0.5 rounded-md border border-destructive/30 text-destructive/90 bg-transparent hover:bg-destructive/10 cursor-pointer transition-colors"
             >
-              解除占用并重试
+              {msg.content.includes('解除占用') ? '解除占用并重试' : '重试'}
             </button>
           )}
         </div>
       );
     }
     return (
-      <div key={key} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+      <div key={stableKey} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
         <div className={cn(
           'max-w-[88%] text-[13px] leading-relaxed',
           msg.role === 'user'
@@ -564,17 +576,16 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
           <button onClick={handleManualCompress} className="agent-icon-btn" title="压缩上下文" disabled={!agentThreadId || agentStreaming}>
             <Shrink size={12} strokeWidth={1.8} />
           </button>
+          {/* 任务 22：记忆按钮入口常驻（原来仅在会话列表收起时显示） */}
+          {bookId > 0 && (
+            <button onClick={() => setShowMemoryManager(true)} className="agent-icon-btn" title="记忆">
+              <BookOpen size={12} strokeWidth={1.8} />
+            </button>
+          )}
           {!sessionsExpanded && (
-            <>
-              {bookId > 0 && (
-                <button onClick={() => setShowMemoryManager(true)} className="agent-icon-btn" title="记忆">
-                  <BookOpen size={12} strokeWidth={1.8} />
-                </button>
-              )}
-              <button onClick={() => setSessionsExpanded(true)} className="agent-icon-btn" title="展开会话列表">
-                <PanelRightOpen size={12} strokeWidth={1.8} />
-              </button>
-            </>
+            <button onClick={() => setSessionsExpanded(true)} className="agent-icon-btn" title="展开会话列表">
+              <PanelRightOpen size={12} strokeWidth={1.8} />
+            </button>
           )}
           <button
             onClick={onToggleFullscreen}

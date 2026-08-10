@@ -69,9 +69,9 @@ class AgentMemoryService:
             return
         await self.repo.delete(memory_id)
 
-    async def search_memories(self, user_id: int, mode: str, query: str, book_id: int | None = None, memory_type: str | None = None, top_k: int = 5, model_config: dict | None = None):
+    async def search_memories(self, user_id: int, mode: str, query: str, book_id: int | None = None, memory_type: str | None = None, top_k: int = 5, model_config: dict | None = None, source: str | None = None):
         if mode == "fulltext":
-            items = await self.repo.search_fulltext(user_id=user_id, query=query, book_id=book_id, memory_type=memory_type)
+            items = await self.repo.search_fulltext(user_id=user_id, query=query, book_id=book_id, memory_type=memory_type, source=source)
             return [self._to_dict(m) for m in items]
         if mode == "semantic":
             embedding = None
@@ -83,7 +83,7 @@ class AgentMemoryService:
                     logger.warning(f"记忆语义检索 embedding 失败: {exc}")
             if not embedding:
                 return []
-            rows = await self.repo.search_semantic(user_id=user_id, query_embedding=embedding, book_id=book_id, memory_type=memory_type, top_k=top_k)
+            rows = await self.repo.search_semantic(user_id=user_id, query_embedding=embedding, book_id=book_id, memory_type=memory_type, top_k=top_k, source=source)
             result = []
             for row in rows:
                 memory = row["memory"]

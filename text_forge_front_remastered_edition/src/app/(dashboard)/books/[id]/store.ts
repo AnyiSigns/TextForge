@@ -9,6 +9,8 @@ interface AgentMessage {
   token?: string;
   label?: string;
   note?: string;
+  /** 稳定 id：插入时生成，供消息列表 key 使用（任务 22 稳定 key） */
+  id?: string;
   /** 工具卡片消息：工具名与执行状态（作为独立消息插入消息流，顺序天然正确） */
   tool?: string;
   toolStatus?: 'running' | 'done' | 'error';
@@ -101,6 +103,13 @@ interface BookDetailState {
   updateNodeMessage: (nodeId: string, patch: Partial<AgentMessage>) => void;
   closeCardDraw: () => void;
   autoDetectPhase: () => void;
+}
+
+function nextMessageId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `m-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 export const useBookDetailStore = create<BookDetailState>((set) => ({
@@ -201,7 +210,7 @@ export const useBookDetailStore = create<BookDetailState>((set) => ({
 
   addAgentMessage: (msg) =>
     set((state) => ({
-      agentMessages: [...state.agentMessages, msg],
+      agentMessages: [...state.agentMessages, { id: nextMessageId(), ...msg }],
     })),
 
   updateToolMessage: (tool, status) =>
@@ -236,7 +245,7 @@ export const useBookDetailStore = create<BookDetailState>((set) => ({
       return {
         agentMessages: [
           ...messages,
-          { role: 'assistant', content: token, type: 'streaming' },
+          { id: nextMessageId(), role: 'assistant', content: token, type: 'streaming' },
         ],
       };
     }),
