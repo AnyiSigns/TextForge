@@ -2,29 +2,73 @@
 
 import { create } from 'zustand';
 
-interface AgentMessage {
+/**
+ * 任务 25：AgentMessage 改 discriminated union。
+ * type 为判别字段，按类型收敛各自字段，避免「所有字段全可选」的宽接口
+ * 在渲染/更新时误用（如 tool 卡片带 nodeId、review-card 带 toolStatus）。
+ */
+
+interface AgentMessageBase {
   role: 'user' | 'assistant';
   content: string;
-  type?: string;
+  /** 稳定 id：插入时生成，供消息列表 key 使用（任务 22 稳定 key） */
+  id?: string;
+}
+
+/** 普通文本消息（user/assistant/system/suggestions/历史 node-output） */
+export interface AgentTextMessage extends AgentMessageBase {
+  type?: 'user' | 'assistant' | 'system' | 'suggestions' | 'node-output';
   token?: string;
   label?: string;
   note?: string;
-  /** 稳定 id：插入时生成，供消息列表 key 使用（任务 22 稳定 key） */
-  id?: string;
-  /** 工具卡片消息：工具名与执行状态（作为独立消息插入消息流，顺序天然正确） */
-  tool?: string;
+  /** 书籍锁冲突（503）错误消息携带的原始用户指令，供「解除占用并重试」使用 */
+  retryMessage?: string;
+}
+
+/** 流式正文消息 */
+export interface AgentStreamingMessage extends AgentMessageBase {
+  type: 'streaming';
+}
+
+/** 错误消息 */
+export interface AgentErrorMessage extends AgentMessageBase {
+  type: 'error';
+  retryMessage?: string;
+}
+
+/** 工具卡片消息（独立消息插入消息流，顺序天然正确） */
+export interface AgentToolMessage extends AgentMessageBase {
+  type: 'tool';
+  tool: string;
   toolStatus?: 'running' | 'done' | 'error';
   /** 任务 25：tool_call_id 配对——同轮同名工具连续调用不错位；失败语义由 toolSuccess 表达 */
   toolCallId?: string;
   toolSuccess?: boolean;
-  /** 工作流节点卡片消息：nodeId / 状态 / tokens */
+}
+
+/** 工作流节点卡片消息 */
+export interface AgentNodeMessage extends AgentMessageBase {
+  type: 'node';
   nodeId?: string;
   nodeStatus?: 'running' | 'completed' | 'failed';
   tokens?: number;
+  label?: string;
   reason?: string;
-  /** 书籍锁冲突（503）错误消息携带的原始用户指令，供「解除占用并重试」使用 */
-  retryMessage?: string;
 }
+
+/** 事件卡片消息（审核卡 / 提议卡） */
+export interface AgentCardMessage extends AgentMessageBase {
+  type: 'review-card' | 'propose-cards';
+  token?: string;
+}
+
+export type AgentMessage =
+  | AgentTextMessage
+  | AgentStreamingMessage
+  | AgentErrorMessage
+  | AgentToolMessage
+  | AgentNodeMessage
+  | AgentCardMessage;
 
 interface AgentStatus {
   kind: 'idle' | 'thinking' | 'working' | 'error';
@@ -98,7 +142,7 @@ interface BookDetailState {
   /** 按 tool_call_id 优先 / 工具名回退，更新 tool 卡片消息状态（end/error 时复位「请求外援中」） */
   updateToolMessage: (tool: string, status: 'done' | 'error', opts?: { toolCallId?: string; success?: boolean }) => void;
   /** 按 nodeId 更新节点卡片消息（node_stream 累积正文 / node_end 状态） */
-  updateNodeMessage: (nodeId: string, patch: Partial<AgentMessage>) => void;
+  updateNodeMessage: (nodeId: string, patch: Partial<AgentNodeMessage>) => void;
   closeCardDraw: () => void;
   autoDetectPhase: () => void;
 }

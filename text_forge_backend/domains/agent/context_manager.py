@@ -114,6 +114,8 @@ async def auto_compress_node(state: UserAgentState, session_factory=None) -> dic
         "messages": messages[-COMPRESS_KEEP:],
         "compressed_context": summary,
         "message_count_at_compress": len(messages),
+        # 任务 28 指标层：压缩次数计数
+        "turn_metrics": {"compress_count": 1},
     }
 
 

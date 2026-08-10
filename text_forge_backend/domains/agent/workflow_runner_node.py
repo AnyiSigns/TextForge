@@ -9,7 +9,7 @@ from .workflow_scheduler import run_workflow as scheduler_run_workflow
 logger = get_logger(__name__)
 
 
-async def _finish_with_candidate(result: dict[str, Any], target_chapter_id: int | None = None, preferred_node_id: str | None = None) -> dict[str, Any]:
+async def _finish_with_candidate(result: dict[str, Any], target_chapter_id: int | None = None, preferred_node_id: str | None = None, user_id: int = 0, book_id: int | None = None) -> dict[str, Any]:
     """工作流执行完毕后构造「候选正文确认」回复。
 
     直接把候选正文节点整理成一条 AIMessage 作为最终回复（不经 LLM），
@@ -23,6 +23,8 @@ async def _finish_with_candidate(result: dict[str, Any], target_chapter_id: int 
         result: run_workflow / execute_node 的返回。
         target_chapter_id: 目标章节 ID。
         preferred_node_id: 用户最近一次选定的节点 ID（自动沿用）。
+        user_id: 当前用户 ID（任务 29 审计用）。
+        book_id: 当前书籍 ID（任务 29 审计用）。
 
     Returns:
         含 messages(展示回复)、workflow_result、candidate_reply_ready 的状态更新。
@@ -58,6 +60,25 @@ async def _finish_with_candidate(result: dict[str, Any], target_chapter_id: int 
                             max_ver = (await session.execute(select(func.max(ChapterContent.version)).where(ChapterContent.chapter_id == target_chapter_id))).scalar() or 0
                             session.add(ChapterContent(chapter_id=target_chapter_id, content=content, version=max_ver + 1))
                             await session.commit()
+                            # 任务 29 写操作审计：工作流候选正文自动沿用落库留痕
+                            try:
+                                from .agent_nodes import _get_thread_id
+                                from .metrics import record_write_audit
+
+                                await record_write_audit(
+                                    db_manager.with_db,
+                                    thread_id=_get_thread_id(),
+                                    user_id=user_id,
+                                    book_id=book_id or None,
+                                    tool_name="write_workflow_candidate",
+                                    operation="workflow.auto_apply",
+                                    args={"chapter_id": target_chapter_id, "node_id": preferred_node_id},
+                                    decision="auto",
+                                    result="ok",
+                                    meta={"label": label, "chars": len(content)},
+                                )
+                            except Exception as audit_exc:
+                                logger.warning(f"[audit] 工作流自动沿用审计失败: {audit_exc}")
                             reply = (
                                 f"已自动沿用您此前选定的【{label}】节点，将第{target_chapter_id}章正文写入章节库"
                                 f"（第 {max_ver + 1} 版，{len(content)} 字）。如需改用其他节点输出，告诉我即可。"
@@ -284,7 +305,7 @@ async def workflow_runner_node(state: dict[str, Any]) -> dict[str, Any]:
                         ]
                     else:
                         result["content_nodes"] = []
-        return await _finish_with_candidate(result, target_chapter_id, state.get("preferred_workflow_node"))
+        return await _finish_with_candidate(result, target_chapter_id, state.get("preferred_workflow_node"), user_id, book_id)
 
     try:
         result = await scheduler_run_workflow(
@@ -305,4 +326,4 @@ async def workflow_runner_node(state: dict[str, Any]) -> dict[str, Any]:
             "message": f"工作流执行异常: {exc}",
             "content_nodes": [],
         }
-    return await _finish_with_candidate(result, target_chapter_id, state.get("preferred_workflow_node"))
+    return await _finish_with_candidate(result, target_chapter_id, state.get("preferred_workflow_node"), user_id, book_id)

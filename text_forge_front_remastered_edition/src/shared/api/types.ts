@@ -258,7 +258,7 @@ export interface KnowledgeDoc {
 export interface SSEEvent {
   type: 'token' | 'agent_token' | 'agent_reasoning' | 'think_start' | 'agent_think_end' | 'tool_start' | 'tool_end' | 'progress' |
         'node_start' | 'node_stream' | 'node_end' | 'node_fail' | 'subgraph_start' |
-        'propose_cards' | 'review_card' | 'suggestions' | 'extend_outline' | 'title_update' | 'compress_done' | 'end' | 'error';
+        'propose_cards' | 'review_card' | 'suggestions' | 'extend_outline' | 'title_update' | 'compress_done' | 'turn_metrics' | 'end' | 'error';
   token?: string;
   tool?: string;
   tool_call_id?: string;
@@ -290,6 +290,20 @@ export interface SSEEvent {
   removed_count?: number;
   remaining_count?: number;
   items?: Array<{ type?: string; message?: string; suggestion?: string }>;
+  // 任务 28：回合指标（turn_metrics 事件）
+  metrics?: {
+    thread_id?: string;
+    subgraph?: string;
+    duration_ms?: number;
+    llm_calls?: number;
+    tool_calls?: number;
+    tool_success?: number;
+    tool_fail?: number;
+    compress_count?: number;
+    approval_count?: number;
+    approval_accept?: number;
+    details?: Record<string, unknown>;
+  };
 }
 
 export interface BookContextConfig {

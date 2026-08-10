@@ -1,4 +1,6 @@
+from .agent_audit import AgentWriteAudit
 from .agent_memory import AgentMemory
+from .agent_metric import AgentTurnMetric
 from .base import Base
 from .book import (
     Book,
@@ -24,6 +26,8 @@ from .writing_session import WritingSession
 
 __all__ = [
     "AgentMemory",
+    "AgentTurnMetric",
+    "AgentWriteAudit",
     "Base",
     "Book",
     "BookContextConfig",

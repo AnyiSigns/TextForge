@@ -5,6 +5,31 @@ from langgraph.graph import add_messages
 from shared.utils import merge_dicts as _merge_dicts
 
 
+def merge_metrics(base: dict | None, overlay: dict | None) -> dict:
+    """指标聚合 reducer：数值相加、嵌套 dict 递归合并（其余类型取 overlay）。
+
+    用于 turn_metrics / subgraph_steps 等需要「同回合跨节点累加」的计数器字段，
+    与 merge_dicts（直接覆盖）语义不同。
+
+    特殊值：overlay 含 "__reset__": True 时整体重置（新用户回合由
+    _prepare_agent_state 传入，避免 checkpoint 旧值被保留导致跨回合累计）。
+    """
+    overlay = overlay or {}
+    if overlay.get("__reset__"):
+        return {k: v for k, v in overlay.items() if k != "__reset__"}
+    result = dict(base or {})
+    for key, value in overlay.items():
+        if key == "__reset__":
+            continue
+        if isinstance(value, dict):
+            result[key] = merge_metrics(result.get(key), value)
+        elif isinstance(value, (int, float)):
+            result[key] = result.get(key, 0) + value
+        else:
+            result[key] = value
+    return result
+
+
 class UserAgentState(TypedDict):
     messages: Annotated[list, add_messages]
     user_id: int
@@ -32,3 +57,6 @@ class UserAgentState(TypedDict):
     subgraph: str  # 当前创作子图：chat/worldbuilding/outlining/drafting/revising（supervisor 分类结果）
     resume_from_subgraph: str | None  # resume 回合直接回原子图，不重新分类
     last_digest_message_count: int | None  # 任务 19b：最近一次 auto_digest 时的消息数，用于节流（新增 ≥ N 条才再生成摘要）
+    # 任务 28 指标层：单回合跨节点累加的计数器（LLM 调用/工具成败/压缩次数/审批计数/按子图步数）。
+    turn_metrics: Annotated[dict, merge_metrics]
+    subgraph_steps: Annotated[dict, merge_metrics]  # 子图 step cap：{subgraph: 已执行步数}

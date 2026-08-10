@@ -5,9 +5,9 @@ import { Bot, X, Pin, PinOff, Send, CircleStop } from 'lucide-react';
 import { cn } from '@/shared/lib/cn';
 import { useBookDetailStore } from '@/app/(dashboard)/books/[id]/store';
 import { useAgentSender } from './useAgentSender';
+import { performUnlockAndRetry } from '@/app/(dashboard)/books/[id]/AgentPanel/useAgentReview';
 import { useManuscriptStore } from '@/app/manuscript/book/[bookId]/store';
 import * as contentsApi from '@/shared/api/contents';
-import * as agentApi from '@/shared/api/agent';
 import type { Character } from '@/shared/api/types';
 import { WriteReviewCard } from '../../app/manuscript/book/[bookId]/WriteReviewCard';
 
@@ -264,18 +264,8 @@ export function AgentDock() {
     void sendMessage(text);
   };
 
-  const unlockAndRetry = async (retryMessage: string) => {
-    const ok = await agentApi.releaseBookLock(bookId);
-    if (ok) {
-      useBookDetailStore.setState((s) => ({
-        agentMessages: [...s.agentMessages, { role: 'assistant', content: '书籍任务锁已解除，正在重试您的指令…', type: 'system' }],
-      }));
-      void sendMessage(retryMessage);
-    } else {
-      useBookDetailStore.setState((s) => ({
-        agentMessages: [...s.agentMessages, { role: 'assistant', content: '解除占用失败，请稍后重试。', type: 'error' }],
-      }));
-    }
+  const unlockAndRetry = (retryMessage: string) => {
+    void performUnlockAndRetry(bookId, retryMessage, sendMessage);
   };
 
   if (!pos) return null;
@@ -330,22 +320,26 @@ export function AgentDock() {
 
           <div className="flex-1 space-y-2 overflow-y-auto px-3 py-2 text-[12px]">
             {visible.length === 0 && <div className="text-muted-foreground/70">和 Agent 对话，或选中正文发起润色/检查。</div>}
-            {visible.slice(-14).map((m, i) => (
-              <div
-                key={i}
-                className={cn('whitespace-pre-wrap break-words', m.type === 'error' ? 'text-destructive/80' : 'text-foreground/80')}
-              >
-                {m.content || (m.type === 'streaming' ? '…' : '')}
-                {m.retryMessage && (
-                  <button
-                    onClick={() => { void unlockAndRetry(m.retryMessage!); }}
-                    className="mt-1 block text-[11px] px-2 py-0.5 rounded-md border border-destructive/30 text-destructive/90 bg-transparent hover:bg-destructive/10 cursor-pointer transition-colors"
-                  >
-                    解除占用并重试
-                  </button>
-                )}
-              </div>
-            ))}
+            {visible.slice(-14).map((m, i) => {
+              // 任务 25：AgentMessage 为 discriminated union，retryMessage 仅错误消息携带
+              const retryMsg = m.type === 'error' ? m.retryMessage : undefined;
+              return (
+                <div
+                  key={i}
+                  className={cn('whitespace-pre-wrap break-words', m.type === 'error' ? 'text-destructive/80' : 'text-foreground/80')}
+                >
+                  {m.content || (m.type === 'streaming' ? '…' : '')}
+                  {retryMsg && (
+                    <button
+                      onClick={() => { void unlockAndRetry(retryMsg!); }}
+                      className="mt-1 block text-[11px] px-2 py-0.5 rounded-md border border-destructive/30 text-destructive/90 bg-transparent hover:bg-destructive/10 cursor-pointer transition-colors"
+                    >
+                      解除占用并重试
+                    </button>
+                  )}
+                </div>
+              );
+            })}
             <div ref={messagesEndRef} />
           </div>
 

@@ -18,6 +18,23 @@ logger = get_logger(__name__)
 
 SUBGRAPH_NAMES = ("worldbuilding", "outlining", "drafting", "revising")
 
+# 任务 28 子图 step cap：各子图在单回合内允许的最大 agent 步数（每次 LLM 调用 = 1 步）。
+# 阈值参考：drafting 合法并行读多章放宽；outlining 建大纲单次事务不涉及多轮，保持保守。
+SUBGRAPH_STEP_CAPS = {
+    "worldbuilding": 8,
+    "outlining": 8,
+    "drafting": 12,
+    "revising": 8,
+}
+
+# 任务 29：绕过门控的写工具（直接落库，不进审批队列）也需审计留痕。
+# 与 gating_service._TOOL_OP 互补：_TOOL_OP 是「门控写工具」，这里是「非门控写工具」，
+# 新增写工具时必须登记到二者之一，否则审计层静默漏审。
+UNGATED_WRITE_TOOLS = {
+    "write_workflow_candidate",
+    "generate_chapter",
+}
+
 # 任务 19a：子图入口 auto-recall 的 per-turn 缓存。
 # key = (user_id, book_id, 最后一条用户消息前 500 字)，同一回合内子图被多次调用
 # （工具循环回跳）时命中缓存，避免对同一句用户指令重复做语义检索烧 token。
@@ -112,6 +129,57 @@ def _emit_custom(state: UserAgentState, etype: str, **kw) -> None:
             writer({"event": etype, **kw})
     except Exception:
         pass
+
+
+def _get_thread_id() -> str:
+    """从 LangGraph 运行时配置读取当前 thread_id（写操作审计用）。"""
+    try:
+        from langgraph.config import get_config
+
+        cfg = get_config()
+        return (cfg.get("configurable") or {}).get("thread_id") or ""
+    except Exception:
+        return ""
+
+
+def _audit_write_row(
+    state: UserAgentState,
+    head: dict,
+    operation: str | None,
+    decision: str = "",
+    result: dict | None = None,
+) -> dict:
+    """构造写工具审计行（不落库，由调用方批量提交，减少每工具一次 DB 事务）。
+
+    任务 29：写工具门控/执行留痕。行数据随后交给 metrics.record_write_audits
+    一次性写入；best-effort，失败不影响主流程。
+    """
+    result_status = ""
+    if result is not None:
+        result_status = (
+            "cancelled" if result.get("cancelled") else "error" if result.get("error") else "ok"
+        )
+    return {
+        "thread_id": _get_thread_id(),
+        "user_id": state.get("user_id", 0),
+        "book_id": state.get("active_book_id", 0) or None,
+        "tool_name": head.get("tool_name", ""),
+        "operation": operation or "",
+        "args": head.get("tool_args") or {},
+        "decision": decision,
+        "result": result_status,
+        "meta": {"subgraph": state.get("subgraph", "")},
+    }
+
+
+async def _flush_audit_rows(session_factory, rows: list[dict]) -> None:
+    """批量提交写工具审计行（best-effort，失败不影响主流程）。"""
+    try:
+        from .metrics import record_write_audits
+
+        await record_write_audits(session_factory, rows)
+    except Exception as exc:
+        logger.warning(f"[audit] 写工具审计批量提交失败: {exc}")
 
 AGENT_SYSTEM_PROMPT = """你是 TextForge Agent，一位专业的 小说/网文 创作AI助手。
 
@@ -375,6 +443,12 @@ async def agent_call(state: UserAgentState, subgraph: str = "outlining") -> dict
     # 工作流结果确认回合：若模型已直接产出询问回复（无工具调用），
     # 清空 workflow_result，使后续回合（用户选定正文后）能正常调用 write_chapter_content 落库。
     _update_after_call: dict[str, Any] = {"messages": [result]}
+    # 任务 28 指标层：每次子图 agent LLM 调用 = 1 步 + 1 次 LLM 调用，按子图归属统计。
+    _update_after_call["turn_metrics"] = {
+        "llm_calls": 1,
+        "llm_calls_per_subgraph": {subgraph: 1},
+    }
+    _update_after_call["subgraph_steps"] = {subgraph: 1}
     if state.get("workflow_result") and not tool_calls:
         _update_after_call["workflow_result"] = None
     return _update_after_call
@@ -440,7 +514,10 @@ async def supervisor_node(state: UserAgentState) -> dict[str, Any]:
     route = "chat"
     try:
         llm = ModelFactory(state["model_config"])
-        result = await llm.main.ainvoke(
+        # 任务 10 模型分层：supervisor 路由用轻量 router 模型（未配置 router_config
+        # 时 ModelFactory 已回退 main；测试桩无 router 属性时 getattr 回退 main）。
+        supervisor_model = getattr(llm, "router", None) or llm.main
+        result = await supervisor_model.ainvoke(
             [SystemMessage(content=SUPERVISOR_PROMPT), HumanMessage(content=content[:2000])]
         )
         text = result.content if hasattr(result, "content") else str(result)
@@ -449,7 +526,11 @@ async def supervisor_node(state: UserAgentState) -> dict[str, Any]:
         logger.warning(f"[supervisor_node] 意图分类失败，默认 chat: {exc}")
         route = "chat"
     _emit_custom(state, "subgraph_start", subgraph=route, label=SUBGRAPH_LABELS.get(route, route))
-    return {"subgraph": route}
+    return {
+        "subgraph": route,
+        # 任务 28 指标层：supervisor 分类也是一次 LLM 调用。
+        "turn_metrics": {"llm_calls": 1},
+    }
 
 
 def supervisor_router(state: UserAgentState) -> str:
@@ -483,12 +564,19 @@ async def chat_node(state: UserAgentState) -> dict[str, Any]:
     llm = ModelFactory(state["model_config"])
     reply = ""
     try:
-        result = await llm.main.ainvoke([SystemMessage(content=CHAT_PROMPT)] + state["messages"])
+        # 任务 10 模型分层：chat 快路径用轻量 audit 模型（未配置 audit_config 时
+        # ModelFactory 已回退 main；测试桩无 audit 属性时 getattr 回退 main）。
+        chat_model = getattr(llm, "audit", None) or llm.main
+        result = await chat_model.ainvoke([SystemMessage(content=CHAT_PROMPT)] + state["messages"])
         reply = result.content if hasattr(result, "content") else str(result)
     except Exception as exc:
         logger.error(f"[chat_node] 模型调用失败: {exc}", exc_info=True)
         reply = f"抱歉，模型调用失败，请稍后重试或检查模型配置。（{exc}）"
-    return {"messages": [AIMessage(content=reply)]}
+    return {
+        "messages": [AIMessage(content=reply)],
+        # 任务 28 指标层：chat 快路径计一次 LLM 调用。
+        "turn_metrics": {"llm_calls": 1},
+    }
 
 
 def agent_router(state: UserAgentState) -> str:
@@ -614,6 +702,19 @@ def quality_gate_router(state: UserAgentState) -> str:
             f"[quality_gate_router] 子图={state.get('subgraph')} 连续 {tool_rounds} 轮工具调用未结束，终止循环"
         )
         return END
+
+    # 任务 28 子图 step cap：单回合内某子图 agent 步数（LLM 调用次数）超过上限即终止，
+    # 防止单子图空转（如模型反复调查询工具却始终不产出正文），与 tool_rounds 互补——
+    # tool_rounds 只管「连续工具消息」，step cap 管「跨工具循环的子图总步数」。
+    sub = state.get("subgraph")
+    if sub in SUBGRAPH_STEP_CAPS:
+        sub_steps = (state.get("subgraph_steps") or {}).get(sub, 0)
+        cap = SUBGRAPH_STEP_CAPS[sub]
+        if sub_steps >= cap:
+            logger.warning(
+                f"[quality_gate_router] 子图={sub} 已达步数上限 {cap}，终止循环"
+            )
+            return END
 
     if _should_compress(state):
         return "compress"
@@ -776,19 +877,51 @@ async def gated_tool_node(
             name=head["tool_name"],
             tool_call_id=head.get("tool_id", ""),
         )
+        # 任务 29 写操作审计：执行被审批的写工具留痕（累积到批次，函数末尾统一提交）
+        audit_rows.append(
+            _audit_write_row(
+                state, head, op, decision=decision, result=result
+            )
+        )
+        _metrics_update: dict[str, Any] = {
+            "turn_metrics": {
+                "tool_calls": 1,
+                "tool_calls_per_subgraph": {state.get("subgraph", ""): 1},
+                **(
+                    {"tool_success": 1}
+                    if not (isinstance(result, dict) and (result.get("error") or result.get("cancelled")))
+                    else {"tool_fail": 1}
+                ),
+                # 任务 28 修复：approval_accept 只在真正采纳（accept/edit）时累计，
+                # terminate/retry 不计入通过率（retry 后续会重跑并再次弹卡，最终以 accept 为准）。
+                **(
+                    {"approval_accept": 1}
+                    if decision in ("accept", "edit")
+                    else {}
+                ),
+            }
+        }
         rest = queue[1:]
         if rest:
             nxt = rest[0]
             nxt_op = resolve_operation(nxt["tool_name"], nxt["tool_args"]) or ""
             # 队首已执行，剩余继续弹卡等待下一次审批（decision 由下次 review_action 注入）
+            await _flush_audit_rows(session_factory, audit_rows)
             return {
                 "messages": [tool_msg],
                 "pending_tool": {"queue": rest},
                 "pending_review": build_preview(
                     nxt_op, nxt["tool_name"], nxt["tool_args"]
                 ),
+                **_metrics_update,
             }
-        return {"messages": [tool_msg], "pending_tool": None, "pending_review": None}
+        await _flush_audit_rows(session_factory, audit_rows)
+        return {
+            "messages": [tool_msg],
+            "pending_tool": None,
+            "pending_review": None,
+            **_metrics_update,
+        }
 
     # 正常路径：非写工具立即执行，写工具全部入队拦截
     messages = state.get("messages", [])
@@ -873,6 +1006,10 @@ async def gated_tool_node(
     }
     pending_workflow: dict | None = state.get("pending_workflow") or None
     preferred_workflow_node: str | None = state.get("preferred_workflow_node") or None
+    # 任务 28 指标层：本节点内累计的工具调用指标（工具数/成败按子图归属）
+    tool_metrics_acc: dict[str, Any] = {}
+    # 任务 29 写操作审计：本节点内累积的审计行，末尾一次事务批量提交
+    audit_rows: list[dict] = []
     for tc in tool_calls:
         name = tc.get("name")
         args = dict(tc.get("args") or {})
@@ -892,8 +1029,40 @@ async def gated_tool_node(
             pending_tool_queue.append(
                 {"tool_name": name, "tool_args": args, "tool_id": tc.get("id", "")}
             )
+            # 任务 29 写操作审计：写工具被门控拦截留痕（decision 空 = 待审批）
+            audit_rows.append(
+                _audit_write_row(
+                    state, {"tool_name": name, "tool_args": args}, resolve_operation(name, args)
+                )
+            )
+            # 任务 28 修复：拦截弹卡计一次审批（approval_count），供通过率统计
+            tool_metrics_acc["approval_count"] = tool_metrics_acc.get("approval_count", 0) + 1
             continue  # 拦截，不执行，等待审批
         result = await service.invoke(name, args)
+        # 任务 28 指标层：非门控工具执行结果统计（成功/失败按子图归属；
+        # cancelled 与 error 同视为失败，避免「用户取消」被误计为成功）
+        tool_metrics_acc["tool_calls"] = tool_metrics_acc.get("tool_calls", 0) + 1
+        tool_metrics_acc.setdefault("tool_calls_per_subgraph", {})
+        _sub = state.get("subgraph", "") or ""
+        tool_metrics_acc["tool_calls_per_subgraph"][_sub] = (
+            tool_metrics_acc["tool_calls_per_subgraph"].get(_sub, 0) + 1
+        )
+        _failed = isinstance(result, dict) and (result.get("error") or result.get("cancelled"))
+        tool_metrics_acc["tool_fail" if _failed else "tool_success"] = (
+            tool_metrics_acc.get("tool_fail" if _failed else "tool_success", 0) + 1
+        )
+        # 任务 29 写操作审计：绕过门控的写工具（write_workflow_candidate /
+        # generate_chapter 等直接落库）必须留痕；新增写工具须登记到 UNGATED_WRITE_TOOLS。
+        if name in UNGATED_WRITE_TOOLS:
+            audit_rows.append(
+                _audit_write_row(
+                    state,
+                    {"tool_name": name, "tool_args": args},
+                    resolve_operation(name, args) or "workflow.write",
+                    decision="auto",
+                    result=result,
+                )
+            )
         # 工作流桥接工具把执行意图放在返回体的 pending_workflow 字段中，
         # 需要写回 state 才能让 workflow_runner 节点真正执行并流式输出。
         if isinstance(result, dict) and result.get("pending_workflow"):
@@ -919,12 +1088,17 @@ async def gated_tool_node(
         head = pending_tool_queue[0]
         op = resolve_operation(head["tool_name"], head["tool_args"]) or ""
         pending_review = build_preview(op, head["tool_name"], head["tool_args"])
+        await _flush_audit_rows(session_factory, audit_rows)
         return {
             "messages": tool_msgs,
             "pending_tool": {"queue": pending_tool_queue},
             "pending_review": pending_review,
+            "turn_metrics": tool_metrics_acc,
         }
+    await _flush_audit_rows(session_factory, audit_rows)
     update: dict[str, Any] = {"messages": tool_msgs}
+    if tool_metrics_acc:
+        update["turn_metrics"] = tool_metrics_acc
     if pending_workflow:
         update["pending_workflow"] = pending_workflow
     if preferred_workflow_node:

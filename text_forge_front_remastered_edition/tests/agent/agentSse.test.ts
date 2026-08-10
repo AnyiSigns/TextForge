@@ -254,7 +254,10 @@ describe('useAgentSender 事件处理（store 状态变更）', () => {
     expect(cards.find((c) => c.nodeId === 'polish')).toMatchObject({ status: 'completed', tokens: 3 });
 
     // 工作流工具卡片独立成消息，最终复位为 done（无 running 残留）
-    const wfCard = state.agentMessages.find((m) => m.type === 'tool' && m.tool === 'execute_workflow');
+    const wfCard = state.agentMessages.find(
+      (m): m is Extract<(typeof state.agentMessages)[number], { type: 'tool' }> =>
+        m.type === 'tool' && m.tool === 'execute_workflow',
+    );
     expect(wfCard).toBeDefined();
     expect(wfCard?.toolStatus).toBe('done');
     expect(state.agentMessages.some((m) => m.type === 'tool' && m.toolStatus === 'running')).toBe(false);

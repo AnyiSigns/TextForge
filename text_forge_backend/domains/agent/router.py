@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Annotated, Any
@@ -342,6 +343,9 @@ async def _prepare_agent_state(
             "workflow_result": None,
             "pending_workflow": None,
             "pending_tool": None,
+            # 任务 28 指标层：每回合独立计数，新回合清零（__reset__ 让 reducer 覆盖旧值）。
+            "turn_metrics": {"__reset__": True},
+            "subgraph_steps": {"__reset__": True},
             # 注意：suggestions_signature / message_count_at_compress 不在新回合重置，
             # 缺省 key 时 LangGraph 保留 checkpoint 旧值，跨轮建议去重与压缩计数才能生效；
             # 若此处强制置 None 会覆盖 checkpoint 值，导致去重失效、每轮重复推送建议。
@@ -677,7 +681,13 @@ async def stream_agent(
             if not state_snapshot:
                 raise HTTPException(status_code=404, detail="未找到会话状态")
 
-            state_data = state_snapshot.get("channel_values", {})
+            state_data = dict(state_snapshot.get("channel_values", {}))
+            # 任务 28 修复：turn_metrics/subgraph_steps 是求和 reducer 通道，
+            # resume 输入会把 checkpoint 旧值再次喂给 reducer 求和导致计数翻倍
+            # （并可能使 quality_gate_router 读到虚高的 subgraph_steps 提前 END）。
+            # 从输入中剔除这两个键：LangGraph 保留 checkpoint 原值，新节点执行继续累加。
+            state_data.pop("turn_metrics", None)
+            state_data.pop("subgraph_steps", None)
             pending_tool = state_data.get("pending_tool")
             if pending_tool:
                 # 被门控拦截的写工具审批：直接交回 tool_calls 节点执行，不重跑 agent
@@ -845,6 +855,10 @@ async def stream_agent(
 
         async def event_generator():
             _ag_iter = None
+            # 任务 28 指标层：回合开始时间（time.monotonic 单调时钟，不受系统时间调整影响）
+            _turn_started = time.monotonic()
+            # 回合指标 payload：先构造并下发 SSE 事件，落库在 end/锁释放后进行
+            _metrics_payload: dict | None = None
             try:
                 yield ":\n\n"
                 final_reply = ""
@@ -1084,6 +1098,22 @@ async def stream_agent(
                             pass
                 except Exception as exc:
                     logger.warning(f"SSE 推送建议失败: {exc}")
+                # 任务 28 指标层：回合指标 SSE 事件（必须在 end 之前推送，
+                # 前端可读取完整指标；end 事件后流尚未关闭）。落库移到 end 之后，
+                # 避免新开池连接 + commit 阻塞用户可见的流结束（同标题/摘要的处理顺序）。
+                try:
+                    from .metrics import (
+                        build_turn_metrics_payload,
+                        sse_turn_metrics_line,
+                    )
+
+                    _metrics_payload = build_turn_metrics_payload(
+                        final_state or {}, _turn_started
+                    )
+                    _metrics_payload["thread_id"] = thread_id
+                    yield sse_turn_metrics_line(_metrics_payload)
+                except Exception as exc:
+                    logger.warning(f"[metrics] 回合指标事件下发失败: {exc}")
                 # 先推送 end，让前端立即结束流式（三点脉冲消失、streaming 定型）。
                 # 标题生成涉及一次模型调用（可能耗时数秒），放在 end 之后执行，
                 # 避免阻塞主回复流结束导致前端长时间显示「正在生成」指示器。
@@ -1120,6 +1150,28 @@ async def stream_agent(
                             yield f"data: {json.dumps({'type': 'title_update', 'thread_id': thread_id, 'title': generated}, ensure_ascii=False)}\n\n"
                     except Exception as exc:
                         logger.warning(f"自动生成会话标题失败: {exc}")
+                # 任务 28 指标层：回合指标落库 + 结构化日志。放在 end/锁释放之后，
+                # 与 auto_digest/标题同一批非阻塞收尾，避免新开池连接阻塞用户可见流结束。
+                if _metrics_payload:
+                    try:
+                        from .metrics import persist_turn_metrics
+
+                        await persist_turn_metrics(
+                            db_manager.with_db, user_id, book_id, _metrics_payload
+                        )
+                        logger.info(
+                            f"[metrics] turn={thread_id} subgraph={_metrics_payload.get('subgraph')} "
+                            f"duration_ms={_metrics_payload.get('duration_ms')} "
+                            f"llm_calls={_metrics_payload.get('llm_calls')} "
+                            f"tool_calls={_metrics_payload.get('tool_calls')} "
+                            f"success={_metrics_payload.get('tool_success')} "
+                            f"fail={_metrics_payload.get('tool_fail')} "
+                            f"compress={_metrics_payload.get('compress_count')} "
+                            f"approvals={_metrics_payload.get('approval_count')} "
+                            f"accept={_metrics_payload.get('approval_accept')}"
+                        )
+                    except Exception as exc:
+                        logger.warning(f"[metrics] 回合指标落库失败: {exc}")
 
             except Exception as e:
                 app_exc = classify_agent_error(e)
@@ -1422,4 +1474,30 @@ async def review_action(
         checkpointer=checkpoint,
     )
     await graph.aupdate_state(config, values=review_values)
+    # 任务 29 写操作审计：记录用户的审核卡决策（接受/重试/修改/终止）。
+    # pending_review 的写工具决策在 gated_tool_node 执行时另行留痕；
+    # 这里补记工作流审核卡决策。注意：写工具卡 build_preview 也复用 node_id=tool_name，
+    # 必须用 workflow_id 区分——只有真·工作流审核卡才在此记录，避免写工具决策被重复
+    # 记成 operation="workflow.review" 的错标行。
+    try:
+        _pr = state_data.get("pending_review") or {}
+        _wf_id = _pr.get("workflow_id")
+        _node_name = _pr.get("node_id") or ""
+        if _wf_id and _node_name:
+            from .metrics import record_write_audit
+
+            await record_write_audit(
+                db_manager.with_db,
+                thread_id=body.thread_id,
+                user_id=user_id,
+                book_id=conversation.book_id,
+                tool_name=_node_name,
+                operation="workflow.review",
+                args={"node_id": _pr.get("node_id"), "workflow_id": _wf_id},
+                decision=body.action,
+                result="",
+                meta={"edited": bool(body.edited_content)},
+            )
+    except Exception as exc:
+        logger.warning(f"[audit] review_action 审计失败: {exc}")
     return {"status": "ok", "action": body.action}

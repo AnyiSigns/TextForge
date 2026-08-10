@@ -14,6 +14,7 @@ import { StoryFlow } from './StoryFlow';
 import { SimRoom } from './SimRoom';
 import { SidePanel } from '@/features/map/SidePanel/SidePanel';
 import { PanelLeftOpen, MessageCircle, Bot, PenLine, Sparkles } from 'lucide-react';
+import { onAgentOutlinesRefresh } from '@/features/agent/agentEvents';
 
 export default function MapPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -51,10 +52,10 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
   }, [bookId, loadFromApi]);
 
   // Agent 生成/修改大纲（如 AI 追加章节）后刷新左侧大纲树
+  // 任务 25：走类型化事件总线（onAgentOutlinesRefresh），与 agentEvents 注册表保持联动
   useEffect(() => {
     const onRefresh = () => { void loadFromApi(bookId); };
-    window.addEventListener('textforge:refresh-outlines', onRefresh);
-    return () => window.removeEventListener('textforge:refresh-outlines', onRefresh);
+    return onAgentOutlinesRefresh(onRefresh);
   }, [bookId, loadFromApi]);
 
   if (isNaN(bookId)) {

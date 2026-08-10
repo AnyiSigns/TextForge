@@ -4,10 +4,19 @@ import { useRef, useEffect, useCallback } from 'react';
 import { useBookDetailStore } from '@/app/(dashboard)/books/[id]/store';
 import * as agentApi from '@/shared/api/agent';
 import type { SSEEvent } from '@/shared/api/types';
+import {
+  emitAgentOutlinesRefresh,
+  emitAgentSessionsRefresh,
+  emitAgentTitle,
+} from './agentEvents';
 
 /**
  * 共享的 Agent 发送逻辑：封装 SSE 事件处理、流式渲染、滚动与大纲刷新。
  * AgentPanel 与 manuscript 页的 AgentDock 共用，避免 SSE 逻辑分叉。
+ *
+ * 任务 25：sendMessage / resume 合并为同一内部实现（runAgentStream），
+ * 仅入口差异（新消息 vs 空消息续跑）；token 流经 rAF 节流批量写入 store，
+ * 避免每 token 一次全列表重渲。
  */
 export function useAgentSender() {
   const bookId = useBookDetailStore((s) => s.bookId);
@@ -39,11 +48,41 @@ export function useAgentSender() {
   const currentToolNameRef = useRef<string>('');
   const replyBufferRef = useRef('');
   const nearBottomRef = useRef(true);
+  // 任务 25：token 流 rAF 节流——攒批一帧内多次 token 再写一次 store，
+  // 避免每 token 全量 set store 导致长消息列表 O(n²) 重渲。
+  const pendingTokenRef = useRef('');
+  const rafHandleRef = useRef<number | null>(null);
+
+  const flushTokens = useCallback(() => {
+    if (rafHandleRef.current !== null) {
+      cancelAnimationFrame(rafHandleRef.current);
+      rafHandleRef.current = null;
+    }
+    if (pendingTokenRef.current) {
+      replyBufferRef.current += pendingTokenRef.current;
+      pendingTokenRef.current = '';
+      updateAgentStreamToken(replyBufferRef.current);
+    }
+  }, [updateAgentStreamToken]);
+
+  const scheduleToken = useCallback((token: string) => {
+    pendingTokenRef.current += token;
+    if (rafHandleRef.current === null) {
+      rafHandleRef.current = requestAnimationFrame(() => {
+        rafHandleRef.current = null;
+        if (pendingTokenRef.current) {
+          replyBufferRef.current += pendingTokenRef.current;
+          pendingTokenRef.current = '';
+          updateAgentStreamToken(replyBufferRef.current);
+        }
+      });
+    }
+  }, [updateAgentStreamToken]);
 
   const notifyOutlineRefresh = useCallback(() => {
     if (currentToolRef.current.size === 0) return;
     const hasOutline = Array.from(currentToolRef.current).some((t) => t.toLowerCase().includes('outline'));
-    if (hasOutline) window.dispatchEvent(new CustomEvent('textforge:refresh-outlines'));
+    if (hasOutline) emitAgentOutlinesRefresh();
   }, []);
 
   const handleSSEEvent = useCallback(
@@ -58,8 +97,8 @@ export function useAgentSender() {
         case 'token':
         case 'agent_token': {
           // agent_token 为单通道模式下的正文流式事件（与原 token 事件同语义）
-          replyBufferRef.current += event.token || '';
-          updateAgentStreamToken(replyBufferRef.current);
+          const token = event.token || '';
+          if (token) scheduleToken(token);
           break;
         }
         case 'agent_reasoning':
@@ -75,6 +114,7 @@ export function useAgentSender() {
         case 'tool_start': {
           // 工具调用以独立卡片消息插入消息流（顺序天然正确：工具在回复前开始，
           // 卡片就出现在回复之前），不再依赖消息流外单独渲染的状态条。
+          flushTokens();
           const toolName = event.tool || '';
           const toolCallId = event.tool_call_id || '';
           currentToolNameRef.current = toolName;
@@ -105,6 +145,7 @@ export function useAgentSender() {
           break;
         }
         case 'node_start': {
+          flushTokens();
           const nodeId = event.node_id || event.label || '';
           const label = event.label || nodeId;
           setAgentStatus({ kind: 'working', label: `正在执行: ${label}` });
@@ -178,6 +219,9 @@ export function useAgentSender() {
               : '生成章节中...',
           });
           break;
+        case 'turn_metrics':
+          // 任务 28：回合指标事件——仅作调试/日志展示，不影响 UI 状态
+          break;
         case 'propose_cards':
           setPendingReview(null);
           setAgentStatus({ kind: 'working', label: '提议卡片中...' });
@@ -224,15 +268,112 @@ export function useAgentSender() {
           break;
         }
         case 'title_update':
+          // 任务 25：title_update 是会话标题唯一通道（end 事件不携带 title，
+          // 后端契约已确认），统一走 agentEvents 分发避免双通道分歧。
           if (event.thread_id && event.title) {
-            window.dispatchEvent(new CustomEvent('textforge:agent-title', {
-              detail: { threadId: event.thread_id, title: event.title },
-            }));
+            emitAgentTitle(event.thread_id, event.title);
           }
           break;
       }
     },
-    [addAgentMessage, updateAgentStreamToken, setPendingReview, setAgentStatus, setCreativePhase, commitStreamingMessage, upsertNodeStatus, setNodeOutput, updateToolMessage, updateNodeMessage, setAgentReasoning],
+    [addAgentMessage, setPendingReview, setAgentStatus, setCreativePhase, commitStreamingMessage, upsertNodeStatus, setNodeOutput, updateToolMessage, updateNodeMessage, setAgentReasoning, flushTokens, scheduleToken],
+  );
+
+  // 任务 25：sendMessage / resume 共用同一流式执行骨架，仅起始差异（消息内容 / 续跑）。
+  const runAgentStream = useCallback(
+    async (opts: { message: string; threadId: string }) => {
+      setAgentStreaming(true);
+      const abort = new AbortController();
+      abortRef.current = abort;
+      replyBufferRef.current = '';
+      pendingTokenRef.current = '';
+      if (rafHandleRef.current !== null) cancelAnimationFrame(rafHandleRef.current);
+      rafHandleRef.current = null;
+      // 任务 23：新回合复位上一轮的思考气泡内容
+      reasoningBufferRef.current = '';
+      setAgentReasoning('');
+      // 复位上一轮残留的状态（thinking/working/error），避免新一轮开始时旧思考状态被再次激活
+      setAgentStatus({ kind: 'idle' });
+
+      addAgentMessage({ role: 'assistant', content: '', type: 'streaming' });
+      currentToolRef.current.clear();
+      currentToolNameRef.current = '';
+      clearNodeStatuses();
+      clearNodeOutputs();
+
+      try {
+        const onDone = (reply: string) => {
+          // end.reply 是服务端最终确定的回复（含工作流候选正文确认等非流式内容），
+          // 应覆盖缓冲区；仅当 reply 为空时保留流式累积的正文。
+          flushTokens();
+          if (reply) {
+            replyBufferRef.current = reply;
+            updateAgentStreamToken(reply);
+          }
+          // 任务 25：会话标题由后端 title_update 事件统一下发（end 事件不携带 title），
+          // 此处不再处理 title，避免双通道收敛前的冗余分支。
+          // 定型最后一条 streaming 消息（空消息移除），否则残留消息会一直显示 3 点光标/正在酝酿
+          commitStreamingMessage();
+          setAgentStreaming(false);
+          setAgentStatus({ kind: 'idle' });
+          notifyOutlineRefresh();
+        };
+        const onError = (err: string) => {
+          flushTokens();
+          commitStreamingMessage();
+          addAgentMessage({ role: 'assistant', content: err, type: 'error' });
+          setAgentStreaming(false);
+          setAgentStatus({ kind: 'error', message: err });
+        };
+        if (opts.message) {
+          await agentApi.streamAgent(
+            opts.threadId,
+            opts.message,
+            handleSSEEvent,
+            onDone,
+            onError,
+            abort.signal,
+            bookId || undefined,
+          );
+        } else {
+          await agentApi.resumeAgent(
+            opts.threadId,
+            handleSSEEvent,
+            onDone,
+            onError,
+            abort.signal,
+            bookId || undefined,
+          );
+        }
+      } catch (err) {
+        const aborted = (err as Error)?.name === 'AbortError';
+        if (aborted) {
+          // 主动停止（abort 已清空 token/reply 缓冲）：只需定型残留的 streaming 气泡，
+          // 不要再 flush 缓冲——否则 updateAgentStreamToken 找不到 streaming 消息会
+          // 追加一条新消息，产生「停止后重复回复」或跨会话内容泄漏（任务 25 修复）。
+          commitStreamingMessage();
+        } else {
+          // 真实失败：flush 缓冲 + 定型气泡 + 展示错误（含重试按钮）
+          flushTokens();
+          commitStreamingMessage();
+          const errMsg = (err as Error)?.message || 'Agent 请求失败，请重试。';
+          const lockConflict = (err as Error & { status?: number })?.status === 503;
+          // 任务 22：所有错误都附带原消息，供面板渲染「重试」按钮；
+          // 书籍锁冲突（503）时额外提示可解除占用。
+          addAgentMessage({
+            role: 'assistant',
+            content: lockConflict
+              ? `${errMsg}。若确认没有其他任务正在运行，可点击「解除占用并重试」。`
+              : errMsg,
+            type: 'error',
+            retryMessage: opts.message,
+          });
+          setAgentStatus({ kind: 'error', message: errMsg });
+        }
+        setAgentStreaming(false);
+      }
+    },
+    [bookId, addAgentMessage, setAgentStreaming, handleSSEEvent, setAgentStatus, setAgentReasoning, updateAgentStreamToken, notifyOutlineRefresh, commitStreamingMessage, clearNodeStatuses, clearNodeOutputs, flushTokens],
   );
 
   const sendMessage = useCallback(
@@ -249,151 +390,35 @@ export function useAgentSender() {
           const session = await agentApi.startAgentSession(bookId || undefined);
           threadId = session.thread_id;
           setAgentThreadId(threadId);
-          window.dispatchEvent(new CustomEvent('textforge:refresh-agent-sessions'));
+          emitAgentSessionsRefresh();
         } catch {
           addAgentMessage({ role: 'assistant', content: '启动 Agent 会话失败，请重试。', type: 'error' });
           return;
         }
       }
 
-      setAgentStreaming(true);
-      const abort = new AbortController();
-      abortRef.current = abort;
-      replyBufferRef.current = '';
-      // 任务 23：新回合复位上一轮的思考气泡内容
-      reasoningBufferRef.current = '';
-      setAgentReasoning('');
-      // 复位上一轮残留的状态（thinking/working/error），避免新一轮开始时旧思考状态被再次激活
-      setAgentStatus({ kind: 'idle' });
-
-      addAgentMessage({ role: 'assistant', content: '', type: 'streaming' });
-      currentToolRef.current.clear();
-      currentToolNameRef.current = '';
-      clearNodeStatuses();
-      clearNodeOutputs();
-
-      try {
-        await agentApi.streamAgent(
-          threadId,
-          msg,
-          handleSSEEvent,
-          (reply, title) => {
-            // end.reply 是服务端最终确定的回复（含工作流候选正文确认等非流式内容），
-            // 应覆盖缓冲区；仅当 reply 为空时保留流式累积的正文。
-            if (reply) {
-              replyBufferRef.current = reply;
-              updateAgentStreamToken(reply);
-            }
-            // 会话标题由后端写入数据库后随 end 事件一并下发（避免单独 title_update
-            // 事件在 end 之后到达导致前端面板状态紊乱）。这里派发事件更新会话列表。
-            if (title && threadId) {
-              window.dispatchEvent(new CustomEvent('textforge:agent-title', {
-                detail: { threadId, title },
-              }));
-            }
-            // 定型最后一条 streaming 消息（空消息移除），否则残留消息会一直显示 3 点光标/正在酝酿
-            commitStreamingMessage();
-            setAgentStreaming(false);
-            setAgentStatus({ kind: 'idle' });
-            notifyOutlineRefresh();
-          },
-          (err) => {
-            commitStreamingMessage();
-            addAgentMessage({ role: 'assistant', content: err, type: 'error' });
-            setAgentStreaming(false);
-            setAgentStatus({ kind: 'error', message: err });
-          },
-          abort.signal,
-          bookId || undefined,
-        );
-      } catch (err) {
-        // 无论失败还是主动停止，都必须定型残留的 streaming 气泡，
-        // 否则面板残留「三点脉冲/空白消息」造成显示异常。
-        commitStreamingMessage();
-        const aborted = (err as Error)?.name === 'AbortError';
-        if (!aborted) {
-          const errMsg = (err as Error)?.message || 'Agent 请求失败，请重试。';
-          const lockConflict = (err as Error & { status?: number })?.status === 503;
-          // 任务 22：所有错误都附带原消息，供面板渲染「重试」按钮；
-          // 书籍锁冲突（503）时额外提示可解除占用。
-          addAgentMessage({
-            role: 'assistant',
-            content: lockConflict
-              ? `${errMsg}。若确认没有其他任务正在运行，可点击「解除占用并重试」。`
-              : errMsg,
-            type: 'error',
-            retryMessage: msg,
-          });
-          setAgentStatus({ kind: 'error', message: errMsg });
-        }
-        setAgentStreaming(false);
-      }
+      await runAgentStream({ message: msg, threadId });
     },
-    [agentStreaming, agentThreadId, bookId, addAgentMessage, setAgentStreaming, setAgentThreadId, handleSSEEvent, setAgentStatus, setAgentReasoning, updateAgentStreamToken, notifyOutlineRefresh, commitStreamingMessage, clearNodeStatuses, clearNodeOutputs],
+    [agentStreaming, agentThreadId, bookId, addAgentMessage, setAgentThreadId, runAgentStream],
   );
 
   const abort = useCallback(() => {
     // 显式通知服务端取消任务（尽快释放书籍锁），再本地中止连接
     if (agentThreadId) void agentApi.cancelStream(agentThreadId);
     abortRef.current?.abort();
+    if (rafHandleRef.current !== null) cancelAnimationFrame(rafHandleRef.current);
+    rafHandleRef.current = null;
+    // 任务 25 修复：停止时丢弃未刷新的 token 缓冲，避免 catch 里 flushTokens()
+    // 找不到 streaming 消息时追加新消息（重复回复 / 跨会话泄漏）
+    pendingTokenRef.current = '';
+    replyBufferRef.current = '';
   }, [agentThreadId]);
 
   const resume = useCallback(async () => {
     const threadId = agentThreadId;
     if (!threadId) return;
-    setAgentStreaming(true);
-    const abort = new AbortController();
-    abortRef.current = abort;
-    setAgentStatus({ kind: 'idle' });
-    reasoningBufferRef.current = '';
-    setAgentReasoning('');
-    addAgentMessage({ role: 'assistant', content: '', type: 'streaming' });
-    currentToolRef.current.clear();
-    currentToolNameRef.current = '';
-    clearNodeStatuses();
-    clearNodeOutputs();
-    try {
-      await agentApi.resumeAgent(
-        threadId,
-        handleSSEEvent,
-        (reply, title) => {
-          // 审批续跑同样以 end.reply 为准（覆盖缓冲区）
-          if (reply) {
-            replyBufferRef.current = reply;
-            updateAgentStreamToken(reply);
-          }
-          if (title && threadId) {
-            window.dispatchEvent(new CustomEvent('textforge:agent-title', {
-              detail: { threadId, title },
-            }));
-          }
-          commitStreamingMessage();
-          setAgentStreaming(false);
-          setAgentStatus({ kind: 'idle' });
-          notifyOutlineRefresh();
-        },
-        (err) => {
-          commitStreamingMessage();
-          addAgentMessage({ role: 'assistant', content: err, type: 'error' });
-          setAgentStreaming(false);
-          setAgentStatus({ kind: 'error', message: err });
-        },
-        abort.signal,
-        bookId || undefined,
-      );
-    } catch (err) {
-      commitStreamingMessage();
-      const aborted = (err as Error)?.name === 'AbortError';
-      if (!aborted) {
-        addAgentMessage({
-          role: 'assistant',
-          content: (err as Error)?.message || 'Agent 请求失败，请重试。',
-          type: 'error',
-        });
-      }
-      setAgentStreaming(false);
-    }
-  }, [agentThreadId, bookId, addAgentMessage, handleSSEEvent, notifyOutlineRefresh, setAgentStreaming, setAgentStatus, updateAgentStreamToken, clearNodeStatuses, clearNodeOutputs, commitStreamingMessage, setAgentReasoning]);
+    await runAgentStream({ message: '', threadId });
+  }, [agentThreadId, runAgentStream]);
 
   useEffect(() => {
     const el = messagesEndRef.current?.parentElement;
@@ -411,6 +436,13 @@ export function useAgentSender() {
     // 结束后的状态变化仍用 smooth 平滑滚动。
     messagesEndRef.current?.scrollIntoView({ behavior: agentStreaming ? 'auto' : 'smooth' });
   }, [agentMessages, agentStatus, agentStreaming]);
+
+  // 组件卸载时清理 rAF，避免 setState after unmount 告警
+  useEffect(() => {
+    return () => {
+      if (rafHandleRef.current !== null) cancelAnimationFrame(rafHandleRef.current);
+    };
+  }, []);
 
   return { sendMessage, abort, resume, messagesEndRef };
 }

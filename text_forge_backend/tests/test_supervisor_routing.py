@@ -90,7 +90,8 @@ async def test_supervisor_classifies_new_user_message(monkeypatch):
     monkeypatch.setattr(agent_nodes, "ModelFactory", _fake_model)
     state = base_state(messages=[HumanMessage(content="帮我写第一章")])
     result = await supervisor_node(state)
-    assert result == {"subgraph": "drafting"}
+    assert result["subgraph"] == "drafting"
+    assert result["turn_metrics"] == {"llm_calls": 1}
 
 
 @pytest.mark.asyncio
@@ -119,7 +120,8 @@ async def test_supervisor_defaults_chat_on_classify_failure(monkeypatch):
     )
     state = base_state(messages=[HumanMessage(content="随便说点")])
     result = await supervisor_node(state)
-    assert result == {"subgraph": "chat"}
+    assert result["subgraph"] == "chat"
+    assert result["turn_metrics"] == {"llm_calls": 1}
 
 
 # ---------------------------------------------------------------------------
