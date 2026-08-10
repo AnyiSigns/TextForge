@@ -2,7 +2,7 @@ import asyncio
 import json
 import uuid
 from datetime import datetime, timezone
-from typing import Annotated
+from typing import Annotated, Any
 
 import openai
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -66,6 +66,93 @@ async def _generate_title(model_config: dict, user_msg: str, reply: str) -> str 
     except Exception as exc:
         logger.warning(f"生成会话标题失败: {exc}")
         return None
+
+
+# 任务 19b：回合结束自动摘要存库的节流阈值（新增消息 ≥ 该值时触发一次 digest）。
+AUTO_DIGEST_INTERVAL = 10
+# 单次 digest 摘要的输入消息数上限（只取最近 N 条生成，控制 token 成本）。
+AUTO_DIGEST_RECENT = 20
+
+
+async def _auto_digest_if_due(
+    final_state: dict | None,
+    conversation: Conversation,
+    user_id: int,
+    thread_id: str,
+    graph: Any,
+    config: dict,
+) -> None:
+    """回合结束后按节流阈值生成会话摘要并直写 AgentMemory（source=auto_digest）。
+
+    任务 19b 定案：不走 manage_memory（source 硬编码 agent_self_reflection），
+    复用 manual_compress / auto_compress 同款 AgentMemoryRepository 直写路径，
+    落点 agent_memories 表，memory_type="context_summary"（与压缩摘要同语义，recall 可命中）。
+
+    摘要生成失败不影响主流程；节流基于 checkpoint 中 last_digest_message_count，
+    避免每个回合都调用一次 LLM 烧 token。
+    """
+    if not final_state:
+        return
+    messages = final_state.get("messages") or []
+    if len(messages) < AUTO_DIGEST_RECENT:
+        return
+    prev_count = final_state.get("last_digest_message_count") or 0
+    if len(messages) - prev_count < AUTO_DIGEST_INTERVAL:
+        return
+    model_config = final_state.get("model_config") or {}
+    if not model_config.get("main_config"):
+        return
+    try:
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        llm = ModelFactory(model_config)
+        parts = []
+        for msg in messages[-AUTO_DIGEST_RECENT:]:
+            role = getattr(msg, "type", type(msg).__name__)
+            content = getattr(msg, "content", "") or ""
+            if isinstance(content, list):
+                content = " ".join(
+                    p.get("text", "") if isinstance(p, dict) else str(p) for p in content
+                )
+            parts.append(f"{role}: {str(content)[:400]}")
+        combined = "\n".join(parts)
+        prompt = (
+            "请总结以下最近的对话，保留关键创作决策、用户偏好、剧情设定和重要信息。"
+            "这份摘要将作为 Agent 的长期记忆存档：\n\n" + combined[:12000]
+        )
+        result = await llm.main.ainvoke(
+            [
+                SystemMessage(content="你是专业的对话摘要助手。"),
+                HumanMessage(content=prompt),
+            ]
+        )
+        summary = getattr(result, "content", "") or ""
+        if not summary:
+            return
+        from domains.memory.repository import AgentMemoryRepository
+
+        async with db_manager.session_factory() as session:
+            memory_repo = AgentMemoryRepository(session)
+            payload = {
+                "book_id": conversation.book_id,
+                "memory_type": "context_summary",
+                "content": summary,
+                "source": "auto_digest",
+                "meta": {
+                    "thread_id": thread_id,
+                    "digested_at": datetime.now(timezone.utc).isoformat(),
+                    "message_count": len(messages),
+                },
+            }
+            try:
+                payload["embedding"] = await llm.embedding.aembed_query(summary[:2000])
+            except Exception as exc:
+                logger.warning(f"auto_digest 摘要 embedding 生成失败: {exc}")
+            await memory_repo.create(user_id=user_id, data=payload)
+        await graph.aupdate_state(config, values={"last_digest_message_count": len(messages)})
+        logger.info(f"auto_digest: thread={thread_id} 存 {len(summary)} 字摘要")
+    except Exception as exc:
+        logger.warning(f"auto_digest 摘要生成失败: {exc}")
 
 
 async def _get_conversation(
@@ -320,6 +407,8 @@ async def list_conversations(
 async def list_messages(
     conv_id: int,
     user_id: Annotated[int, Depends(get_current)],
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     session: Annotated[AsyncSession, Depends(db_manager.get_db)] = None,
 ):
     conv_stmt = select(Conversation).where(
@@ -332,11 +421,19 @@ async def list_messages(
     stmt = (
         select(Message)
         .where(Message.conversation_id == conv_id)
-        .order_by(Message.create_at)
+        # 任务 23：从最新往回分页（offset 指最新之前的条数）。
+        # create_at + id 双键保证同时间戳多条消息的排序稳定，offset 分页不重复/不遗漏。
+        .order_by(Message.create_at.desc(), Message.id.desc())
+        .offset(offset)
+        .limit(limit)
     )
     result = await session.execute(stmt)
     messages = result.scalars().all()
-    return [MessagesResponse.model_validate(m) for m in messages]
+    # 恢复时间正序，前端直接追加即可
+    return [
+        MessagesResponse.model_validate(m)
+        for m in sorted(messages, key=lambda x: (x.create_at, x.id))
+    ]
 
 
 @router.delete("/conversations/{conv_id}")
@@ -361,6 +458,36 @@ async def delete_conversation(
     await session.delete(conversation)
     await session.commit()
     return {"ok": True}
+
+
+@router.patch("/conversations/{conv_id}")
+async def rename_conversation(
+    conv_id: int,
+    user_id: Annotated[int, Depends(get_current)],
+    body: dict,
+    session: Annotated[AsyncSession, Depends(db_manager.get_db)] = None,
+):
+    """任务 23：会话手动重命名。
+
+    body: {"title": "新标题"}。标题为空/非字符串/超长（>200）返回 422 具体错误，
+    符合错误信息具体化约束。
+    """
+    title = body.get("title")
+    if not isinstance(title, str) or not title.strip():
+        raise HTTPException(status_code=422, detail="会话标题不能为空")
+    title = title.strip()
+    if len(title) > 200:
+        raise HTTPException(status_code=422, detail="会话标题不能超过 200 字")
+    conv_stmt = select(Conversation).where(
+        Conversation.id == conv_id, Conversation.user_id == user_id
+    )
+    conv_result = await session.execute(conv_stmt)
+    conversation = conv_result.scalar_one_or_none()
+    if not conversation:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    conversation.title = title
+    await session.commit()
+    return {"ok": True, "title": title}
 
 
 @router.get("/book-lock")
@@ -811,7 +938,12 @@ async def stream_agent(
                                             yield f"data: {json.dumps({'type': 'progress', 'step': 'generate_chapter', 'n': _gc_n, 'total': _gc_total, 'words': 0, 'eta': 0}, ensure_ascii=False)}\n\n"
                                         elif tname == "generate_outline_extension":
                                             yield f"data: {json.dumps({'type': 'extend_outline', 'step': 'extend_outline', 'n': 0, 'total': 1}, ensure_ascii=False)}\n\n"
-                                        yield f"data: {json.dumps({'type': 'tool_start', 'tool': tname}, ensure_ascii=False)}\n\n"
+                                        # 任务 25：tool_start 携带 tool_call_id，供前端按 id 配对工具卡片
+                                        # （同轮同名工具连续调用不再错位更新）
+                                        _tc_id = (
+                                            _tc.get("id") if isinstance(_tc, dict) else getattr(_tc, "id", "")
+                                        )
+                                        yield f"data: {json.dumps({'type': 'tool_start', 'tool': tname, 'tool_call_id': _tc_id or ''}, ensure_ascii=False)}\n\n"
                         # tool_calls 节点完成：工具执行结束，取 ToolMessage 输出推导业务事件
                         elif node_name == "tool_calls":
                             # 写工具被门控拦截时（gated_tool_node 返回 pending_review），
@@ -826,6 +958,7 @@ async def stream_agent(
                                 _out = m.content
                                 if isinstance(_out, dict):
                                     _out = json.dumps(_out, ensure_ascii=False)
+                                _parsed = None
                                 if isinstance(_out, str) and _out.startswith("{"):
                                     try:
                                         _parsed = json.loads(_out)
@@ -836,8 +969,20 @@ async def stream_agent(
                                     ) == "completed" and _parsed.get("progress_events"):
                                         for prog in _parsed["progress_events"]:
                                             yield f"data: {json.dumps({'type': 'progress', **prog}, ensure_ascii=False)}\n\n"
-                                # 每个工具执行结束各发一次 tool_end（带工具名），供前端复位工具状态条
-                                yield f"data: {json.dumps({'type': 'tool_end', 'tool': m.name}, ensure_ascii=False)}\n\n"
+                                # 任务 25：tool_end 携带 tool_call_id（与 tool_start 配对）
+                                # 与 success 失败语义——工具返回 error 时 UI 不再一律显示成功 ✓。
+                                _tc_id = getattr(m, "tool_call_id", "") or ""
+                                _is_err = False
+                                if isinstance(_parsed, dict) and _parsed.get("error"):
+                                    _is_err = True
+                                elif isinstance(m.content, str):
+                                    _low = m.content.lower()
+                                    _is_err = (
+                                        "error" in _low
+                                        or "field required" in _low
+                                        or "could not find tool" in _low
+                                    )
+                                yield f"data: {json.dumps({'type': 'tool_end', 'tool': m.name, 'tool_call_id': _tc_id, 'success': not _is_err}, ensure_ascii=False)}\n\n"
                         # quality_gate 节点：工作流审计若产生 pending_review，推送审核卡
                         elif (
                             node_name == "quality_gate"
@@ -948,6 +1093,20 @@ async def stream_agent(
                 # 新消息会被 503 拒绝。此处释放后 finally 中的 cleanup 幂等（Lua
                 # 持有者校验 + 心跳任务 cancel 无副作用），重复调用安全。
                 await cleanup()
+                # 任务 19b：回合结束自动摘要存库（节流：新增消息 ≥ AUTO_DIGEST_INTERVAL 才生成）。
+                # 放在锁释放之后，digest 的完整 LLM 调用不阻塞用户新消息发送；失败静默。
+                if not is_resume:
+                    try:
+                        await _auto_digest_if_due(
+                            final_state,
+                            conversation,
+                            user_id,
+                            thread_id,
+                            graph,
+                            config,
+                        )
+                    except Exception as exc:
+                        logger.warning(f"auto_digest 调用失败: {exc}")
                 # 首条消息结束后生成会话标题（5-10 字）并直接写入数据库，
                 # 随后以 title_update 事件下发（此时流尚未关闭，前端仍会读取）。
                 if not is_resume and conversation.title == "新对话":

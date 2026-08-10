@@ -52,7 +52,6 @@ function resetStore() {
     agentThreadId: 't1',
     agentStreaming: false,
     agentMessages: [],
-    agentToolLog: [],
     agentNodeStatuses: [],
     nodeOutputs: {},
     agentStatus: { kind: 'idle' },
@@ -254,8 +253,11 @@ describe('useAgentSender 事件处理（store 状态变更）', () => {
     expect(cards.find((c) => c.nodeId === 'writer')).toMatchObject({ status: 'completed', tokens: 12 });
     expect(cards.find((c) => c.nodeId === 'polish')).toMatchObject({ status: 'completed', tokens: 3 });
 
-    // 工作流工具不显示「请求外援中」工具状态条（execute_workflow 走节点状态卡片承载进度）
-    expect(state.agentToolLog).toHaveLength(0);
+    // 工作流工具卡片独立成消息，最终复位为 done（无 running 残留）
+    const wfCard = state.agentMessages.find((m) => m.type === 'tool' && m.tool === 'execute_workflow');
+    expect(wfCard).toBeDefined();
+    expect(wfCard?.toolStatus).toBe('done');
+    expect(state.agentMessages.some((m) => m.type === 'tool' && m.toolStatus === 'running')).toBe(false);
   });
 
   it('node_start 时状态卡片先置 running', async () => {

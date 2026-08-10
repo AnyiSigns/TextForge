@@ -160,8 +160,8 @@ export async function fetchAgentConversations(): Promise<AgentConversation[]> {
   }));
 }
 
-export async function fetchAgentMessages(conversationId: number): Promise<AgentMessage[]> {
-  const { data } = await apiClient.get<MessageRaw[]>('/agent/conversations/' + conversationId + '/messages');
+export async function fetchAgentMessages(conversationId: number, params?: { limit?: number; offset?: number }): Promise<AgentMessage[]> {
+  const { data } = await apiClient.get<MessageRaw[]>('/agent/conversations/' + conversationId + '/messages', { params });
   return (data ?? []).map((m) => ({
     conversationId: m.conversation_id,
     role: m.role,
@@ -179,6 +179,10 @@ export async function deleteConversation(id: number): Promise<void> {
   } catch {
     // 删除失败静默（会话仍在，用户可重试）
   }
+}
+
+export async function renameConversation(id: number, title: string): Promise<void> {
+  await apiClient.patch(`/agent/conversations/${id}`, { title });
 }
 
 export async function searchAgentMemories(bookId: number, query: string): Promise<AgentMemory[]> {

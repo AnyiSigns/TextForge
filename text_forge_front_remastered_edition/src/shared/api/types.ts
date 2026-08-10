@@ -261,6 +261,8 @@ export interface SSEEvent {
         'propose_cards' | 'review_card' | 'suggestions' | 'extend_outline' | 'title_update' | 'compress_done' | 'end' | 'error';
   token?: string;
   tool?: string;
+  tool_call_id?: string;
+  success?: boolean;
   step?: string;
   node_id?: string;
   label?: string;

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { ArrowUp, CircleStop, Plus, Shrink, BookOpen, PanelRightOpen, PanelRightClose, RefreshCw, Trash2, Search, ChevronDown, X } from 'lucide-react';
+import { ArrowUp, CircleStop, Plus, Shrink, BookOpen, PanelRightOpen, PanelRightClose, RefreshCw, Trash2, Search, ChevronDown, X, Pencil } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/shared/lib/cn';
 import { useBookDetailStore } from '../store';
@@ -79,6 +79,18 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [workflowList, setWorkflowList] = useState<workflowApi.Workflow[]>([]);
   const [sessionSearch, setSessionSearch] = useState('');
+  const [renamingSessionId, setRenamingSessionId] = useState<number | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
+  // 任务 23：@角色/#设定 提及输入
+  const [mention, setMention] = useState<{ kind: 'character' | 'setting'; query: string; index: number; items: Array<{ label: string }> } | null>(null);
+  const [mentionCharacters, setMentionCharacters] = useState<Array<{ name: string }>>([]);
+  const [mentionSettings, setMentionSettings] = useState<Array<{ name: string }>>([]);
+  const mentionStartRef = useRef(0);
+  // 任务 23：消息分页/懒加载——已加载的历史条数（loadMoreHistory 的 offset 基数）
+  const [historyLoadedCount, setHistoryLoadedCount] = useState(0);
+  const loadingMoreRef = useRef(false);
+  const historyConvIdRef = useRef<number | null>(null);
+  const historyScrollElRef = useRef<HTMLElement | null>(null);
   const [draftByThreadId, setDraftByThreadId] = useState<Map<string, string>>(new Map());
   const [modelConfigured, setModelConfigured] = useState<boolean | null>(null);
   const [expandedNodeCards, setExpandedNodeCards] = useState<Set<string>>(new Set());
@@ -101,6 +113,8 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
   const agentMessages = useBookDetailStore((s) => s.agentMessages);
   const agentStreaming = useBookDetailStore((s) => s.agentStreaming);
   const agentStatus = useBookDetailStore((s) => s.agentStatus);
+  const agentReasoning = useBookDetailStore((s) => s.agentReasoning);
+  const agentReasoningExpanded = useBookDetailStore((s) => s.agentReasoningExpanded);
   const agentNodeStatuses = useBookDetailStore((s) => s.agentNodeStatuses);
   const nodeOutputs = useBookDetailStore((s) => s.nodeOutputs);
   const agentThreadId = useBookDetailStore((s) => s.agentThreadId);
@@ -137,6 +151,7 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
   const setAgentThreadId = useBookDetailStore((s) => s.setAgentThreadId);
   const setPendingReview = useBookDetailStore((s) => s.setPendingReview);
   const setAgentOpen = useBookDetailStore((s) => s.setAgentOpen);
+  const setAgentReasoningExpanded = useBookDetailStore((s) => s.setAgentReasoningExpanded);
 
   const fetchSessions = useCallback(async () => {
     setLoadingSessions(true);
@@ -183,14 +198,112 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
     workflowApi.listWorkflows().then(setWorkflowList).catch(() => {});
   }, []);
 
+  // 任务 23：提及输入数据源——角色名 + 设定关键词（文风/世界观/禁忌/自定义维度键）
+  useEffect(() => {
+    let alive = true;
+    if (!bookId) return;
+    Promise.all([
+      import('@/shared/api/characters').then(({ fetchCharacters }) => fetchCharacters(bookId)),
+      import('@/shared/api/books').then(({ fetchCreativeSetting }) => fetchCreativeSetting(bookId)),
+    ]).then(([chars, setting]) => {
+      if (!alive) return;
+      const names = (chars || []).map((c) => ({ name: c.name })).filter((x) => x.name);
+      const dims = setting?.customDimensions || {};
+      const keys = Object.keys(dims).filter(Boolean).map((k) => ({ name: k }));
+      const extras: Array<{ name: string }> = [];
+      if (setting?.tone) extras.push({ name: setting.tone.slice(0, 20) });
+      if (setting?.worldview) extras.push({ name: setting.worldview.slice(0, 20) });
+      if (setting?.writingTaboos) extras.push({ name: setting.writingTaboos.slice(0, 20) });
+      setMentionCharacters(names);
+      setMentionSettings([...keys, ...extras]);
+    }).catch(() => { /* 数据加载失败则提及功能静默降级 */ });
+    return () => { alive = false; };
+  }, [bookId]);
+
   const showWorkflowSuggestions = input.trim().startsWith('用') && workflowList.length > 0;
 
   const handleSend = useCallback(() => {
     const msg = input.trim();
     if (!msg) return;
     setInput('');
+    setMention(null);
     void sendMessage(msg);
   }, [input, sendMessage]);
+
+  // 任务 23：@角色/#设定 提及——输入时检测触发词，弹出建议浮层
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const el = e.target;
+    const value = el.value;
+    setInput(value);
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+    const pos = el.selectionStart ?? value.length;
+    const before = value.slice(0, pos);
+    const at = before.match(/@([\u4e00-\u9fa5\w]*)$/);
+    const hash = before.match(/#([\u4e00-\u9fa5\w]*)$/);
+    if (at) {
+      const query = at[1];
+      const items = mentionCharacters
+        .filter((c) => !query || c.name.includes(query))
+        .map((c) => ({ label: c.name }));
+      if (items.length) {
+        mentionStartRef.current = pos - at[0].length;
+        setMention({ kind: 'character', query, index: 0, items });
+        return;
+      }
+    } else if (hash) {
+      const query = hash[1];
+      const items = mentionSettings
+        .filter((c) => !query || c.name.includes(query))
+        .map((c) => ({ label: c.name }));
+      if (items.length) {
+        mentionStartRef.current = pos - hash[0].length;
+        setMention({ kind: 'setting', query, index: 0, items });
+        return;
+      }
+    }
+    setMention(null);
+  };
+
+  const applyMention = (item: { label: string }) => {
+    if (!mention || !inputRef.current) return;
+    const el = inputRef.current;
+    const value = el.value;
+    const pos = el.selectionStart ?? value.length;
+    const trigger = mention.kind === 'character' ? '@' : '#';
+    const replaced = value.slice(0, mentionStartRef.current) + `${trigger}${item.label} ` + value.slice(pos);
+    setInput(replaced);
+    setMention(null);
+    requestAnimationFrame(() => {
+      el.focus();
+      const caret = mentionStartRef.current + trigger.length + item.label.length + 1;
+      el.setSelectionRange(caret, caret);
+    });
+  };
+
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!mention || !mention.items.length) {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleSend(); }
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setMention((m) => (m ? { ...m, index: (m.index + 1) % m.items.length } : m));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setMention((m) => (m ? { ...m, index: (m.index - 1 + m.items.length) % m.items.length } : m));
+    } else if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault();
+      applyMention(mention.items[mention.index]);
+    } else if (e.key === 'Escape') {
+      setMention(null);
+    } else if (e.key === 'Enter' && e.shiftKey) {
+      // shift+Enter 换行，照常
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      void handleSend();
+    }
+  };
 
   const handleWorkflowSelect = useCallback((wf: workflowApi.Workflow) => {
     const msg = `请用工作流"${wf.name}"（ID: ${wf.id}）执行创作任务。`;
@@ -238,6 +351,7 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
       agentNodeStatuses: [],
       nodeOutputs: {},
       pendingReview: null,
+      agentReasoning: '',
     }));
   };
 
@@ -252,10 +366,10 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
     setAgentThreadId(null);
     useBookDetailStore.setState({
       agentMessages: [],
-      agentToolLog: [],
       agentNodeStatuses: [],
       nodeOutputs: {},
       pendingReview: null,
+      agentReasoning: '',
     });
     setAgentStreaming(false);
     setAgentStatus({ kind: 'idle' });
@@ -276,10 +390,15 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
       abort();
     }
     setAgentThreadId(s.threadId);
-    useBookDetailStore.setState({ agentMessages: [], agentStreaming: false, agentStatus: { kind: 'idle' }, agentToolLog: [], agentNodeStatuses: [], nodeOutputs: {}, pendingReview: null });
+    useBookDetailStore.setState({ agentMessages: [], agentStreaming: false, agentStatus: { kind: 'idle' }, agentNodeStatuses: [], nodeOutputs: {}, pendingReview: null, agentReasoning: '' });
     setInput(draftByThreadId.get(s.threadId) || '');
+    setHistoryLoadedCount(0);
+    historyConvIdRef.current = s.id;
+    historyScrollElRef.current = null;
     try {
-      const msgs = await agentApi.fetchAgentMessages(s.id);
+      // 任务 23：消息分页/懒加载——首次只拉最近 50 条，滚动到顶时加载更早
+      const msgs = await agentApi.fetchAgentMessages(s.id, { limit: 50, offset: 0 });
+      setHistoryLoadedCount(msgs.length);
       const mapped: Array<{ role: 'user' | 'assistant'; content: string; type?: string; token?: string }> = msgs.map((m) => ({
         role: m.role as 'user' | 'assistant',
         content: m.content,
@@ -290,6 +409,27 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
     } catch { /* ignore */ }
   };
 
+  // 任务 23：懒加载更早消息（offset = 已加载条数，向后翻页）；返回实际加载条数，
+  // 调用方据此推进 offset，避免最后一页不足 limit 时用相同 offset 重复加载相同消息。
+  const loadMoreHistory = async (convId: number, totalLoaded: number): Promise<number> => {
+    try {
+      const msgs = await agentApi.fetchAgentMessages(convId, { limit: 50, offset: totalLoaded });
+      if (!msgs.length) return 0;
+      const mapped = msgs.map((m) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+        type: m.type || undefined,
+        token: m.token || undefined,
+      }));
+      useBookDetailStore.setState((state) => ({
+        agentMessages: [...mapped, ...state.agentMessages],
+      }));
+      return msgs.length;
+    } catch {
+      return 0;
+    }
+  };
+
   const handleDeleteSession = async (s: AgentConversation) => {
     try {
       await agentApi.deleteConversation(s.id);
@@ -298,6 +438,26 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
         handleNewSession();
       }
     } catch { /* ignore */ }
+  };
+
+  // 任务 23：会话手动重命名（行内编辑，Enter/失焦确认，Esc 取消）
+  const handleRenameStart = (s: AgentConversation) => {
+    setRenameDraft(s.title || '');
+    setRenamingSessionId(s.id);
+  };
+
+  const handleRenameConfirm = async (s: AgentConversation) => {
+    if (renamingSessionId !== s.id) return;
+    const title = renameDraft.trim();
+    setRenamingSessionId(null);
+    if (!title || title === s.title) return;
+    try {
+      await agentApi.renameConversation(s.id, title);
+      setSessions((prev) => prev.map((x) => (x.id === s.id ? { ...x, title } : x)));
+    } catch {
+      // 重命名失败：还原为原标题，静默（用户可重试）
+      setSessions((prev) => prev.map((x) => (x.id === s.id ? { ...x, title: s.title } : x)));
+    }
   };
 
   const handleManualCompress = async () => {
@@ -381,6 +541,20 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
     }
   };
 
+  // 任务 23：消息 hover 菜单——复制 / 编辑重发（重新生成 = 回填后手动发送）
+  const handleCopyMessage = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch { /* 剪贴板不可用时静默 */ }
+  };
+
+  const handleEditSend = (msg: (typeof agentMessages)[number]) => {
+    const text = msg.role === 'user' ? msg.content : '';
+    if (!text.trim()) return;
+    setInput(text);
+    inputRef.current?.focus();
+  };
+
   const filteredSessions = sessions.filter((s) =>
     !sessionSearch.trim() || (s.title || '').toLowerCase().includes(sessionSearch.toLowerCase())
   );
@@ -420,10 +594,9 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
     }
     if (msg.type === 'tool') {
       // 工具卡片作为独立消息：running 显示「请求外援中」，done 显示「外援已找到 ✓」，
-      // error（abort 复位）显示「已中断」。位置由插入时刻决定（工具在回复前开始 →
-      // 卡片在回复前），不随流式消息跳动。
+      // error（abort 复位）或 toolSuccess=false（工具返回失败）显示失败样式。
       const running = msg.toolStatus === 'running';
-      const failed = msg.toolStatus === 'error';
+      const failed = msg.toolStatus === 'error' || msg.toolSuccess === false;
       return (
         <div key={stableKey} className="flex justify-start">
           <div className="mx-1 mb-1 flex items-center gap-2 rounded-lg border border-border/40 bg-background/40 px-3 py-1.5 text-[11px]">
@@ -434,8 +607,8 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
               </>
             ) : failed ? (
               <>
-                <span className="text-foreground/50">{msg.tool === 'execute_workflow' || msg.tool === 'execute_workflow_node' ? '工作流已中断' : '已中断'}</span>
-                <span className="ml-auto text-foreground/45">✗</span>
+                <span className="text-destructive/80">{msg.tool === 'execute_workflow' || msg.tool === 'execute_workflow_node' ? '工作流已中断' : '工具执行失败'}</span>
+                <span className="ml-auto text-destructive/70">✗</span>
               </>
             ) : (
               <>
@@ -551,12 +724,33 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
     return (
       <div key={stableKey} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
         <div className={cn(
-          'max-w-[88%] text-[13px] leading-relaxed',
+          'max-w-[88%] text-[13px] leading-relaxed group relative',
           msg.role === 'user'
             ? 'rounded-2xl bg-[color-mix(in_srgb,var(--foreground)_12%,transparent)] text-foreground/85 backdrop-blur-sm px-3.5 py-1.5'
             : 'px-3 py-2 border-l-2 border-foreground/10 agent-markdown',
         )}>
           {msg.role === 'user' ? msg.content : <MarkdownContent>{msg.content}</MarkdownContent>}
+          {/* 任务 23：消息 hover 菜单——复制（assistant 复制正文）/ 编辑重发（user 消息回填输入框） */}
+          <div className="absolute -top-3 right-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+            {msg.role === 'assistant' && msg.content && (
+              <button
+                onClick={() => { void handleCopyMessage(msg.content); }}
+                className="h-5 px-1.5 rounded text-[10px] bg-background border border-border/60 text-muted-foreground hover:text-foreground cursor-pointer flex items-center gap-1"
+                title="复制内容"
+              >
+                复制
+              </button>
+            )}
+            {msg.role === 'user' && msg.content && (
+              <button
+                onClick={() => handleEditSend(msg)}
+                className="h-5 px-1.5 rounded text-[10px] bg-background border border-border/60 text-muted-foreground hover:text-foreground cursor-pointer flex items-center gap-1"
+                title="编辑并重新发送"
+              >
+                编辑重发
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -620,7 +814,25 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
 
       <div className="ide-agent-main">
         <div className="ide-agent-chat">
-          <div className="ide-agent-body">
+          <div
+            className="ide-agent-body"
+            onScroll={(e) => {
+              // 任务 23：滚动到顶部附近时懒加载更早历史消息
+              const el = e.currentTarget;
+              historyScrollElRef.current = el;
+              if (el.scrollTop < 120 && !loadingMoreRef.current) {
+                const convId = historyConvIdRef.current;
+                const loaded = historyLoadedCount;
+                if (convId != null && loaded > 0) {
+                  loadingMoreRef.current = true;
+                  void loadMoreHistory(convId, loaded).then((added) => {
+                    setHistoryLoadedCount((n) => (added > 0 ? n + added : n));
+                    loadingMoreRef.current = false;
+                  });
+                }
+              }
+            }}
+          >
             {agentMessages.length === 0 && (
               <div className="flex flex-col items-center gap-4 mt-12 px-4">
                 <div className="text-xs text-muted-foreground text-center">
@@ -655,6 +867,30 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
                     </div>
                   </>
                 )}
+              </div>
+            )}
+
+            {/* 任务 23：思考气泡（Kilo/Claude Code 模式）。
+                默认展开、半透明、可折叠；固定在消息区顶部，不随主消息滚动；
+                内容仅流式累积于 store（agentReasoning），不写入会话历史。 */}
+            {agentReasoning.trim() && (
+              <div className="px-3 pt-2">
+                <div className="rounded-lg border border-foreground/10 bg-foreground/[0.04] backdrop-blur-sm overflow-hidden">
+                  <button
+                    onClick={() => setAgentReasoningExpanded(!agentReasoningExpanded)}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-[10px] text-muted-foreground/70 bg-transparent border-none cursor-pointer hover:text-foreground text-left"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400/70 inline-block shrink-0" />
+                    <span className="font-medium">思考中</span>
+                    {agentStatus.kind === 'thinking' && <span className="thinking-shimmer-text text-[10px]">正在酝酿…</span>}
+                    <ChevronDown size={11} strokeWidth={1.5} className={cn('ml-auto text-foreground/30 transition-transform', agentReasoningExpanded && 'rotate-180')} />
+                  </button>
+                  {agentReasoningExpanded && (
+                    <div className="px-3 pb-2 text-[11px] leading-relaxed text-foreground/60 whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
+                      {agentReasoning}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -704,16 +940,33 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
               </div>
             )}
             <div className="relative flex-1">
+              {/* 任务 23：@角色/#设定 提及建议浮层 */}
+              {mention && mention.items.length > 0 && (
+                <div className="absolute bottom-full left-0 right-0 mb-1 rounded-lg border border-border/60 bg-background shadow-xl overflow-hidden z-10">
+                  <div className="px-3 py-1 text-[10px] text-muted-foreground/50 border-b border-border/30">
+                    {mention.kind === 'character' ? '@ 角色' : '# 设定'}
+                  </div>
+                  {mention.items.slice(0, 6).map((item, i) => (
+                    <button
+                      key={item.label + i}
+                      onClick={() => applyMention(item)}
+                      onMouseEnter={() => setMention((m) => (m ? { ...m, index: i } : m))}
+                      className={cn(
+                        'w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs cursor-pointer border-none bg-transparent',
+                        i === mention.index ? 'bg-muted/60 text-foreground' : 'text-foreground/80 hover:bg-muted/40',
+                      )}
+                    >
+                      <span className="text-[10px] text-muted-foreground/40 w-3 text-center shrink-0">{mention.kind === 'character' ? '@' : '#'}</span>
+                      <span className="truncate">{item.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
               <textarea
                 ref={inputRef}
                 value={input}
-                onChange={(e) => {
-                  setInput(e.target.value);
-                  const el = e.target;
-                  el.style.height = 'auto';
-                  el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
-                }}
-                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleSend(); } }}
+                onChange={handleInputChange}
+                onKeyDown={handleInputKeyDown}
                 placeholder={placeholderText}
                 disabled={false}
                 rows={1}
@@ -775,29 +1028,56 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
               ) : (
                 filteredSessions.map((s) => {
                   const isActive = s.threadId === agentThreadId;
+                  const isRenaming = renamingSessionId === s.id;
                   return (
                     <div
                       key={s.id}
-                      onClick={() => handleSelectSession(s)}
+                      onClick={() => { if (!isRenaming) void handleSelectSession(s); }}
                       className={cn(
                         'agent-session-item group',
                         isActive && 'is-active',
                       )}
                     >
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[12px] font-medium text-foreground truncate">{s.title || '未命名会话'}</div>
-                        <div className="text-[10px] text-muted-foreground truncate mt-0.5 flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400/60 flex-shrink-0" />
-                          <span>{relativeTime(s.updatedAt)}</span>
+                      {isRenaming ? (
+                        <div className="flex-1 min-w-0 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            value={renameDraft}
+                            onChange={(e) => setRenameDraft(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') { e.preventDefault(); void handleRenameConfirm(s); }
+                              if (e.key === 'Escape') { e.preventDefault(); setRenamingSessionId(null); }
+                            }}
+                            onBlur={() => { void handleRenameConfirm(s); }}
+                            autoFocus
+                            placeholder="会话标题…"
+                            className="w-full h-6 px-1.5 rounded text-[12px] bg-background border border-foreground/25 focus:outline-none"
+                          />
                         </div>
-                      </div>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleDeleteSession(s); }}
-                        className="w-4 h-4 flex items-center justify-center rounded text-muted-foreground/30 hover:text-red-500/60 opacity-0 group-hover:opacity-100 transition-all bg-transparent border-none cursor-pointer flex-shrink-0"
-                        title="删除会话"
-                      >
-                        <Trash2 size={11} strokeWidth={1.5} />
-                      </button>
+                      ) : (
+                        <>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[12px] font-medium text-foreground truncate">{s.title || '未命名会话'}</div>
+                            <div className="text-[10px] text-muted-foreground truncate mt-0.5 flex items-center gap-1.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400/60 flex-shrink-0" />
+                              <span>{relativeTime(s.updatedAt)}</span>
+                            </div>
+                          </div>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleRenameStart(s); }}
+                            className="w-4 h-4 flex items-center justify-center rounded text-muted-foreground/30 hover:text-foreground/70 opacity-0 group-hover:opacity-100 transition-all bg-transparent border-none cursor-pointer flex-shrink-0"
+                            title="重命名会话"
+                          >
+                            <Pencil size={11} strokeWidth={1.5} />
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDeleteSession(s); }}
+                            className="w-4 h-4 flex items-center justify-center rounded text-muted-foreground/30 hover:text-red-500/60 opacity-0 group-hover:opacity-100 transition-all bg-transparent border-none cursor-pointer flex-shrink-0"
+                            title="删除会话"
+                          >
+                            <Trash2 size={11} strokeWidth={1.5} />
+                          </button>
+                        </>
+                      )}
                     </div>
                   );
                 })

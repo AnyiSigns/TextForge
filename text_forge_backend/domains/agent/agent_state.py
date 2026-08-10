@@ -31,3 +31,4 @@ class UserAgentState(TypedDict):
     preferred_workflow_node: str | None  # 用户最近一次选定的工作流候选节点 ID，后续多章自动沿用（不再每章询问）
     subgraph: str  # 当前创作子图：chat/worldbuilding/outlining/drafting/revising（supervisor 分类结果）
     resume_from_subgraph: str | None  # resume 回合直接回原子图，不重新分类
+    last_digest_message_count: int | None  # 任务 19b：最近一次 auto_digest 时的消息数，用于节流（新增 ≥ N 条才再生成摘要）

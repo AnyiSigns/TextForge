@@ -19,8 +19,7 @@ export function useAgentSender() {
   const updateAgentStreamToken = useBookDetailStore((s) => s.updateAgentStreamToken);
   const setAgentStreaming = useBookDetailStore((s) => s.setAgentStreaming);
   const setAgentStatus = useBookDetailStore((s) => s.setAgentStatus);
-  const agentToolLog = useBookDetailStore((s) => s.agentToolLog);
-  const clearToolLog = useBookDetailStore((s) => s.clearToolLog);
+  const setAgentReasoning = useBookDetailStore((s) => s.setAgentReasoning);
   const upsertNodeStatus = useBookDetailStore((s) => s.upsertNodeStatus);
   const clearNodeStatuses = useBookDetailStore((s) => s.clearNodeStatuses);
   const setNodeOutput = useBookDetailStore((s) => s.setNodeOutput);
@@ -33,6 +32,7 @@ export function useAgentSender() {
   const setCreativePhase = useBookDetailStore((s) => s.setCreativePhase);
 
   const thinkingStartRef = useRef(0);
+  const reasoningBufferRef = useRef('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const currentToolRef = useRef<Set<string>>(new Set());
@@ -51,6 +51,8 @@ export function useAgentSender() {
       switch (event.type) {
         case 'think_start':
           thinkingStartRef.current = Date.now();
+          reasoningBufferRef.current = '';
+          setAgentReasoning('');
           setAgentStatus({ kind: 'thinking' });
           break;
         case 'token':
@@ -61,7 +63,9 @@ export function useAgentSender() {
           break;
         }
         case 'agent_reasoning':
-          // 思考内容仅用于状态指示，不覆盖回复流
+          // 任务 23：思考内容流式累积进独立气泡（不写入会话历史，只做 UI 展示）
+          reasoningBufferRef.current += event.token || '';
+          setAgentReasoning(reasoningBufferRef.current);
           setAgentStatus({ kind: 'thinking' });
           break;
         case 'agent_think_end':
@@ -72,6 +76,7 @@ export function useAgentSender() {
           // 工具调用以独立卡片消息插入消息流（顺序天然正确：工具在回复前开始，
           // 卡片就出现在回复之前），不再依赖消息流外单独渲染的状态条。
           const toolName = event.tool || '';
+          const toolCallId = event.tool_call_id || '';
           currentToolNameRef.current = toolName;
           // 定型当前流式回复（若有），再插入工具卡片，之后新回复从卡片后继续
           commitStreamingMessage();
@@ -80,6 +85,7 @@ export function useAgentSender() {
             role: 'assistant',
             type: 'tool',
             tool: toolName,
+            toolCallId,
             toolStatus: 'running',
             content: '',
           });
@@ -87,10 +93,15 @@ export function useAgentSender() {
           break;
         }
         case 'tool_end': {
-          // 优先用事件里的 tool 名；兼容旧后端（tool_end 不带 tool）时用最近记录的 tool_start 名
+          // 任务 25：优先用事件里的 tool_call_id 配对；兼容旧后端（不带 id）时
+          // 按最近记录的 tool_start 工具名回退。success=false 表示工具失败。
           const toolName = event.tool || currentToolNameRef.current;
+          const toolCallId = event.tool_call_id || '';
           currentToolNameRef.current = '';
-          updateToolMessage(toolName, 'done');
+          updateToolMessage(toolName, 'done', {
+            toolCallId: toolCallId || undefined,
+            success: (event as { success?: boolean }).success,
+          });
           break;
         }
         case 'node_start': {
@@ -135,6 +146,12 @@ export function useAgentSender() {
           const reason = event.reason || '';
           upsertNodeStatus({ nodeId, label, status: 'failed', reason });
           updateNodeMessage(nodeId, { label, nodeStatus: 'failed', reason });
+          // 任务 25：失败节点固化已流式内容（node_end 同款处理），
+          // 否则新消息开始时 clearNodeOutputs() 清空 nodeOutputs，卡片只剩「暂无输出」。
+          const accumulated = useBookDetailStore.getState().nodeOutputs?.[nodeId] || '';
+          if (accumulated) {
+            updateNodeMessage(nodeId, { content: accumulated });
+          }
           addAgentMessage({
             role: 'assistant',
             type: 'error',
@@ -215,7 +232,7 @@ export function useAgentSender() {
           break;
       }
     },
-    [addAgentMessage, updateAgentStreamToken, setPendingReview, setAgentStatus, setCreativePhase, commitStreamingMessage, upsertNodeStatus, setNodeOutput, updateToolMessage, updateNodeMessage],
+    [addAgentMessage, updateAgentStreamToken, setPendingReview, setAgentStatus, setCreativePhase, commitStreamingMessage, upsertNodeStatus, setNodeOutput, updateToolMessage, updateNodeMessage, setAgentReasoning],
   );
 
   const sendMessage = useCallback(
@@ -243,13 +260,15 @@ export function useAgentSender() {
       const abort = new AbortController();
       abortRef.current = abort;
       replyBufferRef.current = '';
+      // 任务 23：新回合复位上一轮的思考气泡内容
+      reasoningBufferRef.current = '';
+      setAgentReasoning('');
       // 复位上一轮残留的状态（thinking/working/error），避免新一轮开始时旧思考状态被再次激活
       setAgentStatus({ kind: 'idle' });
 
       addAgentMessage({ role: 'assistant', content: '', type: 'streaming' });
       currentToolRef.current.clear();
       currentToolNameRef.current = '';
-      clearToolLog();
       clearNodeStatuses();
       clearNodeOutputs();
 
@@ -310,7 +329,7 @@ export function useAgentSender() {
         setAgentStreaming(false);
       }
     },
-    [agentStreaming, agentThreadId, bookId, addAgentMessage, setAgentStreaming, setAgentThreadId, handleSSEEvent, setAgentStatus, updateAgentStreamToken, notifyOutlineRefresh, commitStreamingMessage, clearToolLog, clearNodeStatuses, clearNodeOutputs],
+    [agentStreaming, agentThreadId, bookId, addAgentMessage, setAgentStreaming, setAgentThreadId, handleSSEEvent, setAgentStatus, setAgentReasoning, updateAgentStreamToken, notifyOutlineRefresh, commitStreamingMessage, clearNodeStatuses, clearNodeOutputs],
   );
 
   const abort = useCallback(() => {
@@ -326,10 +345,11 @@ export function useAgentSender() {
     const abort = new AbortController();
     abortRef.current = abort;
     setAgentStatus({ kind: 'idle' });
+    reasoningBufferRef.current = '';
+    setAgentReasoning('');
     addAgentMessage({ role: 'assistant', content: '', type: 'streaming' });
     currentToolRef.current.clear();
     currentToolNameRef.current = '';
-    clearToolLog();
     clearNodeStatuses();
     clearNodeOutputs();
     try {
@@ -373,7 +393,7 @@ export function useAgentSender() {
       }
       setAgentStreaming(false);
     }
-  }, [agentThreadId, bookId, addAgentMessage, handleSSEEvent, notifyOutlineRefresh, setAgentStreaming, setAgentStatus, updateAgentStreamToken, clearToolLog, clearNodeStatuses, clearNodeOutputs, commitStreamingMessage]);
+  }, [agentThreadId, bookId, addAgentMessage, handleSSEEvent, notifyOutlineRefresh, setAgentStreaming, setAgentStatus, updateAgentStreamToken, clearNodeStatuses, clearNodeOutputs, commitStreamingMessage, setAgentReasoning]);
 
   useEffect(() => {
     const el = messagesEndRef.current?.parentElement;
@@ -390,7 +410,7 @@ export function useAgentSender() {
     // 流式期间用 auto（即时贴底）避免每次 token 触发 smooth 动画造成「跳屏」抖动；
     // 结束后的状态变化仍用 smooth 平滑滚动。
     messagesEndRef.current?.scrollIntoView({ behavior: agentStreaming ? 'auto' : 'smooth' });
-  }, [agentMessages, agentStatus, agentToolLog, agentStreaming]);
+  }, [agentMessages, agentStatus, agentStreaming]);
 
   return { sendMessage, abort, resume, messagesEndRef };
 }

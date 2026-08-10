@@ -14,6 +14,9 @@ interface AgentMessage {
   /** 工具卡片消息：工具名与执行状态（作为独立消息插入消息流，顺序天然正确） */
   tool?: string;
   toolStatus?: 'running' | 'done' | 'error';
+  /** 任务 25：tool_call_id 配对——同轮同名工具连续调用不错位；失败语义由 toolSuccess 表达 */
+  toolCallId?: string;
+  toolSuccess?: boolean;
   /** 工作流节点卡片消息：nodeId / 状态 / tokens */
   nodeId?: string;
   nodeStatus?: 'running' | 'completed' | 'failed';
@@ -27,13 +30,6 @@ interface AgentStatus {
   kind: 'idle' | 'thinking' | 'working' | 'error';
   message?: string;
   label?: string;
-}
-
-interface AgentToolLogEntry {
-  id: string;
-  seq: number;
-  status: 'start' | 'end';
-  ts: number;
 }
 
 /** 工作流节点（角色）执行状态卡片数据。 */
@@ -64,7 +60,9 @@ interface BookDetailState {
   agentMessages: AgentMessage[];
   agentStreaming: boolean;
   agentStatus: AgentStatus;
-  agentToolLog: AgentToolLogEntry[];
+  /** 任务 23：当前回合的流式思考内容（agent_reasoning 累积，不写入会话历史） */
+  agentReasoning: string;
+  agentReasoningExpanded: boolean;
   agentNodeStatuses: AgentNodeStatus[];
   /** 工作流节点正文：nodeId → 累积的流式输出，由状态卡片展开时在卡片内部展示。 */
   nodeOutputs: Record<string, string>;
@@ -86,8 +84,8 @@ interface BookDetailState {
   setAgentThreadId: (id: string | null) => void;
   setAgentStreaming: (v: boolean) => void;
   setAgentStatus: (status: AgentStatus) => void;
-  pushToolLog: (entry: { status: 'start' | 'end' }) => void;
-  clearToolLog: () => void;
+  setAgentReasoning: (text: string) => void;
+  setAgentReasoningExpanded: (v: boolean) => void;
   upsertNodeStatus: (status: AgentNodeStatus) => void;
   clearNodeStatuses: () => void;
   setNodeOutput: (nodeId: string, token: string) => void;
@@ -97,8 +95,8 @@ interface BookDetailState {
   setAgentContext: (context: string) => void;
   addAgentMessage: (msg: AgentMessage) => void;
   updateAgentStreamToken: (token: string) => void;
-  /** 按工具名更新最近一条 tool 卡片消息的状态（end/error 时复位「请求外援中」） */
-  updateToolMessage: (tool: string, status: 'done' | 'error') => void;
+  /** 按 tool_call_id 优先 / 工具名回退，更新 tool 卡片消息状态（end/error 时复位「请求外援中」） */
+  updateToolMessage: (tool: string, status: 'done' | 'error', opts?: { toolCallId?: string; success?: boolean }) => void;
   /** 按 nodeId 更新节点卡片消息（node_stream 累积正文 / node_end 状态） */
   updateNodeMessage: (nodeId: string, patch: Partial<AgentMessage>) => void;
   closeCardDraw: () => void;
@@ -131,7 +129,8 @@ export const useBookDetailStore = create<BookDetailState>((set) => ({
   agentMessages: [],
   agentStreaming: false,
   agentStatus: { kind: 'idle' },
-  agentToolLog: [],
+  agentReasoning: '',
+  agentReasoningExpanded: true,
   agentNodeStatuses: [],
   nodeOutputs: {},
   agentThreadId: null,
@@ -154,19 +153,8 @@ export const useBookDetailStore = create<BookDetailState>((set) => ({
   setAgentThreadId: (id) => set({ agentThreadId: id }),
   setAgentStreaming: (v) => set({ agentStreaming: v }),
   setAgentStatus: (status) => set({ agentStatus: status }),
-  pushToolLog: (entry) =>
-    set((state) => ({
-      agentToolLog: [
-        ...state.agentToolLog,
-        {
-          ...entry,
-          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          seq: state.agentToolLog.length + 1,
-          ts: Date.now(),
-        },
-      ],
-    })),
-  clearToolLog: () => set({ agentToolLog: [] }),
+  setAgentReasoning: (text) => set({ agentReasoning: text }),
+  setAgentReasoningExpanded: (v) => set({ agentReasoningExpanded: v }),
   upsertNodeStatus: (status) =>
     set((state) => {
       const existing = state.agentNodeStatuses.find((n) => n.nodeId === status.nodeId);
@@ -213,15 +201,26 @@ export const useBookDetailStore = create<BookDetailState>((set) => ({
       agentMessages: [...state.agentMessages, { id: nextMessageId(), ...msg }],
     })),
 
-  updateToolMessage: (tool, status) =>
+  updateToolMessage: (tool, status, opts) =>
     set((state) => {
-      // 从后往前找最近一条同工具名的 tool 卡片消息并更新状态
+      // 任务 25：优先按 tool_call_id 配对（同轮同名工具不错位），
+      // 无 id（旧事件/后端兼容）时回退从后往前匹配同名工具。
       const messages = [...state.agentMessages];
+      const { toolCallId, success } = opts || {};
       for (let i = messages.length - 1; i >= 0; i--) {
-        if (messages[i].type === 'tool' && messages[i].tool === tool) {
-          messages[i] = { ...messages[i], toolStatus: status };
-          break;
+        const m = messages[i];
+        if (m.type !== 'tool') continue;
+        if (toolCallId) {
+          if (m.toolCallId !== toolCallId) continue;
+        } else if (m.tool !== tool) {
+          continue;
         }
+        messages[i] = {
+          ...m,
+          toolStatus: status,
+          ...(success !== undefined ? { toolSuccess: success } : {}),
+        };
+        break;
       }
       return { agentMessages: messages };
     }),
