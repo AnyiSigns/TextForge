@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Workflow as WorkflowIcon, GitBranch, Plus, Search, Trash2, Pencil, Play } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card } from '@/shared/ui/card';
@@ -13,6 +14,7 @@ import { PageHeader } from '@/shared/ui/PageHeader';
 import { ListRow } from '@/shared/ui/ListRow';
 
 export default function WorkflowListPage() {
+  const router = useRouter();
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [search, setSearch] = useState('');
   const [view, setView] = useState<'grid' | 'list'>('grid');
@@ -94,7 +96,7 @@ export default function WorkflowListPage() {
           }>
             {filtered.map((wf) => (
               view === 'grid' ? (
-                <Link key={wf.id} href={`/workflow/${wf.id}`} className="no-underline text-foreground">
+                <div key={wf.id} onClick={() => router.push(`/workflow/${wf.id}`)} className="no-underline text-foreground cursor-pointer">
                   <Card className="p-4 cursor-pointer hover:border-foreground/10 transition-colors group">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
@@ -102,8 +104,8 @@ export default function WorkflowListPage() {
                         <span className="text-sm font-medium">{wf.name}</span>
                       </div>
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Link href={`/workflow/${wf.id}`} className="p-1 rounded hover:bg-muted text-muted-foreground"><Pencil size={12} /></Link>
-                        <button onClick={(e) => { e.preventDefault(); handleDelete(wf); }}
+                        <Link href={`/workflow/${wf.id}`} onClick={(e) => e.stopPropagation()} className="p-1 rounded hover:bg-muted text-muted-foreground"><Pencil size={12} /></Link>
+                        <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDelete(wf); }}
                           className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive bg-transparent border-none cursor-pointer">
                           <Trash2 size={12} /></button>
                       </div>
@@ -111,10 +113,10 @@ export default function WorkflowListPage() {
                     <p className="text-[11px] text-muted-foreground line-clamp-2">{wf.description || '无描述'}</p>
                     <div className="text-[10px] text-muted-foreground mt-2">{wf.nodes?.length ?? 0} 个节点</div>
                   </Card>
-                </Link>
+                </div>
               ) : (
-                <Link key={wf.id} href={`/workflow/${wf.id}`}
-                  className="no-underline text-foreground group">
+                <div key={wf.id} onClick={() => router.push(`/workflow/${wf.id}`)}
+                  className="no-underline text-foreground group cursor-pointer">
                   <ListRow className="justify-between">
                     <div className="flex items-center gap-3 min-w-0">
                       <GitBranch size={14} className="text-muted-foreground shrink-0" />
@@ -125,13 +127,13 @@ export default function WorkflowListPage() {
                       <span className="text-[10px] text-muted-foreground shrink-0">{wf.nodes?.length ?? 0}节点</span>
                     </div>
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={(e) => { e.preventDefault(); handleDelete(wf); }}
+                      <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDelete(wf); }}
                         className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive bg-transparent border-none cursor-pointer">
                         <Trash2 size={14} /></button>
-                      <Link href={`/workflow/${wf.id}`} className="p-1.5 rounded hover:bg-muted text-muted-foreground"><Play size={14} /></Link>
+                      <Link href={`/workflow/${wf.id}`} onClick={(e) => e.stopPropagation()} className="p-1.5 rounded hover:bg-muted text-muted-foreground"><Play size={14} /></Link>
                     </div>
                   </ListRow>
-                </Link>
+                </div>
               )
             ))}
             {filtered.length === 0 && (

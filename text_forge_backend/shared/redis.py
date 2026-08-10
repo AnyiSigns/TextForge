@@ -26,6 +26,7 @@ async def cached_rag_search(
     rag_filter: dict[str, Any],
     top_k: int = 3,
     ttl: int = 3600,
+    embedding_dim: int | None = None,
 ) -> list[dict[str, Any]] | None:
     """RAG 检索缓存读取。
 
@@ -35,12 +36,15 @@ async def cached_rag_search(
         rag_filter: 过滤条件。
         top_k: 返回结果数。
         ttl: 缓存过期时间（秒）。
+        embedding_dim: 嵌入维度，并入缓存键避免不同嵌入模型（维度不同）命中彼此缓存。
 
     Returns:
         缓存结果列表，未命中返回 None。
     """
     filter_key = json.dumps(rag_filter, sort_keys=True, ensure_ascii=False)
-    cache_key = f"rag:{hashlib.md5((query + filter_key).encode()).hexdigest()}"
+    # 把嵌入维度并入键：不同用户/模型维度不同，仅按 query 文本缓存会串味。
+    dim_key = f":dim={embedding_dim}" if embedding_dim is not None else ":dim=none"
+    cache_key = f"rag:{hashlib.md5((query + filter_key + dim_key).encode()).hexdigest()}"
     try:
         cached = await redis_client.get(cache_key)
         if cached is not None:
@@ -55,6 +59,7 @@ async def set_rag_cache(
     rag_filter: dict[str, Any],
     results: list[dict[str, Any]],
     ttl: int = 3600,
+    embedding_dim: int | None = None,
 ):
     """写入 RAG 检索缓存。
 
@@ -63,9 +68,11 @@ async def set_rag_cache(
         rag_filter: 过滤条件。
         results: 检索结果。
         ttl: 缓存过期时间（秒）。
+        embedding_dim: 嵌入维度，并入缓存键，需与 cached_rag_search 保持一致。
     """
     filter_key = json.dumps(rag_filter, sort_keys=True, ensure_ascii=False)
-    cache_key = f"rag:{hashlib.md5((query + filter_key).encode()).hexdigest()}"
+    dim_key = f":dim={embedding_dim}" if embedding_dim is not None else ":dim=none"
+    cache_key = f"rag:{hashlib.md5((query + filter_key + dim_key).encode()).hexdigest()}"
     try:
         await redis_client.setex(
             cache_key, ttl, json.dumps(results, ensure_ascii=False)

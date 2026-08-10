@@ -186,7 +186,9 @@ class UserAuthService:
             await self.session.commit()
             await redis_client.delete(f"refresh_token_{user_id}")
         except Exception as exc:
-            logger.warning(f"改密后 token 失效处理失败（版本号仍已递增，refresh 接口受控）: {exc}")
+            logger.warning(
+                f"改密后 token 失效处理失败（版本号仍已递增，refresh 接口受控）: {exc}"
+            )
 
 
 async def user_db_serve(db: AsyncSession = Depends(db_manager.get_db)):

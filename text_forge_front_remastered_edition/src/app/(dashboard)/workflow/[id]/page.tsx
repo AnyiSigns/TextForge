@@ -115,9 +115,14 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
   const router = useRouter();
   const isNew = id === 'new';
 
-  const [workflow, setWorkflow] = useState<Workflow>({
-    id: '', name: '未命名工作流', nodes: [], edges: [],
-  });
+  const [workflow, setWorkflow] = useState<Workflow>(() => ({
+    // 新建页直接生成 id：若初始为空，保存时会发出 PUT /workflows/（无 id）
+    // 被后端 405 拒绝（405 的来源）；编辑页 id 由下方 effect 从详情接口回填
+    id: isNew ? makeNodeId() : '',
+    name: '未命名工作流',
+    nodes: [],
+    edges: [],
+  }));
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [showExecution, setShowExecution] = useState(false);
@@ -136,13 +141,6 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
     // 拉取书籍列表用于执行时选择目标书籍
     booksApi.fetchBooks().then((list) => setBookOptions(list)).catch(() => {});
   }, []);
-
-  // 新建工作流时立即建立空文档（渲染期间调整，React 会立即重渲染）
-  const [prevIsNew, setPrevIsNew] = useState(isNew);
-  if (isNew && !prevIsNew) {
-    setPrevIsNew(true);
-    setWorkflow({ id: makeNodeId(), name: '未命名工作流', nodes: [], edges: [] });
-  }
 
   useEffect(() => {
     if (isNew) loadedRef.current = true;

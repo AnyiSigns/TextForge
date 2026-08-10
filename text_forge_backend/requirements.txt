@@ -1,4 +1,5 @@
 fastapi==0.139.0
+python-multipart==0.0.20
 uvicorn==0.51.0
 sqlalchemy==2.0.51
 aiosqlite==0.22.1
@@ -6,6 +7,8 @@ asyncpg==0.31.0
 redis==8.0.1
 pydantic==2.13.4
 pydantic-settings==2.14.2
+email-validator==2.2.0
+certifi==2026.7.22
 python-dotenv==1.2.2
 python-jose==3.5.0
 passlib==1.7.4
@@ -21,12 +24,33 @@ langgraph-checkpoint-postgres==3.1.0
 langgraph-sdk==0.4.2
 langsmith==0.10.2
 pgvector==0.5.0
-psycopg==3.3.4
+psycopg[binary]==3.3.4
 psycopg-pool==3.3.1
 tiktoken==0.13.0
 tokenizers==0.23.1
 orjson==3.11.9
-weasyprint==69.0
 pytest==9.1.1
 pytest-asyncio==1.4.0
 pytest-benchmark==4.0.0
+
+# === 补全：运行时实际 import 但此前缺失的依赖 ===
+# 以下包不锁版本，交由 pip 解析器根据已固定的 langchain 1.x 栈自动选取兼容版本，
+# 避免与 langchain-core==1.5.2 等产生版本冲突（provider 包随 langchain 主版本演进）。
+openai
+langchain-openai
+langchain-text-splitters
+reportlab
+ebooklib
+aiosmtplib
+requests
+
+# 多模型提供商适配（多数在函数内懒加载，按需保留以支持相应模型接入）
+langchain-anthropic
+langchain-cohere
+langchain-deepseek
+langchain-google-genai
+langchain-huggingface
+langchain-moonshot
+langchain-ollama
+langchain-pollinations==0.3.0b3
+langchain-qwq

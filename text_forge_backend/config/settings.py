@@ -19,6 +19,7 @@ class Settings(BaseSettings):
 
     # 日志
     LOG_LEVEL: str = "INFO"
+    LOG_JSON: bool = True  # 是否以 JSON 结构化格式输出日志（便于采集与定位）
     LOG_FORMAT: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     LOG_DATE_FORMAT: str = "%Y-%m-%d %H:%M:%S"
     LOG_FILE_PATH: str = get_abs_path("logs/app.log")
@@ -54,6 +55,10 @@ class Settings(BaseSettings):
     )
     EMAIL_TIME_OUT: int = 30  # 邮件发送超时时间，30秒
     CAPTCHA_TIME: int = 300
+
+    # LLM 调用空闲超时（秒）：流式生成过程中，若超过该时间无任何事件产出
+    # （如上游模型连接挂起），主动终止回合并释放书籍锁，避免单 worker 被占满。
+    LLM_TIMEOUT: int = 120
 
     # redis config
     REDIS_HOST: str = "localhost"

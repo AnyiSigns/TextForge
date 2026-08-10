@@ -275,7 +275,25 @@ export function useAgentSender() {
           abort.signal,
           bookId || undefined,
         );
-      } catch {
+      } catch (err) {
+        // 无论失败还是主动停止，都必须定型残留的 streaming 气泡，
+        // 否则面板残留「三点脉冲/空白消息」造成显示异常。
+        commitStreamingMessage();
+        const aborted = (err as Error)?.name === 'AbortError';
+        if (!aborted) {
+          const errMsg = (err as Error)?.message || 'Agent 请求失败，请重试。';
+          const lockConflict = (err as Error & { status?: number })?.status === 503;
+          // 书籍锁冲突（503）时附带原消息，供面板渲染「解除占用并重试」操作
+          addAgentMessage({
+            role: 'assistant',
+            content: lockConflict
+              ? `${errMsg}。若确认没有其他任务正在运行，可点击「解除占用并重试」。`
+              : errMsg,
+            type: 'error',
+            ...(lockConflict ? { retryMessage: msg } : {}),
+          });
+          setAgentStatus({ kind: 'error', message: errMsg });
+        }
         setAgentStreaming(false);
       }
     },
@@ -283,8 +301,10 @@ export function useAgentSender() {
   );
 
   const abort = useCallback(() => {
+    // 显式通知服务端取消任务（尽快释放书籍锁），再本地中止连接
+    if (agentThreadId) void agentApi.cancelStream(agentThreadId);
     abortRef.current?.abort();
-  }, []);
+  }, [agentThreadId]);
 
   const resume = useCallback(async () => {
     const threadId = agentThreadId;
@@ -328,8 +348,16 @@ export function useAgentSender() {
         abort.signal,
         bookId || undefined,
       );
-    } catch {
+    } catch (err) {
       commitStreamingMessage();
+      const aborted = (err as Error)?.name === 'AbortError';
+      if (!aborted) {
+        addAgentMessage({
+          role: 'assistant',
+          content: (err as Error)?.message || 'Agent 请求失败，请重试。',
+          type: 'error',
+        });
+      }
       setAgentStreaming(false);
     }
   }, [agentThreadId, bookId, addAgentMessage, handleSSEEvent, notifyOutlineRefresh, setAgentStreaming, setAgentStatus, updateAgentStreamToken, clearToolLog, clearNodeStatuses, clearNodeOutputs, commitStreamingMessage]);

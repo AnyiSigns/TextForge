@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Bot, X, Pin, PinOff, Send } from 'lucide-react';
+import { Bot, X, Pin, PinOff, Send, CircleStop } from 'lucide-react';
 import { cn } from '@/shared/lib/cn';
 import { useBookDetailStore } from '@/app/(dashboard)/books/[id]/store';
 import { useAgentSender } from './useAgentSender';
 import { useManuscriptStore } from '@/app/manuscript/book/[bookId]/store';
 import * as contentsApi from '@/shared/api/contents';
+import * as agentApi from '@/shared/api/agent';
 import type { Character } from '@/shared/api/types';
 import { WriteReviewCard } from '../../app/manuscript/book/[bookId]/WriteReviewCard';
 
@@ -102,22 +103,29 @@ const reviewPrompt = (text: string, mode: string) =>
  * 头像可拖动以调整位置，避免遮挡视野；接管/写入等事件仍由此承接并触发面板。
  */
 export function AgentDock() {
-  const { sendMessage, messagesEndRef } = useAgentSender();
+  const { sendMessage, abort, messagesEndRef } = useAgentSender();
   const agentMessages = useBookDetailStore((s) => s.agentMessages);
   const agentStreaming = useBookDetailStore((s) => s.agentStreaming);
+  const bookId = useBookDetailStore((s) => s.bookId);
 
-  const [pos, setPos] = useState<{ x: number; y: number } | null>(() => {
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+
+  // 初始位置延迟到挂载后读取（避免 SSR/CSR 因 window 分支产生 hydration mismatch）：
+  // 服务端与客户端的首次渲染都返回 null（不渲染按钮），挂载后再从 localStorage 或
+  // 默认右下角位置赋值，保证两端 HTML 一致。
+  useEffect(() => {
     try {
       const raw = localStorage.getItem(AGENT_POS_KEY);
       if (raw) {
         const p = JSON.parse(raw);
-        if (typeof p.x === 'number' && typeof p.y === 'number') return p as { x: number; y: number };
+        if (typeof p.x === 'number' && typeof p.y === 'number') {
+          setPos(p as { x: number; y: number });
+          return;
+        }
       }
     } catch { /* ignore */ }
-    return typeof window !== 'undefined'
-      ? { x: window.innerWidth - 56, y: Math.round(window.innerHeight * 0.4) }
-      : null;
-  });
+    setPos({ x: window.innerWidth - 56, y: Math.round(window.innerHeight * 0.4) });
+  }, []);
   const [hovering, setHovering] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [inputText, setInputText] = useState('');
@@ -249,6 +257,20 @@ export function AgentDock() {
     void sendMessage(text);
   };
 
+  const unlockAndRetry = async (retryMessage: string) => {
+    const ok = await agentApi.releaseBookLock(bookId);
+    if (ok) {
+      useBookDetailStore.setState((s) => ({
+        agentMessages: [...s.agentMessages, { role: 'assistant', content: '书籍任务锁已解除，正在重试您的指令…', type: 'system' }],
+      }));
+      void sendMessage(retryMessage);
+    } else {
+      useBookDetailStore.setState((s) => ({
+        agentMessages: [...s.agentMessages, { role: 'assistant', content: '解除占用失败，请稍后重试。', type: 'error' }],
+      }));
+    }
+  };
+
   if (!pos) return null;
 
   const panelLeft = pos.x > window.innerWidth / 2 ? pos.x - 340 : pos.x + 52;
@@ -307,6 +329,14 @@ export function AgentDock() {
                 className={cn('whitespace-pre-wrap break-words', m.type === 'error' ? 'text-destructive/80' : 'text-foreground/80')}
               >
                 {m.content || (m.type === 'streaming' ? '…' : '')}
+                {m.retryMessage && (
+                  <button
+                    onClick={() => { void unlockAndRetry(m.retryMessage!); }}
+                    className="mt-1 block text-[11px] px-2 py-0.5 rounded-md border border-destructive/30 text-destructive/90 bg-transparent hover:bg-destructive/10 cursor-pointer transition-colors"
+                  >
+                    解除占用并重试
+                  </button>
+                )}
               </div>
             ))}
             <div ref={messagesEndRef} />
@@ -320,14 +350,24 @@ export function AgentDock() {
               placeholder="和 Agent 对话…"
               className="flex-1 h-8 rounded-md px-2 text-[12px] bg-background border border-border focus:outline-none"
             />
-            <button
-              onClick={submitInput}
-              disabled={!inputText.trim() || agentStreaming}
-              className="flex items-center justify-center h-8 w-8 rounded-md bg-foreground text-background border-none cursor-pointer hover:opacity-90 disabled:opacity-30"
-              title="发送"
-            >
-              <Send size={13} />
-            </button>
+            {agentStreaming ? (
+              <button
+                onClick={() => { void abort(); }}
+                className="flex items-center justify-center h-8 w-8 rounded-md bg-foreground text-background border-none cursor-pointer hover:opacity-90"
+                title="停止生成"
+              >
+                <CircleStop size={13} />
+              </button>
+            ) : (
+              <button
+                onClick={submitInput}
+                disabled={!inputText.trim()}
+                className="flex items-center justify-center h-8 w-8 rounded-md bg-foreground text-background border-none cursor-pointer hover:opacity-90 disabled:opacity-30"
+                title="发送"
+              >
+                <Send size={13} />
+              </button>
+            )}
           </div>
 
           {selectionReview && (

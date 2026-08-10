@@ -39,6 +39,26 @@ async def get_list_workflows(
     return ListWorkflowsResponse(workflows=result)
 
 
+@router.post("/", response_model=WorkflowDetailResponse)
+async def create_workflow(
+    request: Workflow,
+    user_id: Annotated[int, Depends(get_current)],
+    workflow_service: Annotated[WorkflowService, Depends(workflow_db)],
+):
+    """创建工作流（REST 语义：集合路径用 POST 创建，PUT 仅更新已存在资源）。
+
+    前端新建工作流可能不带 id（或 id 为空字符串）：此处统一生成服务端 id，
+    避免前端把 PUT 发到集合路径 /workflows/ 触发 405。
+    """
+    import uuid
+
+    data = request.model_dump()
+    if not data.get("id"):
+        data["id"] = f"wf-{uuid.uuid4().hex[:12]}"
+    instance = await workflow_service.create_workflow(user_id, data)
+    return WorkflowDetailResponse(workflow=instance)
+
+
 @router.get("/{id}", response_model=WorkflowDetailResponse)
 async def get_workflow_id(
     id: Annotated[str, Path(description="流水线ID")],

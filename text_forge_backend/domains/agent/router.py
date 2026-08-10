@@ -1,15 +1,17 @@
+import asyncio
 import json
 import uuid
 from datetime import datetime, timezone
 from typing import Annotated
 
 import openai
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.logging import get_logger
+from config.settings import settings
 from core.auth import get_current
 from core.model_factory import ModelFactory
 from models.book import Book, Chapter, Volume
@@ -18,6 +20,7 @@ from schema.request.common import ChatRequest, CompressRequest, ReviewActionRequ
 from schema.response.chat import HistoryResponse, MessagesResponse
 from shared.database import db_manager
 from shared.graph_store import graph_pool_manager
+from shared.ratelimit import rate_limit_agent
 from shared.redis import redis_client
 
 from .agent_state import UserAgentState
@@ -26,6 +29,11 @@ from .graphs.agent_graph import build_user_agent_graph
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/agent", tags=["Agent"])
+
+# 正在进行的流式请求 task 注册表（key=thread_id），供 cancel 接口主动中断。
+# 注意：仅对当前进程内的流生效（本地/单进程部署），多 worker 下其他进程的
+# 流无法被取消，但前端本地 abort 连接同样会触发服务端清理，属兜底机制。
+_stream_tasks: dict[str, asyncio.Task] = {}
 
 
 async def _generate_title(model_config: dict, user_msg: str, reply: str) -> str | None:
@@ -86,6 +94,11 @@ def _sse_review_card(pending_review: dict) -> str:
     return f"data: {json.dumps({'type': 'review_card', **payload}, ensure_ascii=False)}\n\n"
 
 
+BOOK_LOCK_TTL = 600  # 锁过期时间，600秒（10分钟）；配合 _renew_book_lock 心跳续期，
+# 既能覆盖长任务（工作流多节点可达数十分钟），又保证进程崩溃残留的锁至多占用 10 分钟。
+BOOK_LOCK_RENEW_INTERVAL = 120  # 锁心跳续期间隔（秒）
+
+
 async def _acquire_book_lock(book_id: int, user_id: int) -> tuple[bool, str, str]:
     """为书籍获取分布式锁，返回 (是否获取成功, 锁键, 持有者标识)。
 
@@ -98,13 +111,33 @@ async def _acquire_book_lock(book_id: int, user_id: int) -> tuple[bool, str, str
     holder_id = uuid.uuid4().hex
     key = f"agent:book_lock:{user_id}:{book_id}"
     try:
-        result = await redis_client.set(
-            key, holder_id, ex=3600, nx=True
-        )  # 锁过期时间，3600秒（1小时），防止长时间占锁
+        result = await redis_client.set(key, holder_id, ex=BOOK_LOCK_TTL, nx=True)
         return (result is True, key, holder_id)
     except Exception as exc:
         logger.error(f"获取书籍锁失败: {exc}")
         return (False, "", "")
+
+
+async def _renew_book_lock(lock_key: str, holder_id: str) -> None:
+    """后台心跳任务：周期性刷新书籍锁 TTL，防止长任务执行期间锁过期被他人获取。
+
+    仅当锁值仍为本持有者时才续期（Lua 原子判断），锁已被释放或易主时结束任务。
+
+    Args:
+        lock_key: 锁键。
+        holder_id: 锁持有者标识。
+    """
+    while True:
+        await asyncio.sleep(BOOK_LOCK_RENEW_INTERVAL)
+        try:
+            script = (
+                "if redis.call('GET', KEYS[1]) == ARGV[1] "
+                "then return redis.call('EXPIRE', KEYS[1], ARGV[2]) else return 0 end"
+            )
+            await redis_client.eval(script, 1, lock_key, holder_id, BOOK_LOCK_TTL)
+        except Exception as exc:
+            logger.warning(f"续期书籍锁失败: {exc}")
+            break
 
 
 async def _release_book_lock(
@@ -147,18 +180,20 @@ async def _prepare_agent_state(
     message: str,
     model_config: dict,
     book_id_override: int | None = None,
-) -> tuple[Conversation, UserAgentState, int]:
+) -> tuple[Conversation, UserAgentState, int, str, str]:
+    """准备 Agent 回合状态并获取书籍任务锁。
+
+    顺序保证：先解析书籍归属并加锁，成功后才写入用户消息——若锁获取失败
+    （书籍正被其他 Agent 任务占用），直接抛出 503 且不落库，避免历史消息中
+    残留未被 Agent 处理过的无效用户消息。
+
+    Returns:
+        (conversation, state, book_id, lock_key, holder_id)；无书籍绑定时
+        lock_key 为空字符串，调用方后续释放锁为 no-op。
+    """
     conversation = await _get_conversation(session, thread_id, user_id)
     if not conversation:
         raise HTTPException(status_code=404, detail="会话不存在")
-
-    user_msg = Message(
-        conversation_id=conversation.id,
-        role="user",
-        content=message,
-    )
-    session.add(user_msg)
-    await session.commit()
 
     book_id = conversation.book_id or 0
     # 前端携带当前书籍时修正会话绑定，避免旧会话 book_id=0 导致「无法访问书籍信息」。
@@ -172,67 +207,97 @@ async def _prepare_agent_state(
             conversation.book_id = book_id_override
             await session.commit()
         book_id = book_id_override
-    state: UserAgentState = {
-        # 仅传入本条新消息，而非从 DB 重载最近 N 条：LangGraph checkpoint 已持有
-        # 完整历史（含工具调用中间消息），若再把 DB 消息作为输入，会被 add_messages
-        # reducer 按新 ID 追加，导致历史重复累积、上下文膨胀。
-        "messages": [{"type": "human", "content": message}],
-        "user_id": user_id,
-        "active_book_id": book_id,
-        "model_config": model_config,
-        "step_outputs": {},
-        "previous_chapter_summary": None,
-        "previous_chapter_content": None,
-        "cross_chapter_context": {},
-        "compressed_context": None,
-        "active_workflow_id": None,
-        "pending_review": None,
-        "review_decision": None,
-        "edited_content": None,
-        "candidate_reply_ready": False,
-        "workflow_node_outputs": {},
-        "personal_rag_results": None,
-        "terminate_chapter_id": None,
-        # 一次性状态必须显式重置：LangGraph checkpoint 会保留上一轮写入的
-        # workflow_result / pending_workflow / pending_tool，若不在新回合清空，
-        # 用户选定候选正文后 write_chapter_content 仍会被「确认回合」守卫拦截
-        # （gated_tool_node 见 workflow_result 就拒绝所有工具），导致正文永远落不了库。
-        "workflow_result": None,
-        "pending_workflow": None,
-        "pending_tool": None,
-        # 注意：suggestions_signature / message_count_at_compress 不在新回合重置，
-        # 缺省 key 时 LangGraph 保留 checkpoint 旧值，跨轮建议去重与压缩计数才能生效；
-        # 若此处强制置 None 会覆盖 checkpoint 值，导致去重失效、每轮重复推送建议。
-    }
 
+    lock_key = ""
+    holder_id = ""
     if book_id:
-        try:
-            from .chapter_context import get_previous_chapter_context
+        locked, lock_key, holder_id = await _acquire_book_lock(book_id, user_id)
+        if not locked:
+            raise HTTPException(
+                status_code=503, detail="该书籍正在进行 Agent 任务，请稍后再试"
+            )
 
-            latest_chapter_stmt = (
-                select(Chapter)
-                .where(
-                    Chapter.volume_id.in_(
-                        select(Volume.id).where(Volume.book_id == book_id)
+    try:
+        user_msg = Message(
+            conversation_id=conversation.id,
+            role="user",
+            content=message,
+        )
+        session.add(user_msg)
+        await session.commit()
+
+        state: UserAgentState = {
+            # 仅传入本条新消息，而非从 DB 重载最近 N 条：LangGraph checkpoint 已持有
+            # 完整历史（含工具调用中间消息），若再把 DB 消息作为输入，会被 add_messages
+            # reducer 按新 ID 追加，导致历史重复累积、上下文膨胀。
+            "messages": [{"type": "human", "content": message}],
+            "user_id": user_id,
+            "active_book_id": book_id,
+            "model_config": model_config,
+            "step_outputs": {},
+            "previous_chapter_summary": None,
+            "previous_chapter_content": None,
+            "cross_chapter_context": {},
+            "compressed_context": None,
+            "active_workflow_id": None,
+            "pending_review": None,
+            "review_decision": None,
+            "edited_content": None,
+            "candidate_reply_ready": False,
+            "workflow_node_outputs": {},
+            "personal_rag_results": None,
+            "terminate_chapter_id": None,
+            # 一次性状态必须显式重置：LangGraph checkpoint 会保留上一轮写入的
+            # workflow_result / pending_workflow / pending_tool，若不在新回合清空，
+            # 用户选定候选正文后 write_chapter_content 仍会被「确认回合」守卫拦截
+            # （gated_tool_node 见 workflow_result 就拒绝所有工具），导致正文永远落不了库。
+            "workflow_result": None,
+            "pending_workflow": None,
+            "pending_tool": None,
+            # 注意：suggestions_signature / message_count_at_compress 不在新回合重置，
+            # 缺省 key 时 LangGraph 保留 checkpoint 旧值，跨轮建议去重与压缩计数才能生效；
+            # 若此处强制置 None 会覆盖 checkpoint 值，导致去重失效、每轮重复推送建议。
+        }
+
+        if book_id:
+            try:
+                from .chapter_context import get_previous_chapter_context
+
+                latest_chapter_stmt = (
+                    select(Chapter)
+                    .where(
+                        Chapter.volume_id.in_(
+                            select(Volume.id).where(Volume.book_id == book_id)
+                        )
                     )
+                    .order_by(Chapter.created_at.desc())
+                    .limit(1)
                 )
-                .order_by(Chapter.created_at.desc())
-                .limit(1)
-            )
-            latest_chapter_result = await session.execute(latest_chapter_stmt)
-            latest_chapter = latest_chapter_result.scalar_one_or_none()
-            latest_chapter_id = latest_chapter.id if latest_chapter else 0
+                latest_chapter_result = await session.execute(latest_chapter_stmt)
+                latest_chapter = latest_chapter_result.scalar_one_or_none()
+                latest_chapter_id = latest_chapter.id if latest_chapter else 0
 
-            prev_ctx = await get_previous_chapter_context(
-                session, book_id, latest_chapter_id
-            )
-            state["previous_chapter_summary"] = prev_ctx.get("previous_chapter_summary")
-            state["previous_chapter_content"] = prev_ctx.get("previous_chapter_content")
-            state["cross_chapter_context"] = prev_ctx.get("cross_chapter_context", {})
-        except Exception as exc:
-            logger.warning(f"查询上一章上下文失败: {exc}")
+                prev_ctx = await get_previous_chapter_context(
+                    session, book_id, latest_chapter_id
+                )
+                state["previous_chapter_summary"] = prev_ctx.get(
+                    "previous_chapter_summary"
+                )
+                state["previous_chapter_content"] = prev_ctx.get(
+                    "previous_chapter_content"
+                )
+                state["cross_chapter_context"] = prev_ctx.get(
+                    "cross_chapter_context", {}
+                )
+            except Exception as exc:
+                logger.warning(f"查询上一章上下文失败: {exc}")
 
-    return conversation, state, book_id
+        return conversation, state, book_id, lock_key, holder_id
+    except Exception:
+        # 加锁成功后的任何失败都必须在此释放锁：调用方尚未拿到 lock 信息，
+        # 若交由调用方清理，book_id 仍为 None，锁会一直残留到过期。
+        await _release_book_lock(book_id, user_id, lock_key, holder_id)
+        raise
 
 
 @router.get("/conversations", response_model=list[HistoryResponse])
@@ -297,6 +362,69 @@ async def delete_conversation(
     return {"ok": True}
 
 
+@router.get("/book-lock")
+async def get_book_lock_status(
+    book_id: int,
+    user_id: Annotated[int, Depends(get_current)],
+    session: Annotated[AsyncSession, Depends(db_manager.get_db)] = None,
+):
+    """查询书籍当前是否被 Agent 任务占用（锁状态）。
+
+    Args:
+        book_id: 书籍 ID（须为当前用户所有）。
+        user_id: 当前用户 ID（依赖注入）。
+        session: 数据库会话（依赖注入）。
+
+    Returns:
+        含 locked / holder / ttl 的字典；查询失败时按未占用处理。
+    """
+    stmt = select(Book).where(Book.id == book_id, Book.user_id == user_id)
+    result = await session.execute(stmt)
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="书籍不存在或无权访问")
+    key = f"agent:book_lock:{user_id}:{book_id}"
+    try:
+        ttl = await redis_client.ttl(key)
+        holder = await redis_client.get(key)
+        return {"locked": ttl is not None and ttl > 0, "holder": holder, "ttl": ttl}
+    except Exception as exc:
+        logger.error(f"查询书籍锁失败: {exc}")
+        return {"locked": False, "holder": None, "ttl": None}
+
+
+@router.delete("/book-lock")
+async def force_release_book_lock(
+    book_id: int,
+    user_id: Annotated[int, Depends(get_current)],
+    session: Annotated[AsyncSession, Depends(db_manager.get_db)] = None,
+):
+    """强制释放书籍的 Agent 任务锁（仅限用户自己的书籍）。
+
+    用于锁残留场景（如上一轮任务被中断且未正常清理）。注意：若确有其他
+    任务正在执行，强制释放会使其与新任务并发写书，前端需在用户确认无任务
+    运行时才调用。
+
+    Args:
+        book_id: 书籍 ID（须为当前用户所有）。
+        user_id: 当前用户 ID（依赖注入）。
+        session: 数据库会话（依赖注入）。
+
+    Returns:
+        释放结果。
+    """
+    stmt = select(Book).where(Book.id == book_id, Book.user_id == user_id)
+    result = await session.execute(stmt)
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="书籍不存在或无权访问")
+    key = f"agent:book_lock:{user_id}:{book_id}"
+    try:
+        await redis_client.delete(key)
+        return {"ok": True, "released": True}
+    except Exception as exc:
+        logger.error(f"强制释放书籍锁失败: {exc}")
+        return {"ok": False, "released": False}
+
+
 @router.post("/start")
 async def start_agent_session(
     user_id: Annotated[int, Depends(get_current)],
@@ -333,18 +461,12 @@ async def respond_to_agent(
         raise HTTPException(status_code=400, detail="用户模型配置未设置")
     lock_key = None
     holder_id = None
-    locked = False
     book_id = None
     try:
-        conversation, state, book_id = await _prepare_agent_state(
+        # 锁在 _prepare_agent_state 内部获取（先加锁后写消息，失败不污染历史）
+        conversation, state, book_id, lock_key, holder_id = await _prepare_agent_state(
             session, user_id, body.thread_id, body.message, model_config, body.book_id
         )
-        if book_id:
-            locked, lock_key, holder_id = await _acquire_book_lock(book_id, user_id)
-            if not locked:
-                raise HTTPException(
-                    status_code=503, detail="该书籍正在进行 Agent 任务，请稍后再试"
-                )
         graph = build_user_agent_graph(
             db_manager.with_db,
             model_config=model_config,
@@ -352,7 +474,12 @@ async def respond_to_agent(
         )
         config = {"configurable": {"thread_id": body.thread_id}, "recursion_limit": 100}
         try:
-            result = await graph.ainvoke(state, config=config)
+            result = await asyncio.wait_for(
+                graph.ainvoke(state, config=config), timeout=settings.LLM_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            logger.error("agent respond 空闲超时")
+            raise HTTPException(status_code=504, detail="生成超时，请稍后重试")
         except Exception as exc:
             logger.error(f"agent respond 失败: {exc}", exc_info=True)
             raise HTTPException(status_code=500, detail="Agent 执行失败")
@@ -382,7 +509,9 @@ async def stream_agent(
     user_id: Annotated[int, Depends(get_current)],
     thread_id: str,
     body: ChatRequest,
+    request: Request,
     session: Annotated[AsyncSession, Depends(db_manager.get_db)] = None,
+    _rl: None = Depends(rate_limit_agent),
 ):
     model_config = body.model_config_data or {}
     if not model_config or not model_config.get("main_config"):
@@ -391,8 +520,13 @@ async def stream_agent(
     holder_id = None
     locked = False
     book_id = None
+    _heartbeat_task: asyncio.Task | None = None
 
     async def cleanup():
+        # 幂等：锁已被提前释放（end 事件后）时，Lua 持有者校验会拒绝重复删除；
+        # 心跳任务对已完成/已取消任务重复 cancel 无副作用。
+        if _heartbeat_task is not None:
+            _heartbeat_task.cancel()
         if book_id:
             await _release_book_lock(book_id, user_id, lock_key, holder_id)
 
@@ -421,7 +555,11 @@ async def stream_agent(
                 _tool_decision = state_data.get("review_decision") or "accept"
                 state = {
                     **state_data,
-                    "pending_tool": {**pending_tool, "decision": _tool_decision, "edited_content": state_data.get("edited_content")},
+                    "pending_tool": {
+                        **pending_tool,
+                        "decision": _tool_decision,
+                        "edited_content": state_data.get("edited_content"),
+                    },
                     "pending_review": None,
                     "review_decision": None,
                     "edited_content": None,
@@ -447,14 +585,20 @@ async def stream_agent(
                     chapter_id_for_terminate = state_data.get("terminate_chapter_id")
                     instruction_parts = []
                     if chapter_id_for_terminate:
-                        instruction_parts.append(f"target_chapter_id={chapter_id_for_terminate}")
+                        instruction_parts.append(
+                            f"target_chapter_id={chapter_id_for_terminate}"
+                        )
                     node_outputs = state_data.get("workflow_node_outputs", {})
                     if node_outputs:
-                        outputs_text = "\n\n".join([
-                            f"[{nid}] {data if isinstance(data, str) else data.get('output', '')[:2000]}"
-                            for nid, data in node_outputs.items()
-                        ])
-                        instruction_parts.append(f"根据以下工作流节点输出生成章节正文：\n\n{outputs_text}")
+                        outputs_text = "\n\n".join(
+                            [
+                                f"[{nid}] {data if isinstance(data, str) else data.get('output', '')[:2000]}"
+                                for nid, data in node_outputs.items()
+                            ]
+                        )
+                        instruction_parts.append(
+                            f"根据以下工作流节点输出生成章节正文：\n\n{outputs_text}"
+                        )
                     messages.append(
                         HumanMessage(
                             content=f"工作流已被用户终止。请根据已完成的节点输出生成最终章节。{' '.join(instruction_parts) if instruction_parts else '请汇总已有输出并给出建议。'}"
@@ -477,46 +621,92 @@ async def stream_agent(
                         "candidate_reply_ready": False,
                         "workflow_result": None,
                     }
-                elif review_decision == "retry":
-                    messages.append(
-                        HumanMessage(
-                            content=f"节点 [{node_label}] 的输出被用户拒绝。请调整参数或从不同的角度重新生成，确保输出严格遵循该节点的写作要求。"
-                        )
-                    )
-                elif review_decision == "edit" and edited_content:
-                    messages.append(
-                        HumanMessage(
-                            content=f"节点 [{node_label}] 的输出已被用户修改为以下内容：\n\n{edited_content}\n\n请基于此修改后的内容继续工作，并相应调整后续节点的上下文。"
-                        )
-                    )
+                wf_id = pending_review.get("workflow_id")
+                nid = pending_review.get("node_id")
+                tcid = pending_review.get("target_chapter_id")
+                if wf_id and nid:
+                    # 确定性续跑：按待审节点的精确 workflow_id + node_id 重跑，
+                    # 不再让 LLM 臆测节点 ID（此前误把审计角色 auditor 当节点导致「节点不存在」）。
+                    queued: dict = {"workflow_id": wf_id, "node_id": nid}
+                    if tcid is not None:
+                        queued["target_chapter_id"] = tcid
+                    if review_decision == "accept":
+                        # 用户接受当前输出：重跑该节点但跳过自动质量审计，直接作为候选呈现
+                        queued["skip_audit"] = True
+                        note = f"节点 [{node_label}] 的输出已被用户接受，正在重新执行并继续。"
+                    elif review_decision == "edit" and edited_content:
+                        # 用户修改后内容：直接作为节点输出，跳过生成与审计
+                        queued["forced_output"] = edited_content
+                        note = f"节点 [{node_label}] 的输出已被用户修改，正在按修改后内容继续。"
+                    else:  # retry：重跑同一节点并重新审计
+                        note = f"节点 [{node_label}] 的输出被用户拒绝，正在重新生成。"
+                    messages.append(HumanMessage(content=note))
+                    state = {
+                        **state_data,
+                        "messages": messages,
+                        "pending_review": None,
+                        "review_decision": None,
+                        "edited_content": None,
+                        # 续跑必须清 candidate_reply_ready 与 workflow_result，
+                        # 否则图在 _entry_router 立即 END、审核决定失效。
+                        "candidate_reply_ready": False,
+                        "workflow_result": None,
+                        "pending_workflow": queued,
+                    }
                 else:
-                    messages.append(
-                        HumanMessage(
-                            content=f"节点 [{node_label}] 的输出已被用户接受。请继续执行下一个节点。"
+                    # 兜底：缺少 workflow_id/node_id 时退回自然语言续跑（旧行为）
+                    if review_decision == "retry":
+                        messages.append(
+                            HumanMessage(
+                                content=f"节点 [{node_label}] 的输出被用户拒绝。请调整参数或从不同的角度重新生成，确保输出严格遵循该节点的写作要求。"
+                            )
                         )
-                    )
+                    elif review_decision == "edit" and edited_content:
+                        messages.append(
+                            HumanMessage(
+                                content=f"节点 [{node_label}] 的输出已被用户修改为以下内容：\n\n{edited_content}\n\n请基于此修改后的内容继续工作，并相应调整后续节点的上下文。"
+                            )
+                        )
+                    else:
+                        messages.append(
+                            HumanMessage(
+                                content=f"节点 [{node_label}] 的输出已被用户接受。请继续执行下一个节点。"
+                            )
+                        )
 
-                state = {
-                    **state_data,
-                    "messages": messages,
-                    "pending_review": None,
-                    "review_decision": None,
-                    "edited_content": None,
-                    # 同 terminate 分支：审计拦截续跑必须清 candidate_reply_ready 与
-                    # workflow_result，否则图在 _entry_router 立即 END、审核决定失效。
-                    "candidate_reply_ready": False,
-                    "workflow_result": None,
-                }
+                    state = {
+                        **state_data,
+                        "messages": messages,
+                        "pending_review": None,
+                        "review_decision": None,
+                        "edited_content": None,
+                        # 同 terminate 分支：审计拦截续跑必须清 candidate_reply_ready 与
+                        # workflow_result，否则图在 _entry_router 立即 END、审核决定失效。
+                        "candidate_reply_ready": False,
+                        "workflow_result": None,
+                    }
         else:
-            conversation, state, book_id = await _prepare_agent_state(
-                session, user_id, thread_id, body.message, model_config, body.book_id
+            # 锁在 _prepare_agent_state 内部获取（先加锁后写消息，失败不污染历史）
+            conversation, state, book_id, lock_key, holder_id = (
+                await _prepare_agent_state(
+                    session,
+                    user_id,
+                    thread_id,
+                    body.message,
+                    model_config,
+                    body.book_id,
+                )
             )
-        if book_id:
+        if book_id and not lock_key:
+            # resume 分支未经 _prepare_agent_state，需自行获取书籍锁
             locked, lock_key, holder_id = await _acquire_book_lock(book_id, user_id)
             if not locked:
                 raise HTTPException(
                     status_code=503, detail="该书籍正在进行 Agent 任务，请稍后再试"
                 )
+        if lock_key:
+            # 长任务（工作流多节点可达数十分钟）期间周期续期锁 TTL，防止执行中锁过期被他人获取
+            _heartbeat_task = asyncio.create_task(_renew_book_lock(lock_key, holder_id))
         graph = build_user_agent_graph(
             db_manager.with_db,
             model_config=model_config,
@@ -525,6 +715,7 @@ async def stream_agent(
         config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 20}
 
         async def event_generator():
+            _ag_iter = None
             try:
                 yield ":\n\n"
                 final_reply = ""
@@ -536,14 +727,36 @@ async def stream_agent(
                 from langchain_core.messages import HumanMessage as _HMsg
                 from langchain_core.messages import ToolMessage as _TMsg
 
-                async for mode, data in graph.astream(
+                _ag_iter = graph.astream(
                     state, config=config, stream_mode=["updates", "custom"]
-                ):
+                ).__aiter__()
+                _idle_timeout = settings.LLM_TIMEOUT
+                while True:
+                    try:
+                        _step = await asyncio.wait_for(
+                            _ag_iter.__anext__(), timeout=_idle_timeout
+                        )
+                    except StopAsyncIteration:
+                        break
+                    except asyncio.TimeoutError:
+                        logger.error("Agent 流式空闲超时，主动终止回合")
+                        yield f"data: {json.dumps({'type': 'error', 'message': '生成超时，请稍后重试'}, ensure_ascii=False)}\n\n"
+                        break
+                    mode, data = _step
+                    # 客户端断连：尽快终止并释放书籍锁，避免空占锁到 TTL
+                    if await request.is_disconnected():
+                        logger.info("客户端已断开，终止 Agent 流式")
+                        break
                     if mode == "custom":
                         if not isinstance(data, dict):
                             continue
                         etype = data.get("event")
-                        if etype in ("node_start", "node_stream", "node_end", "node_fail"):
+                        if etype in (
+                            "node_start",
+                            "node_stream",
+                            "node_end",
+                            "node_fail",
+                        ):
                             yield f"data: {json.dumps({'type': etype, **data}, ensure_ascii=False)}\n\n"
                         elif etype == "think_start":
                             yield f"data: {json.dumps({'type': 'think_start', 'elapsed': 0, 'user_id': user_id}, ensure_ascii=False)}\n\n"
@@ -570,9 +783,15 @@ async def stream_agent(
                             msgs = update.get("messages") or []
                             if msgs:
                                 last = msgs[-1]
-                                if isinstance(last, _AIMsg) and getattr(last, "tool_calls", None):
+                                if isinstance(last, _AIMsg) and getattr(
+                                    last, "tool_calls", None
+                                ):
                                     for _tc in last.tool_calls:
-                                        tname = _tc.get("name") if isinstance(_tc, dict) else getattr(_tc, "name", "")
+                                        tname = (
+                                            _tc.get("name")
+                                            if isinstance(_tc, dict)
+                                            else getattr(_tc, "name", "")
+                                        )
                                         if tname == "generate_chapter":
                                             yield f"data: {json.dumps({'type': 'progress', 'step': 'generate_chapter', 'n': 1, 'total': 4, 'words': 0, 'eta': 0}, ensure_ascii=False)}\n\n"
                                         elif tname == "generate_outline_extension":
@@ -598,18 +817,27 @@ async def stream_agent(
                                         _parsed = None
                                     if isinstance(_parsed, dict):
                                         if _parsed.get("status") == "pending_review":
-                                            node_results = _parsed.get("node_results", [])
+                                            node_results = _parsed.get(
+                                                "node_results", []
+                                            )
                                             if node_results:
                                                 last = node_results[-1]
                                                 qc = last.get("quality_check", {})
                                                 yield f"data: {json.dumps({'type': 'review_card', 'node_id': _parsed.get('pending_node_id', ''), 'node_label': _parsed.get('pending_node_label', ''), 'output_preview': last.get('output', '')[:1000], 'reason': qc.get('reason', ''), 'system_prompt': qc.get('system_prompt', '')}, ensure_ascii=False)}\n\n"
-                                        if _parsed.get("status") == "completed" and _parsed.get("progress_events"):
+                                        if _parsed.get(
+                                            "status"
+                                        ) == "completed" and _parsed.get(
+                                            "progress_events"
+                                        ):
                                             for prog in _parsed["progress_events"]:
                                                 yield f"data: {json.dumps({'type': 'progress', **prog}, ensure_ascii=False)}\n\n"
                                 # 每个工具执行结束各发一次 tool_end（带工具名），供前端复位工具状态条
                                 yield f"data: {json.dumps({'type': 'tool_end', 'tool': m.name}, ensure_ascii=False)}\n\n"
                         # quality_gate 节点：工作流审计若产生 pending_review，推送审核卡
-                        elif node_name == "quality_gate" or node_name == "workflow_runner":
+                        elif (
+                            node_name == "quality_gate"
+                            or node_name == "workflow_runner"
+                        ):
                             if update.get("pending_review"):
                                 yield _sse_review_card(update["pending_review"])
 
@@ -626,13 +854,16 @@ async def stream_agent(
                     if final_messages:
                         last = final_messages[-1]
                         if isinstance(last, _TMsg) or (
-                            isinstance(last, _AIMsg) and getattr(last, "tool_calls", None)
+                            isinstance(last, _AIMsg)
+                            and getattr(last, "tool_calls", None)
                         ):
                             last = None
                             for m in reversed(final_messages):
                                 if isinstance(m, _TMsg):
                                     continue
-                                if isinstance(m, _AIMsg) and getattr(m, "tool_calls", None):
+                                if isinstance(m, _AIMsg) and getattr(
+                                    m, "tool_calls", None
+                                ):
                                     continue
                                 # 只回退到 AI 消息；跳过用户消息，避免「AI 把用户问题原样复读」
                                 if isinstance(m, _HMsg):
@@ -643,7 +874,9 @@ async def stream_agent(
                                     break
                         if last is not None:
                             content = getattr(last, "content", None) or ""
-                            reply = content if isinstance(content, str) else str(content)
+                            reply = (
+                                content if isinstance(content, str) else str(content)
+                            )
                 except Exception as exc:
                     logger.warning(f"读取最终回复失败: {exc}")
                 if not reply:
@@ -663,17 +896,23 @@ async def stream_agent(
                     suggestion_tools = _build_feedback_tools(
                         db_manager.with_db, model_config=model_config
                     )
-                    suggestions = await suggestion_tools["proactive_suggestions"].ainvoke(
-                        {"user_id": user_id, "book_id": book_id}
-                    )
+                    suggestions = await suggestion_tools[
+                        "proactive_suggestions"
+                    ].ainvoke({"user_id": user_id, "book_id": book_id})
                     # 建议去重：同一建议组合只在会话内推送一次（按 items 的签名比较），
                     # 避免每次回复都重复推送同样的「情节线停滞/章节缺摘要」建议刷屏。
-                    _sig = json.dumps(suggestions, ensure_ascii=False, sort_keys=True) if suggestions else ""
+                    _sig = (
+                        json.dumps(suggestions, ensure_ascii=False, sort_keys=True)
+                        if suggestions
+                        else ""
+                    )
                     _prev_sig = (final_state or {}).get("suggestions_signature") or ""
                     if suggestions and _sig != _prev_sig:
                         yield f"data: {json.dumps({'type': 'suggestions', 'items': suggestions}, ensure_ascii=False)}\n\n"
                         try:
-                            await graph.aupdate_state(config, values={"suggestions_signature": _sig})
+                            await graph.aupdate_state(
+                                config, values={"suggestions_signature": _sig}
+                            )
                         except Exception:
                             pass
                 except Exception as exc:
@@ -682,11 +921,18 @@ async def stream_agent(
                 # 标题生成涉及一次模型调用（可能耗时数秒），放在 end 之后执行，
                 # 避免阻塞主回复流结束导致前端长时间显示「正在生成」指示器。
                 yield f"data: {json.dumps({'type': 'end', 'reply': reply}, ensure_ascii=False)}\n\n"
+                # 提前释放书籍锁：前端收到 end 即恢复可发送状态，若锁拖到标题生成
+                # （一次完整 LLM 调用，耗时数秒）结束后才释放，用户在该窗口内的
+                # 新消息会被 503 拒绝。此处释放后 finally 中的 cleanup 幂等（Lua
+                # 持有者校验 + 心跳任务 cancel 无副作用），重复调用安全。
+                await cleanup()
                 # 首条消息结束后生成会话标题（5-10 字）并直接写入数据库，
                 # 随后以 title_update 事件下发（此时流尚未关闭，前端仍会读取）。
                 if not is_resume and conversation.title == "新对话":
                     try:
-                        generated = await _generate_title(model_config, body.message, reply)
+                        generated = await _generate_title(
+                            model_config, body.message, reply
+                        )
                         if generated:
                             conversation.title = generated
                             await session.commit()
@@ -705,8 +951,18 @@ async def stream_agent(
                 logger.exception("stream agent 失败")
                 yield f"data: {json.dumps({'type': 'error', 'message': '服务器内部错误'}, ensure_ascii=False)}\n\n"
             finally:
+                # 关闭底层图迭代器，避免空闲超时/断连 break 后生成器残留
+                if _ag_iter is not None:
+                    try:
+                        await _ag_iter.aclose()
+                    except Exception:
+                        pass
+                _stream_tasks.pop(thread_id, None)
                 await cleanup()
 
+        _current_task = asyncio.current_task()
+        if _current_task is not None:
+            _stream_tasks[thread_id] = _current_task
         return StreamingResponse(
             event_generator(),
             media_type="text/event-stream",
@@ -719,6 +975,36 @@ async def stream_agent(
     except Exception:
         await cleanup()
         raise
+
+
+@router.post("/stream/{thread_id}/cancel")
+async def cancel_stream(
+    thread_id: str,
+    user_id: Annotated[int, Depends(get_current)],
+    session: Annotated[AsyncSession, Depends(db_manager.get_db)] = None,
+):
+    """主动取消当前进程内正在执行的 Agent 流式任务。
+
+    取消请求处理 task 会使 event_generator 在挂起点收到 CancelledError，
+    finally 清理随即执行（释放书籍锁、移除任务注册）。用于前端「停止」按钮
+    的兜底：即使浏览器连接断开未被服务端及时感知，也能尽快终止任务。
+
+    Args:
+        thread_id: 会话 ID。
+        user_id: 当前用户 ID（依赖注入）。
+        session: 数据库会话（依赖注入）。
+
+    Returns:
+        是否找到并取消了任务。
+    """
+    conversation = await _get_conversation(session, thread_id, user_id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    task = _stream_tasks.get(thread_id)
+    if task and not task.done():
+        task.cancel()
+        return {"ok": True}
+    return {"ok": False}
 
 
 @router.post("/compress")
@@ -738,22 +1024,52 @@ async def manual_compress(
     config = {"configurable": {"thread_id": body.thread_id}}
     state_snapshot = await checkpoint.aget(config)
     if not state_snapshot:
+
         async def _empty():
             yield f"data: {json.dumps({'type': 'compress_done', 'summary': '', 'removed_count': 0, 'remaining_count': 0}, ensure_ascii=False)}\n\n"
-        return StreamingResponse(_empty(), media_type="text/event-stream", headers={"Cache-Control": "no-cache, no-transform", "Connection": "keep-alive", "X-Accel-Buffering": "no"})
+
+        return StreamingResponse(
+            _empty(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache, no-transform",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     state_data = state_snapshot.get("channel_values", {})
     messages = state_data.get("messages", [])
     if not messages:
+
         async def _empty():
             yield f"data: {json.dumps({'type': 'compress_done', 'summary': '', 'removed_count': 0, 'remaining_count': 0}, ensure_ascii=False)}\n\n"
-        return StreamingResponse(_empty(), media_type="text/event-stream", headers={"Cache-Control": "no-cache, no-transform", "Connection": "keep-alive", "X-Accel-Buffering": "no"})
+
+        return StreamingResponse(
+            _empty(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache, no-transform",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     model_config = state_data.get("model_config", {})
     if not model_config or not model_config.get("main_config"):
+
         async def _err():
             yield f"data: {json.dumps({'type': 'error', 'message': '未找到模型配置'}, ensure_ascii=False)}\n\n"
-        return StreamingResponse(_err(), media_type="text/event-stream", headers={"Cache-Control": "no-cache, no-transform", "Connection": "keep-alive", "X-Accel-Buffering": "no"})
+
+        return StreamingResponse(
+            _err(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache, no-transform",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     llm = ModelFactory(model_config)
     from langchain_core.messages import HumanMessage, SystemMessage
@@ -804,7 +1120,9 @@ async def manual_compress(
             }
             # 摘要同步生成向量嵌入，保证语义检索可命中压缩摘要
             try:
-                memory_payload["embedding"] = await llm.embedding.aembed_query(summary[:2000])
+                memory_payload["embedding"] = await llm.embedding.aembed_query(
+                    summary[:2000]
+                )
             except Exception as exc:
                 logger.warning(f"压缩摘要 embedding 生成失败: {exc}")
             await memory_repo.create(user_id=user_id, data=memory_payload)
@@ -832,8 +1150,13 @@ async def manual_compress(
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache, no-transform", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
+
 
 @router.patch("/state/{thread_id}")
 async def patch_state(
@@ -842,11 +1165,20 @@ async def patch_state(
     user_id: Annotated[int, Depends(get_current)],
     session: Annotated[AsyncSession, Depends(db_manager.get_db)] = None,
 ):
+    # 先校验会话归属：thread_id 来自路径，若不校验可越权读写他人会话的 checkpoint 状态
+    conversation = await _get_conversation(session, thread_id, user_id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="会话不存在")
+
     checkpoint = graph_pool_manager.checkpoint
     if not checkpoint:
         raise HTTPException(status_code=503, detail="Checkpointer 未就绪")
 
-    ALLOWED_STATE_KEYS = {'personal_rag_results', 'active_workflow_id', 'workflow_node_outputs'}
+    ALLOWED_STATE_KEYS = {
+        "personal_rag_results",
+        "active_workflow_id",
+        "workflow_node_outputs",
+    }
     filtered = {k: v for k, v in body.items() if k in ALLOWED_STATE_KEYS}
 
     config = {"configurable": {"thread_id": thread_id}}

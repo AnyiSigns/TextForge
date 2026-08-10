@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import get_current
 from shared.database import db_manager
+from shared.ratelimit import rate_limit_export
 
 from .export_service import ExportService
 
@@ -24,6 +25,7 @@ async def export_book(
     include_outline: bool = Query(False),
     include_characters: bool = Query(False),
     volume_ids: list[int] | None = Query(default=None),
+    _rl: None = Depends(rate_limit_export),
 ):
     data = await service.export_book(
         user_id=user_id,

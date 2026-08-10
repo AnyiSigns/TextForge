@@ -41,19 +41,17 @@ const PROVIDER_TEMPLATES: Record<string, { base_url: string; model_id: string; d
   moonshot: [{ base_url: 'https://api.moonshot.cn/v1', model_id: 'moonshot-v1-8k', desc: 'Moonshot v1 8K' }],
   qianfan: [{ base_url: 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1', model_id: 'ernie-4.0', desc: 'ERNIE 4.0' }],
   dashscope: [
-    { base_url: process.env.NEXT_PUBLIC_MODEL_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1', model_id: process.env.NEXT_PUBLIC_MODEL_ID || 'qwen-turbo', desc: '通义千问 (MaaS 配置)' },
     { base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model_id: 'qwen-turbo', desc: '通义千问 Turbo' },
   ],
 };
 
 const PROVIDER_LIST = Object.keys(PROVIDER_TEMPLATES);
 
-// 默认模型配置：从 .env.local 注入（gitignored，不提交密钥）。
-// dashscope adapter 后端映射 langchain_qwq.ChatQwQ，其内部走 OpenAI 兼容协议
-// （DEFAULT_API_BASE 即 compatible-mode/v1），故 base_url 必须用兼容模式端点而非 /api/v1。
-const MODEL_BASE_URL = process.env.NEXT_PUBLIC_MODEL_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+// 默认模型配置：从 .env.local 注入（gitignored，不提交密钥）。不再硬编码任何 base url / 模型名
+// 默认值——env 为空时即空白，由用户在「设置」页自行填写（仅存于浏览器 IndexedDB）。
+const MODEL_BASE_URL = process.env.NEXT_PUBLIC_MODEL_BASE_URL || '';
 const MODEL_API_KEY = process.env.NEXT_PUBLIC_MODEL_API_KEY || '';
-const MODEL_ID = process.env.NEXT_PUBLIC_MODEL_ID || 'qwen-turbo';
+const MODEL_ID = process.env.NEXT_PUBLIC_MODEL_ID || '';
 const EMBEDDING_API_KEY = process.env.NEXT_PUBLIC_EMBEDDING_API_KEY || '';
 
 const DEFAULT_TEXT_ROLES: Record<string, { adapter: string; base_url: string; api_key: string; model_id: string }> = {

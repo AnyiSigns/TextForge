@@ -17,6 +17,8 @@ interface AgentMessage {
   nodeStatus?: 'running' | 'completed' | 'failed';
   tokens?: number;
   reason?: string;
+  /** 书籍锁冲突（503）错误消息携带的原始用户指令，供「解除占用并重试」使用 */
+  retryMessage?: string;
 }
 
 interface AgentStatus {

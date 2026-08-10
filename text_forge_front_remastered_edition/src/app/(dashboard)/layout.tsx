@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   BookOpen, Database, Settings,
   Workflow, ChevronsLeft, LogOut,
@@ -27,21 +27,60 @@ const menuGroups = [
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+  const { isAuthenticated, hasHydrated } = useAuthStore();
 
   const [userName, setUserName] = useState('');
   const [userEmail, setUserEmail] = useState('');
-
   const [panelWidth, setPanelWidth] = useState(340);
   const [panelFullscreen, setPanelFullscreen] = useState(false);
   const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const [panelDragging, setPanelDragging] = useState(false);
-
   const [sidebarWidth, setSidebarWidth] = useState(224);
   const sidebarResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const [sidebarDragging, setSidebarDragging] = useState(false);
+  const [prevPathname, setPrevPathname] = useState(pathname);
+  const agentActive = useBookDetailStore((s) => s.agentOpen);
+
+  useEffect(() => {
+    if (hasHydrated && !isAuthenticated) {
+      router.replace('/login');
+    }
+  }, [hasHydrated, isAuthenticated, router]);
+
+  useEffect(() => {
+    userApi.fetchProfile().then((p) => {
+      setUserName(p.username || '');
+      setUserEmail(p.email || '');
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    };
+    const handleEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') setUserMenuOpen(false); };
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleEsc);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleEsc);
+    };
+  }, [userMenuOpen]);
+
+  if (!hasHydrated) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-sm text-muted-foreground">加载中...</div>
+      </div>
+    );
+  }
 
   const handleResizeDown = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -95,39 +134,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     });
   };
 
-  useEffect(() => {
-    userApi.fetchProfile().then((p) => {
-      setUserName(p.username || '');
-      setUserEmail(p.email || '');
-    }).catch(() => {});
-  }, []);
-
   // 进入书籍详情页时自动折叠侧边栏（渲染期间调整，React 会立即重渲染）
-  const [prevPathname, setPrevPathname] = useState(pathname);
   if (pathname !== prevPathname) {
     setPrevPathname(pathname);
     if (pathname && pathname.startsWith('/books/') && pathname !== '/books') {
       setCollapsed(true);
     }
   }
-
-  useEffect(() => {
-    if (!userMenuOpen) return;
-    const handleClick = (e: MouseEvent) => {
-      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
-        setUserMenuOpen(false);
-      }
-    };
-    const handleEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') setUserMenuOpen(false); };
-    document.addEventListener('mousedown', handleClick);
-    document.addEventListener('keydown', handleEsc);
-    return () => {
-      document.removeEventListener('mousedown', handleClick);
-      document.removeEventListener('keydown', handleEsc);
-    };
-  }, [userMenuOpen]);
-
-  const agentActive = useBookDetailStore((s) => s.agentOpen);
 
   const toggleSidebar = () => {
     if (collapsed) {
@@ -138,7 +151,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       setCollapsed(true);
     }
   };
-
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-background dashboard-main">

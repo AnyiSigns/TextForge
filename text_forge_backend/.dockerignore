@@ -1,0 +1,13 @@
+# 不纳入镜像构建上下文，避免把密钥/缓存打进镜像层
+.env
+.env.*
+!.env.example
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+.git
+tests
+*.md

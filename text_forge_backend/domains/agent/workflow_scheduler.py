@@ -634,6 +634,7 @@ async def execute_node(
     node_id: str = "",
     on_progress: Callable[[dict[str, Any]], None] | None = None,
     target_chapter_id: int | None = None,
+    skip_quality_audit: bool = False,
 ) -> dict[str, Any]:
     """执行单个工作流节点。
 
@@ -784,8 +785,14 @@ async def execute_node(
     if len(full_content) > 8000:
         full_content = full_content[:3000] + "\n…（中间省略）…\n" + full_content[-2000:]
 
-    qc = await audit_node_output(full_content, system_prompt, model_config or {})
-    needs_review = not qc.get("passed", True)
+    if skip_quality_audit:
+        # 用户已接受该节点输出（审核卡「接受」）时跳过自动质量审计，避免重复拦截死循环，
+        # 直接把当前输出作为候选正文呈现给用户落库。
+        qc = {"passed": True, "reason": "用户已接受，跳过自动质量审计"}
+        needs_review = False
+    else:
+        qc = await audit_node_output(full_content, system_prompt, model_config or {})
+        needs_review = not qc.get("passed", True)
 
     if on_progress:
         on_progress(
@@ -930,6 +937,7 @@ async def run_workflow(
                 "node_results": node_results,
                 "pending_node_id": node_id,
                 "pending_node_label": node_label,
+                "workflow_id": workflow_id,
             }
 
         upstream_outputs[node_id] = result["output"]

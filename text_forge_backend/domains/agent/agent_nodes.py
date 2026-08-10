@@ -86,7 +86,7 @@ AGENT_SYSTEM_PROMPT = """你是 TextForge Agent，一位专业的 小说/网文 
 
 ## 行为准则
 
-- 对普通问候和闲聊自然地用简短友好的文字回应，介绍你的能力和当前创作阶段。
+- 对普通问候和闲聊自然地用简短友好的文字回应。
 - 不要向用户提及 user_id 或 book_id，系统会自动处理身份验证。
 - 工具调用完成后，用自然语言向用户报告结果，不要直接输出原始字段名或 JSON。
 - 如果决定调用工具，请以一句完整的话结束，再进行工具调用。
@@ -302,7 +302,8 @@ def agent_router(state: UserAgentState) -> str:
         # 说明文字（>60 字）也必须执行，不能被防死循环逻辑丢弃。
         _names = [tc.get("name") for tc in last.tool_calls]
         _must_execute = any(
-            n in (
+            n
+            in (
                 "write_chapter_content",
                 "write_workflow_candidate",
                 "edit_chapter_content",
@@ -318,7 +319,12 @@ def agent_router(state: UserAgentState) -> str:
             )
             for n in _names
         )
-        if isinstance(content, str) and len(content) > 60 and not _tool_lead and not _must_execute:
+        if (
+            isinstance(content, str)
+            and len(content) > 60
+            and not _tool_lead
+            and not _must_execute
+        ):
             return END
         return "tool_calls"
     return END
@@ -455,6 +461,7 @@ async def quality_gate_node(state: UserAgentState) -> dict[str, Any]:
         pending_review = {
             "node_id": pending_node_id,
             "node_label": pending_node_label,
+            "workflow_id": result.get("workflow_id", ""),
             "output_preview": "",
             "reason": qc.get("reason", "输出质量不满足角色节点要求"),
             "system_prompt": qc.get("system_prompt", ""),
@@ -611,7 +618,9 @@ async def gated_tool_node(
         # 用户已选定候选时，允许 write_workflow_candidate / write_chapter_content 落库；
         # 其余工具仍拦截（如 read_chapter_content / generate_chapter 等会造成空转）。
         _names = [tc.get("name") for tc in tool_calls]
-        if _names and all(n in ("write_workflow_candidate", "write_chapter_content") for n in _names):
+        if _names and all(
+            n in ("write_workflow_candidate", "write_chapter_content") for n in _names
+        ):
             pass
         else:
             blocked = ToolMessage(

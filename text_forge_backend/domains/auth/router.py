@@ -76,7 +76,9 @@ async def refresh_at(
     user_token = await user_serve.token_repo.get_by_user_and_jti(rt_jti, user.id)
     if not user_token:
         raise HTTPException(status_code=401, detail="用户/令牌不存在")
-    if not await redis_client.sismember(f"refresh_token_{user_id}", request.refresh_token):
+    if not await redis_client.sismember(
+        f"refresh_token_{user_id}", request.refresh_token
+    ):
         raise HTTPException(status_code=401, detail="令牌不存在")
     at_jti = str(uuid.uuid4())
     # 携带当前密码版本号：改密后版本递增，旧 access token 立即失效

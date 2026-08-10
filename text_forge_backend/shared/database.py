@@ -111,6 +111,21 @@ def _sync_missing_columns(sync_conn):
                 logger.info("已迁移 agent_memories.embedding 为不定维度 vector")
         except Exception as e:
             logger.warning(f"agent_memories.embedding 维度迁移跳过: {e}")
+    # 热点查询索引：messages 按 (conversation_id, create_at) 取历史消息，
+    # 单 conversation_id 索引 + 内存排序在大数据量下退化为排序开销，补复合索引。
+    if "messages" in tables:
+        try:
+            exists = sync_conn.exec_driver_sql(
+                "SELECT 1 FROM pg_indexes WHERE indexname = 'ix_messages_conversation_create'"
+            ).fetchone()
+            if exists is None:
+                sync_conn.exec_driver_sql(
+                    "CREATE INDEX ix_messages_conversation_create "
+                    "ON messages (conversation_id, create_at)"
+                )
+                logger.info("已为 messages 表补充 (conversation_id, create_at) 复合索引")
+        except Exception as e:
+            logger.warning(f"messages 复合索引补充跳过: {e}")
 
 
 class DBManager:
@@ -126,8 +141,11 @@ class DBManager:
             # echo 由 SQL_ECHO 显式控制，默认关闭，避免 SQL 日志淹没业务日志
             echo=settings.SQL_ECHO,
             pool_pre_ping=True,  # 开启连接预检查
-            pool_size=3,  # 连接池大小
-            max_overflow=10  # 连接池最大溢出数
+            # 连接池大小：Agent 流式回合在整段 LLM 调用期间持有 DB 会话，
+            # 单 worker 下过小（原 3）会导致并发回合触溢出。提到 8 并限制溢出为 8，
+            # 总连接数受 Postgres max_connections 与 1GiB 内存约束（运维侧设定）。
+            pool_size=8,  # 连接池大小
+            max_overflow=8  # 连接池最大溢出数
         )
         self.session_factory = async_sessionmaker(
             bind=self.async_engine,  # 绑定异步引擎

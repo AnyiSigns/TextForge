@@ -47,6 +47,7 @@ class VectorRepository:
                 query_embedding=query_embedding,
                 rag_filter=rag_filter,
                 top_k=top_k,
+                embedding_dim=len(query_embedding) if query_embedding else None,
             )
             if cache_hit is not None:
                 return cache_hit
@@ -99,6 +100,7 @@ class VectorRepository:
                     query=query_text,
                     rag_filter=rag_filter,
                     results=items,
+                    embedding_dim=len(query_embedding) if query_embedding else None,
                 )
             except Exception as exc:
                 logger.warning(f"vector_repo 缓存写入失败: {exc}")

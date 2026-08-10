@@ -1,9 +1,12 @@
+import time
+import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
-from config.logging import get_logger
+from config.logging import get_logger, request_id_var
 from config.settings import settings
 from domains.agent.router import router as agent_router
 from domains.auth.router import router as auth_router
@@ -45,11 +48,28 @@ async def lifespan(_application: FastAPI):
     try:
         await redis_client.ping()
         logger.info("Redis 连接正常")
+        # 清理进程重启/崩溃残留的 Agent 书籍锁，避免新会话被误判为「书籍正在进行任务」
+        removed = 0
+        async for key in redis_client.scan_iter("agent:book_lock:*"):
+            await redis_client.delete(key)
+            removed += 1
+        if removed:
+            logger.warning(f"已清理 {removed} 个残留的 Agent 书籍锁")
     except Exception as exc:
         logger.error(f"Redis 连接失败: {exc}")
     logger.info("应用已启动")
     yield
     logger.info("应用关闭中...")
+    # 优雅关闭：取消在途 Agent 流式任务，触发其 finally 释放书籍锁与资源，
+    # 避免进程退出时锁残留到 TTL（10 分钟）。
+    try:
+        from domains.agent.router import _stream_tasks
+
+        for _task in list(_stream_tasks.values()):
+            if not _task.done():
+                _task.cancel()
+    except Exception as exc:
+        logger.warning(f"取消在途流式任务失败: {exc}")
     await db_manager.close()
     await graph_pool_manager.close()
     logger.info("应用已关闭")
@@ -61,6 +81,25 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+
+class RequestContextMiddleware(BaseHTTPMiddleware):
+    """注入/透传 X-Request-ID 到日志上下文，并记录请求耗时（含 SSE 流式总时长）。"""
+
+    async def dispatch(self, request, call_next):
+        rid = request.headers.get("X-Request-ID") or uuid.uuid4().hex
+        token = request_id_var.set(rid)
+        start = time.perf_counter()
+        try:
+            response = await call_next(request)
+        finally:
+            elapsed_ms = (time.perf_counter() - start) * 1000
+            request_id_var.reset(token)
+        response.headers["X-Request-ID"] = rid
+        logger.info(
+            f"{request.method} {request.url.path} -> {response.status_code} ({elapsed_ms:.0f}ms)"
+        )
+        return response
 
 if settings.ENV == "production":
     allow_origins = [
@@ -82,6 +121,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 请求上下文中间件：需在 CORS 之后注册，使 request_id 贯穿所有请求处理
+app.add_middleware(RequestContextMiddleware)
 
 
 @app.get("/")

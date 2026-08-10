@@ -1,4 +1,7 @@
+import hashlib
+import json
 from functools import partial
+from typing import Any
 
 from langgraph.graph import END, StateGraph
 
@@ -37,7 +40,29 @@ def _entry_router(state: UserAgentState) -> str:
     return "agent"
 
 
+# 进程级编译缓存：按 model_config 签名复用已编译的 LangGraph，避免每请求重建。
+_GRAPH_CACHE: dict[str, Any] = {}
+
+
+def _graph_cache_key(model_config: dict | None) -> str | None:
+    if model_config is None:
+        return None
+    try:
+        return hashlib.md5(
+            json.dumps(model_config, sort_keys=True, ensure_ascii=False).encode()
+        ).hexdigest()
+    except Exception:
+        return None
+
+
 def build_user_agent_graph(session_factory, model_config: dict | None = None, checkpointer=None):
+    # 有 checkpointer 且 config 可哈希时复用已编译图；session_factory 为单例，
+    # checkpointer 为单例，缓存安全。
+    if checkpointer is not None:
+        key = _graph_cache_key(model_config)
+        if key is not None and key in _GRAPH_CACHE:
+            return _GRAPH_CACHE[key]
+
     tool_node = partial(gated_tool_node, session_factory=session_factory, model_config=model_config)
 
     builder = StateGraph(UserAgentState)
@@ -59,5 +84,10 @@ def build_user_agent_graph(session_factory, model_config: dict | None = None, ch
     builder.add_conditional_edges("workflow_runner", _entry_router)
     builder.add_conditional_edges("quality_gate", quality_gate_router)
     builder.add_conditional_edges("compress", compress_router)
-    return builder.compile(checkpointer=checkpointer)
+    graph = builder.compile(checkpointer=checkpointer)
+    if checkpointer is not None:
+        key = _graph_cache_key(model_config)
+        if key is not None:
+            _GRAPH_CACHE[key] = graph
+    return graph
 

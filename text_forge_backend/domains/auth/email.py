@@ -1,13 +1,22 @@
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+import ssl
 
 import aiosmtplib
+import certifi
 from pydantic import EmailStr
 
 from config.logging import get_logger
 from config.settings import settings
 
 logger = get_logger(__name__)
+
+# 显式使用 certifi 的 CA 根证书包，避免独立 venv 环境找不到系统 CA
+# 导致连接 smtp 时 TLS 证书验证失败（CERTIFICATE_VERIFY_FAILED）。
+try:
+    _tls_context = ssl.create_default_context(cafile=certifi.where())
+except Exception:
+    _tls_context = ssl.create_default_context()
 
 
 class EmailService:
@@ -34,6 +43,7 @@ class EmailService:
                 use_tls=settings.EMAIL_USE_TLS,
                 start_tls=settings.EMAIL_START_TLS,
                 timeout=settings.EMAIL_TIME_OUT,
+                tls_context=_tls_context,
             )
             return True
         except Exception as e:

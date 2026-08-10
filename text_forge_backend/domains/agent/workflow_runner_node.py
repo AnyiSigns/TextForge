@@ -100,17 +100,34 @@ async def _finish_with_candidate(result: dict[str, Any], target_chapter_id: int 
         pending_review = {
             "node_id": result.get("pending_node_id", ""),
             "node_label": node_label,
+            "workflow_id": result.get("workflow_id", ""),
             "output_preview": result.get("output", "") or (_last.get("output") or "")[:1000],
             "reason": _qc.get("reason", "输出质量不满足角色节点要求"),
             "system_prompt": _qc.get("system_prompt", ""),
-            # 携带目标章节：用户点「终止并生成正文」时前端可回传，供 review_action 定位落库章节
+            # 携带目标章节与所属工作流：用户审核决策后续跑时据此精确重跑该节点，
+            # 避免 LLM 臆测节点 ID（如误把审计角色 auditor 当作工作流节点）。
+            "target_chapter_id": target_chapter_id,
+        }
+        reply = f"工作流在节点「{node_label}」触发审计拦截，需要您审核后再继续。请查看审核卡进行确认。"
+    elif result.get("needs_review"):
+        # 单节点重跑（如「重试」）后质量审计仍未通过：再次拦截，重新弹审核卡，
+        # 使「重试 → 仍不合格 → 再审核」的循环可继续，而非直接当作候选呈现。
+        _qc = result.get("quality_check") or {}
+        node_label = result.get("node_label", "")
+        pending_review = {
+            "node_id": result.get("node_id", ""),
+            "node_label": node_label,
+            "workflow_id": result.get("workflow_id", ""),
+            "output_preview": (result.get("output") or "")[:1000],
+            "reason": _qc.get("reason", "输出质量不满足角色节点要求"),
+            "system_prompt": _qc.get("system_prompt", ""),
             "target_chapter_id": target_chapter_id,
         }
         reply = f"工作流在节点「{node_label}」触发审计拦截，需要您审核后再继续。请查看审核卡进行确认。"
     elif not content_nodes:
         if not reply:
             reply = "工作流执行完成，但没有产出可用的正文候选（可能是纯审计/规划类节点）。您可以指定具体章节或调整工作流后再试。"
-    else:
+    elif not pending_review:
         lines = [f"工作流执行完成，请选择哪个节点的输出作为{('第'+str(target)+'章') if target else '本章'}的正文："]
         for i, n in enumerate(content_nodes, 1):
             summary = (n.get("summary") or "").strip()
@@ -210,32 +227,47 @@ async def workflow_runner_node(state: dict[str, Any]) -> dict[str, Any]:
                     context_fields = pending.get("context_fields")
                     if context_fields:
                         node_def = {**node_def, "context_fields": context_fields}
-                    try:
-                        res = await scheduler_execute_node(
-                            node_def=node_def,
-                            book_id=book_id,
-                            model_config=model_config,
-                            node_id=node_id,
-                            upstream_outputs=pending.get("upstream_outputs"),
-                            personal_rag_results=state.get("personal_rag_results"),
-                            on_progress=_on_progress,
-                            target_chapter_id=target_chapter_id,
-                        )
-                    except Exception as exc:
-                        # 兜底：单节点执行异常转 error 结果，避免整个图崩溃断流
-                        logger.exception(f"[workflow_runner] 单节点执行未捕获异常: {exc}")
+                    # 审核卡续跑的确定性分支：
+                    # - forced_output：用户「修改」后直接用其作为节点输出，跳过生成与审计；
+                    # - skip_audit：用户「接受」后重跑该节点但跳过自动审计，避免重复拦截死循环。
+                    forced_output = pending.get("forced_output")
+                    skip_audit = pending.get("skip_audit", False)
+                    if forced_output is not None:
                         res = {
-                            "success": False,
-                            "output": "",
+                            "success": True,
+                            "output": forced_output,
                             "needs_review": False,
-                            "quality_check": {
-                                "passed": False,
-                                "reason": f"节点执行异常: {exc}",
-                            },
+                            "quality_check": {"passed": True, "reason": "用户已修改，使用修改后内容"},
                         }
+                    else:
+                        try:
+                            res = await scheduler_execute_node(
+                                node_def=node_def,
+                                book_id=book_id,
+                                model_config=model_config,
+                                node_id=node_id,
+                                upstream_outputs=pending.get("upstream_outputs"),
+                                personal_rag_results=state.get("personal_rag_results"),
+                                on_progress=_on_progress,
+                                target_chapter_id=target_chapter_id,
+                                skip_quality_audit=skip_audit,
+                            )
+                        except Exception as exc:
+                            # 兜底：单节点执行异常转 error 结果，避免整个图崩溃断流
+                            logger.exception(f"[workflow_runner] 单节点执行未捕获异常: {exc}")
+                            res = {
+                                "success": False,
+                                "output": "",
+                                "needs_review": False,
+                                "quality_check": {
+                                    "passed": False,
+                                    "reason": f"节点执行异常: {exc}",
+                                },
+                            }
                     result = {
                         "node_id": node_id,
                         "node_label": node_label,
+                        "workflow_id": workflow_id,
                         "output": res.get("output", ""),
                         "status": "completed" if res.get("success") else "error",
                         "needs_review": res.get("needs_review", False),

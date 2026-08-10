@@ -38,6 +38,23 @@ class WorkflowService:
             logger.error("获取流水线详情失败", exc_info=True)
             raise HTTPException(status_code=500, detail="获取流水线详情异常")
 
+    async def create_workflow(self, user_id: int, data: dict):
+        """创建新工作流。
+
+        Args:
+            user_id: 用户 ID。
+            data: 工作流数据（含 id、name、description、nodes、edges）。
+
+        Returns:
+            新创建的工作流实例。
+        """
+        try:
+            instance = await self.workflow_repo.create_workflow(user_id, data)
+            return instance
+        except Exception:
+            logger.error("创建工作流失败", exc_info=True)
+            raise HTTPException(status_code=500, detail="创建工作流失败")
+
     async def put_workflow(self, workflow_id: str, user_id: int, update_data: dict):
         try:
             instance = await self.workflow_repo.put_workflow(

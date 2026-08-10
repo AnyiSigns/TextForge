@@ -66,7 +66,15 @@ export async function streamAgent(
   });
 
   if (!res.ok) {
-    const err: Error & { status?: number } = new Error('Agent 请求失败');
+    // 解析后端 detail（如 503「该书籍正在进行 Agent 任务」），避免上层只能看到笼统的「Agent 请求失败」
+    let message = 'Agent 请求失败';
+    try {
+      const data = (await res.json()) as { detail?: string };
+      if (data?.detail) message = data.detail;
+    } catch {
+      // 非 JSON 响应体时保留默认消息
+    }
+    const err: Error & { status?: number } = new Error(message);
     err.status = res.status;
     throw err;
   }
@@ -94,6 +102,23 @@ export async function resumeAgent(
   bookId?: number,
 ): Promise<void> {
   await streamAgent(threadId, '', onEvent, onDone, onError, abortSignal, bookId);
+}
+
+export async function cancelStream(threadId: string): Promise<void> {
+  try {
+    await apiClient.post(`/agent/stream/${threadId}/cancel`);
+  } catch {
+    // 取消失败不影响本地中止（浏览器断开连接同样会触发服务端清理）
+  }
+}
+
+export async function releaseBookLock(bookId: number): Promise<boolean> {
+  try {
+    await apiClient.delete('/agent/book-lock', { params: { book_id: bookId } });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function submitReviewAction(

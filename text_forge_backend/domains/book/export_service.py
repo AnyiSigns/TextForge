@@ -1,4 +1,5 @@
-﻿from io import BytesIO
+﻿import asyncio
+from io import BytesIO
 from typing import Any
 
 from sqlalchemy import select
@@ -66,9 +67,11 @@ class ExportService:
         if fmt == "txt":
             return self._build_txt(book, chapters, characters, outline)
         if fmt == "epub":
-            return await self._build_epub(book, chapters, characters, outline)
+            # reportlab/ebooklib 为同步 CPU 密集操作，放到线程池执行，
+            # 避免阻塞单 worker 的事件循环（否则大书导出会冻结全站请求）。
+            return await asyncio.to_thread(self._build_epub, book, chapters, characters, outline)
         if fmt == "pdf":
-            return await self._build_pdf(book, chapters, characters, outline)
+            return await asyncio.to_thread(self._build_pdf, book, chapters, characters, outline)
         return None
 
     def _build_markdown(self, book, chapters, characters, outline):
@@ -135,7 +138,7 @@ class ExportService:
             "content": "\n".join(lines),
         }
 
-    async def _build_epub(self, book, chapters, characters, outline):
+    def _build_epub(self, book, chapters, characters, outline):
         from ebooklib import epub
 
         epub_book = epub.EpubBook()
@@ -208,7 +211,7 @@ class ExportService:
             "content": buffer.getvalue(),
         }
 
-    async def _build_pdf(self, book, chapters, characters, outline):
+    def _build_pdf(self, book, chapters, characters, outline):
         from reportlab.lib.pagesizes import A4
         from reportlab.lib.styles import getSampleStyleSheet
         from reportlab.lib.units import cm

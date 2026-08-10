@@ -13,6 +13,8 @@ from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
 from langchain_qwq import ChatQwQ
 
+from config.settings import settings
+
 
 class _EmbeddingStub:
     async def aembed_query(self, text: str):
@@ -44,7 +46,6 @@ class ModelWrapper:
     VISION_MAP: dict[str, Any] = {
         "openai": "_create_openai_vision",
         "stability": "_create_stability_vision",
-        "replicate": "_create_replicate_vision",
         "modelslab": "_create_modelslab_vision",
         "pollinations": "_create_pollinations_vision",
     }
@@ -167,22 +168,6 @@ class ModelWrapper:
             raise RuntimeError(f"初始化 stability vision 失败: {e}")
 
     @staticmethod
-    def _create_replicate_vision(config: dict[str, Any]):
-        try:
-            from langchain_replicate import Replicate  # type: ignore[import-not-found]
-
-            kwargs: dict[str, Any] = {
-                "model": config.get("model_id")
-                or "stability-ai/stable-diffusion:db21e45d3f7023abc2a46ee38a23973f6dce16bb082a930b0c49861f96d1e5bf",
-                "input": {},
-            }
-            if config.get("api_key"):
-                kwargs["replicate_api_token"] = config.get("api_key")
-            return Replicate(**kwargs)
-        except Exception as e:
-            raise RuntimeError(f"初始化 replicate vision 失败: {e}")
-
-    @staticmethod
     def _create_modelslab_vision(config: dict[str, Any]):
         try:
             import requests
@@ -237,7 +222,11 @@ class ModelWrapper:
         base = {k: v for k, v in base.items() if v is not None}
 
         if provider == "gemini":
-            params = {**base, "google_api_key": config.get("api_key")}
+            params = {
+                **base,
+                "google_api_key": config.get("api_key"),
+                "timeout": config.get("request_timeout", settings.LLM_TIMEOUT),
+            }
             return {k: v for k, v in params.items() if v is not None}
 
         if provider == "anthropic":
@@ -245,11 +234,16 @@ class ModelWrapper:
                 **base,
                 "api_key": config.get("api_key"),
                 "anthropic_api_url": config.get("base_url"),
+                "timeout": config.get("request_timeout", settings.LLM_TIMEOUT),
             }
             return {k: v for k, v in params.items() if v is not None}
 
         if provider == "ollama":
-            params = {**base, "base_url": config.get("base_url")}
+            params = {
+                **base,
+                "base_url": config.get("base_url"),
+                "timeout": config.get("request_timeout", settings.LLM_TIMEOUT),
+            }
             return {k: v for k, v in params.items() if v is not None}
 
         params = {
@@ -259,5 +253,5 @@ class ModelWrapper:
         }
         # OpenAI 兼容类（含 ChatQwQ/ChatDeepSeek/ChatMoonshot 等）支持 httpx 超时。
         # 不设置时 openai client 默认 600s，MaaS 流式连接挂起会导致任务永久卡住。
-        params["timeout"] = config.get("request_timeout", 120)
+        params["timeout"] = config.get("request_timeout", settings.LLM_TIMEOUT)
         return {k: v for k, v in params.items() if v is not None}

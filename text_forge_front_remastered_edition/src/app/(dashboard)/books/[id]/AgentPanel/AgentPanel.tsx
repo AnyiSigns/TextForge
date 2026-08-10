@@ -345,6 +345,9 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
 
   const handleReviewAction = async (action: 'accept' | 'retry' | 'edit' | 'terminate', editedContent?: string, chapterId?: number) => {
     if (!agentThreadId) return;
+    // 先保存待审状态与审核卡消息副本，续跑失败时恢复，避免「卡消失且无法再操作」的 UI 死锁
+    const prevReview = useBookDetailStore.getState().pendingReview;
+    const removedCards = useBookDetailStore.getState().agentMessages.filter((m) => m.type === 'review-card');
     setPendingReview(null);
     // 清除消息流中的审核卡（review-card 是持久化消息，只清 store 不删消息卡片不会消失）
     useBookDetailStore.setState((s) => ({
@@ -356,6 +359,22 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
       await resume();
     } catch {
       setAgentStreaming(false);
+      // 续跑失败（如书籍锁被占用/网络异常）：恢复审核卡与待审状态，允许用户重试
+      setPendingReview(prevReview);
+      if (removedCards.length > 0) {
+        useBookDetailStore.setState((s) => ({ agentMessages: [...s.agentMessages, ...removedCards] }));
+      }
+    }
+  };
+
+  const handleUnlockAndRetry = async (retryMessage: string) => {
+    setAgentStatus({ kind: 'working', label: '解除书籍占用中…' });
+    const ok = await agentApi.releaseBookLock(bookId);
+    if (ok) {
+      addAgentMessage({ role: 'assistant', content: '书籍任务锁已解除，正在重试您的指令…', type: 'system' });
+      void sendMessage(retryMessage);
+    } else {
+      addAgentMessage({ role: 'assistant', content: '解除占用失败，请稍后重试。', type: 'error' });
     }
   };
 
@@ -504,7 +523,17 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
     }
     if (msg.type === 'error') {
       return (
-        <div key={key} className="text-[11px] text-destructive/80 px-3 py-1.5 bg-destructive/[0.04] border border-destructive/10">{msg.content}</div>
+        <div key={key} className="text-[11px] text-destructive/80 px-3 py-1.5 bg-destructive/[0.04] border border-destructive/10">
+          <div>{msg.content}</div>
+          {msg.retryMessage && (
+            <button
+              onClick={() => { void handleUnlockAndRetry(msg.retryMessage!); }}
+              className="mt-1.5 text-[11px] px-2 py-0.5 rounded-md border border-destructive/30 text-destructive/90 bg-transparent hover:bg-destructive/10 cursor-pointer transition-colors"
+            >
+              解除占用并重试
+            </button>
+          )}
+        </div>
       );
     }
     return (

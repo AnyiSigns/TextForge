@@ -1,15 +1,46 @@
+# text_forge_backend/docker-compose.yml
+#
+# 仅部署数据库与缓存：postgres(pgvector) + redis。
+# 后端改为在宿主机用源码运行（uvicorn），不再走容器。
+# 宿主机后端通过 127.0.0.1 访问这两个容器发布的端口。
 services:
   postgres:
     image: pgvector/pgvector:pg18
     container_name: text_forge_db
     restart: unless-stopped
+    # 仅本机可连，交给 Nginx 反代 / 宿主机后端使用
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: 1234
+      POSTGRES_PASSWORD: textforge123
       POSTGRES_DB: text_forge
     volumes:
       - pgdata:/var/lib/postgresql
+      # 首次启动启用 pgvector 扩展（应用建表用到 vector 类型列，必须在此建）
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d text_forge" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: text_forge_redis
+    restart: unless-stopped
+    command: [ "redis-server", "--appendonly", "yes" ]
+    # 发布到本机 6379，供宿主机后端连接
+    ports:
+      - "127.0.0.1:6380:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   pgdata:
+  redisdata:
