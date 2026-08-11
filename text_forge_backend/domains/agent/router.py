@@ -729,7 +729,15 @@ async def stream_agent(
             pending_tool = state_data.get("pending_tool")
             if pending_tool:
                 # 被门控拦截的写工具审批：直接交回 tool_calls 节点执行，不重跑 agent
-                _tool_decision = state_data.get("review_decision") or "accept"
+                # 防御性校验：review_decision 仅 accept/edit/retry/terminate 合法；
+                # 非法值（如绕过 review_action 直接 update_state 注入）按 terminate 处理
+                # （拒绝执行），避免写工具被意外执行。
+                _tool_decision = state_data.get("review_decision") or ""
+                if _tool_decision not in ("accept", "edit", "retry", "terminate"):
+                    logger.warning(
+                        f"[resume] 非法 review_decision={_tool_decision!r}，按 terminate 拒绝执行"
+                    )
+                    _tool_decision = "terminate"
                 state = {
                     **state_data,
                     "resume_from_subgraph": _resume_subgraph,
@@ -1394,7 +1402,7 @@ async def manual_compress(
     llm = ModelFactory(model_config)
     from langchain_core.messages import HumanMessage, SystemMessage
 
-    from .context_manager import flatten_messages_for_summary
+    from .context_manager import flatten_messages_for_summary, safe_compress_cutoff
 
     # 任务 30（审查修复）：复用共享展平实现
     combined = flatten_messages_for_summary(messages, 400)
@@ -1451,8 +1459,11 @@ async def manual_compress(
         # 旧消息，必须传 RemoveMessage 列表才能从 checkpoint 的 messages 通道真正裁剪。
         from langchain_core.messages import RemoveMessage
 
-        kept_messages = messages[-20:]
-        removed_messages = messages[:-20] if len(messages) > 20 else []
+        # 安全裁剪：位置切片会拆散 AI tool_calls 与其 ToolMessage 响应的配对，
+        # 用 safe_compress_cutoff 保证保留区不残留孤儿 ToolMessage。
+        _cutoff = safe_compress_cutoff(messages, 20)
+        kept_messages = messages[_cutoff:]
+        removed_messages = messages[:_cutoff]
         graph = build_user_agent_graph(
             db_manager.with_db,
             model_config=model_config,

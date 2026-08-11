@@ -1221,6 +1221,7 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
             )
             return {
                 "chapter_id": chapter_id,
+                "node_id": node_id,
                 "version": new_content.version,
                 "word_count": len(content),
             }

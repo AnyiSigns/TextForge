@@ -58,6 +58,44 @@ def _should_compress(state: UserAgentState) -> bool:
     return _estimate_tokens(messages) > COMPRESS_TOKEN_BUDGET
 
 
+def safe_compress_cutoff(messages: list, keep: int) -> int:
+    """计算安全的压缩裁剪边界，避免位置切片拆散 tool_call/响应配对。
+
+    直接取 messages[-keep:] 时，若边界恰好落在某次工具调用的 AI 消息与其
+    ToolMessage 响应之间，保留区会出现「孤儿 ToolMessage」（其 tool_call_id
+    在保留区找不到对应 AI 消息的 tool_call），OpenAI 兼容端点会因此报
+    'tool response without a tool call' 之类错误。此函数把边界向后推进，
+    把这类孤儿 ToolMessage 一并划入裁剪区。
+
+    Args:
+        messages: 完整消息列表。
+        keep: 期望保留的最近消息条数。
+
+    Returns:
+        安全的裁剪边界（保留 messages[cutoff:]）。
+    """
+    n = len(messages)
+    cutoff = max(0, n - keep)
+    if cutoff <= 0 or cutoff >= n:
+        return cutoff
+    removed_call_ids = set()
+    for m in messages[:cutoff]:
+        if getattr(m, "type", "") == "ai":
+            for tc in getattr(m, "tool_calls", []) or []:
+                if tc.get("id"):
+                    removed_call_ids.add(tc["id"])
+    while cutoff < n:
+        m = messages[cutoff]
+        if (
+            getattr(m, "type", "") == "tool"
+            and getattr(m, "tool_call_id", None) in removed_call_ids
+        ):
+            cutoff += 1
+        else:
+            break
+    return cutoff
+
+
 async def _book_outline_brief(session, book_id: int | None) -> str:
     """构造压缩摘要中的「书上下文 + 大纲」节（从 DB 取最新快照，每次压缩重建，不会累积膨胀）。
 
@@ -142,7 +180,7 @@ async def auto_compress_node(state: UserAgentState, session_factory=None) -> dic
     if len(messages) <= COMPRESS_KEEP:
         return {}
 
-    old_messages = messages[:-COMPRESS_KEEP]
+    old_messages = messages[: safe_compress_cutoff(messages, COMPRESS_KEEP)]
     prior_summary = state.get("compressed_context") or ""
     book_id = state.get("active_book_id", 0) or 0
     llm = ModelFactory(state["model_config"])

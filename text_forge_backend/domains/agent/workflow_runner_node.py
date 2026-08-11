@@ -50,14 +50,25 @@ async def _finish_with_candidate(result: dict[str, Any], target_chapter_id: int 
             try:
                 from sqlalchemy import func, select
 
-                from models.book import Chapter, ChapterContent
+                from models.book import Chapter, ChapterContent, Volume
                 from shared.database import db_manager
 
                 content = preferred.get("output", "") or ""
                 label = preferred.get("node_label") or preferred_workflow_node
                 if content and content.strip():
                     async with db_manager.with_db() as session:
-                        ch = (await session.execute(select(Chapter).where(Chapter.id == target_chapter_id))).scalar_one_or_none()
+                        # 必须校验归属：JOIN Volume 断言目标章节属于当前书籍，与
+                        # tools_domain 四个写工具一致，防止跨书写入（IDOR）。
+                        ch = (
+                            await session.execute(
+                                select(Chapter)
+                                .join(Volume, Volume.id == Chapter.volume_id)
+                                .where(
+                                    Chapter.id == target_chapter_id,
+                                    Volume.book_id == book_id,
+                                )
+                            )
+                        ).scalar_one_or_none()
                         if ch and not ch.locked:
                             max_ver = (await session.execute(select(func.max(ChapterContent.version)).where(ChapterContent.chapter_id == target_chapter_id))).scalar() or 0
                             session.add(ChapterContent(chapter_id=target_chapter_id, content=content, version=max_ver + 1))

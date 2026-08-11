@@ -142,3 +142,6 @@ class WebSearchService:
         self.session.add(cache)
         await self.session.flush()
         await self.session.refresh(cache)
+        # 必须 commit：session_factory 禁用自动提交（autocommit=False），
+        # 上下文退出即回滚；不提交则缓存永不落库，每次 web 搜索都直连付费 API。
+        await self.session.commit()

@@ -37,8 +37,13 @@ _TOOL_OP = {
     "build_outline": OP_OUTLINE_CREATE,
 }
 
-# 审批时支持"编辑后采纳"的操作（其入参含可直接覆盖的 content 字段）
-_EDITABLE_OPS = {OP_CHAPTER_WRITE}
+# 审批"编辑后采纳"时，用户修改内容写入的入参字段（按写操作区分：
+# 正文直写覆盖 content，编辑覆盖 new_text，diff 覆盖 unified_diff）
+_EDITABLE_ARG = {
+    OP_CHAPTER_WRITE: "content",
+    OP_CHAPTER_EDIT: "new_text",
+    OP_CHAPTER_DIFF: "unified_diff",
+}
 
 # 所有写操作默认都需审批；如需对某些操作放开，可在此置 False
 _OP_GATED = {
@@ -231,9 +236,20 @@ class GatingService:
         """
         if decision == "terminate":
             return {"cancelled": True, "tool": tool_name, "detail": "用户取消本次修改"}
+        if decision == "retry":
+            # 写工具审批卡的 retry 语义 = 拒绝本次写入，不得执行（前端「拒绝重试」）。
+            # 重试由上层让 Agent 重新生成后再弹卡，这里仅返回取消标记。
+            return {"cancelled": True, "tool": tool_name, "detail": "用户拒绝本次修改，请重新生成后再提交"}
         effective_args = dict(args)
-        if decision == "edit" and edited_content is not None and operation in _EDITABLE_OPS:
-            effective_args["content"] = edited_content
+        if decision == "edit" and edited_content is not None:
+            edit_arg = _EDITABLE_ARG.get(operation)
+            if edit_arg is not None:
+                effective_args[edit_arg] = edited_content
+            else:
+                logger.warning(
+                    f"[GatingService] edit 决策作用于不支持编辑的操作 {operation}，"
+                    f"忽略用户修改并保持原入参执行"
+                )
         return await self._invoke(tool_name, effective_args)
 
 
