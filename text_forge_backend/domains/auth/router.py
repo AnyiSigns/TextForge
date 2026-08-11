@@ -67,8 +67,9 @@ async def refresh_at(
     user_serve: Annotated[UserAuthService, Depends(user_db_serve)],
 ):
     payload = verify_token(request.refresh_token)
-    user_id = payload.get("sub")
-    user_id = int(user_id)
+    if not payload:
+        raise HTTPException(status_code=401, detail="令牌无效")
+    user_id = int(payload.get("sub"))
     rt_jti = payload.get("jti")
     user = await user_serve.user_repo.get(user_id)
     if not user:
@@ -106,7 +107,9 @@ async def resend_verify(request: EmailRequest):
         raise HTTPException(status_code=429, detail="验证码发送过于频繁，请稍后再试")
     code = verification.generate_code()
     await verification.save_code(request.email, code)
-    await email_service.send_verification_email(request.email, code)
+    sent = await email_service.send_verification_email(request.email, code)
+    if not sent:
+        raise HTTPException(status_code=502, detail="验证邮件发送失败，请稍后再试")
     return {"message": "验证邮件成功发送"}
 
 
@@ -125,8 +128,14 @@ async def register(
         )
     code = verification.generate_code()
     await verification.save_code(user.email, code)
-    await email_service.send_verification_email(user.email, code)
-    return {"message": "邮件已发送", "email": user.email}
+    sent = await email_service.send_verification_email(user.email, code)
+    # 账号已创建但邮件发送失败时仍返回成功并标明 email_sent=false，
+    # 前端据此提示用户进入验证页手动重发，避免用户被误导为「邮件已发出」。
+    return {
+        "message": "邮件已发送" if sent else "注册成功，但验证邮件发送失败",
+        "email": user.email,
+        "email_sent": sent,
+    }
 
 
 @router.post("/verify-email", summary="邮箱验证")
@@ -138,6 +147,9 @@ async def verify_email(
         raise HTTPException(status_code=429, detail="验证尝试过于频繁，请稍后再试")
     verified = await verification.verify_code(request.email, request.code)
     if verified:
+        user = await user_serve.user_repo.query_user_email(request.email)
+        if not user:
+            raise HTTPException(status_code=404, detail="该邮箱尚未注册")
         await user_serve.user_repo.update_verified(request.email, True)
         return {"message": "ok"}
     raise HTTPException(status_code=400, detail="验证码无效或已过期")

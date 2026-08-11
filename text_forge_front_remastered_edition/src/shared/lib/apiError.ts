@@ -43,6 +43,17 @@ function _extractDetail(data: unknown): { message?: string; errorCode?: string }
   if (!data || typeof data !== 'object') return {};
   const d = data as Record<string, unknown>;
   if (typeof d.detail === 'string') return { message: d.detail };
+  if (Array.isArray(d.detail)) {
+    const parts = d.detail
+      .filter((it): it is Record<string, unknown> => !!it && typeof it === 'object')
+      .map((it) => {
+        const loc = Array.isArray(it.loc) ? (it.loc as unknown[]).join('.') : '';
+        const msg = typeof it.msg === 'string' ? it.msg : '';
+        return loc ? `${loc}: ${msg}` : msg;
+      })
+      .filter(Boolean);
+    if (parts.length > 0) return { message: parts.join('；') };
+  }
   if (d.detail && typeof d.detail === 'object') {
     const inner = d.detail as Record<string, unknown>;
     const msg = typeof inner.message === 'string' ? inner.message : undefined;

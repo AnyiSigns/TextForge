@@ -1,5 +1,5 @@
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import UserToken
@@ -33,7 +33,7 @@ class UserRepository(BaseRepository[User]):
         return result.scalar_one_or_none()
 
     async def query_user_email(self, email: str):
-        """根据邮箱查询用户。
+        """根据邮箱查询用户（大小写不敏感，注册时即按原样存储，查询统一归一小写）。
 
         Args:
             email: 邮箱地址。
@@ -41,7 +41,7 @@ class UserRepository(BaseRepository[User]):
         Returns:
             User 实例，不存在返回 None。
         """
-        stmt = select(User).where(User.email == email)
+        stmt = select(User).where(func.lower(User.email) == email.lower())
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 

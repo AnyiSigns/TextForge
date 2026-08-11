@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { useAuthStore } from '@/shared/stores/authStore';
+import { useAuthStore, waitForHydration } from '@/shared/stores/authStore';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 const MODEL_PROXY_BASE = process.env.NEXT_PUBLIC_MODEL_PROXY_URL || `${API_BASE}/models/proxy`;
@@ -41,6 +41,7 @@ function toApiError(err: Error & { response?: { status?: number; data?: { detail
 
 /**
  * 2.5：从非 2xx 响应中提取后端具体错误原因（FastAPI detail 归一化）。
+ * 支持三种形态：字符串、422 校验错误数组 [{loc,msg}]、对象 {message,...}（如注册冲突）。
  * 返回 null 表示无法解析（调用方回退笼统文案）。
  */
 export async function extractApiDetail(res: Response): Promise<string | null> {
@@ -59,6 +60,11 @@ export async function extractApiDetail(res: Response): Promise<string | null> {
         .filter(Boolean);
       if (parts.length > 0) return parts.join('；');
     }
+    if (detail && typeof detail === 'object') {
+      const inner = detail as Record<string, unknown>;
+      if (typeof inner.message === 'string' && inner.message) return inner.message;
+      if (typeof inner.msg === 'string' && inner.msg) return inner.msg;
+    }
     return null;
   } catch {
     return null;
@@ -71,7 +77,8 @@ export const apiClient = axios.create({
   withCredentials: true,
 });
 
-apiClient.interceptors.request.use((config) => {
+apiClient.interceptors.request.use(async (config) => {
+  await waitForHydration();
   const token = useAuthStore.getState().accessToken;
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;

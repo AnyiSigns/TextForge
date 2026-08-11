@@ -1,15 +1,16 @@
-import { authFetch } from '@/shared/lib/authFetch';
+import { API_BASE } from '@/shared/api/client';
+import { authedFetch } from '@/shared/api/authFetch';
 
 export async function fetchHealth(): Promise<{ status: string; latencyMs?: number }> {
   const start = performance.now();
-  const res = await authFetch('/api/health');
+  const res = await authedFetch(`${API_BASE}/health`);
   const latencyMs = Math.round(performance.now() - start);
   if (!res.ok) throw new Error('健康检查失败');
   return { ...(await res.json()), latencyMs };
 }
 
 export async function fetchSync(): Promise<{ synced: boolean }> {
-  const res = await authFetch('/api/sync');
+  const res = await authedFetch(`${API_BASE}/sync`);
   if (!res.ok) throw new Error('同步失败');
   return res.json();
 }

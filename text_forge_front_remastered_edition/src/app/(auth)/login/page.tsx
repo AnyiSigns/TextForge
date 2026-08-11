@@ -3,11 +3,15 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, Loader2, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/shared/stores/authStore';
 import { cn } from '@/shared/lib/cn';
 import { getApiErrorMessage, showApiError } from '@/shared/lib/apiError';
+
+const inputCls =
+  'w-full h-10 pl-9 pr-3 rounded-lg text-sm bg-background border border-border ' +
+  'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:border-foreground/30 transition-colors';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -26,7 +30,7 @@ export default function LoginPage() {
       const url = new URL(redirect, window.location.origin);
       if (url.origin !== window.location.origin) return '/';
       const path = url.pathname;
-      if (path === '/login' || path === '/register') return '/';
+      if (path === '/login' || path === '/register' || path === '/verify-email') return '/';
       return path + url.search + url.hash;
     } catch {
       return '/';
@@ -54,59 +58,82 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <div className="w-full max-w-sm">
-        <h1 className="text-lg font-semibold text-center mb-6">TextForge</h1>
-        <form onSubmit={handleSubmit} className="space-y-4 p-6 rounded-xl border border-border bg-card">
-          <div>
-            <label className="text-[11px] text-muted-foreground block mb-1">邮箱</label>
+    <div className="w-full max-w-sm space-y-6 auth-fade-up">
+      <div className="text-center space-y-2">
+        <h1 className="text-xl font-semibold">欢迎回来</h1>
+        <p className="text-sm text-muted-foreground">登录 TextForge，继续你的创作</p>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border border-border bg-card p-6 shadow-sm">
+        <div>
+          <label htmlFor="login-email" className="text-xs text-muted-foreground block mb-1.5">
+            邮箱
+          </label>
+          <div className="relative">
+            <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input
+              id="login-email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full h-9 px-3 rounded-md text-sm bg-background border border-border focus:outline-none"
+              className={inputCls}
               placeholder="your@email.com"
+              autoComplete="email"
               required
             />
           </div>
-          <div>
-            <label className="text-[11px] text-muted-foreground block mb-1">密码</label>
-            <div className="relative">
-              <input
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full h-9 px-3 pr-9 rounded-md text-sm bg-background border border-border focus:outline-none"
-                placeholder="输入密码"
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground bg-transparent border-none cursor-pointer"
-              >
-                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            </div>
+        </div>
+
+        <div>
+          <label htmlFor="login-password" className="text-xs text-muted-foreground block mb-1.5">
+            密码
+          </label>
+          <div className="relative">
+            <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              id="login-password"
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className={cn(inputCls, 'pr-9')}
+              placeholder="输入密码"
+              autoComplete="current-password"
+              minLength={6}
+              maxLength={50}
+              required
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              aria-label={showPassword ? '隐藏密码' : '显示密码'}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground bg-transparent border-none cursor-pointer hover:text-foreground"
+            >
+              {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
           </div>
-          <button
-            type="submit"
-            disabled={isLoading}
-            className={cn(
-              'w-full h-9 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/85 border-none cursor-pointer',
-              isLoading && 'opacity-50',
-            )}
-          >
-            {isLoading ? '登录中...' : '登录'}
-          </button>
-          <div className="text-center text-xs text-muted-foreground">
-            还没有账号？{' '}
-            <Link href="/register" className="text-foreground underline">
-              立即注册
-            </Link>
-          </div>
-        </form>
-      </div>
+        </div>
+
+        <button
+          type="submit"
+          disabled={isLoading}
+          aria-busy={isLoading}
+          className={cn(
+            'w-full h-10 rounded-lg bg-primary text-primary-foreground text-sm font-medium',
+            'flex items-center justify-center gap-2 border-none cursor-pointer hover:bg-primary/85 transition-colors',
+            isLoading && 'opacity-60',
+          )}
+        >
+          {isLoading ? <Loader2 size={16} className="animate-spin" /> : null}
+          {isLoading ? '登录中...' : '登录'}
+        </button>
+
+        <div className="text-center text-xs text-muted-foreground">
+          还没有账号？{' '}
+          <Link href="/register" className="inline-flex items-center gap-0.5 text-foreground underline">
+            立即注册 <ArrowRight size={12} />
+          </Link>
+        </div>
+      </form>
     </div>
   );
 }

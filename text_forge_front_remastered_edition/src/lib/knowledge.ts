@@ -3,7 +3,6 @@
 // 公共库：后端 pgvector POST /api/knowledge/search
 
 import { apiClient } from '@/shared/api/client';
-import { authFetch } from '@/shared/lib/authFetch';
 import { type RagChunk, putKbDoc, getKbDoc, getAllKbDocs, deleteKbDoc, type KbDocRecord } from '@/lib/storage/indexedDB';
 import { vectorSearch, indexDocument, removeDocumentChunks } from '@/lib/rag/vectorStore';
 import { downloadBlob } from '@/lib/utils/download';
@@ -97,9 +96,7 @@ export const ragClient = {
   },
 
   async downloadPublic(id: string, name: string): Promise<void> {
-    const res = await authFetch(`/api/knowledge/public/${id}`);
-    if (!res.ok) throw new Error('获取文档详情失败');
-    const data = await res.json().catch(() => ({}));
+    const { data } = await apiClient.get<{ content: string }>(`/knowledge/public/${id}`);
     const content = typeof data?.content === 'string' ? data.content : undefined;
     if (!content) throw new Error('文档内容为空');
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });

@@ -617,3 +617,36 @@ html.glass .glass-exempt {
   --muted: var(--background);
   --border: var(--input);
 }
+
+/* ===== 认证页动画 ===== */
+
+.auth-fade-up {
+  animation: auth-fade-up 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes auth-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.auth-pop-in {
+  animation: auth-pop-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes auth-pop-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  70% {
+    transform: scale(1.08);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
