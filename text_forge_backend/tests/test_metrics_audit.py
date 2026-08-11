@@ -350,3 +350,67 @@ def test_audit_book_id_zero_normalized_to_none():
         )
     )
     assert factory.session.added[0].book_id is None
+
+
+# ---------------------------------------------------------------------------
+# 任务 30（审查修复 H2）：上下文压缩返回 RemoveMessage 而非消息子集
+# ---------------------------------------------------------------------------
+
+
+class _FakeSummaryLLM:
+    async def ainvoke(self, messages):
+        from langchain_core.messages import AIMessage
+
+        return AIMessage(content="压缩摘要")
+
+
+class _FakeCompressFactory:
+    def __init__(self, config):
+        self.main = _FakeSummaryLLM()
+
+
+@pytest.mark.asyncio
+async def test_auto_compress_returns_remove_messages(monkeypatch):
+    """任务 30（审查修复 H2）：add_messages 只增不减，压缩必须返回 RemoveMessage
+    才能真正裁剪；同时把被删 ID 写入 removed_message_ids 供父层 sync 回流删除。"""
+    from langchain_core.messages import RemoveMessage
+
+    from domains.agent import context_manager
+
+    monkeypatch.setattr(context_manager, "ModelFactory", _FakeCompressFactory)
+
+    messages = [
+        HumanMessage(content=f"第{i}条", id=f"m{i}")
+        for i in range(25)
+    ]
+    state = {
+        "messages": messages,
+        "active_book_id": 0,
+        "model_config": {"main_config": {}},
+        "user_id": 1,
+        "compressed_context": None,
+    }
+    update = await context_manager.auto_compress_node(state)
+    # 必须返回 RemoveMessage 列表（而非 messages[-K:] 子集），否则 reducer 不删除旧消息
+    assert update["messages"]
+    assert all(isinstance(m, RemoveMessage) for m in update["messages"])
+    assert len(update["messages"]) == len(messages) - context_manager.COMPRESS_KEEP
+    assert update["removed_message_ids"] == [f"m{i}" for i in range(len(messages) - context_manager.COMPRESS_KEEP)]
+    assert update["turn_metrics"]["compress_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_auto_compress_short_conversation_noop(monkeypatch):
+    from domains.agent import context_manager
+
+    monkeypatch.setattr(context_manager, "ModelFactory", _FakeCompressFactory)
+    messages = [HumanMessage(content=f"第{i}条", id=f"m{i}") for i in range(5)]
+    state = {
+        "messages": messages,
+        "active_book_id": 0,
+        "model_config": {"main_config": {}},
+        "user_id": 1,
+        "compressed_context": None,
+    }
+    update = await context_manager.auto_compress_node(state)
+    assert update == {}

@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.graph import END
 
@@ -21,6 +23,10 @@ def make_ai_with_tool_calls(content: str, tool_names: list[str]):
         for i, name in enumerate(tool_names)
     ]
     return ai
+
+
+async def _async_noop(*args, **kwargs):
+    return None
 
 
 def test_router_allows_long_lead_in_with_write_tool():
@@ -69,3 +75,173 @@ def test_router_ends_on_plain_reply():
     """模型直接输出回复（无工具调用）→ END。"""
     state = {"pending_review": None, "messages": [HumanMessage(content="hi"), AIMessage(content="你好")]}
     assert agent_router(state) == END
+
+
+# ---------------------------------------------------------------------------
+# 任务 30（审查修复 H1）：gated_tool_node 审批分支 audit_rows 初始化
+# ---------------------------------------------------------------------------
+
+
+class _ApprovedFactory:
+    async def __aenter__(self):
+        return _ApprovedSession()
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+class _ApprovedSession:
+    async def commit(self):
+        pass
+
+    async def rollback(self):
+        pass
+
+    async def execute(self, *a, **kw):
+        return _ApprovedResult()
+
+    async def refresh(self, *a, **kw):
+        pass
+
+
+class _ApprovedResult:
+    def scalar_one_or_none(self):
+        return None
+
+    def scalars(self):
+        return []
+
+
+@pytest.mark.asyncio
+async def test_gated_tool_node_approved_path_no_audit_rows_crash(monkeypatch):
+    """任务 30（审查修复 H1）：审批分支（pending_tool.decision 存在）此前因
+    audit_rows 未初始化抛 UnboundLocalError，导致写工具审批流 100% 失败。
+
+    本测试 mock GatingService.apply + session_factory，确保审批分支正常返回。
+    """
+    import domains.agent.agent_nodes as an
+    from langchain_core.messages import ToolMessage
+
+    class _StubGating:
+        async def apply(self, op, tool_name, args, decision, edited, tool_id=""):
+            return {"ok": True, "chapter_id": args.get("chapter_id")}
+
+    # 直接调用 gated_tool_node 审批分支：pending_tool 带 decision，
+    # session_factory 返回 mock 会话（_flush_audit_rows 内会 execute+commit）。
+    # GatingService 在函数体内导入，patch 其所在模块属性。
+    monkeypatch.setattr(
+        "domains.common.gating_service.GatingService",
+        lambda *a, **kw: _StubGating(),
+    )
+    monkeypatch.setattr(
+        an,
+        "_flush_audit_rows",
+        lambda *a, **kw: _async_noop(),
+    )
+
+    state = {
+        "messages": [],
+        "subgraph": "drafting",
+        "user_id": 1,
+        "active_book_id": 2,
+        "pending_tool": {
+            "queue": [
+                {"tool_name": "write_chapter_content", "tool_args": {"chapter_id": 3, "content": "正文"}, "tool_id": "c1"}
+            ],
+            "decision": "accept",
+            "edited_content": None,
+        },
+        "turn_metrics": {},
+    }
+    update = await an.gated_tool_node(
+        state,
+        session_factory=lambda: _ApprovedFactory(),
+        model_config=None,
+    )
+    assert update["pending_tool"] is None
+    assert update["pending_review"] is None
+    msgs = update["messages"]
+    assert msgs and isinstance(msgs[0], ToolMessage)
+    assert update["turn_metrics"]["tool_calls"] == 1
+
+
+@pytest.mark.asyncio
+async def test_gated_tool_node_duplicate_guard_counts_current_turn_only(monkeypatch):
+    """任务 30（审查修复 M3）：重复工具守卫只统计最后一个用户消息之后的工具调用，
+    跨回合的多章生成/多章读取不会被累计计数误杀。"""
+    import domains.agent.agent_nodes as an
+    from langchain_core.messages import ToolMessage
+
+    class _ToolService:
+        async def invoke(self, tool_name, args):
+            return {"ok": True}
+
+    monkeypatch.setattr(
+        "domains.common.gating_service.GatingService",
+        lambda *a, **kw: _ToolService(),
+    )
+    monkeypatch.setattr(an, "_flush_audit_rows", lambda *a, **kw: _async_noop())
+
+    # 上回合已有 3 次 generate_chapter（ToolMessage），本回合又发起 1 次：
+    # 若跨回合累计，_dup 会拦截；修复后只统计本回合，应正常执行。
+    messages = []
+    for i in range(3):
+        messages.append(HumanMessage(content="上一轮"))
+        messages.append(ToolMessage(content='{"ok": true}', name="generate_chapter", tool_call_id=f"old-{i}"))
+    last_ai = AIMessage(content="好的，马上生成。")
+    last_ai.tool_calls = [
+        {"name": "generate_chapter", "args": {"chapter_id": 5, "instruction": "写"}, "id": "new-1"}
+    ]
+    messages.append(last_ai)
+
+    state = {
+        "messages": messages,
+        "subgraph": "drafting",
+        "user_id": 1,
+        "active_book_id": 2,
+        "turn_metrics": {},
+        "pending_tool": None,
+        "pending_review": None,
+    }
+    update = await an.gated_tool_node(state, session_factory=lambda: _ApprovedFactory(), model_config=None)
+    # 未被防死循环拦截：返回正常工具消息（generate_chapter 走 UNGATED 直执行）
+    assert update["messages"]
+    assert not update["messages"][0].content.startswith("检测到工具")
+
+
+# ---------------------------------------------------------------------------
+# 任务 30（审查修复）：_is_tool_error 统一失败判词 + JSON 边界
+# ---------------------------------------------------------------------------
+
+
+def _tool_msg(content) -> ToolMessage:
+    from langchain_core.messages import ToolMessage
+
+    return ToolMessage(content=content, name="x", tool_call_id="t")
+
+
+def test_is_tool_error_dict_and_string_forms():
+    from langchain_core.messages import ToolMessage
+
+    from domains.agent.agent_nodes import _is_tool_error
+
+    assert _is_tool_error(_tool_msg({"error": "章节不存在"})) is True
+    assert _is_tool_error(_tool_msg({"ok": True})) is False
+    assert _is_tool_error(ToolMessage(content='{"error": "失败"}', name="x", tool_call_id="t")) is True
+    assert _is_tool_error(ToolMessage(content='{"ok": true}', name="x", tool_call_id="t")) is False
+    assert _is_tool_error(ToolMessage(content="Could not find tool: foo", name="x", tool_call_id="t")) is True
+
+
+def test_is_tool_error_json_success_with_error_word_not_misjudged():
+    """任务 30（审查修复）：合法成功 JSON 内容中若带 "error" 字样（如 review_text 的
+    issues 正文），不得被子串启发式误判为失败——必须按结构化 error 键判断。
+
+    注：ToolMessage 会把 dict content 规范化为 Python repr 字符串（json.loads 失败），
+    该形态与原 router 内联逻辑行为一致（子串命中即判失败）；本测试只验证标准 JSON
+    字符串形态下结构化优先的行为。
+    """
+    from domains.agent.agent_nodes import _is_tool_error
+
+    assert _is_tool_error(_tool_msg('{"ok": true, "issues": "文本中存在若干错别字 error 检查结果"}')) is False
+    assert _is_tool_error(_tool_msg('{"status": "completed"}')) is False
+    assert _is_tool_error(_tool_msg('{"error": "失败"}')) is True

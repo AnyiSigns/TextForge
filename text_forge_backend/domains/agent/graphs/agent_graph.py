@@ -84,7 +84,12 @@ def subgraph_final_node(state: SubgraphState) -> dict[str, Any]:
 
 
 def sync_node(state: UserAgentState) -> dict[str, Any]:
-    """父图同步节点：子图报告合并进父层指标通道（merge_metrics 加和），清空 report 防残留二次合并。"""
+    """父图同步节点：子图报告合并进父层指标通道（merge_metrics 加和），清空 report 防残留二次合并。
+
+    任务 30（压缩修复）：子图压缩裁剪掉的旧消息 ID（removed_message_ids）在此转为
+    RemoveMessage 应用到父层 messages 通道——add_messages 只增不减，子图内的裁剪
+    不回流父层，必须在此显式删除才能实现跨回合真正裁剪。
+    """
     report = state.get("subgraph_report") or {}
     update: dict[str, Any] = {"subgraph_report": None}
     metrics = report.get("metrics") or {}
@@ -93,6 +98,12 @@ def sync_node(state: UserAgentState) -> dict[str, Any]:
     steps = report.get("steps") or {}
     if steps:
         update["subgraph_steps"] = steps
+    removed_ids = state.get("removed_message_ids") or []
+    if removed_ids:
+        from langchain_core.messages import RemoveMessage
+
+        update["messages"] = [RemoveMessage(id=mid) for mid in removed_ids]
+    update["removed_message_ids"] = None
     return update
 
 

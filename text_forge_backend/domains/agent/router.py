@@ -5,17 +5,13 @@ import uuid
 from datetime import datetime, timezone
 from typing import Annotated, Any
 
-import openai
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import StreamingResponse
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from config.logging import get_logger
 from config.settings import settings
 from core.auth import get_current
 from core.errors import classify_agent_error
 from core.model_factory import ModelFactory
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from models.book import Book, Chapter, Volume
 from models.conversation import Conversation, Message
 from schema.request.common import ChatRequest, CompressRequest, ReviewActionRequest
@@ -24,6 +20,8 @@ from shared.database import db_manager
 from shared.graph_store import graph_pool_manager
 from shared.ratelimit import rate_limit_agent
 from shared.redis import redis_client
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from .agent_state import UserAgentState
 from .graphs.agent_graph import build_user_agent_graph
@@ -45,8 +43,8 @@ async def _generate_title(model_config: dict, user_msg: str, reply: str) -> str 
     由调用方保留默认标题，不影响主流程。
     """
     try:
-        from langchain_core.messages import HumanMessage
         from core.llm_retry import retry_llm
+        from langchain_core.messages import HumanMessage
 
         model = ModelFactory(model_config).main
         prompt = (
@@ -109,20 +107,14 @@ async def _auto_digest_if_due(
     if not model_config.get("main_config"):
         return
     try:
-        from langchain_core.messages import HumanMessage, SystemMessage
         from core.llm_retry import retry_llm
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        from .context_manager import flatten_messages_for_summary
 
         llm = ModelFactory(model_config)
-        parts = []
-        for msg in messages[-AUTO_DIGEST_RECENT:]:
-            role = getattr(msg, "type", type(msg).__name__)
-            content = getattr(msg, "content", "") or ""
-            if isinstance(content, list):
-                content = " ".join(
-                    p.get("text", "") if isinstance(p, dict) else str(p) for p in content
-                )
-            parts.append(f"{role}: {str(content)[:400]}")
-        combined = "\n".join(parts)
+        # 任务 30（审查修复）：复用 context_manager 的共享展平实现，避免重复造轮子
+        combined = flatten_messages_for_summary(messages[-AUTO_DIGEST_RECENT:], 400)
         prompt = (
             "请总结以下最近的对话，保留关键创作决策、用户偏好、剧情设定和重要信息。"
             "这份摘要将作为 Agent 的长期记忆存档：\n\n" + combined[:12000]
@@ -272,6 +264,25 @@ async def _empty_sse(message: str):
     yield f"data: {json.dumps({'type': 'end', 'reply': ''}, ensure_ascii=False)}\n\n"
 
 
+def _sse_headers() -> dict:
+    """SSE 响应通用头（no-cache + 禁用代理缓冲，供各流式端点复用）。"""
+    return {
+        "Cache-Control": "no-cache, no-transform",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    }
+
+
+def _sse_compress_done(summary: str, removed_count: int, remaining_count: int) -> str:
+    """构造 compress_done SSE data 行（manual_compress 空/成功结果统一出口）。"""
+    return f"data: {json.dumps({'type': 'compress_done', 'summary': summary, 'removed_count': removed_count, 'remaining_count': remaining_count}, ensure_ascii=False)}\n\n"
+
+
+async def _single_sse(data_line: str):
+    """把单条 SSE data 行包装为异步生成器（手动压缩的短路径统一用）。"""
+    yield data_line
+
+
 async def _prepare_agent_state(
     session: AsyncSession,
     user_id: int,
@@ -360,6 +371,8 @@ async def _prepare_agent_state(
             "subgraph_steps": {"__reset__": True},
             # 嵌套子图版：子图出口结算报告，回合开始显式清空（sync 节点也会清，双保险）
             "subgraph_report": None,
+            # 任务 30（压缩修复）：被压缩裁剪的旧消息 ID，回合开始清空（sync 节点也会清，双保险）
+            "removed_message_ids": None,
             # 注意：suggestions_signature / message_count_at_compress 不在新回合重置，
             # 缺省 key 时 LangGraph 保留 checkpoint 旧值，跨轮建议去重与压缩计数才能生效；
             # 若此处强制置 None 会覆盖 checkpoint 值，导致去重失效、每轮重复推送建议。
@@ -705,6 +718,10 @@ async def stream_agent(
             # 嵌套子图版：subgraph_report 是 LastValue 回流通道，sync 节点已清空；
             # 剔除 checkpoint 旧值（若有残留），防子图失败路径读到陈旧 report 二次合并。
             state_data.pop("subgraph_report", None)
+            # 任务 30（审查修复 M7）：checkpoint 持久化的 model_config 可能携带 api_key
+            # 且可能已过时（用户改了配置）。resume 回合必须用请求体携带的最新配置覆盖，
+            # 避免陈旧/泄露的密钥被读取复用，也保证用户改配后立即生效。
+            state_data["model_config"] = model_config
             # 任务 7 接线：resume 回合（无新用户消息）不重新做意图分类，
             # supervisor_node 见 resume_from_subgraph 直接沿用原子图；新消息回合在
             # _prepare_agent_state 置 None 复位。
@@ -774,7 +791,10 @@ async def stream_agent(
                         "edited_content": None,
                         "terminate_chapter_id": None,
                         "active_workflow_id": None,
-                        "workflow_node_outputs": {},
+                        # 任务 30（审查修复 M8）：merge_dicts 对 {} 是 no-op（旧值滞留，
+                        # write_workflow_candidate 仍可读到过期候选），必须传 None 经
+                        # merge_dicts_or_clear 真正清空 workflow_node_outputs。
+                        "workflow_node_outputs": None,
                         # 关键：工作流审计拦截时 _finish_with_candidate 会把
                         # candidate_reply_ready 置 True（_entry_router 见之立即 END），
                         # 续跑必须重置为 False，否则用户审核决定永远不会被 agent 处理；
@@ -888,6 +908,19 @@ async def stream_agent(
         config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 100}
 
         async def event_generator():
+            """stream_agent 的 SSE 事件生成器（阶段总览）。
+
+            流程阶段：
+            1. 首行 keepalive `:` → 图 astream(updates+custom, subgraphs=True)；
+            2. custom 事件分流：agent_token/agent_think_start/agent_think_end → 透传前端；
+            3. updates 分流：子图/节点 update → progress/tool_start/tool_end/review_card
+               事件映射（含工具调用进度与审核卡推送）；
+            4. 终态处理：提取最终 AI 回复（跳过 tool_calls 消息）、落库消息与审核卡、
+               建议去重推送、标题生成、auto_digest 摘要；
+            5. 收尾：turn_metrics SSE + 落库、释放书籍锁、生成 end 事件。
+
+            异常路径统一经 classify_agent_error 转译为具体错误事件，不中断流。
+            """
             _ag_iter = None
             # 任务 28 指标层：回合开始时间（time.monotonic 单调时钟，不受系统时间调整影响）
             _turn_started = time.monotonic()
@@ -1057,16 +1090,11 @@ async def stream_agent(
                                 # 任务 25：tool_end 携带 tool_call_id（与 tool_start 配对）
                                 # 与 success 失败语义——工具返回 error 时 UI 不再一律显示成功 ✓。
                                 _tc_id = getattr(m, "tool_call_id", "") or ""
-                                _is_err = False
-                                if isinstance(_parsed, dict) and _parsed.get("error"):
-                                    _is_err = True
-                                elif isinstance(m.content, str):
-                                    _low = m.content.lower()
-                                    _is_err = (
-                                        "error" in _low
-                                        or "field required" in _low
-                                        or "could not find tool" in _low
-                                    )
+                                # 任务 30（审查修复）：复用 agent_nodes._is_tool_error 统一
+                                # 失败判词，避免两处字符串启发式漂移。
+                                from .agent_nodes import _is_tool_error
+
+                                _is_err = _is_tool_error(m)
                                 yield f"data: {json.dumps({'type': 'tool_end', 'tool': m.name, 'tool_call_id': _tc_id, 'success': not _is_err}, ensure_ascii=False)}\n\n"
                         # quality_gate 节点：工作流审计若产生 pending_review，推送审核卡
                         elif (
@@ -1339,62 +1367,37 @@ async def manual_compress(
     config = {"configurable": {"thread_id": body.thread_id}}
     state_snapshot = await checkpoint.aget(config)
     if not state_snapshot:
-
-        async def _empty():
-            yield f"data: {json.dumps({'type': 'compress_done', 'summary': '', 'removed_count': 0, 'remaining_count': 0}, ensure_ascii=False)}\n\n"
-
+        # 任务 30（审查修复）：SSE 样板统一走 _sse_headers/_sse_compress_done
         return StreamingResponse(
-            _empty(),
+            _single_sse(_sse_compress_done("", 0, 0)),
             media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache, no-transform",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",
-            },
+            headers=_sse_headers(),
         )
 
     state_data = state_snapshot.get("channel_values", {})
     messages = state_data.get("messages", [])
     if not messages:
-
-        async def _empty():
-            yield f"data: {json.dumps({'type': 'compress_done', 'summary': '', 'removed_count': 0, 'remaining_count': 0}, ensure_ascii=False)}\n\n"
-
         return StreamingResponse(
-            _empty(),
+            _single_sse(_sse_compress_done("", 0, 0)),
             media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache, no-transform",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",
-            },
+            headers=_sse_headers(),
         )
 
     model_config = state_data.get("model_config", {})
     if not model_config or not model_config.get("main_config"):
-
-        async def _err():
-            yield f"data: {json.dumps({'type': 'error', 'message': '未找到模型配置'}, ensure_ascii=False)}\n\n"
-
         return StreamingResponse(
-            _err(),
+            _single_sse(f"data: {json.dumps({'type': 'error', 'message': '未找到模型配置'}, ensure_ascii=False)}\n\n"),
             media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache, no-transform",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",
-            },
+            headers=_sse_headers(),
         )
 
     llm = ModelFactory(model_config)
     from langchain_core.messages import HumanMessage, SystemMessage
 
-    parts = []
-    for msg in messages:
-        role = getattr(msg, "type", type(msg).__name__)
-        content = getattr(msg, "content", "") or ""
-        parts.append(f"{role}: {content[:400]}")
-    combined = "\n".join(parts)
+    from .context_manager import flatten_messages_for_summary
+
+    # 任务 30（审查修复）：复用共享展平实现
+    combined = flatten_messages_for_summary(messages, 400)
 
     prompt = (
         f"请详细总结以下对话，保留所有关键决策、用户偏好、创作设定和重要信息。"
@@ -1444,7 +1447,12 @@ async def manual_compress(
         except Exception as exc:
             logger.warning(f"保存压缩摘要到 AgentMemory 失败: {exc}")
 
+        # 任务 30（压缩修复）：add_messages 只增不减，aupdate_state 传入消息子集无法删除
+        # 旧消息，必须传 RemoveMessage 列表才能从 checkpoint 的 messages 通道真正裁剪。
+        from langchain_core.messages import RemoveMessage
+
         kept_messages = messages[-20:]
+        removed_messages = messages[:-20] if len(messages) > 20 else []
         graph = build_user_agent_graph(
             db_manager.with_db,
             model_config=model_config,
@@ -1453,23 +1461,19 @@ async def manual_compress(
         await graph.aupdate_state(
             config,
             values={
-                "messages": kept_messages,
+                "messages": [RemoveMessage(id=m.id) for m in removed_messages if getattr(m, "id", None)],
                 "compressed_context": summary,
                 "message_count_at_compress": len(messages),
             },
         )
 
         removed_count = len(messages) - len(kept_messages)
-        yield f"data: {json.dumps({'type': 'compress_done', 'summary': summary, 'removed_count': removed_count, 'remaining_count': len(kept_messages)}, ensure_ascii=False)}\n\n"
+        yield _sse_compress_done(summary, removed_count, len(kept_messages))
 
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache, no-transform",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
+        headers=_sse_headers(),
     )
 
 
@@ -1572,3 +1576,84 @@ async def review_action(
     except Exception as exc:
         logger.warning(f"[audit] review_action 审计失败: {exc}")
     return {"status": "ok", "action": body.action}
+
+
+@router.get("/audits")
+async def list_write_audits(
+    user_id: Annotated[int, Depends(get_current)],
+    book_id: int | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    session: Annotated[AsyncSession, Depends(db_manager.get_db)] = None,
+):
+    """查询写操作审计记录（任务 29 审计闭环的读取端）。
+
+    原审计只写不读，无法追溯谁在何时改了什么；此端点按用户（可选书籍）倒序
+    返回最近审计行，供管理/调试/安全审计消费。
+    """
+    from models.agent_audit import AgentWriteAudit
+
+    stmt = (
+        select(AgentWriteAudit)
+        .where(AgentWriteAudit.user_id == user_id)
+        .order_by(AgentWriteAudit.id.desc())
+        .limit(limit)
+    )
+    if book_id:
+        stmt = stmt.where(AgentWriteAudit.book_id == book_id)
+    result = await session.execute(stmt)
+    rows = result.scalars().all()
+    return [
+        {
+            "id": r.id,
+            "thread_id": r.thread_id,
+            "book_id": r.book_id,
+            "tool_name": r.tool_name,
+            "operation": r.operation,
+            "decision": r.decision,
+            "result": r.result,
+            "args_summary": r.args_summary,
+            "meta": r.meta,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in rows
+    ]
+
+
+@router.get("/turn-metrics")
+async def list_turn_metrics(
+    user_id: Annotated[int, Depends(get_current)],
+    book_id: int | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    session: Annotated[AsyncSession, Depends(db_manager.get_db)] = None,
+):
+    """查询回合指标记录（任务 28 指标落库的读取端，供统计/面板消费）。"""
+    from models.agent_metric import AgentTurnMetric
+
+    stmt = (
+        select(AgentTurnMetric)
+        .where(AgentTurnMetric.user_id == user_id)
+        .order_by(AgentTurnMetric.id.desc())
+        .limit(limit)
+    )
+    if book_id:
+        stmt = stmt.where(AgentTurnMetric.book_id == book_id)
+    result = await session.execute(stmt)
+    rows = result.scalars().all()
+    return [
+        {
+            "id": r.id,
+            "thread_id": r.thread_id,
+            "subgraph": r.subgraph,
+            "duration_ms": r.duration_ms,
+            "llm_calls": r.llm_calls,
+            "tool_calls": r.tool_calls,
+            "tool_success": r.tool_success,
+            "tool_fail": r.tool_fail,
+            "compress_count": r.compress_count,
+            "approval_count": r.approval_count,
+            "approval_accept": r.approval_accept,
+            "details": r.details,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in rows
+    ]

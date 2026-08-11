@@ -98,7 +98,7 @@ async def test_finish_with_preference_auto_writes(monkeypatch):
     session = FakeSession()
     fake = patch_db(monkeypatch, session)
     update = await _finish_with_candidate(
-        make_result(), target_chapter_id=74, preferred_node_id="polish"
+        make_result(), target_chapter_id=74, preferred_workflow_node="polish"
     )
     reply = update["messages"][0].content
     assert "自动沿用" in reply
@@ -115,7 +115,7 @@ async def test_finish_with_preference_node_missing_falls_back(monkeypatch):
     """偏好节点不在候选列表 → 回退展示候选列表。"""
     patch_db(monkeypatch)
     update = await _finish_with_candidate(
-        make_result(), target_chapter_id=74, preferred_node_id="missing"
+        make_result(), target_chapter_id=74, preferred_workflow_node="missing"
     )
     reply = update["messages"][0].content
     assert "候选1：【执笔写手】" in reply
@@ -128,7 +128,7 @@ async def test_finish_with_preference_empty_output_falls_back(monkeypatch):
         nodes=[{"node_id": "writer", "node_label": "执笔写手", "output": "", "summary": ""}]
     )
     patch_db(monkeypatch)
-    update = await _finish_with_candidate(result, target_chapter_id=74, preferred_node_id="writer")
+    update = await _finish_with_candidate(result, target_chapter_id=74, preferred_workflow_node="writer")
     reply = update["messages"][0].content
     assert "输出为空" in reply
 

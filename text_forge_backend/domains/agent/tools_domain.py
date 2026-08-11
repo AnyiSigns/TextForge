@@ -7,7 +7,6 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
 from sqlalchemy import func, select
-from sqlalchemy.orm import selectinload
 
 from config.logging import get_logger
 from core.model_factory import ModelFactory
@@ -99,7 +98,7 @@ def _build_lookup_tools(session_factory):
 
     @tool
     async def lookup_timeline(
-        before_chapter: Annotated[int | None, "只返回在此章节之前的事件"] = None,
+        up_to_chapter: Annotated[int | None, "只返回在此章节ID及更早（≤ 该章）的事件"] = None,
         limit: Annotated[int, "返回结果数量上限"] = 20,
         query: Annotated[str | None, "搜索关键词，匹配事件名称或描述"] = None,
         book_id: Annotated[int, InjectedState("active_book_id")] = 0,
@@ -107,21 +106,21 @@ def _build_lookup_tools(session_factory):
         """查询书籍的时间线事件（即场景事件 scene_event，与 get_book_context 的 scene_events / build_outline 的 scene_events 同一实体），可按章节位置和关键词筛选。
 
         Args:
-            before_chapter: 只返回在此章节ID之前的事件，为空则不过滤。
+            up_to_chapter: 只返回章节ID不超过此值的事件（含该章），为空则不过滤。
             limit: 返回结果的最大数量。
             query: 搜索关键词，匹配事件名称或描述。
         """
-        logger.debug(f"[tool] lookup_timeline  book_id={book_id}  before={before_chapter}  limit={limit}")
+        logger.debug(f"[tool] lookup_timeline  book_id={book_id}  up_to={up_to_chapter}  limit={limit}")
         async with session_factory() as session:
             events = await WorldRepository(session).list_scene_events(book_id)
-            if before_chapter is not None:
+            if up_to_chapter is not None:
                 filtered = []
                 for event in events:
                     if event.chapter_id is None:
                         filtered.append(event)
                         continue
                     try:
-                        if int(event.chapter_id) <= int(before_chapter):
+                        if int(event.chapter_id) <= int(up_to_chapter):
                             filtered.append(event)
                     except Exception as exc:
                         logger.warning(f"过滤 timeline 事件 chapter_id 转换失败: {exc}")
@@ -570,7 +569,9 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
             out = result.content if hasattr(result, "content") else str(result)
         except Exception as exc:
             logger.error(f"transform_text 失败: {exc}", exc_info=True)
-            return {"error": f"加工失败: {exc}"}
+            from shared.utils import redact_sensitive
+
+            return {"error": f"加工失败: {redact_sensitive(str(exc))}"}
         key_map = {
             "polish": "polished_text", "rewrite": "rewritten_text",
             "expand": "expanded_text", "summarize": "summary", "alternatives": "alternatives",
@@ -632,7 +633,9 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
             issues = result.content if hasattr(result, "content") else str(result)
         except Exception as exc:
             logger.error(f"review_text 失败: {exc}", exc_info=True)
-            return {"error": f"检查失败: {exc}"}
+            from shared.utils import redact_sensitive
+
+            return {"error": f"检查失败: {redact_sensitive(str(exc))}"}
         return {"mode": mode, "checked_length": len(content), "issues": issues}
 
     @tool
@@ -1148,9 +1151,15 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
         """写入章节正文：一律新增一个 ChapterContent 版本（version=最新+1），不覆盖旧版本；章节 locked=True 时拒绝。"""
         logger.debug(f"[tool] write_chapter_content  chapter_id={chapter_id}  book_id={book_id}")
         async with session_factory() as session:
-            ch = (await session.execute(select(Chapter).where(Chapter.id == chapter_id))).scalar_one_or_none()
+            ch = (
+                await session.execute(
+                    select(Chapter)
+                    .join(Volume, Volume.id == Chapter.volume_id)
+                    .where(Chapter.id == chapter_id, Volume.book_id == book_id)
+                )
+            ).scalar_one_or_none()
             if not ch:
-                return {"error": "章节不存在", "chapter_id": chapter_id}
+                return {"error": "章节不存在或不属于当前书籍", "chapter_id": chapter_id}
             if ch.locked:
                 return {"error": "章节已锁定，无法写入", "chapter_id": chapter_id}
             new_content = await _append_chapter_content_version(
@@ -1196,9 +1205,15 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
         if not content or not content.strip():
             return {"error": f"候选节点 {node_id} 输出为空，无法写入", "chapter_id": chapter_id}
         async with session_factory() as session:
-            ch = (await session.execute(select(Chapter).where(Chapter.id == chapter_id))).scalar_one_or_none()
+            ch = (
+                await session.execute(
+                    select(Chapter)
+                    .join(Volume, Volume.id == Chapter.volume_id)
+                    .where(Chapter.id == chapter_id, Volume.book_id == book_id)
+                )
+            ).scalar_one_or_none()
             if not ch:
-                return {"error": "章节不存在", "chapter_id": chapter_id}
+                return {"error": "章节不存在或不属于当前书籍", "chapter_id": chapter_id}
             if ch.locked:
                 return {"error": "章节已锁定，无法写入", "chapter_id": chapter_id}
             new_content = await _append_chapter_content_version(
@@ -1223,9 +1238,15 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
         if not old_text:
             return {"error": "old_text 不能为空"}
         async with session_factory() as session:
-            ch = (await session.execute(select(Chapter).where(Chapter.id == chapter_id))).scalar_one_or_none()
+            ch = (
+                await session.execute(
+                    select(Chapter)
+                    .join(Volume, Volume.id == Chapter.volume_id)
+                    .where(Chapter.id == chapter_id, Volume.book_id == book_id)
+                )
+            ).scalar_one_or_none()
             if not ch:
-                return {"error": "章节不存在", "chapter_id": chapter_id}
+                return {"error": "章节不存在或不属于当前书籍", "chapter_id": chapter_id}
             if ch.locked:
                 return {"error": "章节已锁定，无法修改", "chapter_id": chapter_id}
             max_ver = (await session.execute(select(func.max(ChapterContent.version)).where(ChapterContent.chapter_id == chapter_id))).scalar() or 0
@@ -1260,9 +1281,15 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
         if not unified_diff or not unified_diff.strip():
             return {"error": "unified_diff 不能为空"}
         async with session_factory() as session:
-            ch = (await session.execute(select(Chapter).where(Chapter.id == chapter_id))).scalar_one_or_none()
+            ch = (
+                await session.execute(
+                    select(Chapter)
+                    .join(Volume, Volume.id == Chapter.volume_id)
+                    .where(Chapter.id == chapter_id, Volume.book_id == book_id)
+                )
+            ).scalar_one_or_none()
             if not ch:
-                return {"error": "章节不存在", "chapter_id": chapter_id}
+                return {"error": "章节不存在或不属于当前书籍", "chapter_id": chapter_id}
             if ch.locked:
                 return {"error": "章节已锁定，无法修改", "chapter_id": chapter_id}
             max_ver = (await session.execute(select(func.max(ChapterContent.version)).where(ChapterContent.chapter_id == chapter_id))).scalar() or 0

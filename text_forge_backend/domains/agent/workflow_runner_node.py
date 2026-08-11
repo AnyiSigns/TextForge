@@ -10,20 +10,21 @@ from .workflow_scheduler import run_workflow as scheduler_run_workflow
 logger = get_logger(__name__)
 
 
-async def _finish_with_candidate(result: dict[str, Any], target_chapter_id: int | None = None, preferred_node_id: str | None = None, user_id: int = 0, book_id: int | None = None) -> dict[str, Any]:
+async def _finish_with_candidate(result: dict[str, Any], target_chapter_id: int | None = None, preferred_workflow_node: str | None = None, user_id: int = 0, book_id: int | None = None) -> dict[str, Any]:
     """工作流执行完毕后构造「候选正文确认」回复。
 
     直接把候选正文节点整理成一条 AIMessage 作为最终回复（不经 LLM），
     由 _entry_router 检测 candidate_reply_ready 后 END，避免模型在
     候选确认回合空转（反复 read_chapter_content 漏参）。
 
-    若传入 preferred_node_id 且该节点存在于 content_nodes（用户之前已选过，
+    若传入 preferred_workflow_node 且该节点存在于 content_nodes（用户之前已选过，
     多章生成自动沿用），则直接落库并告知用户，不再询问选择。
 
     Args:
         result: run_workflow / execute_node 的返回。
         target_chapter_id: 目标章节 ID。
-        preferred_node_id: 用户最近一次选定的节点 ID（自动沿用）。
+        preferred_workflow_node: 用户最近一次选定的节点 ID（自动沿用，与
+            state.preferred_workflow_node 命名一致）。
         user_id: 当前用户 ID（任务 29 审计用）。
         book_id: 当前书籍 ID（任务 29 审计用）。
 
@@ -37,14 +38,14 @@ async def _finish_with_candidate(result: dict[str, Any], target_chapter_id: int 
     logger.info(
         f"[workflow_runner] 收尾候选确认: status={result.get('status')} "
         f"content_nodes={len(content_nodes)} target_chapter_id={target} "
-        f"preferred_node_id={preferred_node_id} "
+        f"preferred_workflow_node={preferred_workflow_node} "
         f"message={result.get('message', '')[:120]}"
     )
 
     # 自动沿用：用户已选过节点且候选仍包含该节点 → 直接落库，不再询问
     pending_review: dict | None = None
-    if preferred_node_id and target_chapter_id:
-        preferred = next((n for n in content_nodes if n.get("node_id") == preferred_node_id), None)
+    if preferred_workflow_node and target_chapter_id:
+        preferred = next((n for n in content_nodes if n.get("node_id") == preferred_workflow_node), None)
         if preferred:
             try:
                 from sqlalchemy import func, select
@@ -53,7 +54,7 @@ async def _finish_with_candidate(result: dict[str, Any], target_chapter_id: int 
                 from shared.database import db_manager
 
                 content = preferred.get("output", "") or ""
-                label = preferred.get("node_label") or preferred_node_id
+                label = preferred.get("node_label") or preferred_workflow_node
                 if content and content.strip():
                     async with db_manager.with_db() as session:
                         ch = (await session.execute(select(Chapter).where(Chapter.id == target_chapter_id))).scalar_one_or_none()
@@ -73,7 +74,7 @@ async def _finish_with_candidate(result: dict[str, Any], target_chapter_id: int 
                                     book_id=book_id or None,
                                     tool_name="write_workflow_candidate",
                                     operation="workflow.auto_apply",
-                                    args={"chapter_id": target_chapter_id, "node_id": preferred_node_id},
+                                    args={"chapter_id": target_chapter_id, "node_id": preferred_workflow_node},
                                     decision="auto",
                                     result="ok",
                                     meta={"label": label, "chars": len(content)},
@@ -84,7 +85,7 @@ async def _finish_with_candidate(result: dict[str, Any], target_chapter_id: int 
                                 f"已自动沿用您此前选定的【{label}】节点，将第{target_chapter_id}章正文写入章节库"
                                 f"（第 {max_ver + 1} 版，{len(content)} 字）。如需改用其他节点输出，告诉我即可。"
                             )
-                            logger.info(f"[workflow_runner] 自动沿用落库成功: chapter={target_chapter_id} node={preferred_node_id}")
+                            logger.info(f"[workflow_runner] 自动沿用落库成功: chapter={target_chapter_id} node={preferred_workflow_node}")
                             _persist_outputs_preferred: dict[str, dict] = {}
                             for n in content_nodes:
                                 nid = n.get("node_id") or ""
@@ -103,7 +104,7 @@ async def _finish_with_candidate(result: dict[str, Any], target_chapter_id: int 
                             }
                         reply = f"章节 {target_chapter_id} 不存在或已锁定，无法自动沿用落库，请检查后手动选择候选节点。"
                 else:
-                    reply = f"候选节点【{preferred_node_id}】输出为空，无法自动沿用落库，请重新选择候选节点。"
+                    reply = f"候选节点【{preferred_workflow_node}】输出为空，无法自动沿用落库，请重新选择候选节点。"
                 content_nodes = []  # 自动沿用失败时不再展示候选，直接告知用户
             except Exception as exc:
                 logger.exception(f"[workflow_runner] 自动沿用落库失败: {exc}")

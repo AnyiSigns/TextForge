@@ -46,7 +46,9 @@ class WebSearchService:
             if cached is not None:
                 return cached
         results = await self._search_bocha(query, api_key, top_k)
-        if use_cache and results:
+        # 任务 30（审查修复 M5）：错误结果（[{"error": ...}]，如 401/429/5xx/超时）
+        # 不得入缓存——瞬时故障被缓存 24h 会导致后续查询持续命中错误。
+        if use_cache and results and not any("error" in r for r in results):
             try:
                 await self._save_cache(query, query_hash, results)
             except Exception as exc:

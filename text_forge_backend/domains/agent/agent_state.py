@@ -5,6 +5,19 @@ from langgraph.graph import add_messages
 from shared.utils import merge_dicts as _merge_dicts
 
 
+def merge_dicts_or_clear(base: dict | None, overlay: dict | None) -> dict | None:
+    """merge_dicts 的可清空变体：overlay 为 None 时整体清空通道（返回 None）。
+
+    任务 30（审查修复 M8）：共享的 merge_dicts 是纯 overlay 合并，空 dict {}
+    覆盖是 no-op，无法清除 workflow_node_outputs 等通道的旧值；terminate 工作流后
+    旧节点输出会滞留，write_workflow_candidate 仍能读到过期候选。此 reducer 允许
+    调用方传 None 真正清空（LastValue 通道返回 None 即置空）。
+    """
+    if overlay is None:
+        return None
+    return _merge_dicts(base or {}, overlay)
+
+
 def merge_metrics(base: dict | None, overlay: dict | None) -> dict:
     """指标聚合 reducer：数值相加、嵌套 dict 递归合并（其余类型取 overlay）。
 
@@ -35,6 +48,9 @@ class UserAgentState(TypedDict):
     user_id: int
     active_book_id: int
     model_config: dict
+    # 任务 30（审查修正）：step_outputs 在主 agent 图中无生产者/消费者，
+    # 但 GenerateChapterState 继承本状态并实际读写它（generate_chapter 子图 think/reflect
+    # 节点写入 step_outputs），故保留不删。
     step_outputs: Annotated[dict, _merge_dicts]
     previous_chapter_summary: str | None
     previous_chapter_content: str | None
@@ -45,7 +61,7 @@ class UserAgentState(TypedDict):
     pending_review: dict | None
     review_decision: str | None
     edited_content: str | None
-    workflow_node_outputs: Annotated[dict, _merge_dicts]
+    workflow_node_outputs: Annotated[dict | None, merge_dicts_or_clear]
     personal_rag_results: list | None
     terminate_chapter_id: int | None
     pending_workflow: dict | None  # 由 execute_workflow/execute_workflow_node 工具写入，交由原生 workflow_runner 节点执行
@@ -66,6 +82,9 @@ class UserAgentState(TypedDict):
     turn_metrics: Annotated[dict, merge_metrics]
     subgraph_steps: Annotated[dict, merge_metrics]  # 子图 step cap：{subgraph: 已执行步数}（父层仅作指标统计）
     subgraph_report: dict | None  # 子图出口结算报告 {metrics, steps}（LastValue，sync 节点合并后清空）
+    # 任务 30（压缩修复）：子图压缩裁剪掉的旧消息 ID，由 sync 节点转成 RemoveMessage
+    # 应用到父层 messages 通道，实现跨回合真正裁剪（add_messages 只增不减）。
+    removed_message_ids: list | None
 
 
 class SubgraphInput(TypedDict):
@@ -86,7 +105,7 @@ class SubgraphInput(TypedDict):
     compressed_context: str | None
     message_count_at_compress: int | None
     pending_review: dict | None
-    workflow_node_outputs: Annotated[dict, _merge_dicts]
+    workflow_node_outputs: Annotated[dict | None, merge_dicts_or_clear]
     personal_rag_results: list | None
     pending_workflow: dict | None
     pending_tool: dict | None
@@ -115,7 +134,7 @@ class SubgraphState(TypedDict):
     compressed_context: str | None
     message_count_at_compress: int | None
     pending_review: dict | None
-    workflow_node_outputs: Annotated[dict, _merge_dicts]
+    workflow_node_outputs: Annotated[dict | None, merge_dicts_or_clear]
     personal_rag_results: list | None
     pending_workflow: dict | None
     pending_tool: dict | None
@@ -127,6 +146,9 @@ class SubgraphState(TypedDict):
     turn_metrics: Annotated[dict, merge_metrics]
     subgraph_steps: Annotated[dict, merge_metrics]
     subgraph_report: dict | None  # 出口结算报告（LastValue，final 节点写入）
+    # 任务 30（压缩修复）：压缩裁剪掉的旧消息 ID（LastValue），由 SubgraphOutput 回流父层，
+    # sync 节点转成 RemoveMessage 应用到父层 messages 通道。
+    removed_message_ids: list | None
 
 
 class SubgraphOutput(TypedDict):
@@ -142,9 +164,10 @@ class SubgraphOutput(TypedDict):
     pending_tool: dict | None
     pending_workflow: dict | None
     workflow_result: dict | None
-    workflow_node_outputs: dict
+    workflow_node_outputs: dict | None
     candidate_reply_ready: bool
     preferred_workflow_node: str | None
     compressed_context: str | None
     message_count_at_compress: int | None
     subgraph_report: dict | None
+    removed_message_ids: list | None  # 任务 30（压缩修复）：裁剪掉的旧消息 ID，供父层 sync 应用删除

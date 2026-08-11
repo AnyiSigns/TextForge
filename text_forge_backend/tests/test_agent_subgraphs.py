@@ -109,12 +109,34 @@ def test_sync_node_merges_report_and_clears():
     assert result["turn_metrics"] == {"llm_calls": 3, "tool_calls": 1}
     assert result["subgraph_steps"] == {"drafting": 2}
     assert result["subgraph_report"] is None
+    # 任务 30（压缩修复）：sync 始终清空 removed_message_ids；无裁剪时无 messages 更新
+    assert result["removed_message_ids"] is None
+    assert "messages" not in result
 
 
 def test_sync_node_noop_without_report():
     assert sync_node({"turn_metrics": {}, "subgraph_steps": {}, "subgraph_report": None}) == {
-        "subgraph_report": None
+        "subgraph_report": None,
+        "removed_message_ids": None,
     }
+
+
+def test_sync_node_propagates_compressed_removals():
+    """任务 30（压缩修复）：子图压缩裁剪的旧消息 ID 由 sync 转成 RemoveMessage 应用父层。"""
+    from langchain_core.messages import RemoveMessage
+
+    result = sync_node(
+        {
+            "turn_metrics": {},
+            "subgraph_steps": {},
+            "subgraph_report": None,
+            "removed_message_ids": ["msg-1", "msg-2"],
+        }
+    )
+    assert result["removed_message_ids"] is None
+    assert len(result["messages"]) == 2
+    assert all(isinstance(m, RemoveMessage) for m in result["messages"])
+    assert {m.id for m in result["messages"]} == {"msg-1", "msg-2"}
 
 
 # ---------------------------------------------------------------------------

@@ -211,7 +211,9 @@ def build_generate_chapter_tool(session_factory, model_config: dict | None = Non
                 result = await graph.ainvoke(state)
             except Exception as exc:
                 logger.error(f"generate_chapter subgraph 失败: {exc}", exc_info=True)
-                return {"status": "error", "message": f"生成失败: {exc}"}
+                from shared.utils import redact_sensitive
+
+                return {"status": "error", "message": f"生成失败: {redact_sensitive(str(exc))}"}
 
             generated_text = result.get("content", "")
             if not generated_text or not generated_text.strip():
@@ -270,6 +272,8 @@ def build_generate_chapter_tool(session_factory, model_config: dict | None = Non
                 }
             except Exception as exc:
                 logger.error(f"generate_chapter 保存失败: {exc}", exc_info=True)
-                return {"status": "error", "message": f"保存失败: {exc}"}
+                from shared.utils import redact_sensitive
+
+                return {"status": "error", "message": f"保存失败: {redact_sensitive(str(exc))}"}
 
     return generate_chapter

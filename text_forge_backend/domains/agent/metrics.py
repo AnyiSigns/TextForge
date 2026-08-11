@@ -51,8 +51,10 @@ def build_turn_metrics_payload(
     duration_ms = round((time.monotonic() - started_at) * 1000, 1)
     # steps_per_subgraph 存在独立的 subgraph_steps 通道（agent_call 写入），
     # 不从 turn_metrics 读取，否则恒为空（step cap 调参数据丢失）。
+    # 任务 30（审查修复）：thread_id 由调用方（router.py）事后用真实值覆盖，
+    # 此处不再从 state 读不存在的 _thread_id 死键。
     payload = {
-        "thread_id": (final_state.get("_thread_id") or ""),
+        "thread_id": "",
         "subgraph": final_state.get("subgraph") or "",
         "duration_ms": duration_ms,
         "llm_calls": tm.get("llm_calls", 0),
@@ -65,7 +67,6 @@ def build_turn_metrics_payload(
         "details": {
             **_subgraph_usage(tm),
             "steps_per_subgraph": dict(final_state.get("subgraph_steps") or {}),
-            "aborted": bool(tm.get("aborted")),
         },
     }
     return payload

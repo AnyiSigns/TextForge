@@ -102,11 +102,6 @@ def test_auto_allocate_context_no_match_returns_book_info():
 # 序列化与上下文格式化
 # ---------------------------------------------------------------------------
 
-def test_to_serializable():
-    assert wf._to_serializable({"a": [1, "x"], "b": object()})["a"] == [1, "x"]
-    assert isinstance(wf._to_serializable({"b": object()})["b"], str)
-
-
 def test_format_context_field_book_info():
     rec = SimpleNamespace(title="测试书", description="简介", genre="奇幻")
     text = wf._format_context_field("book_info", [rec])

@@ -157,17 +157,6 @@ async def _load_context_pool(book_id: int) -> dict[str, list[int]]:
         }
 
 
-def _to_serializable(value):
-    """将值转换为可 JSON 序列化的格式。"""
-    if isinstance(value, (str, int, float, bool, type(None))):
-        return value
-    if isinstance(value, dict):
-        return {k: _to_serializable(v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_to_serializable(v) for v in value]
-    return str(value)
-
-
 def _format_context_field(
     field: str, records: list, include_chapter_title: bool = True
 ) -> str:

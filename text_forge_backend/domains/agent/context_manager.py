@@ -1,9 +1,8 @@
 from datetime import datetime, timezone
 from typing import Any
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, RemoveMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
-
 from config.logging import get_logger
 from core.model_factory import ModelFactory
 from shared.utils import truncate_text
@@ -33,12 +32,22 @@ def _estimate_tokens(messages: list) -> int:
     return int(total)
 
 
-def _format_messages_for_summary(messages: list) -> str:
+def flatten_messages_for_summary(messages: list, per_line_chars: int = 600) -> str:
+    """把消息列表展平为「role: content」文本，供摘要 LLM 消费。
+
+    任务 30（审查修复）：router 的 auto_digest / manual_compress 与压缩节点各自
+    重复实现了 role+content 展平（含多模态 content 分支），此处提供共享实现，
+    三处统一调用，避免截断策略漂移。
+    """
     parts = []
     for msg in messages:
         role = getattr(msg, "type", type(msg).__name__)
-        parts.append(f"{role}: {truncate_text(_msg_text(msg), 600)}")
+        parts.append(f"{role}: {truncate_text(_msg_text(msg), per_line_chars)}")
     return "\n".join(parts)
+
+
+def _format_messages_for_summary(messages: list) -> str:
+    return flatten_messages_for_summary(messages, 600)
 
 
 def _should_compress(state: UserAgentState) -> bool:
@@ -220,15 +229,17 @@ async def auto_compress_node(state: UserAgentState, session_factory=None) -> dic
         f"auto_compress: 压缩了 {len(old_messages)} 条消息，保留最近 {COMPRESS_KEEP} 条"
     )
 
+    # 任务 30（压缩修复）：add_messages 只增不减，直接返回 messages[-K:] 无法真正裁剪；
+    # 必须返回 RemoveMessage 列表，消息通道才会删除被裁掉的旧消息。
+    # 同时把被删 ID 写入 removed_message_ids，由子图输出回流父层，
+    # 父层 sync 节点再应用到父层 messages 通道（跨回合真正裁剪）。
+    removed_ids = [m.id for m in old_messages if getattr(m, "id", None)]
+
     return {
-        "messages": messages[-COMPRESS_KEEP:],
+        "messages": [RemoveMessage(id=mid) for mid in removed_ids],
+        "removed_message_ids": removed_ids,
         "compressed_context": compressed_context,
         "message_count_at_compress": len(messages),
         # 任务 28 指标层：压缩次数计数
         "turn_metrics": {"compress_count": 1},
     }
-
-
-def compress_router(state: UserAgentState) -> str:
-    """压缩后回 supervisor（状态机单一出口）；压缩触发判断在 quality_gate_router 已做。"""
-    return "supervisor"
