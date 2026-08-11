@@ -2,11 +2,10 @@
 
 保留旧导入路径（workflow 域 router / workflow_runner_node / 测试均从本模块导入）：
     - run_workflow / execute_node / audit_node_output / topological_sort / WorkflowCycleError
-    - auto_allocate_context / CONTEXT_FIELD_MAP / KEYWORD_CONTEXT_MAP
+    - auto_allocate_context / KEYWORD_CONTEXT_MAP
 """
 
 from .workflow_context import (
-    CONTEXT_FIELD_MAP,
     KEYWORD_CONTEXT_MAP,
     _build_chapter_target_context,
     _format_context_field,
@@ -24,7 +23,6 @@ from .workflow_execute import (
 )
 
 __all__ = [
-    "CONTEXT_FIELD_MAP",
     "KEYWORD_CONTEXT_MAP",
     "WorkflowCycleError",
     "_build_chapter_target_context",

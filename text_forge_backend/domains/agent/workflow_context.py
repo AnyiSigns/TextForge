@@ -9,28 +9,17 @@ from domains.book.structured_repository import StructuredRepository
 
 logger = get_logger(__name__)
 
-CONTEXT_FIELD_MAP = {
-    "input_summary": "input_summary",
-    "input_worldview": "input_worldview",
-    "input_brief_summary": "input_brief_summary",
-    "input_characters": "input_characters",
-    "input_recent_chapters": "input_recent_chapters",
-    "input_outline": "input_outline",
-}
-
-
 KEYWORD_CONTEXT_MAP = {
     "book_info": ["书名", "简介", "书籍信息"],
+    "setting": ["世界观", "设定", "文风", "基调", "禁忌"],
     "characters": ["角色", "人物", "人设", "主角", "配角"],
-    "outline_structure": ["大纲", "章节", "卷"],
-    "locations": ["地点", "场景", "地理"],
-    "scene_events": ["事件", "情节", "时间线"],
+    "locations": ["地点", "地理"],
+    "outline_detail": ["大纲", "目录", "卷", "章节", "结构"],
+    "chapter_scene_event": ["场景", "事件", "时间线", "本章", "写作依据"],
     "foreshadowings": ["伏笔"],
     "plot_threads": ["线索", "情节线"],
     "branches": ["支线", "角色模拟"],
-    "creative_settings": ["世界观", "设定", "文风", "基调"],
-    "chapter_summaries": ["摘要", "章"],
-    "recent_chapters": ["近期", "前文"],
+    "previous_chapters": ["前文", "上一章", "近期", "衔接"],
 }
 
 
@@ -97,7 +86,7 @@ async def _load_context_pool(book_id: int) -> dict[str, list[int]]:
 
 
 def _format_context_field(
-    field: str, records: list, include_chapter_title: bool = True
+    field: str, records: list
 ) -> str:
     """将结构化查询结果格式化为 prompt 可读文本。
 
@@ -106,7 +95,6 @@ def _format_context_field(
     Args:
         field: 上下文字段名。
         records: 记录列表。
-        include_chapter_title: 章节正文是否包含标题。
 
     Returns:
         格式化后的文本。
@@ -138,7 +126,7 @@ def _format_context_field(
                     if isinstance(v, (str, int, float)):
                         lines.append(f"{k}：{v}")
                     elif isinstance(v, list):
-                        lines.append(f"{k}：{', '.join(str(x) for x in v)}")
+                        lines.append(f"{k}：{'、'.join(str(x) for x in v)}")
                     else:
                         lines.append(f"{k}：{v!s}")
         return "\n\n".join(lines)
@@ -147,13 +135,27 @@ def _format_context_field(
         lines = []
         for r in records:
             name = getattr(r, "name", "未知")
-            desc = getattr(r, "description", "") or ""
             role = getattr(r, "role_type", "") or ""
             status = getattr(r, "status", "") or ""
-            line = f"- {name}（{role}）：{desc[:200]}"
+            aliases = getattr(r, "aliases", None) or []
+            desc = getattr(r, "description", "") or ""
+            custom = getattr(r, "custom_fields", None) or {}
+            loc = getattr(r, "base_location_name", "") or ""
+            line = f"- {name}（{role}）"
             if status:
-                line += f" [状态：{status}]"
+                line += f"[状态：{status}]"
             lines.append(line)
+            if aliases:
+                lines.append(f"  别名：{'、'.join(str(a) for a in aliases[:10])}")
+            if desc:
+                lines.append(f"  描述：{desc[:200]}")
+            for k, v in list(custom.items())[:8]:
+                if isinstance(v, (str, int, float)):
+                    lines.append(f"  {k}：{v}")
+                elif isinstance(v, list):
+                    lines.append(f"  {k}：{'、'.join(str(x) for x in v[:8])}")
+            if loc:
+                lines.append(f"  当前地点：{loc}")
         return "角色设定\n" + "\n".join(lines)
 
     if field == "character_relationships":
@@ -163,74 +165,69 @@ def _format_context_field(
             rels = getattr(r, "relationship_chain", None) or []
             rel_texts = []
             for rel in rels[:8]:
-                target = getattr(rel, "target", "") or ""
-                relation = getattr(rel, "relation", "") or ""
+                target = rel.get("target", "") if isinstance(rel, dict) else getattr(rel, "target", "")
+                relation = (
+                    rel.get("relation", "")
+                    if isinstance(rel, dict)
+                    else getattr(rel, "relation", "")
+                )
                 if target and relation:
                     rel_texts.append(f"{target}（{relation}）")
+                elif target:
+                    rel_texts.append(target)
             if rel_texts:
                 lines.append(f"- {name}：{'；'.join(rel_texts)}")
             else:
                 lines.append(f"- {name}：无关系数据")
-        return "\n".join(lines)
+        return "角色关系\n" + "\n".join(lines)
 
-    if field == "chapter_content":
-        blocks = []
-        for r in records:
-            content = getattr(r, "content", "") or ""
-            if include_chapter_title:
-                title = getattr(r, "chapter", {}).title if hasattr(r, "chapter") else ""
-                blocks.append(f"# {title}\n{content[:3000]}")
-            else:
-                blocks.append(content[:3000])
-        return "\n\n".join(blocks)
-
-    if field == "chapter_summaries":
-        lines = []
-        for r in records:
-            title = getattr(r, "title", "未命名")
-            summary = getattr(r, "summary", "") or ""
-            lines.append(f"- {title}：{summary}")
-        return "\n".join(lines)
-
-    if field == "recent_chapters":
+    if field == "previous_chapters":
         blocks = []
         for r in records:
             title = getattr(r, "title", "未命名")
+            vol = getattr(r, "volume_title", "") or ""
+            sort = getattr(r, "sort_order", 0)
             summary = getattr(r, "summary", "") or ""
             content = getattr(r, "content", "") or ""
-            block = f"# {title}"
+            header = f"# 上一章《{title}》"
+            header += f"（{vol} 第{sort}章）" if vol else f"（第{sort}章）"
+            block = header
             if summary:
-                block += f"\n{summary}"
-            if content:
-                block += f"\n{content[:3000]}"
+                block += f"\n章节摘要：{summary}"
+            block += f"\n{content[:8000]}"
             blocks.append(block)
         return "\n\n".join(blocks)
 
-    if field == "outline_structure":
-        lines = []
-        for r in records:
-            title = getattr(r, "title", "未命名")
-            summary = getattr(r, "summary", "") or ""
-            sort = getattr(r, "sort_order", 0)
-            lines.append(f"- 第{sort}章 {title}：{summary[:300]}")
-        return "\n".join(lines)
+    if field == "outline_detail.toc":
+        return _format_outline_tree(records, with_volume_summary=False, with_chapter_summary=False)
 
-    if field == "volumes":
-        lines = []
-        for r in records:
-            title = getattr(r, "title", "未命名")
-            summary = getattr(r, "summary", "") or ""
-            lines.append(f"- {title}：{summary[:500]}")
-        return "\n".join(lines)
+    if field == "outline_detail.volume_summaries":
+        return _format_outline_tree(records, with_volume_summary=True, with_chapter_summary=False)
 
-    if field == "scene_events":
+    if field == "outline_detail.chapter_summaries":
+        return _format_outline_tree(records, with_volume_summary=False, with_chapter_summary=True)
+
+    if field == "outline_detail":
+        return _format_outline_tree(records, with_volume_summary=True, with_chapter_summary=True)
+
+    if field == "outline_detail.chapter_scene_event":
+        return _format_chapter_scene_event(records)
+
+    if field == "locations":
         lines = []
         for r in records:
             name = getattr(r, "name", "未命名")
+            loc_type = getattr(r, "type", "场所") or "场所"
             desc = getattr(r, "description", "") or ""
-            ev_type = getattr(r, "event_type", "") or ""
-            lines.append(f"- [{ev_type}] {name}：{desc[:300]}")
-        return "\n".join(lines)
+            ancestors = getattr(r, "ancestors", None) or []
+            children = getattr(r, "children", None) or []
+            line = f"- {name}（{loc_type}）：{desc[:200]}"
+            if ancestors:
+                line += f" [父链：{' → '.join(getattr(a, 'name', '?') for a in ancestors)}]"
+            if children:
+                line += f" [子地点：{'、'.join(getattr(c, 'name', '?') for c in children[:5])}]"
+            lines.append(line)
+        return "地点设定\n" + "\n".join(lines)
 
     if field == "foreshadowings":
         lines = []
@@ -238,7 +235,7 @@ def _format_context_field(
             desc = getattr(r, "description", "") or ""
             status = getattr(r, "status", "") or ""
             lines.append(f"- [{status}] {desc[:300]}")
-        return "\n".join(lines)
+        return "伏笔列表\n" + "\n".join(lines)
 
     if field == "plot_threads":
         lines = []
@@ -247,7 +244,7 @@ def _format_context_field(
             desc = getattr(r, "description", "") or ""
             status = getattr(r, "status", "") or ""
             lines.append(f"- [{status}] {name}：{desc[:300]}")
-        return "\n".join(lines)
+        return "剧情线索\n" + "\n".join(lines)
 
     if field == "branches":
         lines = []
@@ -256,23 +253,154 @@ def _format_context_field(
             btype = getattr(r, "branch_type", "") or ""
             content = getattr(r, "content", "") or ""
             lines.append(f"- [{btype}] {title}：{content[:400]}")
-        return "\n".join(lines)
+        return "角色支线\n" + "\n".join(lines)
 
-    if field == "creative_settings":
-        lines = []
-        for r in records:
-            tone = getattr(r, "tone", "") or ""
-            worldview = getattr(r, "worldview", "") or ""
-            taboos = getattr(r, "writing_taboos", "") or ""
-            if tone:
-                lines.append(f"文风：{tone[:500]}")
-            if worldview:
-                lines.append(f"世界观：{worldview[:500]}")
-            if taboos:
-                lines.append(f"写作禁忌：{taboos[:500]}")
-        return "\n".join(lines)
-
+    logger.warning(f"_format_context_field 未识别字段: {field}")
     return ""
+
+
+def _format_outline_tree(
+    records: list,
+    with_volume_summary: bool,
+    with_chapter_summary: bool,
+) -> str:
+    """渲染卷 → 章 → 场景事件 大纲树（与详情页大纲一致）。"""
+    lines = []
+    total_ch = sum(len(getattr(v, "chapters", None) or []) for v in records)
+    lines.append(f"## 大纲（共 {len(records)} 卷 / {total_ch} 章）")
+    for v in records:
+        v_title = getattr(v, "title", "未命名")
+        v_sum = getattr(v, "summary", "") or ""
+        lines.append(f"### {v_title}")
+        if with_volume_summary and v_sum:
+            lines.append(f"卷摘要：{v_sum[:500]}")
+        for ch in getattr(v, "chapters", None) or []:
+            ch_title = getattr(ch, "title", "未命名")
+            sort = getattr(ch, "sort_order", 0)
+            ch_sum = getattr(ch, "summary", "") or ""
+            line = f"- 第{sort}章 {ch_title}"
+            if with_chapter_summary and ch_sum:
+                line += f"：{ch_sum[:200]}"
+            lines.append(line)
+            for ev in getattr(ch, "events", None) or []:
+                ev_title = getattr(ev, "title", "")
+                label = getattr(ev, "story_label", "") or ""
+                if label:
+                    lines.append(f"  - {ev_title}（{label}）")
+                else:
+                    lines.append(f"  - {ev_title}")
+    return "\n".join(lines)
+
+
+def _format_chapter_scene_event(records: list) -> str:
+    """渲染本章场景全量：事件 + 地点及链 + 出场角色及直属链 + 内联线索/伏笔。"""
+    lines = []
+    for node in records:
+        ch = getattr(node, "chapter", None)
+        if ch is None:
+            continue
+        events = getattr(node, "events", None) or []
+        ch_title = getattr(ch, "title", "未命名")
+        vol = getattr(ch, "volume_title", "") or ""
+        sort = getattr(ch, "sort_order", 0)
+        head = f"## 本章场景（第{sort}章《{ch_title}》"
+        if vol:
+            head += f"·{vol}"
+        head += f"，共 {len(events)} 个事件）"
+        lines.append(head)
+        for ev in events:
+            ev_title = getattr(ev, "title", "未命名")
+            lines.append(f"### 事件：{ev_title}")
+            label = getattr(ev, "story_label", "") or ""
+            if label:
+                lines.append(f"时间：{label}")
+            content = getattr(ev, "content", "") or ""
+            if content:
+                lines.append(f"摘要：{content[:300]}")
+            loc = getattr(ev, "location", None)
+            if loc:
+                loc_name = getattr(loc, "name", "未知")
+                loc_type = getattr(loc, "type", "场所") or "场所"
+                desc = getattr(loc, "description", "") or ""
+                ancestors = [getattr(a, "name", "?") for a in (getattr(loc, "ancestors", None) or [])]
+                children = [getattr(c, "name", "?") for c in (getattr(loc, "children", None) or [])]
+                loc_line = f"地点：{loc_name}（{loc_type}）"
+                if desc:
+                    loc_line += f"，{desc[:150]}"
+                if ancestors:
+                    loc_line += f"，父链：{' → '.join(ancestors)}"
+                if children:
+                    loc_line += f"，子地点：{'、'.join(children[:5])}"
+                lines.append(loc_line)
+            for c in (getattr(ev, "characters", None) or []):
+                c_name = getattr(c, "name", "未知")
+                c_role = getattr(c, "role_type", "") or ""
+                c_status = getattr(c, "status", "") or ""
+                c_line = f"- {c_name}（{c_role}）"
+                if c_status:
+                    c_line += f"[状态：{c_status}]"
+                lines.append(c_line)
+                aliases = getattr(c, "aliases", None) or []
+                if aliases:
+                    lines.append(f"  别名：{'、'.join(str(a) for a in aliases[:10])}")
+                desc = getattr(c, "description", "") or ""
+                if desc:
+                    lines.append(f"  描述：{desc[:200]}")
+                custom = getattr(c, "custom_fields", None) or {}
+                for k, v in list(custom.items())[:8]:
+                    if isinstance(v, (str, int, float)):
+                        lines.append(f"  {k}：{v}")
+                    elif isinstance(v, list):
+                        lines.append(f"  {k}：{'、'.join(str(x) for x in v[:8])}")
+                loc_n = getattr(c, "base_location_name", "") or ""
+                if loc_n:
+                    lines.append(f"  当前地点：{loc_n}")
+                chain = getattr(c, "relationship_chain", None) or []
+                if chain:
+                    rel_texts = []
+                    for rel in chain:
+                        tgt = rel.get("target", "") if isinstance(rel, dict) else getattr(rel, "target", "")
+                        reln = rel.get("relation", "") if isinstance(rel, dict) else getattr(rel, "relation", "")
+                        if tgt and reln:
+                            rel_texts.append(f"{tgt}（{reln}）")
+                        elif tgt:
+                            rel_texts.append(tgt)
+                    if rel_texts:
+                        lines.append(f"  关系链：{'；'.join(rel_texts)}")
+                for tc in (getattr(c, "chain_characters", None) or []):
+                    tc_name = getattr(tc, "name", "?")
+                    tc_role = getattr(tc, "role_type", "") or ""
+                    tc_status = getattr(tc, "status", "") or ""
+                    tc_desc = getattr(tc, "description", "") or ""
+                    tc_line = f"    · {tc_name}（{tc_role}）"
+                    if tc_status:
+                        tc_line += f"[状态：{tc_status}]"
+                    if tc_desc:
+                        tc_line += f"，{tc_desc[:150]}"
+                    tc_loc = getattr(tc, "base_location_name", "") or ""
+                    if tc_loc:
+                        tc_line += f"，当前地点：{tc_loc}"
+                    lines.append(tc_line)
+            threads = getattr(ev, "plot_threads", None) or []
+            completed = getattr(ev, "completed_plot_threads", None) or []
+            fws = getattr(ev, "foreshadowings", None) or []
+            if threads:
+                thread_texts = []
+                for t in threads:
+                    t_name = getattr(t, "name", "?")
+                    t_status = getattr(t, "status", "") or "进行中"
+                    thread_texts.append(f"{t_name}（{t_status}）")
+                lines.append(f"情节线：{'、'.join(thread_texts)}")
+            if completed:
+                lines.append(f"完结情节线：{'、'.join(getattr(t, 'name', '?') for t in completed)}")
+            if fws:
+                fw_texts = []
+                for f in fws:
+                    f_desc = getattr(f, "description", "") or ""
+                    f_status = getattr(f, "status", "") or "已回收"
+                    fw_texts.append(f"{f_desc[:40]}（{f_status}）")
+                lines.append(f"揭示伏笔：{'、'.join(fw_texts)}")
+    return "\n".join(lines)
 
 
 async def _query_structured_context(
@@ -280,6 +408,7 @@ async def _query_structured_context(
     book_id: int,
     context_fields: list[str],
     context_pool: dict[str, list[int]] | None = None,
+    target_chapter_id: int | None = None,
 ) -> dict[str, Any]:
     """查询结构化上下文数据（复用 StructuredRepository）。
 
@@ -288,6 +417,8 @@ async def _query_structured_context(
         book_id: 书籍 ID。
         context_fields: 需要查询的上下文字段列表。
         context_pool: 上下文池配置。
+        target_chapter_id: 目标章节 ID（章节绑定字段 previous_chapters /
+            outline_detail.chapter_scene_event 依赖它定位"本章"）。
 
     Returns:
         按字段名组织的记录字典。
@@ -300,6 +431,7 @@ async def _query_structured_context(
             book_id=book_id,
             context_fields=context_fields,
             context_pool=context_pool or {},
+            target_chapter_id=target_chapter_id,
         )
     except Exception as exc:
         logger.warning(f"_query_structured_context 失败: {exc}")
@@ -342,21 +474,25 @@ async def _build_chapter_target_context(book_id: int, chapter_id: int) -> str:
         vol = await session.get(Volume, ch.volume_id)
         if vol:
             parts.append(f"所属卷：《{vol.title}》")
-        # 前一章结尾衔接（取最近 800 字）
-        prev = (
+        # 前一章结尾衔接（取最近 800 字）：与 previous_chapters 同一口径——
+        # 全书按 (卷 sort_order, 章 sort_order) 排序取目标章的前一章（跨卷也衔接）
+        ordered = (
             (
                 await session.execute(
                     select(Chapter)
-                    .where(
-                        Chapter.volume_id == ch.volume_id,
-                        Chapter.sort_order < ch.sort_order,
-                    )
-                    .order_by(Chapter.sort_order.desc())
+                    .join(Volume, Volume.id == Chapter.volume_id)
+                    .where(Volume.book_id == book_id)
+                    .order_by(Volume.sort_order, Chapter.sort_order)
                 )
             )
             .scalars()
-            .first()
+            .all()
         )
+        prev = None
+        for i, c in enumerate(ordered):
+            if c.id == chapter_id and i > 0:
+                prev = ordered[i - 1]
+                break
         if prev:
             pc = (
                 (
@@ -470,26 +606,36 @@ def _format_prompt_context(
                 truncated = text
             parts.append(f"[上游节点 {uid} 输出]\n{truncated}")
 
+    # 树型/整块字段：内部自带标题，直接整块注入（不套"共 N 条"外层头）
+    TREE_FIELDS = {
+        "outline_detail",
+        "outline_detail.toc",
+        "outline_detail.volume_summaries",
+        "outline_detail.chapter_summaries",
+        "outline_detail.chapter_scene_event",
+        "previous_chapters",
+    }
+    DISPLAY_NAMES = {
+        "book_info": "书籍基本信息",
+        "setting": "创作设定",
+        "characters": "角色档案",
+        "character_relationships": "角色关系",
+        "locations": "地点设定",
+        "foreshadowings": "伏笔列表",
+        "plot_threads": "剧情线索",
+        "branches": "角色支线",
+    }
+
     if structured:
         for field_name, records in structured.items():
             if not records:
                 continue
-            display_name = {
-                "book_info": "书籍基本信息",
-                "setting": "创作设定",
-                "characters": "角色档案",
-                "character_relationships": "角色关系",
-                "chapter_content": "章节正文",
-                "chapter_summaries": "章节摘要",
-                "recent_chapters": "最近章节",
-                "outline_structure": "大纲结构",
-                "volumes": "卷信息",
-                "scene_events": "场景事件",
-                "foreshadowings": "伏笔列表",
-                "plot_threads": "剧情线索",
-                "branches": "角色支线",
-                "creative_settings": "创意设定",
-            }.get(field_name, field_name)
+            if field_name in TREE_FIELDS:
+                text = _format_context_field(field_name, records)
+                if text:
+                    parts.append(text)
+                continue
+            display_name = DISPLAY_NAMES.get(field_name, field_name)
             parts.append(f"## {display_name}（共 {len(records)} 条）")
             for rec in records[:10]:
                 text = _format_context_field(field_name, [rec])

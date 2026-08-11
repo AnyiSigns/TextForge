@@ -1,10 +1,11 @@
 import asyncio
 import json
+import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import get_current
@@ -20,6 +21,10 @@ router = APIRouter(prefix="/workflows", tags=["Workflow"])
 
 class ExecuteWorkflowRequest(BaseModel):
     """工作流执行请求体。"""
+
+    # populate_by_name：允许请求体用 snake_case 字段名（target_chapter_id），
+    # 与其余字段风格一致，避免 alias 导致的静默失效。
+    model_config = ConfigDict(populate_by_name=True)
 
     workflow_id: str = Field(description="工作流 ID（含内置模板 id）")
     book_id: int = Field(description="目标书籍 ID")
@@ -50,8 +55,6 @@ async def create_workflow(
     前端新建工作流可能不带 id（或 id 为空字符串）：此处统一生成服务端 id，
     避免前端把 PUT 发到集合路径 /workflows/ 触发 405。
     """
-    import uuid
-
     data = request.model_dump()
     if not data.get("id"):
         data["id"] = f"wf-{uuid.uuid4().hex[:12]}"
@@ -156,11 +159,16 @@ async def run_workflow_endpoint(
                     event = {**event, "type": event["event"]}
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
-            result = (
-                task.result()
-                if not task.cancelled()
-                else {"status": "error", "message": "执行已取消"}
-            )
+            try:
+                result = (
+                    task.result()
+                    if not task.cancelled()
+                    else {"status": "error", "message": "执行已取消"}
+                )
+            except Exception as exc:
+                # 任务异常兜底：异常穿透 task.result() 会打断 SSE 流，
+                # 统一转为 done+error 事件，前端可正常收尾展示。
+                result = {"status": "error", "message": f"工作流执行异常: {exc}"}
             # 统一 SSE 事件命名：scheduler 事件用 event 键（node_start 等），
             # 与 agent 流的 type 键不一致；补发 type 字段，前端两种读取均兼容。
             yield f"data: {json.dumps({'type': 'done', 'result': result}, ensure_ascii=False)}\n\n"

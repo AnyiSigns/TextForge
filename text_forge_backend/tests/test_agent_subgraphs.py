@@ -12,13 +12,12 @@
 from __future__ import annotations
 
 import pytest
-from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
+from langchain_core.messages import AIMessage, AIMessageChunk
 from langgraph.checkpoint.memory import MemorySaver
 
 from domains.agent import agent_nodes
 from domains.agent.agent_nodes import SUBGRAPH_NAMES
 from domains.agent.graphs.agent_graph import (
-    SUBGRAPH_NODES,
     build_subgraph,
     build_user_agent_graph,
     subgraph_entry_router,
@@ -46,7 +45,6 @@ def sub_state(**kw) -> dict:
 
 
 def test_entry_router_exits_on_candidate_ready():
-    assert subgraph_entry_router(sub_state(candidate_reply_ready=True)) == "agent_call" or True
     from langgraph.graph import END
 
     assert subgraph_entry_router(sub_state(candidate_reply_ready=True)) == END
@@ -269,4 +267,4 @@ async def test_nested_graph_chat_fast_path(monkeypatch):
     assert final["subgraph"] == "chat"
     assert len(final["messages"]) == 2
     assert SUBGRAPH_NAMES == ("worldbuilding", "outlining", "drafting", "revising")
-    assert len(final["messages"][1].content) >= 0
+    assert isinstance(final["messages"][1].content, str) and len(final["messages"][1].content) > 0

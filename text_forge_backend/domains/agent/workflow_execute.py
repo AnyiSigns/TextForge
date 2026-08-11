@@ -156,7 +156,11 @@ async def execute_node(
         context_pool = await _load_context_pool(book_id)
         async with db_manager.with_db() as session:
             structured = await _query_structured_context(
-                session, book_id, context_fields, context_pool
+                session,
+                book_id,
+                context_fields,
+                context_pool,
+                target_chapter_id=target_chapter_id,
             )
 
     context_text = _format_prompt_context(
@@ -405,15 +409,9 @@ async def run_workflow(
             }
         )
 
-        if edges:
-            predecessors = [e["from"] for e in edges if e.get("to") == node_id]
-            node_upstream = {
-                dep: upstream_outputs[dep]
-                for dep in predecessors
-                if dep in upstream_outputs
-            }
-        else:
-            node_upstream = dict(upstream_outputs)
+        # 上游全量传递：汇聚节点（如 chief「阅读全部输出」）需要看到所有已执行
+        # 祖先节点的输出，而非仅直接前驱；writer 也能拿到 strategist 策划书。
+        node_upstream = dict(upstream_outputs)
 
         _node_started = time.monotonic()
         result = await execute_node(

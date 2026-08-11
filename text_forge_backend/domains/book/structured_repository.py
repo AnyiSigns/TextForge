@@ -1,3 +1,4 @@
+from collections import defaultdict
 from types import SimpleNamespace
 from typing import Any
 
@@ -19,27 +20,49 @@ from models.book import (
 from models.sim_room import SimBranch, SimRoom
 
 
+def _chain_rel(rel) -> dict:
+    """关系链条目兼容 dict 与对象两种形态。"""
+    if isinstance(rel, dict):
+        return {
+            "target": rel.get("target", "") or "",
+            "relation": rel.get("relation", "") or "",
+        }
+    return {
+        "target": getattr(rel, "target", "") or "",
+        "relation": getattr(rel, "relation", "") or "",
+    }
+
+
 class StructuredRepository:
+    """结构化上下文查询：全部返回轻量快照（SimpleNamespace/dict），
+    杜绝 ORM 实例跨会话访问延迟加载属性（DetachedInstanceError）。"""
+
     FIELD_MAP = {
         "book_info": Book,
         "setting": CreativeSetting,
         "characters": Character,
         "character_relationships": Character,
-        "chapter_content": ChapterContent,
-        "chapter_summaries": Chapter,
-        "recent_chapters": Chapter,
-        "outline_structure": Chapter,
-        "volumes": Volume,
+        "previous_chapters": Chapter,
+        "outline_detail": Chapter,
+        "outline_detail.toc": Chapter,
+        "outline_detail.volume_summaries": Chapter,
+        "outline_detail.chapter_summaries": Chapter,
+        "outline_detail.chapter_scene_event": SceneEvent,
         "locations": Location,
-        "scene_events": SceneEvent,
         "foreshadowings": Foreshadowing,
         "plot_threads": PlotThread,
         "branches": SimBranch,
     }
 
     FIELD_ALIAS = {
-        "chapters": "chapter_content",
-        "outline": "outline_structure",
+        "chapters": "previous_chapters",
+        "outline": "outline_detail.chapter_summaries",
+        "creative_settings": "setting",
+        "chapter_content": "previous_chapters",
+        "recent_chapters": "previous_chapters",
+        "outline_structure": "outline_detail.chapter_summaries",
+        "volumes": "outline_detail.volume_summaries",
+        "scene_events": "outline_detail.chapter_scene_event",
     }
 
     def __init__(self, session: AsyncSession):
@@ -50,194 +73,499 @@ class StructuredRepository:
         book_id: int,
         context_fields: list[str],
         context_pool: dict[str, list[int]] | None = None,
+        target_chapter_id: int | None = None,
     ) -> dict[str, list[Any]]:
         pool = context_pool or {}
         character_ids = pool.get("character_ids") or []
-        chapter_content_ids = pool.get("chapter_content_ids") or []
-        chapter_summary_ids = pool.get("chapter_summary_ids") or []
-        volume_ids = pool.get("volume_ids") or []
-        outline_node_ids = pool.get("outline_node_ids") or []
 
         results: dict[str, list[Any]] = {}
         for field in context_fields:
             normalized = self.FIELD_ALIAS.get(field, field)
-            model = self.FIELD_MAP.get(normalized)
-            if not model:
+            if normalized not in self.FIELD_MAP:
                 continue
             try:
-                rows = await self._query_field(
-                    field=normalized,
-                    model=model,
-                    book_id=book_id,
-                    character_ids=character_ids,
-                    chapter_content_ids=chapter_content_ids,
-                    chapter_summary_ids=chapter_summary_ids,
-                    volume_ids=volume_ids,
-                    outline_node_ids=outline_node_ids,
-                )
-                results[field] = rows
+                if normalized in (
+                    "outline_detail",
+                    "outline_detail.toc",
+                    "outline_detail.volume_summaries",
+                    "outline_detail.chapter_summaries",
+                ):
+                    rows = await self._query_outline_tree(book_id)
+                elif normalized == "outline_detail.chapter_scene_event":
+                    rows = await self._query_chapter_scene_event(book_id, target_chapter_id)
+                elif normalized == "previous_chapters":
+                    rows = await self._query_previous_chapters(book_id, target_chapter_id)
+                elif normalized == "locations":
+                    rows = await self._query_location_snapshots(book_id)
+                elif normalized == "characters":
+                    rows = await self._query_character_snapshots(book_id, character_ids, with_chain=False)
+                elif normalized == "character_relationships":
+                    rows = await self._query_character_snapshots(book_id, character_ids, with_chain=True)
+                elif normalized == "setting":
+                    rows = await self._query_setting_snapshots(book_id)
+                elif normalized == "book_info":
+                    rows = await self._query_book_info(book_id)
+                elif normalized == "foreshadowings":
+                    rows = await self._query_foreshadowing_snapshots(book_id)
+                elif normalized == "plot_threads":
+                    rows = await self._query_plot_thread_snapshots(book_id)
+                elif normalized == "branches":
+                    rows = await self._query_branch_snapshots(book_id)
+                else:
+                    rows = []
+                results[normalized] = rows
             except Exception:
-                results[field] = []
+                results[normalized] = []
         return results
 
-    async def _query_field(
+    # ---------- 单字段查询（全部快照化） ----------
+
+    async def _query_book_info(self, book_id: int) -> list[Any]:
+        row = (
+            await self.session.execute(select(Book).where(Book.id == book_id))
+        ).scalars().first()
+        if not row:
+            return []
+        return [
+            SimpleNamespace(
+                id=row.id,
+                title=row.title,
+                description=row.description or "",
+                genre=row.genre or "",
+            )
+        ]
+
+    async def _query_setting_snapshots(self, book_id: int) -> list[Any]:
+        rows = (
+            await self.session.execute(
+                select(CreativeSetting).where(CreativeSetting.book_id == book_id)
+            )
+        ).scalars().all()
+        return [
+            SimpleNamespace(
+                worldview=getattr(r, "worldview", "") or "",
+                tone=getattr(r, "tone", "") or "",
+                writing_taboos=getattr(r, "writing_taboos", "") or "",
+                custom_dimensions=dict(getattr(r, "custom_dimensions", None) or {}),
+            )
+            for r in rows
+        ]
+
+    async def _query_character_snapshots(
         self,
-        field: str,
-        model,
         book_id: int,
         character_ids: list[int] | None,
-        chapter_content_ids: list[int] | None,
-        chapter_summary_ids: list[int] | None,
-        volume_ids: list[int] | None,
-        outline_node_ids: list[int] | None,
+        with_chain: bool,
     ) -> list[Any]:
-        stmt = select(model)
+        stmt = select(Character).where(Character.book_id == book_id)
+        if character_ids:
+            stmt = stmt.where(Character.id.in_(character_ids))
+        stmt = stmt.order_by(Character.created_at, Character.id)
+        rows = (await self.session.execute(stmt)).scalars().all()
+        if not rows:
+            return []
+        loc_name_map = await self._load_location_name_map(book_id)
+        snapshots = []
+        for r in rows:
+            base = {
+                "id": r.id,
+                "name": r.name,
+                "aliases": list(r.aliases or []),
+                "description": r.description or "",
+                "role_type": r.role_type or "",
+                "status": r.status or "",
+                "custom_fields": dict(r.custom_fields or {}),
+                "base_location_name": loc_name_map.get(r.base_location_id, "") if r.base_location_id else "",
+            }
+            if with_chain:
+                base["relationship_chain"] = [_chain_rel(rel) for rel in (r.relationship_chain or [])]
+            snapshots.append(SimpleNamespace(**base))
+        return snapshots
 
-        if field == "book_info":
-            stmt = stmt.where(model.id == book_id)
-            stmt = stmt.with_only_columns(
-                model.id, model.title, model.description, model.genre, model.created_at
+    async def _query_previous_chapters(
+        self,
+        book_id: int,
+        target_chapter_id: int | None,
+    ) -> list[Any]:
+        stmt = (
+            select(Chapter)
+            .join(Volume, Volume.id == Chapter.volume_id)
+            .where(Volume.book_id == book_id)
+            .order_by(Volume.sort_order, Chapter.sort_order, Chapter.id)
+        )
+        chapters = (await self.session.execute(stmt)).scalars().all()
+        if not chapters:
+            return []
+        prev = None
+        if target_chapter_id:
+            idx = next(
+                (i for i, c in enumerate(chapters) if c.id == target_chapter_id),
+                None,
             )
-            query_result = await self.session.execute(stmt)
-            rows = [dict(r._mapping) for r in query_result.all()]
-            return [self._format_book_info(row) for row in rows]
-
-        if field == "setting":
-            stmt = stmt.where(model.book_id == book_id)
-            query_result = await self.session.execute(stmt)
-            rows = query_result.scalars().all()
-            return rows
-
-        if field == "characters":
-            stmt = stmt.where(model.book_id == book_id)
-            if character_ids:
-                stmt = stmt.where(model.id.in_(character_ids))
-            query_result = await self.session.execute(stmt)
-            rows = query_result.scalars().all()
-            return rows
-
-        if field == "character_relationships":
-            stmt = stmt.where(model.book_id == book_id)
-            if character_ids:
-                stmt = stmt.where(model.id.in_(character_ids))
-            query_result = await self.session.execute(stmt)
-            rows = query_result.scalars().all()
-            return rows
-
-        if field == "chapter_content":
-            if chapter_content_ids:
-                stmt = stmt.where(model.chapter_id.in_(chapter_content_ids))
-            else:
-                return []
-            query_result = await self.session.execute(stmt)
-            rows = query_result.scalars().all()
-            return rows
-
-        if field == "chapter_summaries":
-            if chapter_summary_ids:
-                stmt = stmt.where(model.id.in_(chapter_summary_ids))
-            else:
-                return []
-            query_result = await self.session.execute(stmt)
-            rows = query_result.scalars().all()
-            return rows
-
-        if field == "recent_chapters":
-            ids = list(dict.fromkeys(chapter_content_ids + chapter_summary_ids))
-            if not ids:
-                return []
-            stmt = stmt.where(model.id.in_(ids))
-            query_result = await self.session.execute(stmt)
-            chapter_rows = {c.id: c for c in query_result.scalars().all()}
-            if not chapter_rows:
-                return []
-            content_stmt = select(ChapterContent).where(
-                ChapterContent.chapter_id.in_(list(chapter_rows.keys()))
+            if idx is not None and idx > 0:
+                prev = chapters[idx - 1]
+        else:
+            prev = chapters[-1]
+        if prev is None:
+            return []
+        cc = (
+            await self.session.execute(
+                select(ChapterContent)
+                .where(ChapterContent.chapter_id == prev.id)
+                .order_by(ChapterContent.id.desc())
             )
-            content_result = await self.session.execute(content_stmt)
-            content_map = {cc.chapter_id: cc for cc in content_result.scalars().all()}
-            merged = []
-            for ch in chapter_rows.values():
-                cc = content_map.get(ch.id)
-                # 注意：绝不能写 ch.summary = cc.content 修改 ORM 实例——
-                # 会话内其他逻辑（甚至提交 flush）会读到被污染的字段。
-                # 返回轻量命名对象，把正文放在 content 属性供渲染层使用。
-                merged.append(
+        ).scalars().first()
+        vol = await self.session.get(Volume, prev.volume_id)
+        return [
+            SimpleNamespace(
+                id=prev.id,
+                title=prev.title,
+                summary=prev.summary or "",
+                content=cc.content if cc else "",
+                sort_order=prev.sort_order,
+                volume_title=vol.title if vol else "",
+            )
+        ]
+
+    async def _query_outline_tree(self, book_id: int) -> list[Any]:
+        """卷 → 章 → 场景事件 三层树（与详情页大纲一致）。"""
+        vols = (
+            await self.session.execute(
+                select(Volume).where(Volume.book_id == book_id).order_by(Volume.sort_order, Volume.id)
+            )
+        ).scalars().all()
+        chapters = (
+            await self.session.execute(
+                select(Chapter)
+                .join(Volume, Volume.id == Chapter.volume_id)
+                .where(Volume.book_id == book_id)
+                .order_by(Volume.sort_order, Chapter.sort_order, Chapter.id)
+            )
+        ).scalars().all()
+        events = (
+            await self.session.execute(
+                select(SceneEvent)
+                .where(SceneEvent.book_id == book_id)
+                .order_by(SceneEvent.story_ts, SceneEvent.sort_order, SceneEvent.id)
+            )
+        ).scalars().all()
+        chapters_by_vol: dict[int, list[Chapter]] = defaultdict(list)
+        for ch in chapters:
+            chapters_by_vol[ch.volume_id].append(ch)
+        events_by_ch: dict[int, list[SceneEvent]] = defaultdict(list)
+        for ev in events:
+            events_by_ch[ev.chapter_id].append(ev)
+        tree = []
+        for v in vols:
+            ch_nodes = []
+            for ch in chapters_by_vol.get(v.id, []):
+                ev_nodes = [
+                    SimpleNamespace(
+                        id=ev.id, title=ev.title, story_label=ev.story_label or ""
+                    )
+                    for ev in events_by_ch.get(ch.id, [])
+                ]
+                ch_nodes.append(
                     SimpleNamespace(
                         id=ch.id,
                         title=ch.title,
                         summary=ch.summary or "",
-                        content=cc.content if cc else "",
                         sort_order=ch.sort_order,
+                        events=ev_nodes,
                     )
                 )
-            return merged
-
-        if field == "outline_structure":
-            # Chapter 表无 book_id，需 join Volume 按书过滤；大纲即本书全部章节（按卷/排序）
-            stmt = (
-                select(model)
-                .join(Volume, Volume.id == model.volume_id)
-                .where(Volume.book_id == book_id)
-                .order_by(Volume.sort_order, model.sort_order)
+            tree.append(
+                SimpleNamespace(
+                    id=v.id,
+                    title=v.title,
+                    summary=v.summary or "",
+                    sort_order=v.sort_order,
+                    chapters=ch_nodes,
+                )
             )
-            selected_ids = list(outline_node_ids or [])
-            if selected_ids:
-                stmt = stmt.where(model.id.in_(selected_ids))
-            query_result = await self.session.execute(stmt)
-            return query_result.scalars().all()
+        return tree
 
-        if field == "volumes":
-            stmt = stmt.where(model.book_id == book_id)
-            if volume_ids:
-                stmt = stmt.where(model.id.in_(volume_ids))
-            query_result = await self.session.execute(stmt)
-            rows = query_result.scalars().all()
-            return rows
+    async def _query_chapter_scene_event(
+        self,
+        book_id: int,
+        target_chapter_id: int | None,
+    ) -> list[Any]:
+        """本章场景全量：事件 + 地点及链 + 出场角色及直属链 + 内联线索/伏笔。
 
-        if field == "locations":
-            stmt = stmt.where(model.book_id == book_id)
-            query_result = await self.session.execute(stmt)
-            rows = query_result.scalars().all()
-            return rows
-
-        if field == "scene_events":
-            stmt = stmt.where(model.book_id == book_id)
-            query_result = await self.session.execute(stmt)
-            rows = query_result.scalars().all()
-            return rows
-
-        if field == "foreshadowings":
-            stmt = stmt.where(model.book_id == book_id)
-            query_result = await self.session.execute(stmt)
-            rows = query_result.scalars().all()
-            return rows
-
-        if field == "plot_threads":
-            stmt = stmt.where(model.book_id == book_id)
-            query_result = await self.session.execute(stmt)
-            rows = query_result.scalars().all()
-            return rows
-
-        if field == "branches":
-            # 支线挂在 sim_rooms 下（SimBranch 无 book_id 列），需 join 房间按书过滤
-            stmt = (
-                select(SimBranch)
-                .join(SimRoom, SimRoom.id == SimBranch.room_id)
-                .where(SimRoom.book_id == book_id)
-                .order_by(SimBranch.created_at)
+        深度边界：地点父链上溯到根、下探仅直属子地点；角色止于 2 层
+        （出场角色带直属关系链，链目标角色只带基本信息，不追其链）。
+        """
+        chapter = None
+        if target_chapter_id:
+            chapter = await self.session.get(Chapter, target_chapter_id)
+        if chapter is None:
+            chapter = (
+                await self.session.execute(
+                    select(Chapter)
+                    .join(Volume, Volume.id == Chapter.volume_id)
+                    .where(Volume.book_id == book_id)
+                    .order_by(Volume.sort_order.desc(), Chapter.sort_order.desc(), Chapter.id.desc())
+                    .limit(1)
+                )
+            ).scalars().first()
+        if chapter is None:
+            return []
+        vol = await self.session.get(Volume, chapter.volume_id)
+        chapter_snap = SimpleNamespace(
+            id=chapter.id,
+            title=chapter.title,
+            sort_order=chapter.sort_order,
+            volume_title=vol.title if vol else "",
+        )
+        events = (
+            await self.session.execute(
+                select(SceneEvent)
+                .where(SceneEvent.chapter_id == chapter.id)
+                .order_by(SceneEvent.story_ts, SceneEvent.sort_order, SceneEvent.id)
             )
-            query_result = await self.session.execute(stmt)
-            return query_result.scalars().all()
+        ).scalars().all()
+        if not events:
+            return [SimpleNamespace(chapter=chapter_snap, events=[])]
 
-        return []
+        # 地点快照（父链 + 直属子）
+        locs = await self._query_location_snapshots(book_id)
+        loc_by_id = {l.id: l for l in locs}
+        loc_name_map = {l.id: l.name for l in locs}
 
-    @staticmethod
-    def _format_book_info(row: dict) -> dict:
-        return {
-            "id": row.get("id"),
-            "title": row.get("title"),
-            "description": row.get("description"),
-            "genre": row.get("genre"),
-            "created_at": row.get("created_at"),
-        }
+        # 出场角色
+        char_ids: list[int] = []
+        for ev in events:
+            char_ids.extend(ev.character_ids or [])
+        char_ids = list(dict.fromkeys(char_ids))
+        char_map: dict[int, Character] = {}
+        if char_ids:
+            for c in (
+                await self.session.execute(
+                    select(Character).where(Character.id.in_(char_ids))
+                )
+            ).scalars().all():
+                char_map[c.id] = c
+
+        # 关系链目标反查索引（name + aliases）
+        name_index: dict[str, Character] = {}
+        for c in (
+            await self.session.execute(
+                select(Character).where(Character.book_id == book_id)
+            )
+        ).scalars().all():
+            name_index[c.name] = c
+            for a in (c.aliases or []):
+                name_index.setdefault(a, c)
+
+        # 内联情节线 / 伏笔（事件绑定的）
+        thread_ids: set[int] = set()
+        fw_ids: set[int] = set()
+        for ev in events:
+            thread_ids.update(ev.plot_thread_ids or [])
+            thread_ids.update(ev.completed_plot_thread_ids or [])
+            fw_ids.update(ev.resolved_foreshadowing_ids or [])
+        threads: dict[int, PlotThread] = {}
+        if thread_ids:
+            for t in (
+                await self.session.execute(
+                    select(PlotThread).where(PlotThread.id.in_(thread_ids))
+                )
+            ).scalars().all():
+                threads[t.id] = t
+        fws: dict[int, Foreshadowing] = {}
+        if fw_ids:
+            for f in (
+                await self.session.execute(
+                    select(Foreshadowing).where(Foreshadowing.id.in_(fw_ids))
+                )
+            ).scalars().all():
+                fws[f.id] = f
+
+        event_nodes = []
+        for ev in events:
+            location = loc_by_id.get(ev.location_id) if ev.location_id else None
+            loc_snap = None
+            if location:
+                loc_snap = SimpleNamespace(
+                    id=location.id,
+                    name=location.name,
+                    type=location.type,
+                    description=location.description,
+                    ancestors=[
+                        SimpleNamespace(id=a.id, name=a.name, type=a.type)
+                        for a in location.ancestors
+                    ],
+                    children=[
+                        SimpleNamespace(id=c.id, name=c.name, type=c.type)
+                        for c in location.children
+                    ],
+                )
+
+            char_nodes = []
+            for cid in (ev.character_ids or []):
+                c = char_map.get(cid)
+                if c is None:
+                    continue
+                chain_entries = []
+                chain_chars = []
+                for rel in (c.relationship_chain or [])[:8]:
+                    entry = _chain_rel(rel)
+                    chain_entries.append(entry)
+                    tc = name_index.get(entry["target"])
+                    if tc is not None:
+                        chain_chars.append(
+                            SimpleNamespace(
+                                id=tc.id,
+                                name=tc.name,
+                                aliases=list(tc.aliases or []),
+                                description=tc.description or "",
+                                role_type=tc.role_type or "",
+                                status=tc.status or "",
+                                custom_fields=dict(tc.custom_fields or {}),
+                                base_location_name=loc_name_map.get(tc.base_location_id, "")
+                                if tc.base_location_id
+                                else "",
+                            )
+                        )
+                char_nodes.append(
+                    SimpleNamespace(
+                        id=c.id,
+                        name=c.name,
+                        aliases=list(c.aliases or []),
+                        description=c.description or "",
+                        role_type=c.role_type or "",
+                        status=c.status or "",
+                        custom_fields=dict(c.custom_fields or {}),
+                        base_location_name=loc_name_map.get(c.base_location_id, "")
+                        if c.base_location_id
+                        else "",
+                        relationship_chain=chain_entries,
+                        chain_characters=chain_chars,
+                    )
+                )
+
+            event_nodes.append(
+                SimpleNamespace(
+                    id=ev.id,
+                    title=ev.title,
+                    content=ev.content or "",
+                    event_type=ev.event_type or "",
+                    story_label=ev.story_label or "",
+                    location=loc_snap,
+                    characters=char_nodes,
+                    plot_threads=[
+                        SimpleNamespace(id=t.id, name=t.name, status=t.status or "")
+                        for t in (threads.get(i) for i in (ev.plot_thread_ids or []))
+                        if t
+                    ],
+                    completed_plot_threads=[
+                        SimpleNamespace(id=t.id, name=t.name, status=t.status or "")
+                        for t in (threads.get(i) for i in (ev.completed_plot_thread_ids or []))
+                        if t
+                    ],
+                    foreshadowings=[
+                        SimpleNamespace(
+                            id=f.id, description=f.description or "", status=f.status or ""
+                        )
+                        for f in (fws.get(i) for i in (ev.resolved_foreshadowing_ids or []))
+                        if f
+                    ],
+                )
+            )
+
+        return [SimpleNamespace(chapter=chapter_snap, events=event_nodes)]
+
+    async def _query_location_snapshots(self, book_id: int) -> list[Any]:
+        rows = (
+            await self.session.execute(
+                select(Location).where(Location.book_id == book_id).order_by(Location.created_at, Location.id)
+            )
+        ).scalars().all()
+        locs = [
+            SimpleNamespace(
+                id=r.id,
+                name=r.name,
+                type=getattr(r, "type", "场所") or "场所",
+                description=r.description or "",
+                parent_id=r.parent_id,
+            )
+            for r in rows
+        ]
+        by_id = {l.id: l for l in locs}
+        for l in locs:
+            l.children = [c for c in locs if c.parent_id == l.id]
+            l.ancestors = []
+            cur = by_id.get(l.parent_id)
+            visited: set[int] = set()
+            # 防环：parent_id 自引用/成环时终止上溯（同步循环，环会阻塞事件循环）
+            while cur is not None and cur.id not in visited:
+                visited.add(cur.id)
+                l.ancestors.insert(0, cur)
+                cur = by_id.get(cur.parent_id)
+        return locs
+
+    async def _load_location_name_map(self, book_id: int) -> dict[int, str]:
+        rows = (
+            await self.session.execute(
+                select(Location.id, Location.name).where(Location.book_id == book_id)
+            )
+        ).all()
+        return {r.id: r.name for r in rows}
+
+    async def _query_foreshadowing_snapshots(self, book_id: int) -> list[Any]:
+        rows = (
+            await self.session.execute(
+                select(Foreshadowing)
+                .where(Foreshadowing.book_id == book_id)
+                .order_by(Foreshadowing.created_at, Foreshadowing.id)
+            )
+        ).scalars().all()
+        return [
+            SimpleNamespace(
+                id=r.id,
+                description=r.description or "",
+                status=r.status or "",
+                planted_at_chapter_id=r.planted_at_chapter_id,
+                resolved_at_chapter_id=getattr(r, "resolved_at_chapter_id", None),
+            )
+            for r in rows
+        ]
+
+    async def _query_plot_thread_snapshots(self, book_id: int) -> list[Any]:
+        rows = (
+            await self.session.execute(
+                select(PlotThread)
+                .where(PlotThread.book_id == book_id)
+                .order_by(PlotThread.created_at, PlotThread.id)
+            )
+        ).scalars().all()
+        return [
+            SimpleNamespace(
+                id=r.id,
+                name=r.name,
+                description=r.description or "",
+                type=getattr(r, "type", "") or "",
+                status=r.status or "",
+                progress_note=getattr(r, "progress_note", "") or "",
+            )
+            for r in rows
+        ]
+
+    async def _query_branch_snapshots(self, book_id: int) -> list[Any]:
+        stmt = (
+            select(SimBranch)
+            .join(SimRoom, SimRoom.id == SimBranch.room_id)
+            .where(SimRoom.book_id == book_id)
+            .order_by(SimBranch.created_at, SimBranch.id)
+        )
+        rows = (await self.session.execute(stmt)).scalars().all()
+        return [
+            SimpleNamespace(
+                id=r.id,
+                title=r.title,
+                branch_type=getattr(r, "branch_type", "") or "",
+                content=r.content or "",
+                status=r.status or "",
+            )
+            for r in rows
+        ]

@@ -1,3 +1,5 @@
+import uuid
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,9 +20,14 @@ class WorkflowRepository(BaseRepository[Workflow]):
         super().__init__(Workflow, session)
 
     async def get_list_workflow(self, user_id: int):
-        """查询用户工作流列表（含全局内置模板 builtin=True）。"""
-        stmt = select(Workflow).where(
-            (Workflow.user_id == user_id) | (Workflow.builtin == True)
+        """查询用户工作流列表（含全局内置模板 builtin=True）。
+
+        内置模板稳定置顶（builtin 降序），其余按 id 排序保证列表顺序稳定。
+        """
+        stmt = (
+            select(Workflow)
+            .where((Workflow.user_id == user_id) | (Workflow.builtin == True))
+            .order_by(Workflow.builtin.desc(), Workflow.id)
         )
         result = await self.session.execute(stmt)
         return result.scalars().all()
@@ -70,8 +77,6 @@ class WorkflowRepository(BaseRepository[Workflow]):
         instance = await self.get_workflow_id(workflow_id, user_id)
         if instance and getattr(instance, "builtin", False):
             # 内置模板不可原地修改：另存为用户副本（防止污染全局模板）
-            import uuid
-
             copy_data = {k: v for k, v in update_data.items() if k not in ("id", "user_id")}
             copy_data["id"] = f"{workflow_id}-{uuid.uuid4().hex[:6]}"
             copy_data["name"] = (update_data.get("name") or instance.name or "") + "（副本）"

@@ -90,12 +90,19 @@ def test_auto_allocate_context_matches_keywords():
     fields = wf.auto_allocate_context("你是执笔写手，负责根据大纲和角色写正文")
     assert "book_info" in fields  # 始终包含
     assert "characters" in fields
-    assert "outline_structure" in fields
+    assert "outline_detail" in fields
 
 
 def test_auto_allocate_context_no_match_returns_book_info():
     fields = wf.auto_allocate_context("请输出一些内容")
     assert fields == ["book_info"]
+
+
+def test_auto_allocate_context_setting_and_scene_keywords():
+    fields = wf.auto_allocate_context("你是文风润色师，检查文风是否与设定一致，参考本章场景")
+    assert "setting" in fields
+    assert "chapter_scene_event" in fields
+    assert "creative_settings" not in fields  # 旧键已统一为 setting
 
 
 # ---------------------------------------------------------------------------
@@ -136,6 +143,133 @@ def test_format_prompt_context_rag_and_structured():
     assert "个人知识库检索结果" in text
     assert "相关度：85.0%" in text
     assert "角色档案" in text
+
+
+# ---------------------------------------------------------------------------
+# v2.2 上下文体系：previous_chapters / outline_detail / chapter_scene_event
+# ---------------------------------------------------------------------------
+
+def test_format_previous_chapters_full_content():
+    rec = SimpleNamespace(
+        title="少年出山", volume_title="第一卷 初入江湖", sort_order=1,
+        summary="拜师下山", content="完整正文" * 100,
+    )
+    text = wf._format_context_field("previous_chapters", [rec])
+    assert "上一章《少年出山》" in text
+    assert "章节摘要：拜师下山" in text
+    assert "完整正文" in text
+    # 完整正文上限 8000 字截断
+    assert len(text) < 9000
+
+
+def test_format_outline_detail_toc():
+    tree = [
+        SimpleNamespace(
+            title="第一卷 初入江湖", summary="卷摘要", sort_order=1,
+            chapters=[
+                SimpleNamespace(
+                    title="少年出山", summary="拜师下山", sort_order=1,
+                    events=[
+                        SimpleNamespace(id=1, title="进城遇袭", story_label="第一天上午"),
+                        SimpleNamespace(id=2, title="客栈风波", story_label=""),
+                    ],
+                )
+            ],
+        )
+    ]
+    text = wf._format_context_field("outline_detail.toc", tree)
+    assert "第一卷 初入江湖" in text
+    assert "第1章 少年出山" in text
+    assert "进城遇袭（第一天上午）" in text
+    assert "客栈风波" in text
+    # toc 不含卷/章摘要
+    assert "卷摘要" not in text
+    assert "拜师下山" not in text
+
+
+def test_format_outline_detail_with_summaries():
+    tree = [
+        SimpleNamespace(
+            title="第一卷 初入江湖", summary="卷摘要", sort_order=1,
+            chapters=[SimpleNamespace(title="少年出山", summary="拜师下山", sort_order=1, events=[])],
+        )
+    ]
+    text = wf._format_context_field("outline_detail", tree)
+    assert "卷摘要：卷摘要" in text
+    assert "拜师下山" in text
+
+
+def test_format_chapter_scene_event_with_chain():
+    node = SimpleNamespace(
+        chapter=SimpleNamespace(title="客栈风波", volume_title="第一卷 初入江湖", sort_order=2),
+        events=[
+            SimpleNamespace(
+                id=1, title="客栈对峙", content="冲突升级", event_type="scene",
+                story_label="第二天",
+                location=SimpleNamespace(
+                    id=10, name="悦来客栈", type="场所", description="镇中心客栈",
+                    ancestors=[SimpleNamespace(id=1, name="临安镇", type="城镇")],
+                    children=[SimpleNamespace(id=11, name="后院", type="场所")],
+                ),
+                characters=[
+                    SimpleNamespace(
+                        id=1, name="林晚", aliases=["晚晚"], description="青城弟子",
+                        role_type="主角", status="活跃",
+                        custom_fields={"功法": "青莲剑诀", "武器": ["承影剑", "软鞭"]},
+                        base_location_name="悦来客栈",
+                        relationship_chain=[{"target": "苏妧", "relation": "师姐"}],
+                        chain_characters=[
+                            SimpleNamespace(
+                                id=2, name="苏妧", aliases=[], description="青城大师姐",
+                                role_type="配角", status="活跃",
+                                custom_fields={}, base_location_name="青城山",
+                            )
+                        ],
+                    )
+                ],
+                plot_threads=[SimpleNamespace(id=1, name="寻剑", status="进行中")],
+                completed_plot_threads=[],
+                foreshadowings=[SimpleNamespace(id=1, description="玉佩来历", status="已回收")],
+            )
+        ],
+    )
+    text = wf._format_context_field("outline_detail.chapter_scene_event", [node])
+    assert "本章场景（第2章《客栈风波》·第一卷 初入江湖" in text
+    assert "时间：第二天" in text
+    assert "地点：悦来客栈（场所）" in text
+    assert "父链：临安镇" in text
+    assert "子地点：后院" in text
+    assert "林晚（主角）" in text
+    assert "别名：晚晚" in text
+    assert "功法：青莲剑诀" in text
+    assert "武器：承影剑、软鞭" in text
+    assert "当前地点：悦来客栈" in text
+    assert "关系链：苏妧（师姐）" in text
+    assert "· 苏妧（配角）" in text
+    assert "情节线：寻剑（进行中）" in text
+    assert "揭示伏笔：玉佩来历（已回收）" in text
+
+
+def test_format_locations_with_parent_chain():
+    loc = SimpleNamespace(
+        name="后院", type="场所", description="堆杂物",
+        ancestors=[SimpleNamespace(id=1, name="悦来客栈", type="场所")],
+        children=[],
+    )
+    text = wf._format_context_field("locations", [loc])
+    assert "后院（场所）" in text
+    assert "父链：悦来客栈" in text
+
+
+def test_format_setting_keeps_custom_dimensions():
+    rec = SimpleNamespace(
+        worldview="东方仙侠世界", tone="热血",
+        writing_taboos="禁止现代词汇", custom_dimensions={"灵气体系": ["练气", "筑基"]},
+    )
+    text = wf._format_context_field("setting", [rec])
+    assert "世界观" in text
+    assert "东方仙侠世界" in text
+    assert "灵气体系：练气、筑基" in text
 
 
 # ---------------------------------------------------------------------------

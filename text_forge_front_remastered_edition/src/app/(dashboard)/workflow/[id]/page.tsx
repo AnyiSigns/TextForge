@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState, useRef, use } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Save, Play } from 'lucide-react';
+import { ArrowLeft, Save } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import {
@@ -21,13 +21,10 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import * as workflowApi from '@/shared/api/workflows';
-import * as booksApi from '@/shared/api/books';
 import type { Workflow, WorkflowNode as WfNode } from '@/shared/api/workflows';
-import type { Book } from '@/shared/api/types';
 import { RoleNode } from '../components/RoleNode';
 import { NodePalette } from '../components/NodePalette';
 import { InspectorPanel } from '../components/InspectorPanel';
-import { ExecutionPanel } from '../components/ExecutionPanel';
 
 const nodeTypes = { roleNode: RoleNode };
 
@@ -125,22 +122,8 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
   }));
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [showExecution, setShowExecution] = useState(false);
-  // 执行工作流的书籍：优先从 URL ?book_id= 读取（详情页"提交到工作流"跳转带入），
-  // 用户也可在页面内手动选择。ExecutionPanel 依赖它启用"运行"。
-  const [activeBookId, setActiveBookId] = useState<number | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const v = new URLSearchParams(window.location.search).get('book_id');
-    return v ? Number(v) : null;
-  });
-  const [bookOptions, setBookOptions] = useState<Book[]>([]);
 
   const loadedRef = useRef(false);
-
-  useEffect(() => {
-    // 拉取书籍列表用于执行时选择目标书籍
-    booksApi.fetchBooks().then((list) => setBookOptions(list)).catch(() => {});
-  }, []);
 
   useEffect(() => {
     if (isNew) loadedRef.current = true;
@@ -262,9 +245,12 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
     try {
       const name = workflow.name.trim() || '未命名工作流';
       const saved = await workflowApi.saveWorkflow({ ...workflow, name });
+      // 内置模板（workflows 表 builtin=true）不可原地修改：后端 put_workflow
+      // 会另存为用户副本并返回新 id，此处需跳转到副本并提示，否则 URL 与状态脱节。
+      const copied = saved.id !== workflow.id;
       setWorkflow(saved);
-      if (isNew) router.replace(`/workflow/${saved.id}`);
-      toast.success('已保存');
+      if (isNew || copied) router.replace(`/workflow/${saved.id}`);
+      toast.success(copied ? '内置模板已另存为副本' : '已保存');
     } catch { toast.error('保存失败'); }
     finally { setSaving(false); }
   };
@@ -282,28 +268,16 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
             className="text-sm font-medium bg-transparent border-none outline-none min-w-[150px] text-foreground"
             placeholder="工作流名称"
           />
+          {workflow.builtin && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-foreground/[0.06] border border-border text-foreground/50 shrink-0">
+              内置模板（保存将另存为副本）
+            </span>
+          )}
           <span className="text-[10px] text-foreground/25">
             {workflow.nodes.length} 个节点 · {workflow.edges.length} 条连线
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <select
-            value={activeBookId ?? ''}
-            onChange={(e) => setActiveBookId(e.target.value ? Number(e.target.value) : null)}
-            className="h-7 px-2 rounded-md text-[11px] bg-background border border-border text-foreground focus:outline-none cursor-pointer"
-            title="选择执行目标书籍"
-          >
-            <option value="">选择目标书籍...</option>
-            {bookOptions.map((b) => (
-              <option key={b.id} value={b.id}>{b.title}</option>
-            ))}
-          </select>
-          <button
-            onClick={() => setShowExecution((v) => !v)}
-            className="flex items-center gap-1 h-7 px-3 rounded-md text-xs font-medium border border-border bg-background text-foreground cursor-pointer hover:bg-foreground/[0.02]"
-          >
-            <Play size={12} /> 运行
-          </button>
           <button
             onClick={handleSave}
             disabled={saving}
@@ -354,14 +328,6 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
           onClose={() => setSelectedNodeId(null)}
         />
       </div>
-
-      {showExecution && (
-        <ExecutionPanel
-          workflow={workflow}
-          bookId={activeBookId ?? undefined}
-          onClose={() => setShowExecution(false)}
-        />
-      )}
     </div>
   );
 }

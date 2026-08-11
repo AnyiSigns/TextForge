@@ -202,7 +202,9 @@ def test_build_payload_includes_duration_and_details():
     assert payload["compress_count"] == 1
     assert payload["approval_count"] == 1
     assert payload["approval_accept"] == 1
-    assert payload["duration_ms"] >= 0
+    # 真空断言修正：类型 + 合理范围（毫秒计时可能 round 为 0，但不应超单回合上限）
+    assert isinstance(payload["duration_ms"], (int, float))
+    assert 0 <= payload["duration_ms"] < 60000
     assert payload["details"]["llm_calls_per_subgraph"] == {"drafting": 2}
     # 任务 28 修复：steps_per_subgraph 从独立 subgraph_steps 通道读取
     assert payload["details"]["steps_per_subgraph"] == {"drafting": 3}

@@ -1,24 +1,45 @@
 'use client';
 
-import { X } from 'lucide-react';
+import { HelpCircle, X } from 'lucide-react';
 import type { WorkflowNode } from '@/shared/api/workflows';
 
-const CONTEXT_FIELD_LABELS: Record<string, string> = {
-  book_info: '书籍基本信息',
-  creative_settings: '创意设定',
-  characters: '角色档案',
-  locations: '地点列表',
-  chapter_summaries: '章节摘要',
-  recent_chapters: '近期章节',
-  chapter_content: '章节正文',
-  outline_structure: '大纲结构',
-  scene_events: '场景事件',
-  foreshadowings: '伏笔列表',
-  plot_threads: '剧情线索',
-  branches: '角色支线',
-};
+interface ContextFieldOption {
+  key: string;
+  label: string;
+  desc: string;
+}
 
-const ALL_CONTEXT_FIELDS = Object.keys(CONTEXT_FIELD_LABELS);
+const CONTEXT_GROUPS: { group: string; fields: ContextFieldOption[] }[] = [
+  {
+    group: '全局',
+    fields: [
+      { key: 'book_info', label: '书籍基本信息', desc: '本书书名、简介（前300字）与类型' },
+      { key: 'setting', label: '创作设定', desc: '世界观、文风/基调、创作禁忌与自定义维度（全量注入）' },
+      { key: 'characters', label: '角色档案', desc: '全书角色（可被书籍上下文池过滤），含别名/描述/类型/状态/自定义属性/当前地点' },
+      { key: 'character_relationships', label: '角色关系', desc: '角色及其关系链（每条链最多8条）；本章场景全量里的场景角色链更聚焦，一般不需要再勾此项' },
+      { key: 'locations', label: '地点设定', desc: '全书地点，含父地点链与直属子地点（不递归子孙）' },
+      { key: 'foreshadowings', label: '伏笔列表', desc: '全书伏笔清单（按创建时间排序）；策略规划或审计"未回收伏笔"时使用' },
+      { key: 'plot_threads', label: '剧情线索', desc: '全书情节线清单；策略规划或审计"未推进线索"时使用' },
+      { key: 'branches', label: '角色支线', desc: '角色模拟沉淀的支线素材（设定/冲突/台词），写作时可直接融入正文' },
+    ],
+  },
+  {
+    group: '大纲',
+    fields: [
+      { key: 'outline_detail', label: '大纲全量', desc: '完整大纲树：目录 + 各卷摘要 + 各章摘要 + 本章场景全量' },
+      { key: 'outline_detail.toc', label: '目录结构', desc: '大纲骨架：卷名 → 章名 → 事件标题（含时间标签）' },
+      { key: 'outline_detail.volume_summaries', label: '卷摘要', desc: '目录 + 各卷摘要（全量）' },
+      { key: 'outline_detail.chapter_summaries', label: '章摘要', desc: '目录 + 各章摘要（全量）' },
+      { key: 'outline_detail.chapter_scene_event', label: '本章场景全量', desc: '目标章全部事件：标题/摘要/时间标签 + 场景地点（含父链与直属子地点）+ 出场角色及关系链（链角色只带基本信息，不追链）+ 事件绑定的情节线/伏笔' },
+    ],
+  },
+  {
+    group: '衔接',
+    fields: [
+      { key: 'previous_chapters', label: '上一章正文', desc: '目标章前最近一章的完整正文（上限8000字）；未指定目标章时取全书最近一章' },
+    ],
+  },
+];
 
 interface InspectorPanelProps {
   node: WorkflowNode | null;
@@ -90,22 +111,41 @@ export function InspectorPanel({ node, onChange, onClose }: InspectorPanelProps)
           <label className="text-[11px] text-foreground/50 block mb-2 font-medium">
             上下文
           </label>
-          <div className="space-y-1 max-h-[200px] overflow-y-auto">
-            {ALL_CONTEXT_FIELDS.map((field) => (
-              <label
-                key={field}
-                className="flex items-center gap-2 px-2 py-1 rounded cursor-pointer hover:bg-foreground/[0.02]"
-              >
-                <input
-                  type="checkbox"
-                  checked={contextFields.includes(field)}
-                  onChange={() => toggleField(field)}
-                  className="w-3 h-3 rounded border-border"
-                />
-                <span className="text-[11px] text-foreground/60">
-                  {CONTEXT_FIELD_LABELS[field] || field}
-                </span>
-              </label>
+          <div className="space-y-3 max-h-[240px] overflow-y-auto">
+            {CONTEXT_GROUPS.map((group) => (
+              <div key={group.group}>
+                <div className="text-[10px] font-medium text-foreground/30 mb-1">{group.group}</div>
+                <div className="space-y-1">
+                  {group.fields.map((field) => (
+                    <label
+                      key={field.key}
+                      className="flex items-center gap-2 px-2 py-1 rounded cursor-pointer hover:bg-foreground/[0.02]"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={contextFields.includes(field.key)}
+                        onChange={() => toggleField(field.key)}
+                        className="w-3 h-3 rounded border-border"
+                      />
+                      <span className="text-[11px] text-foreground/60">
+                        {field.label}
+                      </span>
+                      <span
+                        role="img"
+                        aria-label="说明"
+                        title={field.desc}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
+                        className="ml-auto text-foreground/25 hover:text-foreground/60 cursor-help shrink-0"
+                      >
+                        <HelpCircle size={11} />
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
           <button

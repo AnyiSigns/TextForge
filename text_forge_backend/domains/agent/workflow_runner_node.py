@@ -1,8 +1,6 @@
 import time
 from typing import Any
 
-from langgraph.config import get_stream_writer
-
 from config.logging import get_logger
 
 from .workflow_scheduler import run_workflow as scheduler_run_workflow
@@ -263,11 +261,6 @@ async def workflow_runner_node(state: dict[str, Any]) -> dict[str, Any]:
         f"[workflow_runner] 开始执行 workflow_id={workflow_id} node_id={node_id} "
         f"target_chapter_id={target_chapter_id} book_id={book_id}"
     )
-
-    try:
-        stream_writer = get_stream_writer()
-    except Exception:
-        stream_writer = None
 
     def _on_progress(event: dict[str, Any]):
         # execute_node / run_workflow 内部已通过 stream_writer 直发 node_* 事件，
