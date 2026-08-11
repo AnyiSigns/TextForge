@@ -4,7 +4,6 @@
  * 任务 24：Agent 面板输入区组件。
  * 负责：textarea + 提及建议浮层（@角色/#设定）+ 工作流快捷建议 + 发送/停止按钮。
  */
-import { useRef } from 'react';
 import { ArrowUp, CircleStop } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/shared/lib/cn';
@@ -24,6 +23,8 @@ interface AgentInputProps {
   showWorkflowSuggestions: boolean;
   workflowList: Workflow[];
   mention: MentionState | null;
+  /** 1.1：由父面板（AgentPanel）持有并注入，使 @提及 应用/失焦聚焦 可作用于同一 textarea */
+  inputRef: React.RefObject<HTMLTextAreaElement | null>;
   onInputChange: (value: string, el: HTMLTextAreaElement) => void;
   onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   onApplyMention: (item: { label: string }) => void;
@@ -36,9 +37,8 @@ interface AgentInputProps {
 export function AgentInput(props: AgentInputProps) {
   const {
     input, placeholderText, agentStreaming, showWorkflowSuggestions, workflowList,
-    mention, onInputChange, onKeyDown, onApplyMention, onMentionHover, onSend, onAbort, onWorkflowSelect,
+    mention, inputRef, onInputChange, onKeyDown, onApplyMention, onMentionHover, onSend, onAbort, onWorkflowSelect,
   } = props;
-  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   return (
     <div className="ide-agent-input-row">
@@ -91,7 +91,6 @@ export function AgentInput(props: AgentInputProps) {
           onChange={(e) => onInputChange(e.target.value, e.target)}
           onKeyDown={onKeyDown}
           placeholder={placeholderText}
-          disabled={false}
           rows={1}
           className={cn(
             'w-full pl-3.5 pr-9 py-2.5 bg-muted/50 border focus:bg-background focus:outline-none transition-all text-[13px] placeholder:text-muted-foreground/50 disabled:opacity-50 resize-none min-h-[40px]',

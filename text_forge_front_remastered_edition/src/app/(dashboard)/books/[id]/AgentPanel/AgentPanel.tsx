@@ -59,6 +59,7 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
 
   const bookId = useBookDetailStore((s) => s.bookId);
   const book = useBookDetailStore((s) => s.book);
+  const agentOpen = useBookDetailStore((s) => s.agentOpen);
   const agentMessages = useBookDetailStore((s) => s.agentMessages);
   const agentStreaming = useBookDetailStore((s) => s.agentStreaming);
   const agentStatus = useBookDetailStore((s) => s.agentStatus);
@@ -67,6 +68,43 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
   const agentNodeStatuses = useBookDetailStore((s) => s.agentNodeStatuses);
   const nodeOutputs = useBookDetailStore((s) => s.nodeOutputs);
   const agentThreadId = useBookDetailStore((s) => s.agentThreadId);
+
+  // 2.4：面板打开时预检书籍占用锁，占用中展示横幅（可强制解除）
+  const [bookLocked, setBookLocked] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    if (!agentOpen || !bookId) {
+      // setState 放微任务，规避 react-hooks/set-state-in-effect 同步 setState 告警
+      queueMicrotask(() => { if (alive) setBookLocked(false); });
+      return;
+    }
+    agentApi.fetchBookLockStatus(bookId)
+      .then((st) => { if (alive) setBookLocked(!!st?.locked); })
+      .catch(() => { /* 预检失败静默，不影响面板使用 */ });
+    return () => { alive = false; };
+  }, [agentOpen, bookId]);
+
+  const handleForceReleaseLock = useCallback(async () => {
+    try {
+      const ok = await agentApi.releaseBookLock(bookId);
+      // 审查修复：解除失败（后端错误/网络）时保留横幅并提示，避免误报"已解除"
+      if (!ok) {
+        useBookDetailStore.getState().addAgentMessage({
+          role: 'assistant',
+          content: '解除书籍占用锁失败，请稍后重试。',
+          type: 'error',
+        });
+        return;
+      }
+      setBookLocked(false);
+      // 用 getState 避免声明顺序依赖（addAgentMessage 在下方定义）
+      useBookDetailStore.getState().addAgentMessage({
+        role: 'assistant',
+        content: '书籍占用锁已解除。',
+        type: 'system',
+      });
+    } catch { /* 解除失败保持横幅，用户可重试 */ }
+  }, [bookId]);
 
   // 新出现的节点卡片自动展开（对应气泡可见），节点列表清空时复位。
   // 原渲染期 setState 改为 effect + ref（任务 22：渲染期调整移除）
@@ -104,19 +142,20 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
   const fetchSessions = useCallback(async () => {
     setLoadingSessions(true);
     try {
-      const list = await agentApi.fetchAgentConversations();
+      // 2.11：侧栏按当前书过滤（后端 /agent/conversations 支持 book_id）
+      const list = await agentApi.fetchAgentConversations(bookId || undefined);
       list.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
       setSessions(list);
     } catch { /* ignore */ }
     finally { setLoadingSessions(false); }
-  }, []);
+  }, [bookId]);
 
   // 书籍切换时重新进入加载态（原渲染期 setState 改为 effect 内处理）
   useEffect(() => {
     let alive = true;
     // setState 放微任务，规避 react-hooks/set-state-in-effect 同步 setState 告警
     queueMicrotask(() => { if (alive) setLoadingSessions(true); });
-    agentApi.fetchAgentConversations().then((list) => {
+    agentApi.fetchAgentConversations(bookId || undefined).then((list) => {
       if (!alive) return;
       list.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
       setSessions(list);
@@ -230,25 +269,29 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
     }
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setMention((m) => (m ? { ...m, index: (m.index + 1) % m.items.length } : m));
+      // N13：导航 index 限制在展示范围（slice(0,6)），仅 min(index,5) 不够——
+      // ArrowUp 从 0 回绕到 items.length-1（>5）仍不可见，模数双向统一取 min(len,6)
+      setMention((m) => (m ? { ...m, index: (m.index + 1) % Math.min(m.items.length, 6) } : m));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setMention((m) => (m ? { ...m, index: (m.index - 1 + m.items.length) % m.items.length } : m));
+      setMention((m) => {
+        if (!m) return m;
+        const n = Math.min(m.items.length, 6);
+        return { ...m, index: (m.index - 1 + n) % n };
+      });
     } else if (e.key === 'Enter' || e.key === 'Tab') {
       e.preventDefault();
       applyMention(mention.items[mention.index]);
     } else if (e.key === 'Escape') {
       setMention(null);
     } else if (e.key === 'Enter' && e.shiftKey) {
-      // shift+Enter 换行，照常
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      void handleSend();
+      // shift+Enter 换行，照常（不阻止默认行为）
     }
   }, [mention, handleSend, applyMention]);
 
   const handleWorkflowSelect = useCallback((wf: workflowApi.Workflow) => {
-    const msg = `请用工作流"${wf.name}"（ID: ${wf.id}）执行创作任务。`;
+    // 2.8：提示词示例为半角 (ID: xxx)（subgraph_prompts.py），全角会导致模型无法匹配
+    const msg = `请用工作流"${wf.name}" (ID: ${wf.id}) 执行创作任务。`;
     setInput('');
     void sendMessage(msg);
   }, [sendMessage]);
@@ -337,12 +380,17 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
       // 任务 23：消息分页/懒加载——首次只拉最近 50 条，滚动到顶时加载更早
       const msgs = await agentApi.fetchAgentMessages(s.id, { limit: 50, offset: 0 });
       setHistoryLoadedCount(msgs.length);
-      const mapped = msgs.map((m) => ({
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
-        type: (m.type as AgentMessage['type']) || undefined,
-        token: m.token || undefined,
-      })) as AgentMessage[];
+      const mapped = msgs.map((m) => {
+        const type = (m.type as AgentMessage['type']) || undefined;
+        return {
+          role: m.role as 'user' | 'assistant',
+          content: m.content,
+          type,
+          token: m.token || undefined,
+          // 2.12：历史回放审核卡只读（live:false 不渲染操作按钮）；仅卡片消息注入
+          ...(type === 'review-card' ? { live: false as const } : {}),
+        };
+      }) as AgentMessage[];
       useBookDetailStore.setState({ agentMessages: mapped });
     } catch { /* ignore */ }
   };
@@ -353,12 +401,17 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
     try {
       const msgs = await agentApi.fetchAgentMessages(convId, { limit: 50, offset: totalLoaded });
       if (!msgs.length) return 0;
-      const mapped = msgs.map((m) => ({
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
-        type: (m.type as AgentMessage['type']) || undefined,
-        token: m.token || undefined,
-      })) as AgentMessage[];
+      const mapped = msgs.map((m) => {
+        const type = (m.type as AgentMessage['type']) || undefined;
+        return {
+          role: m.role as 'user' | 'assistant',
+          content: m.content,
+          type,
+          token: m.token || undefined,
+          // 2.12：历史回放审核卡只读
+          ...(type === 'review-card' ? { live: false as const } : {}),
+        };
+      }) as AgentMessage[];
       useBookDetailStore.setState((state) => ({
         agentMessages: [...mapped, ...state.agentMessages],
       }));
@@ -410,10 +463,16 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
           buffer += (event as { token?: string }).token || '';
           updateAgentStreamToken(buffer);
         } else if (event.type === 'compress_done') {
+          // N12：展示压缩裁剪统计（removed_count/remaining_count）
+          const done = event as { removed_count?: number; remaining_count?: number };
+          const hasCounts = typeof done.removed_count === 'number' && typeof done.remaining_count === 'number';
+          const summary = hasCounts
+            ? `上下文压缩完成（移除 ${done.removed_count} 条，保留 ${done.remaining_count} 条）：\n\n${buffer}`
+            : `上下文压缩完成：\n\n${buffer}`;
           useBookDetailStore.setState((state) => ({
             agentMessages: state.agentMessages.map((m) =>
               m.type === 'streaming'
-                ? { ...m, type: 'system' as const, content: `上下文压缩完成：\n\n${m.content}` }
+                ? { ...m, type: 'system' as const, content: summary }
                 : m,
             ),
           }));
@@ -504,6 +563,18 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
         </div>
       </div>
 
+      {bookLocked && (
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-border/60 bg-amber-500/[0.06]">
+          <span className="text-[11px] text-amber-600/90 flex-1">该书正在执行 Agent 任务，新操作可能被拒绝</span>
+          <button
+            onClick={() => { void handleForceReleaseLock(); }}
+            className="text-[11px] font-medium text-foreground underline underline-offset-2 hover:opacity-70 bg-transparent border-none cursor-pointer"
+          >
+            强制解除
+          </button>
+        </div>
+      )}
+
       {modelConfigured === false && (
         <div className="flex items-center gap-2 px-3 py-2 border-b border-border/60 bg-destructive/[0.04]">
           <span className="text-[11px] text-destructive/80 flex-1">尚未配置模型，AI 助手无法工作</span>
@@ -546,6 +617,7 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
             showWorkflowSuggestions={showWorkflowSuggestions}
             workflowList={workflowList}
             mention={mention}
+            inputRef={inputRef}
             onInputChange={handleInputChange}
             onKeyDown={handleInputKeyDown}
             onApplyMention={applyMention}

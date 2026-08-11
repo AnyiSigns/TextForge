@@ -73,9 +73,9 @@ def build_turn_metrics_payload(
 
 
 def sse_turn_metrics_line(payload: dict) -> str:
-    """构造 turn_metrics SSE 事件行。"""
+    """构造 turn_metrics SSE 事件行（2.3 契约统一：指标整体嵌套在 metrics 字段下）。"""
     return (
-        f"data: {json.dumps({'type': 'turn_metrics', **payload}, ensure_ascii=False)}\n\n"
+        f"data: {json.dumps({'type': 'turn_metrics', 'metrics': payload}, ensure_ascii=False)}\n\n"
     )
 
 

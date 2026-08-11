@@ -15,7 +15,8 @@ from .chapter_content_service import ChapterContentService, chapter_content_db
 router = APIRouter(prefix="/chapter-contents", tags=["ChapterContent"])
 
 
-async def _assert_chapter_owner(chapter_id: int, user_id: int, session: AsyncSession):
+async def _assert_chapter_owner(chapter_id: int, user_id: int, session: AsyncSession) -> Chapter:
+    """校验章节归属并返回 Chapter（审查修复：复用查询结果，避免锁定检查重复 SELECT）。"""
     stmt = (
         select(Chapter)
         .select_from(Chapter)
@@ -24,8 +25,10 @@ async def _assert_chapter_owner(chapter_id: int, user_id: int, session: AsyncSes
         .where(Chapter.id == chapter_id, Book.user_id == user_id)
     )
     result = await session.execute(stmt)
-    if not result.scalar_one_or_none():
+    chapter = result.scalar_one_or_none()
+    if chapter is None:
         raise HTTPException(status_code=404, detail="章节不存在或无权访问")
+    return chapter
 
 
 @router.get("/chapters/{chapter_id}", response_model=dict)
@@ -62,7 +65,11 @@ async def create_content(
     content_service: Annotated[ChapterContentService, Depends(chapter_content_db)],
     session: Annotated[AsyncSession, Depends(db_manager.get_db)],
 ):
-    await _assert_chapter_owner(chapter_id, user_id, session)
+    # 1.4 兜底：锁定章节拒绝新增版本（锁定期禁止任何写入通道落库）。
+    # 审查修复：_assert_chapter_owner 已返回章节对象，直接判 locked，不再重复查询。
+    chapter = await _assert_chapter_owner(chapter_id, user_id, session)
+    if chapter.locked:
+        raise HTTPException(status_code=409, detail="章节已锁定，无法保存修改")
     item = await content_service.create_content(chapter_id, request.content)
     if not item:
         raise HTTPException(status_code=500, detail="创建正文失败")

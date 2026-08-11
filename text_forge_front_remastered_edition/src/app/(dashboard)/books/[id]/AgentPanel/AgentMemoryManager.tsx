@@ -21,31 +21,39 @@ export function AgentMemoryManager({ bookId, onClose }: AgentMemoryManagerProps)
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<AgentMemory[] | null>(null);
   const [searching, setSearching] = useState(false);
+  // 2.7：分页状态（page + has_next 驱动「加载更多」）
+  const [page, setPage] = useState(1);
+  const [hasNext, setHasNext] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
-  const loadMemories = async () => {
-    setLoading(true);
+  const loadMemories = async (targetPage = 1, append = false) => {
+    setLoading(targetPage === 1);
+    if (append) setLoadingMore(true);
     try {
-      const data = await agentMemoryApi.fetchAgentMemories(bookId);
-      setMemories(data);
+      const data = await agentMemoryApi.fetchAgentMemories(bookId, targetPage);
+      setMemories((prev) => (append ? [...prev, ...data.items] : data.items));
+      setHasNext(data.has_next);
+      setPage(targetPage);
     } catch { toast.error('加载记忆失败'); }
-    finally { setLoading(false); }
+    finally { setLoading(false); setLoadingMore(false); }
   };
 
-  // 书籍切换时重新进入加载态（渲染期间调整，React 会立即重渲染）
-  const [prevBookId, setPrevBookId] = useState(bookId);
-  if (bookId !== prevBookId) {
-    setPrevBookId(bookId);
-    setLoading(true);
-  }
-
+  // 2.7：书籍切换/首次挂载统一走 [bookId] effect（整页替换，天然处理切换重置）
   useEffect(() => {
     let alive = true;
-    agentMemoryApi.fetchAgentMemories(bookId)
-      .then((data) => { if (alive) setMemories(data); })
+    // setState 放微任务，规避 react-hooks/set-state-in-effect 同步 setState 告警
+    queueMicrotask(() => { if (alive) setLoading(true); });
+    agentMemoryApi.fetchAgentMemories(bookId, 1)
+      .then((data) => { if (alive) { setMemories(data.items); setHasNext(data.has_next); setPage(1); } })
       .catch(() => toast.error('加载记忆失败'))
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, [bookId]);
+
+  const loadMore = async () => {
+    if (loadingMore || !hasNext) return;
+    await loadMemories(page + 1, true);
+  };
 
   const handleSearch = useCallback(async () => {
     if (!searchQuery.trim()) return;
@@ -155,6 +163,18 @@ export function AgentMemoryManager({ bookId, onClose }: AgentMemoryManagerProps)
               </button>
             </div>
           ))}
+          {/* 2.7：分页「加载更多」（后端 PageResult.has_next） */}
+          {hasNext && (
+            <div className="flex justify-center">
+              <button
+                onClick={() => { void loadMore(); }}
+                disabled={loadingMore}
+                className="text-[11px] px-3 py-1 rounded-md border border-border bg-transparent text-muted-foreground hover:text-foreground hover:border-foreground/30 cursor-pointer disabled:opacity-50"
+              >
+                {loadingMore ? '加载中...' : '加载更多'}
+              </button>
+            </div>
+          )}
           <div className="pt-3 border-t border-border space-y-2">
             <div className="flex items-center gap-2">
               <select

@@ -61,7 +61,8 @@ export function MessageList(props: MessageListProps) {
     }
   }, [historyConvId, historyLoadedCount, loadMoreHistory, onHistoryLoadedChange]);
 
-  const SUGGESTIONS = ['分析创作状态并提议卡片', '构思剧情走向', '设计角色对话', '优化章节大纲', '检查设定矛盾'];
+  // 2.1：propose_cards 功能已删除——首项改「分析创作状态」，走纯文本分析（不再要求 JSON 卡片格式）
+  const SUGGESTIONS = ['分析创作状态', '构思剧情走向', '设计角色对话', '优化章节大纲', '检查设定矛盾'];
 
   return (
     <div
@@ -80,8 +81,9 @@ export function MessageList(props: MessageListProps) {
                   <button
                     key={s}
                     onClick={() => {
-                      if (s === '分析创作状态并提议卡片') {
-                        void onSendMessage('请分析当前书籍的创作状态，判断当前处于哪个创作阶段（initializing/worldbuilding/outlining/drafting/revising），并提议需要创建的卡片类型（world_setup/plot_direction/character_intro/location_card/foreshadow_card/char_dialogue）。输出JSON格式：{"phase":"...","proposals":[{"type":"...","reason":"..."}]}');
+                      if (s === '分析创作状态') {
+                        // 2.1：与删除的卡片功能对齐——纯文本分析，不再输出 JSON 卡片格式
+                        void onSendMessage('请分析当前书籍的创作状态：当前处于哪个创作阶段（世界观/大纲/正文/修订），哪些环节薄弱、哪些设定存在矛盾或遗漏，并给出下一步创作建议。');
                       } else {
                         onPickSuggestion(s);
                       }

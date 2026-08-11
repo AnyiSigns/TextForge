@@ -13,7 +13,8 @@ import { Initializer } from './Initializer';
 import { StoryFlow } from './StoryFlow';
 import { SimRoom } from './SimRoom';
 import { SidePanel } from '@/features/map/SidePanel/SidePanel';
-import { PanelLeftOpen, MessageCircle, Bot, PenLine, Sparkles } from 'lucide-react';
+import { AgentInsightsPanel } from '@/features/agent/AgentInsightsPanel';
+import { PanelLeftOpen, MessageCircle, Bot, PenLine, Sparkles, Activity } from 'lucide-react';
 import { onAgentOutlinesRefresh } from '@/features/agent/agentEvents';
 
 export default function MapPage({ params }: { params: Promise<{ id: string }> }) {
@@ -34,6 +35,8 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
 
   const [panelOpen, setPanelOpen] = useState(false);
   const [simRoomOpen, setSimRoomOpen] = useState(false);
+  // 2.4：Agent 审计/指标洞察面板（工具条入口）
+  const [insightsOpen, setInsightsOpen] = useState(false);
   const loadFromApi = useEntityStore((s) => s.loadFromApi);
 
   useEffect(() => {
@@ -140,6 +143,13 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
               >
                 <Sparkles size={14} strokeWidth={1.5} />
               </button>
+              <button
+                onClick={() => setInsightsOpen(true)}
+                className="w-8 h-8 flex items-center justify-center rounded-xl bg-card/90 backdrop-blur-sm border border-border/50 shadow-sm cursor-pointer text-muted-foreground/60 hover:text-foreground hover:bg-card transition-colors"
+                title="Agent 运行洞察"
+              >
+                <Activity size={14} strokeWidth={1.5} />
+              </button>
             </div>
           )}
           <MapCanvas />
@@ -157,6 +167,9 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
           bookTitle={book?.title}
           onClose={() => setSimRoomOpen(false)}
         />
+      )}
+      {insightsOpen && (
+        <AgentInsightsPanel bookId={bookId} onClose={() => setInsightsOpen(false)} />
       )}
     </div>
   );

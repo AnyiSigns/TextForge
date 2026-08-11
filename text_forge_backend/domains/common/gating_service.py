@@ -104,7 +104,7 @@ def build_preview(operation: str, tool_name: str, args: dict) -> dict:
     """
     if tool_name in ("write_chapter_content", "edit_chapter_content"):
         content = args.get("content") or args.get("new_text") or ""
-        preview = f"章节ID={args.get('chapter_id')}\n{content[:800]}"
+        preview = f"章节ID={args.get('chapter_id')}\n{content[:8000]}"
     elif tool_name == "write_workflow_candidate":
         preview = f"章节ID={args.get('chapter_id')} 候选节点={args.get('node_id')}（从工作流结果写入，正文不在此预览）"
     elif tool_name == "apply_chapter_diff":
@@ -150,6 +150,9 @@ def build_preview(operation: str, tool_name: str, args: dict) -> dict:
         "node_label": f"工具调用：{tool_name}",
         "output_preview": preview,
         "reason": "该操作会修改书籍数据，需你确认后才会执行",
+        # 与 workflow_runner_node 的审核卡契约对齐（任务 31 卡片展示 tokens/耗时）
+        "tokens": 0,
+        "elapsed_ms": 0,
     }
 
 

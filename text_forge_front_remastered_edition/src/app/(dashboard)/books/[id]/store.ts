@@ -56,10 +56,12 @@ export interface AgentNodeMessage extends AgentMessageBase {
   reason?: string;
 }
 
-/** 事件卡片消息（审核卡 / 提议卡） */
+/** 事件卡片消息（审核卡；propose-cards 渲染器已删除，类型收窄） */
 export interface AgentCardMessage extends AgentMessageBase {
-  type: 'review-card' | 'propose-cards';
+  type: 'review-card';
   token?: string;
+  /** 2.12：false 表示历史回放只读（不渲染操作按钮），缺省视为 live */
+  live?: boolean;
 }
 
 export type AgentMessage =
@@ -79,7 +81,8 @@ interface AgentStatus {
 /** 工作流节点（角色）执行状态卡片数据。 */
 export interface AgentNodeStatus {
   nodeId: string;
-  label: string;
+  /** N3：可选——node_end/node_fail 事件不带 label 时保留已有值，新增时回退 nodeId */
+  label?: string;
   status: 'running' | 'completed' | 'failed';
   tokens?: number;
   reason?: string;
@@ -196,12 +199,18 @@ export const useBookDetailStore = create<BookDetailState>((set) => ({
   upsertNodeStatus: (status) =>
     set((state) => {
       const existing = state.agentNodeStatuses.find((n) => n.nodeId === status.nodeId);
+      // N3：label 缺省（undefined）时视为「不更新」，避免 node_end 用 nodeId 覆盖友好标签
+      const patch = { ...status };
+      if (patch.label === undefined) delete patch.label;
       if (!existing) {
-        return { agentNodeStatuses: [...state.agentNodeStatuses, status] };
+        // 新增卡片：label 缺省回退 nodeId，保证卡片有标题
+        return {
+          agentNodeStatuses: [...state.agentNodeStatuses, { ...patch, label: patch.label || status.nodeId }],
+        };
       }
       return {
         agentNodeStatuses: state.agentNodeStatuses.map((n) =>
-          n.nodeId === status.nodeId ? { ...n, ...status } : n,
+          n.nodeId === status.nodeId ? { ...n, ...patch } : n,
         ),
       };
     }),
@@ -264,11 +273,18 @@ export const useBookDetailStore = create<BookDetailState>((set) => ({
     }),
 
   updateNodeMessage: (nodeId, patch) =>
-    set((state) => ({
-      agentMessages: state.agentMessages.map((m) =>
-        m.type === 'node' && m.nodeId === nodeId ? { ...m, ...patch } : m,
-      ),
-    })),
+    set((state) => {
+      // N3：剥离 undefined 字段，避免 label 等缺省值覆盖节点卡片已有内容
+      const clean = { ...patch };
+      (Object.keys(clean) as Array<keyof typeof clean>).forEach((k) => {
+        if (clean[k] === undefined) delete clean[k];
+      });
+      return {
+        agentMessages: state.agentMessages.map((m) =>
+          m.type === 'node' && m.nodeId === nodeId ? { ...m, ...clean } : m,
+        ),
+      };
+    }),
 
   updateAgentStreamToken: (token) =>
     set((state) => {

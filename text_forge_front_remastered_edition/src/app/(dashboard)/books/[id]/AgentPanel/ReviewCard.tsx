@@ -7,6 +7,8 @@ import { cn } from '@/shared/lib/cn';
 interface ReviewCardProps {
   data: Record<string, unknown>;
   onAction: (action: 'accept' | 'retry' | 'edit' | 'terminate', editedContent?: string, chapterId?: number) => void;
+  /** 2.12：历史回放只读（true 时不渲染操作按钮，仅展示卡内容） */
+  disabled?: boolean;
 }
 
 /** 按原因关键词分类展示失败类型（质量/设定/上下文/连贯性/其他）。 */
@@ -17,7 +19,7 @@ function reasonCategory(reason: string): { label: string; cls: string } {
   return { label: '质量不达标', cls: 'text-destructive/80 border-destructive/30' };
 }
 
-export function ReviewCard({ data, onAction }: ReviewCardProps) {
+export function ReviewCard({ data, onAction, disabled = false }: ReviewCardProps) {
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState('');
   const [showFull, setShowFull] = useState(false);
@@ -36,7 +38,7 @@ export function ReviewCard({ data, onAction }: ReviewCardProps) {
   const category = reasonCategory(reason);
 
   const handleAction = (action: 'accept' | 'retry' | 'edit' | 'terminate', editedContent?: string) => {
-    if (submitting) return;
+    if (submitting || disabled) return;
     if (action === 'edit' && !(editedContent || '').trim()) {
       // 空内容校验：不提交，聚焦输入框
       textareaRef.current?.focus();
@@ -89,7 +91,11 @@ export function ReviewCard({ data, onAction }: ReviewCardProps) {
       </div>
       <div className="text-[11px] text-muted-foreground mb-2 italic">{reason}</div>
 
-      {editing ? (
+      {disabled ? (
+        <div className="text-[10px] text-muted-foreground/50 border-t border-border/30 pt-1.5">
+          历史审核记录（只读）
+        </div>
+      ) : editing ? (
         <div className="space-y-2">
           <textarea
             ref={textareaRef}

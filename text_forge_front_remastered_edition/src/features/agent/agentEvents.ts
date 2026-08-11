@@ -4,12 +4,12 @@
  * 任务 25：Agent 相关 window CustomEvent 总线收敛为类型安全的事件工具。
  *
  * 把散落各处的 `window.dispatchEvent(new CustomEvent('textforge:...'))` /
- * `addEventListener` 收拢为带 payload 类型的 emit/on 一对，避免字符串事件名
- * 拼写错误与 payload 结构漂移。底层仍是 window CustomEvent（跨组件通信，
- * 不引入额外依赖）。
+ * `addEventListener` 收敛为带 payload 类型的 emit/on 一对，避免字符串事件名
+ * 拼写错误与 payload 结构漂移。底层仍是 window CustomEvent（跨组件通信），
+ * 不引入额外依赖。
  */
 
-/** 事件 → payload 类型映射（null 表示无 payload）。 */
+/** 事件 → payload 类型映射（null 表示无 payload）。*/
 export interface AgentEventMap {
   /** 会话列表需要刷新（新会话/删除后） */
   'textforge:refresh-agent-sessions': null;
@@ -19,6 +19,8 @@ export interface AgentEventMap {
   'textforge:refresh-outlines': null;
   /** 卡片绘制开始（initializer 提议卡片 → Agent 展开剧情） */
   'textforge:card-draw-start': Record<string, unknown>;
+  /** 章节正文被 Agent 落库（write_chapter_content 审批执行成功），手稿编辑器需刷新当前章 */
+  'textforge:refresh-chapter-content': { chapterId: number | string };
 }
 
 export type AgentEventName = keyof AgentEventMap;
@@ -59,6 +61,11 @@ export function emitAgentOutlinesRefresh(): void {
   dispatchEvent('textforge:refresh-outlines', undefined);
 }
 
+/** 便捷方法：章节内容被 Agent 落库，通知手稿编辑器刷新 */
+export function emitAgentChapterContentRefresh(chapterId: number | string): void {
+  dispatchEvent('textforge:refresh-chapter-content', { chapterId });
+}
+
 /** 便捷方法：监听会话列表刷新 */
 export function onAgentSessionsRefresh(handler: () => void): () => void {
   return addEventListener('textforge:refresh-agent-sessions', handler);
@@ -77,4 +84,11 @@ export function onAgentOutlinesRefresh(handler: () => void): () => void {
 /** 便捷方法：监听卡片绘制开始 */
 export function onAgentCardDrawStart(handler: (payload: Record<string, unknown>) => void): () => void {
   return addEventListener('textforge:card-draw-start', handler);
+}
+
+/** 便捷方法：监听章节内容刷新 */
+export function onAgentChapterContentRefresh(
+  handler: (payload: { chapterId: number | string }) => void,
+): () => void {
+  return addEventListener('textforge:refresh-chapter-content', handler);
 }

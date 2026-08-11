@@ -4,6 +4,7 @@ import { useEffect, use, useRef } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { useManuscriptStore } from './store';
+import { useBookDetailStore } from '@/app/(dashboard)/books/[id]/store';
 import { ChapterTree } from './ChapterTree';
 import { EditorArea } from './EditorArea';
 import { ChapterHoverPreview } from './ChapterHoverPreview';
@@ -23,6 +24,11 @@ export default function ManuscriptPage({ params }: { params: Promise<{ bookId: s
   const draggingRef = useRef(false);
 
   useEffect(() => { void loadBook(bookId); }, [bookId, loadBook]);
+
+  // 1.3：手稿页同步 useBookDetailStore.bookId（AgentDock 依赖它做书籍绑定/锁预检；
+  // 直开/切书场景 store 可能仍是 0 或上一本书）
+  const setBookId = useBookDetailStore((s) => s.setBookId);
+  useEffect(() => { setBookId(bookId); }, [bookId, setBookId]);
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {

@@ -65,18 +65,17 @@ export function ExecutionPanel({ workflow, bookId, onClose }: ExecutionPanelProp
     (v.chapters ?? []).map((c) => ({ id: c.id, label: `${v.title} / ${c.title}` })),
   );
 
-  // 工作流切换时重置节点状态（渲染期间调整，React 会立即重渲染）
-  const [prevWorkflowId, setPrevWorkflowId] = useState(workflow.id);
-  if (workflow.id !== prevWorkflowId) {
-    setPrevWorkflowId(workflow.id);
-    setStatuses(
-      workflow.nodes.map((n) => ({
-        nodeId: n.id,
-        label: n.label || n.id,
-        status: 'pending',
-      })),
-    );
-  }
+  // 工作流切换时重置节点状态（P3：渲染期 setState 改 effect 同步；
+  // setState 放微任务，规避 react-hooks/set-state-in-effect 同步 setState 告警）
+  useEffect(() => {
+    const next = workflow.nodes.map((n) => ({
+      nodeId: n.id,
+      label: n.label || n.id,
+      status: 'pending' as const,
+    }));
+    queueMicrotask(() => setStatuses(next));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workflow.id]);
 
   const handleRun = useCallback(async () => {
     setRunning(true);

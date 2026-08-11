@@ -5,23 +5,29 @@ import uuid
 from datetime import datetime, timezone
 from typing import Annotated, Any
 
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from config.logging import get_logger
 from config.settings import settings
 from core.auth import get_current
 from core.errors import classify_agent_error
 from core.model_factory import ModelFactory
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import StreamingResponse
 from models.book import Book, Chapter, Volume
 from models.conversation import Conversation, Message
 from schema.request.common import ChatRequest, CompressRequest, ReviewActionRequest
 from schema.response.chat import HistoryResponse, MessagesResponse
 from shared.database import db_manager
 from shared.graph_store import graph_pool_manager
-from shared.ratelimit import rate_limit_agent
+from shared.ratelimit import (
+    rate_limit_agent,
+    rate_limit_compress,
+    rate_limit_review_action,
+    rate_limit_start,
+)
 from shared.redis import redis_client
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from .agent_state import UserAgentState
 from .graphs.agent_graph import build_user_agent_graph
@@ -43,8 +49,9 @@ async def _generate_title(model_config: dict, user_msg: str, reply: str) -> str 
     由调用方保留默认标题，不影响主流程。
     """
     try:
-        from core.llm_retry import retry_llm
         from langchain_core.messages import HumanMessage
+
+        from core.llm_retry import retry_llm
 
         model = ModelFactory(model_config).main
         prompt = (
@@ -107,8 +114,9 @@ async def _auto_digest_if_due(
     if not model_config.get("main_config"):
         return
     try:
-        from core.llm_retry import retry_llm
         from langchain_core.messages import HumanMessage, SystemMessage
+
+        from core.llm_retry import retry_llm
 
         from .context_manager import flatten_messages_for_summary
 
@@ -170,7 +178,10 @@ async def _get_conversation(
 
 
 def _sse_review_card(pending_review: dict) -> str:
-    """构造 review_card SSE 事件，output_preview 截断到 1000 字防止撑爆 SSE 通道。
+    """构造 review_card SSE 事件，output_preview 截断防止撑爆 SSE 通道。
+
+    - 写章节卡（node_id=write_chapter_content）放宽到 8000 字（1.4：正文预览需可读）；
+    - 其余卡片保持 1000 字（工作流审计卡等，过长无益）。
 
     Args:
         pending_review: state 中的 pending_review 字典。
@@ -180,8 +191,9 @@ def _sse_review_card(pending_review: dict) -> str:
     """
     payload = dict(pending_review)
     preview = payload.get("output_preview") or ""
-    if isinstance(preview, str) and len(preview) > 1000:
-        payload["output_preview"] = preview[:1000] + "\n…（已截断）"
+    limit = 8000 if payload.get("node_id") == "write_chapter_content" else 1000
+    if isinstance(preview, str) and len(preview) > limit:
+        payload["output_preview"] = preview[:limit] + "\n…（已截断）"
     return f"data: {json.dumps({'type': 'review_card', **payload}, ensure_ascii=False)}\n\n"
 
 
@@ -259,6 +271,40 @@ async def _release_book_lock(
         logger.error(f"释放书籍锁失败: {exc}")
 
 
+# ── 2.9 P-A：同 thread 并发互斥 ──────────────────────────────────────
+# 本地 _stream_tasks（进程内）+ Redis agent:thread_lock（跨进程）双保险：
+# 同一 thread 同时只允许一个流式/压缩任务执行；占位注册用 try/except 管理，
+# 所有出口（早退 return / 异常 / 生成器结束）都必须 pop，否则该 thread 永久 409。
+
+THREAD_LOCK_TTL = 600
+
+
+async def _acquire_thread_lock(thread_id: str) -> tuple[bool, str, str]:
+    """为会话线程获取 Redis 互斥锁，返回 (是否获取成功, 锁键, 持有者标识)。"""
+    holder_id = uuid.uuid4().hex
+    key = f"agent:thread_lock:{thread_id}"
+    try:
+        result = await redis_client.set(key, holder_id, ex=THREAD_LOCK_TTL, nx=True)
+        return (result is True, key, holder_id)
+    except Exception as exc:
+        logger.error(f"获取线程锁失败: {exc}")
+        return (False, "", "")
+
+
+async def _release_thread_lock(lock_key: str, holder_id: str) -> None:
+    """释放线程锁（仅当锁值仍为本持有者，防误删他人锁）。"""
+    if not lock_key:
+        return
+    try:
+        script = (
+            "if redis.call('GET', KEYS[1]) == ARGV[1] "
+            "then return redis.call('DEL', KEYS[1]) else return 0 end"
+        )
+        await redis_client.eval(script, 1, lock_key, holder_id)
+    except Exception as exc:
+        logger.warning(f"释放线程锁失败: {exc}")
+
+
 async def _empty_sse(message: str):
     yield f"data: {json.dumps({'type': 'error', 'message': message}, ensure_ascii=False)}\n\n"
     yield f"data: {json.dumps({'type': 'end', 'reply': ''}, ensure_ascii=False)}\n\n"
@@ -281,6 +327,30 @@ def _sse_compress_done(summary: str, removed_count: int, remaining_count: int) -
 async def _single_sse(data_line: str):
     """把单条 SSE data 行包装为异步生成器（手动压缩的短路径统一用）。"""
     yield data_line
+
+
+async def _strip_api_key_from_checkpoint(graph: Any | None, config: dict | None) -> None:
+    """回合后 best-effort 剥离 checkpoint 中 model_config 的 api_key（2.10 P-B）。
+
+    输入时剥离会破坏当回合执行（agent_nodes.build_tools / ModelFactory 运行期读取
+    state["model_config"]），因此只在回合结束后清除持久化残留；下一回合/压缩由
+    请求体注入完整配置。graph/config 可能未绑定（_prepare_agent_state 抛错路径），
+    调用方须传 None 守卫。
+    """
+    if graph is None or config is None:
+        return
+    try:
+        snap = await graph.aget_state(config)
+        cfg = (snap.values if snap else {}).get("model_config") or {}
+        if not cfg.get("main_config"):
+            return
+        stripped = {
+            **cfg,
+            "main_config": {**cfg.get("main_config", {}), "api_key": ""},
+        }
+        await graph.aupdate_state(config, {"model_config": stripped})
+    except Exception as exc:
+        logger.warning(f"[P-B] checkpoint api_key 剥离失败: {exc}")
 
 
 async def _prepare_agent_state(
@@ -309,7 +379,9 @@ async def _prepare_agent_state(
     # 前端携带当前书籍时修正会话绑定，避免旧会话 book_id=0 导致「无法访问书籍信息」。
     # 必须先校验归属：book_id_override 来自请求体，若不校验，攻击者可将会话绑定到
     # 他人书籍，使 Agent 在他人书籍上执行读写工具（IDOR）。
-    if book_id_override:
+    # N1（2.11）：仅 book_id 为空（None/0）的旧会话才允许补绑；已有书籍归属的会话
+    # 不随请求体静默改绑（跨书静默重绑定会让用户以为在书 A 操作实际写书 B）。
+    if book_id_override and conversation.book_id in (None, 0):
         from domains.book._owner_check import assert_book_owner
 
         await assert_book_owner(book_id_override, user_id, session)
@@ -589,6 +661,7 @@ async def start_agent_session(
     user_id: Annotated[int, Depends(get_current)],
     book_id: int | None = Query(default=None),
     session: Annotated[AsyncSession, Depends(db_manager.get_db)] = None,
+    _rl: None = Depends(rate_limit_start),
 ):
     if book_id is not None:
         stmt = select(Book).where(Book.id == book_id, Book.user_id == user_id)
@@ -615,9 +688,13 @@ async def respond_to_agent(
     body: ChatRequest,
     session: Annotated[AsyncSession, Depends(db_manager.get_db)] = None,
 ):
+    """非流式回合（N8：预留/测试用，前端主链路走 /stream；与流式共享并发互斥）。"""
     model_config = body.model_config_data or {}
     if not model_config or not model_config.get("main_config"):
         raise HTTPException(status_code=400, detail="用户模型配置未设置")
+    # 2.9 P-A 一致性：同一 thread 已有流式/压缩任务时拒绝非流式回合
+    if body.thread_id in _stream_tasks:
+        raise HTTPException(status_code=409, detail="该会话正在生成中，请等待当前生成完成")
     lock_key = None
     holder_id = None
     book_id = None
@@ -662,6 +739,10 @@ async def respond_to_agent(
     finally:
         if book_id:
             await _release_book_lock(book_id, user_id, lock_key, holder_id)
+        # 2.10 P-B：回合后剥离 checkpoint api_key（graph/config 可能未绑定，判空守卫）
+        await _strip_api_key_from_checkpoint(
+            locals().get("graph"), locals().get("config")
+        )
 
 
 @router.post("/stream/{thread_id}")
@@ -676,21 +757,40 @@ async def stream_agent(
     model_config = body.model_config_data or {}
     if not model_config or not model_config.get("main_config"):
         raise HTTPException(status_code=400, detail="用户模型配置未设置")
+    # 2.9 P-A：同 thread 并发互斥——本地注册表先查后占位，Redis SET NX 兜底跨进程。
+    # 占位后所有出口（早退 return / 外层 except / event_generator finally）都必须 pop。
+    if thread_id in _stream_tasks:
+        raise HTTPException(status_code=409, detail="该会话正在生成中，请等待当前生成完成")
+    _thread_lock_key = ""
+    _thread_holder_id = ""
     lock_key = None
     holder_id = None
     locked = False
     book_id = None
     _heartbeat_task: asyncio.Task | None = None
+    _thread_heartbeat_task: asyncio.Task | None = None
 
     async def cleanup():
         # 幂等：锁已被提前释放（end 事件后）时，Lua 持有者校验会拒绝重复删除；
         # 心跳任务对已完成/已取消任务重复 cancel 无副作用。
         if _heartbeat_task is not None:
             _heartbeat_task.cancel()
+        if _thread_heartbeat_task is not None:
+            _thread_heartbeat_task.cancel()
         if book_id:
             await _release_book_lock(book_id, user_id, lock_key, holder_id)
+        await _release_thread_lock(_thread_lock_key, _thread_holder_id)
 
     try:
+        # 注册占位 + Redis 线程锁放入 try 内：acquire 期间的取消/异常由 except 统一清理，
+        # 避免占位残留导致该 thread 永久 409（v5 泄漏修复的封闭边界）
+        _stream_tasks[thread_id] = None
+        _thread_locked, _thread_lock_key, _thread_holder_id = await _acquire_thread_lock(
+            thread_id
+        )
+        if not _thread_locked:
+            _stream_tasks.pop(thread_id, None)
+            raise HTTPException(status_code=409, detail="该会话正在生成中，请等待当前生成完成")
         is_resume = not body.message
         if is_resume:
             conversation = await _get_conversation(session, thread_id, user_id)
@@ -754,6 +854,10 @@ async def stream_agent(
             else:
                 pending_review = state_data.get("pending_review")
                 if not pending_review:
+                    # v5 泄漏修复：该早退路径不抛异常也不走 event_generator finally，
+                    # 必须在此显式清除占位并释放线程锁，否则该 thread 永久 409。
+                    _stream_tasks.pop(thread_id, None)
+                    await _release_thread_lock(_thread_lock_key, _thread_holder_id)
                     return StreamingResponse(
                         _empty_sse("无待处理的审核，请发送新消息开始对话"),
                         media_type="text/event-stream",
@@ -908,6 +1012,11 @@ async def stream_agent(
         if lock_key:
             # 长任务（工作流多节点可达数十分钟）期间周期续期锁 TTL，防止执行中锁过期被他人获取
             _heartbeat_task = asyncio.create_task(_renew_book_lock(lock_key, holder_id))
+        if _thread_lock_key:
+            # 线程互斥锁同样心跳续期（2.9 P-A），防止长流式期间线程锁过期
+            _thread_heartbeat_task = asyncio.create_task(
+                _renew_book_lock(_thread_lock_key, _thread_holder_id)
+            )
         graph = build_user_agent_graph(
             db_manager.with_db,
             model_config=model_config,
@@ -988,7 +1097,8 @@ async def stream_agent(
                         ):
                             yield f"data: {json.dumps({'type': etype, **data}, ensure_ascii=False)}\n\n"
                         elif etype == "think_start":
-                            yield f"data: {json.dumps({'type': 'think_start', 'elapsed': 0, 'user_id': user_id}, ensure_ascii=False)}\n\n"
+                            # 3.10 清理：不再下发恒 0 的 elapsed 字段（前端未使用）
+                            yield f"data: {json.dumps({'type': 'think_start', 'user_id': user_id}, ensure_ascii=False)}\n\n"
                         elif etype == "agent_think_end":
                             yield f"data: {json.dumps({'type': 'agent_think_end'}, ensure_ascii=False)}\n\n"
                         elif etype == "agent_reasoning":
@@ -1292,6 +1402,11 @@ async def stream_agent(
                     except Exception:
                         pass
                 _stream_tasks.pop(thread_id, None)
+                # 2.10 P-B：回合后剥离 checkpoint api_key（best-effort，在释放锁之前完成，
+                # 与 _auto_digest 的 aupdate_state 不冲突——该调用已在上方 try 内执行完）。
+                # 审查修复：线程锁交由 cleanup() 统一释放（cleanup 先 cancel 心跳再删锁，
+                # 避免显式释放后心跳唤醒重建锁键导致 Redis 409 残留）。
+                await _strip_api_key_from_checkpoint(graph, config)
                 await cleanup()
 
         _current_task = asyncio.current_task()
@@ -1307,6 +1422,9 @@ async def stream_agent(
             },
         )
     except Exception:
+        # 端点级异常出口：占位与线程锁必须清理（v5：除 generator finally 外的第二出口；
+        # 线程锁释放由 cleanup 统一处理——先 cancel 心跳再删锁，避免心跳重建锁键）
+        _stream_tasks.pop(thread_id, None)
         await cleanup()
         raise
 
@@ -1363,6 +1481,7 @@ async def manual_compress(
     user_id: Annotated[int, Depends(get_current)],
     body: CompressRequest,
     session: Annotated[AsyncSession, Depends(db_manager.get_db)] = None,
+    _rl: None = Depends(rate_limit_compress),
 ):
     conversation = await _get_conversation(session, body.thread_id, user_id)
     if not conversation:
@@ -1372,120 +1491,164 @@ async def manual_compress(
     if not checkpoint:
         raise HTTPException(status_code=503, detail="Checkpointer 未就绪")
 
-    config = {"configurable": {"thread_id": body.thread_id}}
-    state_snapshot = await checkpoint.aget(config)
-    if not state_snapshot:
-        # 任务 30（审查修复）：SSE 样板统一走 _sse_headers/_sse_compress_done
-        return StreamingResponse(
-            _single_sse(_sse_compress_done("", 0, 0)),
-            media_type="text/event-stream",
-            headers=_sse_headers(),
+    # 2.9 P-A：压缩与流式互斥（校验类 404/503 在前，注册占位后所有出口必须清理）。
+    # 审查修复：注册占位 + Redis 锁放入 try 内——acquire 期间的取消/异常由 except 统一清理，
+    # 与 stream_agent 一致，避免占位残留导致该 thread 永久 409。
+    if body.thread_id in _stream_tasks:
+        raise HTTPException(status_code=409, detail="该会话正在生成中，请等待当前生成完成")
+
+    def _pop_compress_task() -> None:
+        # v5：占位注册后的所有出口共用清理，防早退泄漏导致 thread 永久 409
+        _stream_tasks.pop(body.thread_id, None)
+
+    try:
+        _stream_tasks[body.thread_id] = None
+        _t_locked, _t_key, _t_holder = await _acquire_thread_lock(body.thread_id)
+        if not _t_locked:
+            _stream_tasks.pop(body.thread_id, None)
+            raise HTTPException(status_code=409, detail="该会话正在生成中，请等待当前生成完成")
+        config = {"configurable": {"thread_id": body.thread_id}}
+        state_snapshot = await checkpoint.aget(config)
+        if not state_snapshot:
+            _pop_compress_task()
+            await _release_thread_lock(_t_key, _t_holder)
+            # 任务 30（审查修复）：SSE 样板统一走 _sse_headers/_sse_compress_done
+            return StreamingResponse(
+                _single_sse(_sse_compress_done("", 0, 0)),
+                media_type="text/event-stream",
+                headers=_sse_headers(),
+            )
+
+        state_data = state_snapshot.get("channel_values", {})
+        messages = state_data.get("messages", [])
+        if not messages:
+            _pop_compress_task()
+            await _release_thread_lock(_t_key, _t_holder)
+            return StreamingResponse(
+                _single_sse(_sse_compress_done("", 0, 0)),
+                media_type="text/event-stream",
+                headers=_sse_headers(),
+            )
+
+        # 2.6：请求体配置优先（前端 streamCompress 已携带 modelConfig），缺省回退 checkpoint
+        # （2.10 剥离 api_key 后 checkpoint 配置不可用，必须靠请求体注入）。
+        model_config = body.model_config_data or state_data.get("model_config", {})
+        if not model_config or not model_config.get("main_config"):
+            _pop_compress_task()
+            await _release_thread_lock(_t_key, _t_holder)
+            return StreamingResponse(
+                _single_sse(f"data: {json.dumps({'type': 'error', 'message': '未找到模型配置'}, ensure_ascii=False)}\n\n"),
+                media_type="text/event-stream",
+                headers=_sse_headers(),
+            )
+
+        llm = ModelFactory(model_config)
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        from .context_manager import flatten_messages_for_summary, safe_compress_cutoff
+
+        # 任务 30（审查修复）：复用共享展平实现
+        combined = flatten_messages_for_summary(messages, 400)
+
+        prompt = (
+            f"请详细总结以下对话，保留所有关键决策、用户偏好、创作设定和重要信息。"
+            f"这份摘要将替代历史消息成为 Agent 的长期记忆：\n\n{combined[:12000]}"
         )
 
-    state_data = state_snapshot.get("channel_values", {})
-    messages = state_data.get("messages", [])
-    if not messages:
-        return StreamingResponse(
-            _single_sse(_sse_compress_done("", 0, 0)),
-            media_type="text/event-stream",
-            headers=_sse_headers(),
-        )
-
-    model_config = state_data.get("model_config", {})
-    if not model_config or not model_config.get("main_config"):
-        return StreamingResponse(
-            _single_sse(f"data: {json.dumps({'type': 'error', 'message': '未找到模型配置'}, ensure_ascii=False)}\n\n"),
-            media_type="text/event-stream",
-            headers=_sse_headers(),
-        )
-
-    llm = ModelFactory(model_config)
-    from langchain_core.messages import HumanMessage, SystemMessage
-
-    from .context_manager import flatten_messages_for_summary, safe_compress_cutoff
-
-    # 任务 30（审查修复）：复用共享展平实现
-    combined = flatten_messages_for_summary(messages, 400)
-
-    prompt = (
-        f"请详细总结以下对话，保留所有关键决策、用户偏好、创作设定和重要信息。"
-        f"这份摘要将替代历史消息成为 Agent 的长期记忆：\n\n{combined[:12000]}"
-    )
-
-    async def event_generator():
-        summary = ""
-        try:
-            async for chunk in llm.main.astream(
-                [
-                    SystemMessage(content="你是专业的对话摘要助手。"),
-                    HumanMessage(content=prompt),
-                ]
-            ):
-                text = chunk.content if hasattr(chunk, "content") else str(chunk)
-                if text:
-                    summary += text
-                    yield f"data: {json.dumps({'type': 'token', 'token': text}, ensure_ascii=False)}\n\n"
-        except Exception as exc:
-            logger.error(f"manual_compress LLM 调用失败: {exc}", exc_info=True)
-            yield f"data: {json.dumps({'type': 'error', 'message': '摘要生成失败'}, ensure_ascii=False)}\n\n"
-            return
-
-        try:
-            from domains.memory.repository import AgentMemoryRepository
-
-            memory_repo = AgentMemoryRepository(session)
-            memory_payload = {
-                "book_id": conversation.book_id,
-                "memory_type": "context_summary",
-                "content": summary,
-                "source": "manual_compress",
-                "meta": {
-                    "thread_id": body.thread_id,
-                    "compressed_at": datetime.now(timezone.utc).isoformat(),
-                },
-            }
-            # 摘要同步生成向量嵌入，保证语义检索可命中压缩摘要
+        async def event_generator():
+            # 外层 try/finally：生成器结束（正常/异常/客户端断连 aclose）统一释放占位与线程锁，
+            # 防止压缩早退或中断后该 thread 永久 409（v5 泄漏修复）。
             try:
-                memory_payload["embedding"] = await llm.embedding.aembed_query(
-                    summary[:2000]
+                summary = ""
+                try:
+                    # N4：逐 chunk 120s 超时（复用 workflow_scheduler.py:740 的
+                    # wait_for(anext(stream)) 模式），防止 MaaS 挂起导致压缩永久卡住
+                    stream = llm.main.astream(
+                        [
+                            SystemMessage(content="你是专业的对话摘要助手。"),
+                            HumanMessage(content=prompt),
+                        ]
+                    )
+                    while True:
+                        try:
+                            chunk = await asyncio.wait_for(anext(stream), timeout=120)
+                        except StopAsyncIteration:
+                            break
+                        except asyncio.TimeoutError:
+                            yield f"data: {json.dumps({'type': 'error', 'message': '摘要生成超时，请稍后重试'}, ensure_ascii=False)}\n\n"
+                            return
+                        text = chunk.content if hasattr(chunk, "content") else str(chunk)
+                        if text:
+                            summary += text
+                            yield f"data: {json.dumps({'type': 'token', 'token': text}, ensure_ascii=False)}\n\n"
+                except Exception as exc:
+                    logger.error(f"manual_compress LLM 调用失败: {exc}", exc_info=True)
+                    yield f"data: {json.dumps({'type': 'error', 'message': '摘要生成失败'}, ensure_ascii=False)}\n\n"
+                    return
+
+                try:
+                    from domains.memory.repository import AgentMemoryRepository
+
+                    memory_repo = AgentMemoryRepository(session)
+                    memory_payload = {
+                        "book_id": conversation.book_id,
+                        "memory_type": "context_summary",
+                        "content": summary,
+                        "source": "manual_compress",
+                        "meta": {
+                            "thread_id": body.thread_id,
+                            "compressed_at": datetime.now(timezone.utc).isoformat(),
+                        },
+                    }
+                    # 摘要同步生成向量嵌入，保证语义检索可命中压缩摘要
+                    try:
+                        memory_payload["embedding"] = await llm.embedding.aembed_query(
+                            summary[:2000]
+                        )
+                    except Exception as exc:
+                        logger.warning(f"压缩摘要 embedding 生成失败: {exc}")
+                    await memory_repo.create(user_id=user_id, data=memory_payload)
+                except Exception as exc:
+                    logger.warning(f"保存压缩摘要到 AgentMemory 失败: {exc}")
+
+                # 任务 30（压缩修复）：add_messages 只增不减，aupdate_state 传入消息子集无法删除
+                # 旧消息，必须传 RemoveMessage 列表才能从 checkpoint 的 messages 通道真正裁剪。
+                from langchain_core.messages import RemoveMessage
+
+                # 安全裁剪：位置切片会拆散 AI tool_calls 与其 ToolMessage 响应的配对，
+                # 用 safe_compress_cutoff 保证保留区不残留孤儿 ToolMessage。
+                _cutoff = safe_compress_cutoff(messages, 20)
+                kept_messages = messages[_cutoff:]
+                removed_messages = messages[:_cutoff]
+                graph = build_user_agent_graph(
+                    db_manager.with_db,
+                    model_config=model_config,
+                    checkpointer=checkpoint,
                 )
-            except Exception as exc:
-                logger.warning(f"压缩摘要 embedding 生成失败: {exc}")
-            await memory_repo.create(user_id=user_id, data=memory_payload)
-        except Exception as exc:
-            logger.warning(f"保存压缩摘要到 AgentMemory 失败: {exc}")
+                await graph.aupdate_state(
+                    config,
+                    values={
+                        "messages": [RemoveMessage(id=m.id) for m in removed_messages if getattr(m, "id", None)],
+                        "compressed_context": summary,
+                        "message_count_at_compress": len(messages),
+                    },
+                )
 
-        # 任务 30（压缩修复）：add_messages 只增不减，aupdate_state 传入消息子集无法删除
-        # 旧消息，必须传 RemoveMessage 列表才能从 checkpoint 的 messages 通道真正裁剪。
-        from langchain_core.messages import RemoveMessage
+                removed_count = len(messages) - len(kept_messages)
+                yield _sse_compress_done(summary, removed_count, len(kept_messages))
+            finally:
+                _pop_compress_task()
+                await _release_thread_lock(_t_key, _t_holder)
 
-        # 安全裁剪：位置切片会拆散 AI tool_calls 与其 ToolMessage 响应的配对，
-        # 用 safe_compress_cutoff 保证保留区不残留孤儿 ToolMessage。
-        _cutoff = safe_compress_cutoff(messages, 20)
-        kept_messages = messages[_cutoff:]
-        removed_messages = messages[:_cutoff]
-        graph = build_user_agent_graph(
-            db_manager.with_db,
-            model_config=model_config,
-            checkpointer=checkpoint,
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers=_sse_headers(),
         )
-        await graph.aupdate_state(
-            config,
-            values={
-                "messages": [RemoveMessage(id=m.id) for m in removed_messages if getattr(m, "id", None)],
-                "compressed_context": summary,
-                "message_count_at_compress": len(messages),
-            },
-        )
-
-        removed_count = len(messages) - len(kept_messages)
-        yield _sse_compress_done(summary, removed_count, len(kept_messages))
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers=_sse_headers(),
-    )
+    except Exception:
+        _pop_compress_task()
+        await _release_thread_lock(_t_key, _t_holder)
+        raise
 
 
 @router.patch("/state/{thread_id}")
@@ -1495,6 +1658,7 @@ async def patch_state(
     user_id: Annotated[int, Depends(get_current)],
     session: Annotated[AsyncSession, Depends(db_manager.get_db)] = None,
 ):
+    """预留/测试用（N8）：直接改 checkpoint 状态（白名单键），主链路不使用。"""
     # 先校验会话归属：thread_id 来自路径，若不校验可越权读写他人会话的 checkpoint 状态
     conversation = await _get_conversation(session, thread_id, user_id)
     if not conversation:
@@ -1530,6 +1694,7 @@ async def review_action(
     user_id: Annotated[int, Depends(get_current)],
     body: ReviewActionRequest,
     session: Annotated[AsyncSession, Depends(db_manager.get_db)] = None,
+    _rl: None = Depends(rate_limit_review_action),
 ):
     conversation = await _get_conversation(session, body.thread_id, user_id)
     if not conversation:

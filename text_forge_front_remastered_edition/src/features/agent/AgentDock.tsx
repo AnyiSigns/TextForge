@@ -60,8 +60,12 @@ const buildWritePrompt = async (chapterId: number): Promise<string> => {
     }
   }
 
+  // 1.2：上一章正文截断到最近 4000 字（JS length 对代理对计 2，恒低于后端 6000 护栏 agent_nodes.py:478）
+  // 审查修复：slice(-4000) 可能切断代理对（emoji 等）产生孤立低代理位，退回一位避免替换符
+  const tail = prevContent.trim().slice(-4000);
+  const safeTail = /^[\uDC00-\uDFFF]/.test(tail) ? tail.slice(1) : tail;
   const prevText = prevContent.trim()
-    ? `## 上一章《${prevTitle}》正文\n${prevContent.trim()}`
+    ? `## 上一章《${prevTitle}》正文\n${safeTail}`
     : '## 上一章正文\n（上一章暂无正文，可作为开篇章节撰写）';
 
   return [
@@ -75,10 +79,11 @@ const buildWritePrompt = async (chapterId: number): Promise<string> => {
     '',
     prevText,
     '',
-    '请基于以上「本章大纲/摘要」「相关角色」与「上一章正文」的上下文，承接剧情、人物、伏笔与文风连贯性，生成本章的完整正文内容。',
+    '请基于以上「本章大纲/摘要」「相关角色」与「上一章正文」的上下文，承接剧情、人物、伏笔与文风连贯性，生成并落库本章的完整正文内容。',
     '要求：',
-    '- 不要调用任何工具，不要添加任何解释、前缀或后缀；',
-    '- 仅返回正文本身；',
+    `- 调用 write_chapter_content(chapter_id=${chapterId}, content=完整正文) 工具写入本章（content 为纯正文文本，不要 JSON 包裹）；`,
+    '- 若写入被审核卡拦截，等待用户确认即可，不要重复生成；',
+    '- 不要添加任何解释、前缀或后缀；',
     '- 字数控制在 3000-5000 字。',
   ].join('\n');
 };
@@ -103,10 +108,11 @@ const reviewPrompt = (text: string, mode: string) =>
  * 头像可拖动以调整位置，避免遮挡视野；接管/写入等事件仍由此承接并触发面板。
  */
 export function AgentDock() {
-  const { sendMessage, abort, messagesEndRef } = useAgentSender();
+  // 4.4：显式传入当前书籍 bookId（useAgentSender 缺省回退 store，此处显式对齐）
+  const bookId = useBookDetailStore((s) => s.bookId);
+  const { sendMessage, abort, messagesEndRef } = useAgentSender(bookId);
   const agentMessages = useBookDetailStore((s) => s.agentMessages);
   const agentStreaming = useBookDetailStore((s) => s.agentStreaming);
-  const bookId = useBookDetailStore((s) => s.bookId);
 
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
 
@@ -123,7 +129,11 @@ export function AgentDock() {
         if (raw) {
           const p = JSON.parse(raw);
           if (typeof p.x === 'number' && typeof p.y === 'number') {
-            setPos(p as { x: number; y: number });
+            // N10：localStorage 恢复位置同样 clamp（窗口尺寸变化后旧坐标可能越界）
+            setPos({
+              x: Math.min(Math.max(0, p.x), Math.max(0, window.innerWidth - 48)),
+              y: Math.min(Math.max(0, p.y), Math.max(0, window.innerHeight - 48)),
+            });
             return;
           }
         }
@@ -151,15 +161,26 @@ export function AgentDock() {
     if (wasStreamingRef.current && !agentStreaming && captureRef.current) {
       const cap = captureRef.current;
       captureRef.current = null;
-      const last = [...agentMessages]
-        .reverse()
-        .find((m) => m.role === 'assistant' && m.content && m.type !== 'review-card' && m.type !== 'propose-cards');
-      if (last?.content) {
-        const text = last.content.trim();
-        if (cap.kind === 'chapter' && cap.chapterId != null) {
-          setWriteReview({ chapterId: cap.chapterId, content: text });
-        } else if (cap.kind === 'selection' && cap.start != null && cap.end != null) {
-          setSelectionReview({ start: cap.start, end: cap.end, content: text });
+      // 1.4（v4 修正）：本回合存在 write_chapter_content 工具卡 → 写入走后端门控审批，
+      // 不弹 WriteReviewCard（否则拒绝后 agent 的拒绝说明会被当成正文弹卡落库）。
+      // 条件用「任意工具卡」（不论成功失败）：第一段流（门控拦截）与审批后续流均适用。
+      const hasWriteToolCard = agentMessages.some(
+        (m) => m.type === 'tool' && m.tool === 'write_chapter_content',
+      );
+      if (cap.kind === 'chapter' && cap.chapterId != null) {
+        if (hasWriteToolCard) return;
+        const last = [...agentMessages]
+          .reverse()
+          .find((m) => m.role === 'assistant' && m.content && m.type !== 'review-card');
+        if (last?.content) {
+          setWriteReview({ chapterId: cap.chapterId, content: last.content.trim() });
+        }
+      } else if (cap.kind === 'selection' && cap.start != null && cap.end != null) {
+        const last = [...agentMessages]
+          .reverse()
+          .find((m) => m.role === 'assistant' && m.content && m.type !== 'review-card');
+        if (last?.content) {
+          setSelectionReview({ start: cap.start, end: cap.end, content: last.content.trim() });
         }
       }
     }
@@ -172,7 +193,11 @@ export function AgentDock() {
       const nx = startRef.current.x + (e.clientX - startRef.current.mx);
       const ny = startRef.current.y + (e.clientY - startRef.current.my);
       if (Math.abs(e.clientX - startRef.current.mx) > 3 || Math.abs(e.clientY - startRef.current.my) > 3) movedRef.current = true;
-      setPos({ x: Math.max(0, nx), y: Math.max(0, ny) });
+      // N10：拖拽位置 clamp 到视口内（避免头像拖出屏幕无法找回）
+      setPos({
+        x: Math.min(Math.max(0, nx), Math.max(0, window.innerWidth - 48)),
+        y: Math.min(Math.max(0, ny), Math.max(0, window.innerHeight - 48)),
+      });
     };
     const onUp = () => {
       if (draggingRef.current) {
@@ -270,11 +295,18 @@ export function AgentDock() {
 
   if (!pos) return null;
 
-  const panelLeft = pos.x > window.innerWidth / 2 ? pos.x - 340 : pos.x + 52;
-  const panelTop = Math.min(pos.y, window.innerHeight - 460);
+  // N10：面板定位 clamp 到视口内（面板 320x440 + 头像 52px 边距）
+  const PANEL_W = 320;
+  const PANEL_H = 440;
+  const panelLeft = Math.min(
+    Math.max(0, pos.x > window.innerWidth / 2 ? pos.x - PANEL_W - 16 : pos.x + 52),
+    Math.max(0, window.innerWidth - PANEL_W - 8),
+  );
+  const panelTop = Math.min(Math.max(0, pos.y), Math.max(0, window.innerHeight - PANEL_H - 8));
 
+  // 2.1：propose-cards 渲染器已删除，过滤条件同步收窄
   const visible = agentMessages.filter(
-    (m) => m.role === 'assistant' && (m.content || m.type === 'streaming') && m.type !== 'review-card' && m.type !== 'propose-cards',
+    (m) => m.role === 'assistant' && (m.content || m.type === 'streaming') && m.type !== 'review-card',
   );
 
   return (

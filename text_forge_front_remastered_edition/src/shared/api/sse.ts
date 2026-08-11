@@ -3,6 +3,9 @@
 
 export type SSEEventHandler = (event: Record<string, unknown>) => void;
 
+/** P-E：60s 无数据 watchdog——MaaS/网关挂起时主动中断，避免前端永久等待。 */
+const SSE_IDLE_TIMEOUT_MS = 60_000;
+
 export async function readSSE(
   response: Response,
   onEvent: SSEEventHandler,
@@ -15,7 +18,23 @@ export async function readSSE(
 
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      let done: boolean;
+      let value: Uint8Array | undefined;
+      try {
+        // P-E：每次 read 都带超时保护（无数据 60s 视为连接挂起）
+        ({ done, value } = await withTimeout(
+          reader.read(),
+          SSE_IDLE_TIMEOUT_MS,
+          new Error('连接超时：60 秒内未收到服务端数据，请重试'),
+        ));
+      } catch (err) {
+        // 审查修复：超时后主动 cancel 底层流，释放 pending read 与连接
+        // （仅抛错会让 reader 锁滞留到服务端超时，资源悬挂）
+        if ((err as Error)?.name === 'SSEIdleTimeout') {
+          await reader.cancel().catch(() => {});
+        }
+        throw err;
+      }
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
@@ -41,5 +60,22 @@ export async function readSSE(
     } catch {
       // 忽略：锁已释放
     }
+  }
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, error: Error): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          error.name = 'SSEIdleTimeout';
+          reject(error);
+        }, ms);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
   }
 }

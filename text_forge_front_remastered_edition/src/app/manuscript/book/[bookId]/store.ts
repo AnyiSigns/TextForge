@@ -1,6 +1,7 @@
 'use client';
 
 import { create } from 'zustand';
+import { toast } from 'sonner';
 import * as booksApi from '@/shared/api/books';
 import * as contentsApi from '@/shared/api/contents';
 import * as charactersApi from '@/shared/api/characters';
@@ -197,8 +198,10 @@ export const useManuscriptStore = create<ManuscriptState>((set, get) => {
       try {
         const saved = await contentsApi.saveContent(activeChapterId, content);
         set({ version: saved.version, dirty: false, savedAt: saved.createdAt, saving: false });
-      } catch {
+      } catch (err) {
         set({ saving: false });
+        // 1.4（〇-5）：保存失败必须展示具体原因（锁定章 409 / 网络错误），避免静默失败
+        toast.error(`保存失败：${err instanceof Error && err.message ? err.message : '请稍后重试'}`);
       }
     },
 

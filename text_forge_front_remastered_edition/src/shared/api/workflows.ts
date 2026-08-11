@@ -23,8 +23,6 @@ export interface Workflow {
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
   builtin?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
 }
 
 export async function listWorkflows(): Promise<Workflow[]> {

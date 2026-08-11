@@ -258,7 +258,7 @@ export interface KnowledgeDoc {
 export interface SSEEvent {
   type: 'token' | 'agent_token' | 'agent_reasoning' | 'think_start' | 'agent_think_end' | 'tool_start' | 'tool_end' | 'progress' |
         'node_start' | 'node_stream' | 'node_end' | 'node_fail' | 'subgraph_start' |
-        'propose_cards' | 'review_card' | 'suggestions' | 'extend_outline' | 'title_update' | 'compress_done' | 'turn_metrics' | 'end' | 'error';
+        'review_card' | 'suggestions' | 'extend_outline' | 'title_update' | 'compress_done' | 'turn_metrics' | 'end' | 'error';
   token?: string;
   tool?: string;
   tool_call_id?: string;

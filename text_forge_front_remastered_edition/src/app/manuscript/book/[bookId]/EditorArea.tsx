@@ -202,6 +202,26 @@ export function EditorArea() {
     return () => window.removeEventListener('textforge:apply-chapter-content', onApply);
   }, [activeChapterId, commitContent]);
 
+  // 1.4（v5）：Agent 经 write_chapter_content 审批落库成功后，手稿编辑器刷新当前章内容
+  // （工具门控路径不再派发 apply-chapter-content，需独立刷新通道）
+  useEffect(() => {
+    const onAgentChapterWrite = () => {
+      if (!activeChapterId) return;
+      // 审查修复：用户有未保存编辑时跳过自动刷新，避免覆盖丢失（dirty 数据丢失风险）
+      if (useManuscriptStore.getState().dirty) return;
+      void contentsApi.fetchLatestContent(activeChapterId).then((latest) => {
+        // 刷新期间用户可能已切章或开始编辑，二次校验避免覆盖新章/新输入
+        const s = useManuscriptStore.getState();
+        if (activeChapterId !== s.activeChapterId) return;
+        if (s.dirty) return;
+        commitContent(latest.content || '');
+        useManuscriptStore.setState({ version: latest.version, savedAt: latest.createdAt, dirty: false });
+      }).catch(() => {});
+    };
+    window.addEventListener('textforge:refresh-chapter-content', onAgentChapterWrite);
+    return () => window.removeEventListener('textforge:refresh-chapter-content', onAgentChapterWrite);
+  }, [activeChapterId, commitContent]);
+
   useEffect(() => {
     const onReplace = (e: Event) => {
       const d = (e as CustomEvent).detail as { start: number; end: number; content: string } | undefined;

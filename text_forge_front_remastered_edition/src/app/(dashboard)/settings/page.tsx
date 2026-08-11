@@ -24,6 +24,7 @@ import {
 } from '@/lib/storage/themeBackground';
 import { PageContainer } from '@/shared/ui/PageContainer';
 import { PageHeader } from '@/shared/ui/PageHeader';
+import { AgentInsightsPanel } from '@/features/agent/AgentInsightsPanel';
 
 const TEXT_ROLES: { key: string; label: string; desc: string }[] = [
   { key: 'main', label: '主模型', desc: '通用生成' },
@@ -70,6 +71,7 @@ const TABS = [
   { value: 'profile', label: '用户', icon: User },
   { value: 'appearance', label: '外观', icon: Palette },
   { value: 'model', label: '模型', icon: Boxes },
+  { value: 'agent', label: 'Agent', icon: Cpu },
 ] as const;
 
 type Tab = typeof TABS[number]['value'];
@@ -879,6 +881,11 @@ export default function SettingsPage() {
               </div>
             </Card>
           </div>
+        )}
+
+        {/* 2.4：Agent 运行洞察（写操作审计 / 回合指标读取端点接入） */}
+        {activeTab === 'agent' && (
+          <AgentInsightsPanel />
         )}
       </div>
     </PageContainer>

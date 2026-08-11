@@ -11,7 +11,6 @@
 import { ChevronDown } from 'lucide-react';
 import { cn } from '@/shared/lib/cn';
 import { ReviewCard } from './ReviewCard';
-import { ProposeCards } from './ProposeCards';
 import type { AgentMessage } from '../store';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -266,18 +265,8 @@ const MESSAGE_RENDERERS: Record<string, (props: MessageItemProps) => React.React
         key={`${msg.id || 'rc'}-${props.index}`}
         data={reviewData as Record<string, unknown>}
         onAction={props.onReviewAction}
-      />
-    ) : null;
-  },
-  'propose-cards': (props) => {
-    const msg = props.msg;
-    if (msg.type !== 'propose-cards' || !msg.token) return null;
-    const cardData = safeParseJSON(msg.token);
-    return cardData ? (
-      <ProposeCards
-        key={`${msg.id || 'pc'}-${props.index}`}
-        data={cardData as Record<string, unknown>}
-        onSendMessage={props.onSendMessage}
+        // 2.12：历史回放卡只读（live:false 不渲染操作按钮）
+        disabled={msg.live === false}
       />
     ) : null;
   },

@@ -33,12 +33,11 @@ export function SidePanel({ onClose }: SidePanelProps) {
       .catch(() => toast.error('工作流列表加载失败'));
   }, []);
 
-  // 书籍切换时同步工作流绑定下拉值（渲染期间调整，React 会立即重渲染）
-  const [prevWorkflowId, setPrevWorkflowId] = useState(book?.workflowId ?? '');
-  if ((book?.workflowId ?? '') !== prevWorkflowId) {
-    setPrevWorkflowId(book?.workflowId ?? '');
-    setBoundWfId(book?.workflowId ?? '');
-  }
+  // 书籍切换时同步工作流绑定下拉值（P3：渲染期 setState 改 effect 同步，
+  // 依赖仅 workflowId，用户手动选择不会被其他字段变化覆盖；setState 放微任务规避告警）
+  useEffect(() => {
+    queueMicrotask(() => setBoundWfId(book?.workflowId ?? ''));
+  }, [book?.workflowId]);
 
   const handleSaveWorkflow = async () => {
     if (!book) return;

@@ -5,7 +5,9 @@ import { useBookDetailStore } from '@/app/(dashboard)/books/[id]/store';
 import * as agentApi from '@/shared/api/agent';
 import { ragClient } from '@/lib/knowledge';
 import type { SSEEvent } from '@/shared/api/types';
+import { assertReviewCard, assertToolEnd, assertNodeEnd, assertTurnMetrics } from '@/shared/api/sseGuards';
 import {
+  emitAgentChapterContentRefresh,
   emitAgentOutlinesRefresh,
   emitAgentSessionsRefresh,
   emitAgentTitle,
@@ -18,9 +20,12 @@ import {
  * 任务 25：sendMessage / resume 合并为同一内部实现（runAgentStream），
  * 仅入口差异（新消息 vs 空消息续跑）；token 流经 rAF 节流批量写入 store，
  * 避免每 token 一次全列表重渲。
+ *
+ * 4.4：接受可选 bookId 显式注入（手稿页/书籍页），缺省回退 useBookDetailStore。
  */
-export function useAgentSender() {
-  const bookId = useBookDetailStore((s) => s.bookId);
+export function useAgentSender(bookIdOverride?: number) {
+  const storeBookId = useBookDetailStore((s) => s.bookId);
+  const bookId = bookIdOverride ?? storeBookId;
   const agentThreadId = useBookDetailStore((s) => s.agentThreadId);
   const agentStreaming = useBookDetailStore((s) => s.agentStreaming);
   const agentMessages = useBookDetailStore((s) => s.agentMessages);
@@ -39,7 +44,6 @@ export function useAgentSender() {
   const updateNodeMessage = useBookDetailStore((s) => s.updateNodeMessage);
   const setAgentThreadId = useBookDetailStore((s) => s.setAgentThreadId);
   const setPendingReview = useBookDetailStore((s) => s.setPendingReview);
-  const setCreativePhase = useBookDetailStore((s) => s.setCreativePhase);
 
   const thinkingStartRef = useRef(0);
   const reasoningBufferRef = useRef('');
@@ -49,10 +53,43 @@ export function useAgentSender() {
   const currentToolNameRef = useRef<string>('');
   const replyBufferRef = useRef('');
   const nearBottomRef = useRef(true);
+  // N6：发送互斥——startAgentSession await 窗口内 agentStreaming 尚未置位，
+  // 仅靠该守卫存在重复发送竞态；sendingRef 同步置位堵住窗口。
+  const sendingRef = useRef(false);
+  // P-F：首 token 延迟与 RAG 耗时埋点
+  const turnStartedRef = useRef(0);
+  const firstTokenAtRef = useRef(0);
   // 任务 25：token 流 rAF 节流——攒批一帧内多次 token 再写一次 store，
   // 避免每 token 全量 set store 导致长消息列表 O(n²) 重渲。
   const pendingTokenRef = useRef('');
   const rafHandleRef = useRef<number | null>(null);
+  // N9：node_stream 输出同样 rAF 批处理（store 追加语义不变），
+  // 避免每 token 一次全列表 set store 的 O(n²) 重渲。
+  const nodeOutputBufferRef = useRef<Record<string, string>>({});
+  const nodeRafRef = useRef<number | null>(null);
+
+  const flushNodeOutputs = useCallback(() => {
+    if (nodeRafRef.current !== null) {
+      cancelAnimationFrame(nodeRafRef.current);
+      nodeRafRef.current = null;
+    }
+    const buf = nodeOutputBufferRef.current;
+    if (Object.keys(buf).length === 0) return;
+    nodeOutputBufferRef.current = {};
+    for (const [nodeId, token] of Object.entries(buf)) {
+      setNodeOutput(nodeId, token);
+    }
+  }, [setNodeOutput]);
+
+  const scheduleNodeOutput = useCallback((nodeId: string, token: string) => {
+    nodeOutputBufferRef.current[nodeId] = (nodeOutputBufferRef.current[nodeId] || '') + token;
+    if (nodeRafRef.current === null) {
+      nodeRafRef.current = requestAnimationFrame(() => {
+        nodeRafRef.current = null;
+        flushNodeOutputs();
+      });
+    }
+  }, [flushNodeOutputs]);
 
   const flushTokens = useCallback(() => {
     if (rafHandleRef.current !== null) {
@@ -99,7 +136,16 @@ export function useAgentSender() {
         case 'agent_token': {
           // agent_token 为单通道模式下的正文流式事件（与原 token 事件同语义）
           const token = event.token || '';
-          if (token) scheduleToken(token);
+          if (token) {
+            // P-F：首 token 延迟埋点（performance.now 单调时钟）
+            if (!firstTokenAtRef.current) {
+              firstTokenAtRef.current = performance.now();
+              console.debug(
+                `[agent] 首 token 延迟 ${Math.round(firstTokenAtRef.current - turnStartedRef.current)}ms`,
+              );
+            }
+            scheduleToken(token);
+          }
           break;
         }
         case 'agent_reasoning':
@@ -136,13 +182,19 @@ export function useAgentSender() {
         case 'tool_end': {
           // 任务 25：优先用事件里的 tool_call_id 配对；兼容旧后端（不带 id）时
           // 按最近记录的 tool_start 工具名回退。success=false 表示工具失败。
+          assertToolEnd(event as unknown as Record<string, unknown>);
           const toolName = event.tool || currentToolNameRef.current;
           const toolCallId = event.tool_call_id || '';
+          const success = (event as { success?: boolean }).success;
           currentToolNameRef.current = '';
           updateToolMessage(toolName, 'done', {
             toolCallId: toolCallId || undefined,
-            success: (event as { success?: boolean }).success,
+            success,
           });
+          // 1.4（v5）：write_chapter_content 审批执行成功 → 通知手稿编辑器刷新当前章内容
+          if (toolName === 'write_chapter_content' && success) {
+            emitAgentChapterContentRefresh('');
+          }
           break;
         }
         case 'node_start': {
@@ -165,12 +217,18 @@ export function useAgentSender() {
         case 'node_stream': {
           // 事件只有 node_id（无 label），按 nodeId 累积到 nodeOutputs（状态卡片展开时在卡片内部展示）
           const nodeId = event.node_id || '';
-          setNodeOutput(nodeId, event.token || '');
+          // N9：rAF 批处理，减少 store 写入次数
+          scheduleNodeOutput(nodeId, event.token || '');
           break;
         }
         case 'node_end': {
-          const nodeId = event.node_id || event.label || '';
-          const label = event.label || nodeId;
+          // N9：先冲刷未落库的 node_stream 缓冲，再读取 nodeOutputs 固化卡片内容
+          flushNodeOutputs();
+          // N3：node_end 事件不带 label（后端仅 node_id/output_preview/tokens），
+          // 仅在 event.label 存在时才更新 label，避免用 nodeId 覆盖 node_start 的友好标签
+          assertNodeEnd(event as unknown as Record<string, unknown>);
+          const nodeId = event.node_id || '';
+          const label = (event as { label?: string }).label;
           upsertNodeStatus({ nodeId, label, status: 'completed', tokens: event.tokens });
           updateNodeMessage(nodeId, { label, nodeStatus: 'completed', tokens: event.tokens });
           // 把流式累积的节点输出固化到节点卡片消息自身（content），
@@ -182,9 +240,11 @@ export function useAgentSender() {
           break;
         }
         case 'node_fail': {
+          // N9：先冲刷未落库的 node_stream 缓冲
+          flushNodeOutputs();
           // 节点失败必须让用户看到，不能静默
-          const nodeId = event.node_id || event.label || '';
-          const label = event.label || nodeId;
+          const nodeId = event.node_id || '';
+          const label = (event as { label?: string }).label;
           const reason = event.reason || '';
           upsertNodeStatus({ nodeId, label, status: 'failed', reason });
           updateNodeMessage(nodeId, { label, nodeStatus: 'failed', reason });
@@ -197,9 +257,9 @@ export function useAgentSender() {
           addAgentMessage({
             role: 'assistant',
             type: 'error',
-            content: `工作流节点失败：${label}${reason ? `（${reason}）` : ''}`,
+            content: `工作流节点失败：${label || nodeId}${reason ? `（${reason}）` : ''}`,
           });
-          setAgentStatus({ kind: 'error', message: `节点 ${label} 执行失败` });
+          setAgentStatus({ kind: 'error', message: `节点 ${label || nodeId} 执行失败` });
           break;
         }
         case 'extend_outline':
@@ -231,32 +291,24 @@ export function useAgentSender() {
             });
           }
           break;
-        case 'turn_metrics':
+        case 'turn_metrics': {
           // 任务 28：回合指标事件——仅作调试/日志展示，不影响 UI 状态
+          // 2.3：契约统一为嵌套结构 { type, metrics }
+          assertTurnMetrics(event as unknown as Record<string, unknown>);
           break;
-        case 'propose_cards':
-          setPendingReview(null);
-          setAgentStatus({ kind: 'working', label: '提议卡片中...' });
+        }
+        case 'review_card':
+          // 2.2/2.12：契约断言（tokens/elapsed_ms 字段） + live 卡片（可操作）
+          assertReviewCard(event as unknown as Record<string, unknown>);
+          setAgentStatus({ kind: 'working', label: '等待审核...' });
+          setPendingReview(event as unknown as Record<string, unknown>);
           addAgentMessage({
             role: 'assistant',
             content: '',
-            type: 'propose-cards',
-            token: JSON.stringify({
-              card_types: event.card_types,
-              reason: event.reason,
-              cards: event.cards,
-            }),
+            type: 'review-card',
+            token: JSON.stringify(event),
+            live: true,
           });
-          if (event.card_types?.includes('world_setup') || event.card_types?.includes('character_intro')) {
-            setCreativePhase('worldbuilding');
-          } else if (event.card_types?.includes('plot_direction')) {
-            setCreativePhase('outlining');
-          }
-          break;
-        case 'review_card':
-          setAgentStatus({ kind: 'working', label: '等待审核...' });
-          setPendingReview(event as unknown as Record<string, unknown>);
-          addAgentMessage({ role: 'assistant', content: '', type: 'review-card', token: JSON.stringify(event) });
           break;
         case 'suggestions': {
           // 创作建议必须展示给用户（后端每条回复后都会推送）
@@ -288,13 +340,16 @@ export function useAgentSender() {
           break;
       }
     },
-    [addAgentMessage, setPendingReview, setAgentStatus, setCreativePhase, commitStreamingMessage, upsertNodeStatus, setNodeOutput, updateToolMessage, updateNodeMessage, setAgentReasoning, flushTokens, scheduleToken],
+    [addAgentMessage, setPendingReview, setAgentStatus, commitStreamingMessage, upsertNodeStatus, updateToolMessage, updateNodeMessage, setAgentReasoning, flushTokens, scheduleToken, scheduleNodeOutput, flushNodeOutputs],
   );
 
   // 任务 25：sendMessage / resume 共用同一流式执行骨架，仅起始差异（消息内容 / 续跑）。
   const runAgentStream = useCallback(
     async (opts: { message: string; threadId: string; personalRagResults?: Array<Record<string, unknown>> }) => {
       setAgentStreaming(true);
+      // P-F：回合起点（首 token 延迟基准）
+      turnStartedRef.current = performance.now();
+      firstTokenAtRef.current = 0;
       const abort = new AbortController();
       abortRef.current = abort;
       replyBufferRef.current = '';
@@ -312,13 +367,20 @@ export function useAgentSender() {
       currentToolNameRef.current = '';
       clearNodeStatuses();
       clearNodeOutputs();
+      // N9：新回合复位节点输出缓冲（旧回合残留的未冲刷 token 一并丢弃）
+      nodeOutputBufferRef.current = {};
+      if (nodeRafRef.current !== null) {
+        cancelAnimationFrame(nodeRafRef.current);
+        nodeRafRef.current = null;
+      }
 
       try {
         const onDone = (reply: string) => {
-          // end.reply 是服务端最终确定的回复（含工作流候选正文确认等非流式内容），
-          // 应覆盖缓冲区；仅当 reply 为空时保留流式累积的正文。
+          // end.reply 是服务端最终确定的回复（含工作流候选正文确认等非流式内容）。
+          // v4：仅当 reply 与当前流式缓冲不同才写入——相同则跳过冗余更新，
+          // 不同才覆盖（防重复/覆盖丢失）；reply 为空时保留流式累积的正文。
           flushTokens();
-          if (reply) {
+          if (reply && reply !== replyBufferRef.current) {
             replyBufferRef.current = reply;
             updateAgentStreamToken(reply);
           }
@@ -364,78 +426,104 @@ export function useAgentSender() {
           // 主动停止（abort 已清空 token/reply 缓冲）：只需定型残留的 streaming 气泡，
           // 不要再 flush 缓冲——否则 updateAgentStreamToken 找不到 streaming 消息会
           // 追加一条新消息，产生「停止后重复回复」或跨会话内容泄漏（任务 25 修复）。
+          flushNodeOutputs();
           commitStreamingMessage();
         } else {
           // 真实失败：flush 缓冲 + 定型气泡 + 展示错误（含重试按钮）
           flushTokens();
+          flushNodeOutputs();
           commitStreamingMessage();
           const errMsg = (err as Error)?.message || 'Agent 请求失败，请重试。';
-          const lockConflict = (err as Error & { status?: number })?.status === 503;
-          // 任务 22：所有错误都附带原消息，供面板渲染「重试」按钮；
-          // 书籍锁冲突（503）时额外提示可解除占用。
-          addAgentMessage({
-            role: 'assistant',
-            content: lockConflict
-              ? `${errMsg}。若确认没有其他任务正在运行，可点击「解除占用并重试」。`
-              : errMsg,
-            type: 'error',
-            retryMessage: opts.message,
-          });
-          setAgentStatus({ kind: 'error', message: errMsg });
+          const status = (err as Error & { status?: number })?.status;
+          const lockConflict = status === 503;
+          if (status === 404) {
+            // N5：会话不存在/已失效（被删除或过期）→ 重置会话并引导新建，
+            // 不附加 retryMessage（重试只会再次 404）；刷新侧栏移除已失效会话
+            setAgentThreadId(null);
+            emitAgentSessionsRefresh();
+            addAgentMessage({
+              role: 'assistant',
+              type: 'error',
+              content: `${errMsg}，已重置会话，请重新发送。`,
+            });
+            setAgentStatus({ kind: 'error', message: errMsg });
+          } else {
+            // 任务 22：所有错误都附带原消息，供面板渲染「重试」按钮；
+            // 书籍锁冲突（503）时额外提示可解除占用。
+            addAgentMessage({
+              role: 'assistant',
+              content: lockConflict
+                ? `${errMsg}。若确认没有其他任务正在运行，可点击「解除占用并重试」。`
+                : errMsg,
+              type: 'error',
+              retryMessage: opts.message,
+            });
+            setAgentStatus({ kind: 'error', message: errMsg });
+          }
         }
         setAgentStreaming(false);
       }
     },
-    [bookId, addAgentMessage, setAgentStreaming, handleSSEEvent, setAgentStatus, setAgentReasoning, updateAgentStreamToken, notifyOutlineRefresh, commitStreamingMessage, clearNodeStatuses, clearNodeOutputs, flushTokens],
+    [bookId, addAgentMessage, setAgentStreaming, handleSSEEvent, setAgentStatus, setAgentReasoning, updateAgentStreamToken, notifyOutlineRefresh, commitStreamingMessage, clearNodeStatuses, clearNodeOutputs, flushTokens, flushNodeOutputs, setAgentThreadId],
   );
 
   const sendMessage = useCallback(
     async (msg: string) => {
-      if (!msg.trim() || agentStreaming) return;
-
-      addAgentMessage({ role: 'user', content: msg });
-      nearBottomRef.current = true;
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-
-      let threadId = agentThreadId;
-      if (!threadId) {
-        try {
-          const session = await agentApi.startAgentSession(bookId || undefined);
-          threadId = session.thread_id;
-          setAgentThreadId(threadId);
-          emitAgentSessionsRefresh();
-        } catch {
-          addAgentMessage({ role: 'assistant', content: '启动 Agent 会话失败，请重试。', type: 'error' });
-          return;
-        }
-      }
-
-      // 任务 20：发送时附带个人库检索结果（随流请求体下发，键形状对齐后端契约 {doc_name, content, score}）。
-      // 先置流式态：检索窗口内阻塞发送按钮（sendMessage 的 agentStreaming 守卫），避免重复发送。
-      // 短路 + 超时：无个人文档不触发本地 embedding/WASM 冷加载；冷启动超过 1s 直接放弃附带，
-      // 不让模型下载阻塞首 token（best-effort，检索失败不影响发送）。
-      setAgentStreaming(true);
-      let personalRagResults: Array<Record<string, unknown>> | undefined;
+      // N6：sendingRef 同步互斥（agentStreaming 置位前存在 startAgentSession await 窗口）
+      if (!msg.trim() || agentStreaming || sendingRef.current) return;
+      sendingRef.current = true;
       try {
-        const personalDocs = await ragClient.listPersonal().catch(() => []);
-        if (personalDocs.length > 0) {
-          const ragHits = await Promise.race([
-            ragClient.search(msg, 'personal', 3).catch(() => []),
-            new Promise<never[]>((resolve) => setTimeout(() => resolve([]), 1000)),
-          ]);
-          if (ragHits.length > 0) {
-            personalRagResults = ragHits.map((h) => ({
-              doc_name: h.docName,
-              content: h.text,
-              score: h.score,
-            }));
+        addAgentMessage({ role: 'user', content: msg });
+        nearBottomRef.current = true;
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+
+        let threadId = agentThreadId;
+        if (!threadId) {
+          try {
+            const session = await agentApi.startAgentSession(bookId || undefined);
+            threadId = session.thread_id;
+            setAgentThreadId(threadId);
+            emitAgentSessionsRefresh();
+          } catch {
+            addAgentMessage({ role: 'assistant', content: '启动 Agent 会话失败，请重试。', type: 'error' });
+            return;
           }
         }
-      } catch {
-        // best-effort：个人库不可用时照常发送
-      }
 
-      await runAgentStream({ message: msg, threadId, personalRagResults });
+        // 任务 20：发送时附带个人库检索结果（随流请求体下发，键形状对齐后端契约 {doc_name, content, score}）。
+        // 先置流式态：检索窗口内阻塞发送按钮（sendMessage 的 agentStreaming 守卫），避免重复发送。
+        // 短路 + 超时：无个人文档不触发本地 embedding/WASM 冷加载；冷启动超过 1s 直接放弃附带，
+        // 不让模型下载阻塞首 token（best-effort，检索失败不影响发送）。
+        setAgentStreaming(true);
+        // P-F：RAG 检索耗时埋点
+        const ragStarted = performance.now();
+        let personalRagResults: Array<Record<string, unknown>> | undefined;
+        try {
+          const personalDocs = await ragClient.listPersonal().catch(() => []);
+          if (personalDocs.length > 0) {
+            const ragHits = await Promise.race([
+              ragClient.search(msg, 'personal', 3).catch(() => []),
+              new Promise<never[]>((resolve) => setTimeout(() => resolve([]), 1000)),
+            ]);
+            if (ragHits.length > 0) {
+              personalRagResults = ragHits.map((h) => ({
+                doc_name: h.docName,
+                content: h.text,
+                score: h.score,
+              }));
+            }
+          }
+        } catch {
+          // best-effort：个人库不可用时照常发送
+        }
+        console.debug(
+          `[agent] RAG 检索耗时 ${Math.round(performance.now() - ragStarted)}ms，命中 ${personalRagResults?.length ?? 0} 条`,
+        );
+
+        await runAgentStream({ message: msg, threadId, personalRagResults });
+      } finally {
+        sendingRef.current = false;
+      }
     },
     [agentStreaming, agentThreadId, bookId, addAgentMessage, setAgentThreadId, setAgentStreaming, runAgentStream],
   );
@@ -450,7 +538,9 @@ export function useAgentSender() {
     // 找不到 streaming 消息时追加新消息（重复回复 / 跨会话泄漏）
     pendingTokenRef.current = '';
     replyBufferRef.current = '';
-  }, [agentThreadId]);
+    // N9：冲刷未落库的 node_stream 缓冲（部分正文保留在节点卡片）
+    flushNodeOutputs();
+  }, [agentThreadId, flushNodeOutputs]);
 
   const resume = useCallback(async () => {
     const threadId = agentThreadId;
@@ -479,6 +569,7 @@ export function useAgentSender() {
   useEffect(() => {
     return () => {
       if (rafHandleRef.current !== null) cancelAnimationFrame(rafHandleRef.current);
+      if (nodeRafRef.current !== null) cancelAnimationFrame(nodeRafRef.current);
     };
   }, []);
 

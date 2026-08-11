@@ -185,7 +185,7 @@ describe('useAgentSender 事件处理（store 状态变更）', () => {
     expect(useBookDetailStore.getState().agentMessages.some((m) => m.type === 'review-card')).toBe(false);
   });
 
-  it('propose_cards 生成提议卡片消息并切换创作阶段', async () => {
+  it('propose_cards 事件已删除：不再生成卡片消息、不再切换创作阶段（2.1）', async () => {
     mockStream([
       { type: 'propose_cards', card_types: ['world_setup'], reason: '需要世界设定', cards: [] },
       { type: 'end', reply: '' },
@@ -193,8 +193,60 @@ describe('useAgentSender 事件处理（store 状态变更）', () => {
     const { result } = renderHook(() => useAgentSender());
     await act(async () => { await result.current.sendMessage('提议卡片'); });
     const state = useBookDetailStore.getState();
-    expect(state.agentMessages.some((m) => m.type === 'propose-cards')).toBe(true);
-    expect(state.creativePhase).toBe('worldbuilding');
+    // propose-cards 已从 AgentMessage 联合类型移除，用宽类型断言其不存在
+    expect(state.agentMessages.some((m) => (m as { type?: string }).type === 'propose-cards')).toBe(false);
+    expect(state.creativePhase).not.toBe('worldbuilding');
+  });
+
+  it('N3：node_end 不带 label 时保留 node_start 的友好标签（不覆盖为 nodeId）', async () => {
+    mockStream([
+      { type: 'node_start', node_id: 'writer', label: '执笔写手' },
+      { type: 'node_end', node_id: 'writer', tokens: 5 },
+      { type: 'end', reply: '' },
+    ]);
+    const { result } = renderHook(() => useAgentSender());
+    await act(async () => { await result.current.sendMessage('跑工作流'); });
+    const cards = useBookDetailStore.getState().agentNodeStatuses;
+    const writer = cards.find((c) => c.nodeId === 'writer');
+    expect(writer?.status).toBe('completed');
+    expect(writer?.label).toBe('执笔写手');
+    expect(writer?.label).not.toBe('writer');
+  });
+
+  it('v4 onDone：end.reply 与流式缓冲相同时不重复写入（无重复消息）', async () => {
+    mockStream([
+      { type: 'token', token: '你好' },
+      { type: 'end', reply: '你好' },
+    ]);
+    const { result } = renderHook(() => useAgentSender());
+    await act(async () => { await result.current.sendMessage('hi'); });
+    const state = useBookDetailStore.getState();
+    // 用户消息 type 为 undefined，按 role 过滤非用户消息
+    const settled = state.agentMessages.filter((m) => m.role !== 'user');
+    expect(settled).toHaveLength(1);
+    expect(settled[0].content).toBe('你好');
+  });
+
+  it('N5：404（会话不存在）重置 agentThreadId 并提示新建，不附带重试按钮', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 404, clone: () => ({ json: async () => ({ detail: '会话不存在' }) }) });
+    vi.stubGlobal('fetch', fetchMock);
+    const { result } = renderHook(() => useAgentSender());
+    await act(async () => { await result.current.sendMessage('hi'); });
+    const state = useBookDetailStore.getState();
+    expect(state.agentThreadId).toBeNull();
+    const err = state.agentMessages.find((m) => m.type === 'error');
+    expect(err?.content).toContain('会话不存在');
+    expect((err as { retryMessage?: string } | undefined)?.retryMessage).toBeUndefined();
+  });
+
+  it('2.3：turn_metrics 嵌套结构（metrics 字段）', async () => {
+    mockStream([
+      { type: 'turn_metrics', metrics: { duration_ms: 1234, llm_calls: 2, tool_calls: 1 } },
+      { type: 'end', reply: 'ok' },
+    ]);
+    const { result } = renderHook(() => useAgentSender());
+    await act(async () => { await result.current.sendMessage('hi'); });
+    expect(useBookDetailStore.getState().agentStreaming).toBe(false);
   });
 
   it('suggestions 事件生成可见消息（不该丢弃）', async () => {

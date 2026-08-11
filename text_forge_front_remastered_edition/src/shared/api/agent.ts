@@ -1,4 +1,4 @@
-import { apiClient } from './client';
+import { apiClient, extractApiDetail } from './client';
 import { authedFetch } from './authFetch';
 import { fetchModelConfig } from '@/shared/api/models';
 import { readSSE } from './sse';
@@ -33,12 +33,13 @@ export async function getModelConfigData() {
 }
 
 export async function startAgentSession(bookId?: number): Promise<AgentStartResult> {
-  const modelConfigData = await getModelConfigData();
+  // 后端 /agent/start 不使用请求体（thread 由服务端生成，book_id 走查询参数），
+  // 去掉多余的 modelConfigData body（P3）
   const params: Record<string, unknown> = {};
   if (bookId) {
     params.book_id = bookId;
   }
-  const res = await apiClient.post<AgentStartResult>('/agent/start', modelConfigData, { params });
+  const res = await apiClient.post<AgentStartResult>('/agent/start', undefined, { params });
   return res.data;
 }
 
@@ -68,14 +69,9 @@ export async function streamAgent(
   });
 
   if (!res.ok) {
-    // 解析后端 detail（如 503「该书籍正在进行 Agent 任务」），避免上层只能看到笼统的「Agent 请求失败」
-    let message = 'Agent 请求失败';
-    try {
-      const data = (await res.json()) as { detail?: string };
-      if (data?.detail) message = data.detail;
-    } catch {
-      // 非 JSON 响应体时保留默认消息
-    }
+    // 2.5：统一错误具体化——解析后端 detail（如 503「该书籍正在进行 Agent 任务」），
+    // 避免上层只能看到笼统的「Agent 请求失败」
+    const message = (await extractApiDetail(res)) || 'Agent 请求失败';
     const err: Error & { status?: number } = new Error(message);
     err.status = res.status;
     throw err;
@@ -111,8 +107,9 @@ export async function resumeAgent(
 export async function cancelStream(threadId: string): Promise<void> {
   try {
     await apiClient.post(`/agent/stream/${threadId}/cancel`);
-  } catch {
+  } catch (e) {
     // 取消失败不影响本地中止（浏览器断开连接同样会触发服务端清理）
+    console.warn('[agent] cancelStream 失败', e);
   }
 }
 
@@ -123,6 +120,28 @@ export async function releaseBookLock(bookId: number): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** 2.4：查询书籍当前是否被 Agent 任务占用（锁状态）。 */
+export async function fetchBookLockStatus(bookId: number): Promise<{ locked: boolean; holder?: string | null; ttl?: number | null } | null> {
+  try {
+    const { data } = await apiClient.get<{ locked: boolean; holder?: string | null; ttl?: number | null }>('/agent/book-lock', { params: { book_id: bookId } });
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+/** 2.4：写操作审计记录（可选项按书籍过滤）。 */
+export async function fetchWriteAudits(bookId?: number, limit = 50): Promise<Array<Record<string, unknown>>> {
+  const { data } = await apiClient.get<Array<Record<string, unknown>>>('/agent/audits', { params: { book_id: bookId || undefined, limit } });
+  return data ?? [];
+}
+
+/** 2.4：回合指标记录（可选项按书籍过滤）。 */
+export async function fetchTurnMetrics(bookId?: number, limit = 50): Promise<Array<Record<string, unknown>>> {
+  const { data } = await apiClient.get<Array<Record<string, unknown>>>('/agent/turn-metrics', { params: { book_id: bookId || undefined, limit } });
+  return data ?? [];
 }
 
 export async function submitReviewAction(
@@ -153,8 +172,11 @@ interface MessageRaw {
   create_at: string;
 }
 
-export async function fetchAgentConversations(): Promise<AgentConversation[]> {
-  const { data } = await apiClient.get<ConversationRaw[]>('/agent/conversations');
+export async function fetchAgentConversations(bookId?: number): Promise<AgentConversation[]> {
+  // 2.11：侧栏按当前书过滤（后端支持 book_id 查询参数）
+  const { data } = await apiClient.get<ConversationRaw[]>('/agent/conversations', {
+    params: bookId ? { book_id: bookId } : undefined,
+  });
   return (data ?? []).map((c) => ({
     id: c.id,
     userId: c.user_id,
@@ -209,7 +231,10 @@ export async function streamCompress(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ thread_id: threadId, model_config_data: modelConfigData }),
   });
-  if (!res.ok) throw new Error('Agent 请求失败');
+  if (!res.ok) {
+    // 2.5：与 streamAgent 复用同一错误具体化（后端 detail 归一化）
+    throw new Error((await extractApiDetail(res)) || 'Agent 请求失败');
+  }
 
   await readSSE(res, (event) => {
     onEvent(event as unknown as SSEEvent);

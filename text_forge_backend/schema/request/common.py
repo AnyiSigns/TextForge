@@ -36,6 +36,8 @@ class CompressRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     thread_id: str = Field(alias="threadId")
+    # 2.6 压缩配置一致性：请求体优先，缺省回退 checkpoint（2.10 剥离 api_key 后必须靠此注入）
+    model_config_data: dict | None = Field(default=None, alias="modelConfig")
 
 
 class ReviewActionRequest(BaseModel):

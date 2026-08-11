@@ -6,6 +6,65 @@ const MODEL_PROXY_BASE = process.env.NEXT_PUBLIC_MODEL_PROXY_URL || `${API_BASE}
 
 export { API_BASE, MODEL_PROXY_BASE };
 
+/**
+ * 4-2：统一错误封装（status / code / detail）。
+ * 拦截器把 axios 错误归一化为 ApiError；上层可用 err.status 精确分支
+ * （如 503 锁冲突、404 会话不存在、409 并发互斥）。
+ *
+ * 审查修复：保留 response 与 axios code（超时 ECONNABORTED / 网络 ETIMEDOUT），
+ * 避免 parseApiError 等既有消费方读 err.response.data / err.code 时失效。
+ */
+export class ApiError extends Error {
+  status?: number;
+  code?: string;
+  detail?: unknown;
+  response?: { status?: number; data?: unknown };
+
+  constructor(message: string, status?: number, code?: string, detail?: unknown) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = code;
+    this.detail = detail;
+  }
+}
+
+function toApiError(err: Error & { response?: { status?: number; data?: { detail?: unknown; code?: string } }; code?: string }): ApiError {
+  const status = err.response?.status;
+  const data = err.response?.data;
+  const detail = typeof data?.detail === 'string' ? data.detail : undefined;
+  const api = new ApiError(detail || err.message, status, data?.code ?? err.code, data?.detail);
+  // 保留原始 response，供 parseApiError（apiError.ts）等既有消费方继续读取
+  api.response = err.response;
+  return api;
+}
+
+/**
+ * 2.5：从非 2xx 响应中提取后端具体错误原因（FastAPI detail 归一化）。
+ * 返回 null 表示无法解析（调用方回退笼统文案）。
+ */
+export async function extractApiDetail(res: Response): Promise<string | null> {
+  if (!res) return null;
+  try {
+    const data = (await res.clone().json()) as { detail?: unknown };
+    const detail = data?.detail;
+    if (typeof detail === 'string' && detail) return detail;
+    if (Array.isArray(detail)) {
+      const parts = detail
+        .filter((it) => it && typeof it === 'object')
+        .map((it: { msg?: string; loc?: unknown[] }) => {
+          const loc = Array.isArray(it.loc) ? it.loc.join('.') : '';
+          return loc ? `${loc}: ${it.msg || ''}` : it.msg || '';
+        })
+        .filter(Boolean);
+      if (parts.length > 0) return parts.join('；');
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export const apiClient = axios.create({
   baseURL: API_BASE,
   headers: { 'Content-Type': 'application/json' },
@@ -65,6 +124,26 @@ apiClient.interceptors.response.use(
         window.location.href = '/login';
       }
     }
-    return Promise.reject(err);
+    // 2.5：拒绝前把后端具体 detail 归一化进 err.message（错误信息具体化约束），
+    // 不破坏 401 刷新 / FormData 重试路径
+    const detail: unknown = err.response?.data?.detail;
+    if (typeof detail === 'string' && detail) {
+      err.message = detail;
+    } else if (detail && typeof detail === 'object') {
+      // FastAPI 422 的 detail 是数组 [{loc, msg, type}]，拼出可读信息
+      const items = (detail as Array<{ msg?: string; loc?: unknown[] }>).filter(
+        (it) => it && typeof it === 'object',
+      );
+      if (items.length > 0) {
+        err.message = items
+          .map((it) => {
+            const loc = Array.isArray(it.loc) ? it.loc.join('.') : '';
+            return loc ? `${loc}: ${it.msg || ''}` : it.msg || '';
+          })
+          .join('；');
+      }
+    }
+    // 4-2：归一化为 ApiError（status/code/detail），err.message 已包含具体原因
+    return Promise.reject(toApiError(err));
   },
 );
