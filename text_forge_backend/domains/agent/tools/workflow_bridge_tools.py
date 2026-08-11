@@ -1,9 +1,8 @@
 from typing import Annotated
 
+from config.logging import get_logger
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
-
-from config.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -20,9 +19,8 @@ async def _resolve_book_workflow_id(session_factory, book_id: int) -> str | None
     """
     if not book_id:
         return None
-    from sqlalchemy import select
-
     from models.book import Book
+    from sqlalchemy import select
 
     async with session_factory() as session:
         book = (

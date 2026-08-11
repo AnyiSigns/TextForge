@@ -1,6 +1,9 @@
 """角色模拟房间后端路由"""
 import json
 
+from config.logging import get_logger
+from core.auth import get_current
+from core.model_factory import ModelFactory
 from fastapi import (
     APIRouter,
     Depends,
@@ -9,33 +12,29 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
-
-from config.logging import get_logger
-
-logger = get_logger(__name__)
+from models.agent_memory import AgentMemory
+from models.book import Character
+from models.sim_room import SimBranch, SimMessage, SimParticipant, SimRoom
 from pydantic import BaseModel, Field
+from shared.database import db_manager
+from shared.pagination import PageParams, PageResult
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.auth import get_current
-from core.model_factory import ModelFactory
-from core.security import verify_token
-from domains.sim_rooms.graph import MAX_ROUNDS, stream_sim_round
-from models.agent_memory import AgentMemory
-from models.book import Character, Foreshadowing, Location, PlotThread, SceneEvent
-from models.sim_room import SimBranch, SimMessage, SimParticipant, SimRoom
-from shared.database import db_manager
-from shared.pagination import PageParams, PageResult
+from domains.sim_rooms.graph import MAX_ROUNDS
+
+from .auth import ws_authenticate
+from .context_loader import load_room_context
+from .orchestration import (
+    _execute_round,
+    _generate_branch,
+    _generate_suggestions,
+    _stream_llm_pieces,
+)
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/sim-rooms", tags=["角色模拟"])
-
-BRANCH_TYPE_LABELS: dict[str, str] = {
-    "backstory": "角色背景故事",
-    "relationship": "角色关系线",
-    "plot-thread": "剧情线索",
-    "foreshadow-fill": "伏笔揭示",
-    "voice-test": "角色语音测试",
-}
 
 
 class CreateRoomRequest(BaseModel):
@@ -53,270 +52,6 @@ class CreateRoomRequest(BaseModel):
 
 class EndRoomRequest(BaseModel):
     generate_summary: bool = True
-
-
-async def _stream_llm_pieces(llm, prompt: str):
-    """流式迭代模型输出的文本片段。
-
-    Args:
-        llm: BaseChatModel 实例。
-        prompt: 提示词字符串。
-
-    Yields:
-        模型输出的文本片段（逐 chunk）。
-    """
-    async for chunk in llm.main.astream(prompt):
-        text = chunk.content if hasattr(chunk, "content") else str(chunk)
-        if text:
-            yield text
-
-
-async def _execute_round(
-    websocket: WebSocket,
-    room_id: int,
-    round_count: int,
-    user_content: str,
-    speak_as: str,
-    recent_history: list[str],
-    character_memories: dict[str, str],
-    char_details: list[dict],
-    setting_text: str,
-    parsed_model_config: dict,
-    bridge: dict,
-) -> tuple[int, bool, str]:
-    """执行一轮模拟对话并流式输出。
-
-    供 chat（用户发言）与 auto_advance（AI 自动推进）共用。
-
-    Args:
-        websocket: 客户端 WebSocket。
-        room_id: 模拟房间 ID。
-        round_count: 当前轮数。
-        user_content: 本轮用户输入（自动推进时为导演推进指令）。
-        speak_as: 发言身份（director 或 character:<id>）。
-        recent_history: 最近对话摘要列表（执行后追加本轮输出）。
-        character_memories: 角色记忆字典（执行后合并新增记忆）。
-        char_details: 房间角色详情列表。
-        setting_text: 场景设定文本。
-        parsed_model_config: 用户模型配置。
-        bridge: 图桥接上下文。
-
-    Returns:
-        (更新后的 round_count, 是否应结束, 结束原因)。
-    """
-    if round_count >= MAX_ROUNDS:
-        # 已达轮次上限：不再发 stream_start，直接结束，避免无 token 的虚假流开始
-        await websocket.send_text(json.dumps(
-            {"type": "auto_end", "reason": "达到轮次上限", "roundCount": round_count}, ensure_ascii=False
-        ))
-        return round_count, True, "达到轮次上限"
-
-    state = {
-        "room_id": room_id,
-        "round_count": round_count,
-        "should_end": False,
-        "last_user_input": user_content,
-        "speak_as": speak_as,
-        "room_setting": setting_text,
-        "character_details": char_details,
-        "character_memories": character_memories,
-        "model_config": parsed_model_config,
-        "recent_history": recent_history[-10:],
-        "director_decision": None,
-        "character_outputs": {},
-        "scene_output": None,
-        "final_output": "",
-    }
-
-    try:
-        await websocket.send_text(json.dumps({"type": "stream_start"}, ensure_ascii=False))
-
-        async def _on_token(piece: str, speaker: str) -> None:
-            await websocket.send_text(json.dumps(
-                {"type": "stream_token", "token": piece, "senderLabel": speaker}, ensure_ascii=False
-            ))
-
-        result = await stream_sim_round(state, bridge, _on_token)
-    except Exception as exc:
-        logger.exception(f"生成失败: {exc}")
-        await websocket.send_text(json.dumps({"type": "error", "message": f"生成失败：{exc}"}, ensure_ascii=False))
-        return round_count, False, ""
-
-    round_count += 1
-
-    # 更新记忆
-    character_memories.update(result.get("character_memories", {}))
-
-    final_output = result.get("final_output", "") or ""
-    if not final_output:
-        final_output = "\n".join(f"{k}：{v}" for k, v in result.get("character_outputs", {}).items())
-
-    # 落库本轮输出：场景与各角色分别落库（前端按角色头像/名字渲染），并同步轮数
-    async with db_manager.session_factory() as ss:
-        scene_out = result.get("scene_output")
-        if scene_out:
-            ss.add(SimMessage(room_id=room_id, sender_type="system", sender_label="场景", content=scene_out.strip(), message_type="scene"))
-        for label, text in (result.get("character_outputs") or {}).items():
-            if text.strip():
-                ss.add(SimMessage(room_id=room_id, sender_type="system", sender_label=label, content=text.strip(), message_type="dialogue"))
-        # 轮数写回房间，刷新 updated_at，保证刷新/重连后轮数与列表排序不丢失
-        r = await ss.get(SimRoom, room_id)
-        if r:
-            r.round_count = round_count
-        await ss.commit()
-
-    await websocket.send_text(json.dumps({"type": "turn_done", "roundCount": round_count}, ensure_ascii=False))
-
-    recent_history.append(f"[系统][summary] {final_output[:200]}")
-
-    should_end = bool(result.get("should_end")) or round_count >= MAX_ROUNDS
-    end_reason = result.get("director_decision", {}).get("end_reason", "达到轮次上限") if should_end else ""
-    if should_end:
-        await websocket.send_text(json.dumps({"type": "auto_end", "reason": end_reason, "roundCount": round_count}, ensure_ascii=False))
-
-    return round_count, should_end, end_reason
-
-
-async def _generate_suggestions(
-    recent_history: list[str],
-    char_details: list[dict],
-    setting_text: str,
-    speak_as: str,
-    model_config: dict | None = None,
-) -> list[dict]:
-    """根据当前对话上下文生成 2 条下一步行动建议，供前端卡片点选。
-
-    Args:
-        recent_history: 最近几轮对话的摘要文本列表。
-        char_details: 房间参与者（角色）详情列表。
-        setting_text: 场景设定文本（由地点等生成）。
-        speak_as: 当前发言身份（director 或 character:<id>）。
-
-    Returns:
-        建议列表，每项形如 {"label": 简短标题, "content": 点击后发送的发言内容}。
-    """
-    recent = "\n".join(recent_history[-6:]) or "（对话刚开始）"
-    chars = ", ".join(c["role_label"] for c in char_details) or "（无角色）"
-    prompt = f"""你是小说模拟的导演助手。请根据以下对话上下文，给用户推荐 2 个"下一步该做什么"的行动选项。
-
-场景设定：{setting_text}
-房间角色：{chars}
-当前身份：{speak_as}
-最近对话：
-{recent}
-
-输出 JSON，格式如下（只输出 JSON，不要其他内容）：
-{{"items": [
-  {{"label": "选项简短标题（10字内）", "content": "点击后发送给模拟的完整指令或发言"}},
-  {{"label": "选项简短标题（10字内）", "content": "点击后发送给模拟的完整指令或发言"}}
-]}}
-
-选项内容要贴合剧情推进，以作品内的指令或发言形式呈现，严禁出现服务用语或对用户的提示性说明（如"作为AI""以上建议仅供参考"等）。"""
-    try:
-        llm = ModelFactory(model_config or {})
-        result = await llm.tool.ainvoke(prompt)
-        text = result.content if hasattr(result, "content") else str(result)
-        import json as _json
-        items = _json.loads(text.strip().removeprefix("```json").removesuffix("```").strip()).get("items", [])
-        return [{"label": str(i.get("label", "继续剧情"))[:10], "content": str(i.get("content", ""))[:120]} for i in items if i.get("content")][:2]
-    except Exception as exc:
-        logger.warning(f"生成推荐建议失败: {exc}")
-        return []
-
-
-async def _generate_branch(
-    room_id: int,
-    branch_type: str,
-    recent_history: list[str],
-    char_details: list[dict],
-    setting_text: str,
-    related_event_ids: list[int],
-    related_foreshadowing_ids: list[int],
-    related_plot_thread_ids: list[int],
-    location_id: int | None,
-    model_config: dict | None = None,
-    character_memories: dict[str, str] | None = None,
-    user_char: dict | None = None,
-) -> dict:
-    """根据当前模拟对话生成一条结构化支线并落库。
-
-    Args:
-        room_id: 所属模拟房间 ID。
-        branch_type: 支线类型（backstory/relationship/plot-thread/foreshadow-fill/voice-test）。
-        recent_history: 最近对话摘要列表。
-        char_details: 房间角色详情列表。
-        setting_text: 场景设定文本。
-        related_event_ids: 房间关联的时间线事件 ID 列表。
-        related_foreshadowing_ids: 房间关联的伏笔 ID 列表。
-        related_plot_thread_ids: 房间关联的剧情线索 ID 列表。
-        location_id: 房间关联地点 ID。
-        model_config: 用户模型配置。
-        character_memories: 角色记忆字典（role_label -> 摘要），用于补充角色背景。
-        user_char: 用户扮演的角色详情（entity_id/role_label/description），参与支线上下文与相关角色。
-
-    Returns:
-        生成的支线字典，包含 id/title/content/branchType/related 字段。
-    """
-    type_label = BRANCH_TYPE_LABELS.get(branch_type, "剧情支线")
-    recent = "\n".join(recent_history[-10:]) or "（对话刚开始）"
-    all_chars = list(char_details)
-    if user_char and user_char.get("entity_id"):
-        all_chars.append(user_char)
-    chars = "\n".join(f"- {c['role_label']}（{c.get('description', '')[:200]}）" for c in all_chars) or "（无角色）"
-    mem_lines = "\n".join(f"- {k}：{v[:150]}" for k, v in (character_memories or {}).items()) or "（暂无角色记忆）"
-    prompt = f"""你是小说创作助手。请从下面这段角色模拟对话中，提炼出一条"角色支线"素材并落库。
-
-支线类型：{type_label}（{branch_type}）
-场景设定：{setting_text}
-房间角色：
-{chars}
-角色记忆：
-{mem_lines}
-关联事件ID：{related_event_ids or '无'}
-关联伏笔ID：{related_foreshadowing_ids or '无'}
-关联剧情线索ID：{related_plot_thread_ids or '无'}
-
-最近对话：
-{recent}
-
-请根据支线类型输出 JSON（只输出 JSON，不要其他内容）：
-- title: 支线标题（20字内，概括这条支线）
-- content: 支线内容（150-300字，作为可直接复用的创作素材，保留对话中的关键设定、冲突、情感与台词）
-
-严禁在 JSON 中夹带任何服务用语或对用户的说明。"""
-    try:
-        llm = ModelFactory(model_config or {})
-        result = await llm.tool.ainvoke(prompt)
-        text = result.content if hasattr(result, "content") else str(result)
-        import json as _json
-        parsed = _json.loads(text.strip().removeprefix("```json").removesuffix("```").strip())
-        title = str(parsed.get("title", "")).strip()[:100] or f"{type_label}-{len(recent_history)}轮"
-        content = str(parsed.get("content", "")).strip() or (recent[:300] or "（对话暂无内容）")
-    except Exception as exc:
-        logger.warning(f"生成支线失败，回退为对话摘录: {exc}")
-        title = f"{type_label}-{len(recent_history)}轮"
-        content = recent[:300] or "（对话暂无内容）"
-
-    char_ids = [c.get("entity_id") for c in all_chars if c.get("entity_id")]
-    async with db_manager.session_factory() as ss:
-        branch = SimBranch(
-            room_id=room_id,
-            title=title,
-            content=content,
-            branch_type=branch_type,
-            related_character_ids=char_ids,
-            related_location_id=location_id,
-            related_event_id=related_event_ids[0] if related_event_ids else None,
-            related_event_ids=related_event_ids,
-            related_foreshadowing_id=related_foreshadowing_ids[0] if related_foreshadowing_ids else None,
-            related_foreshadowing_ids=related_foreshadowing_ids,
-            related_plot_thread_ids=related_plot_thread_ids,
-        )
-        ss.add(branch)
-        await ss.commit()
-        await ss.refresh(branch)
-
-    return branch.to_dict()
 
 
 @router.get("/")
@@ -481,6 +216,7 @@ async def delete_room(
 
 @router.websocket("/{room_id}/ws")
 async def room_websocket(websocket: WebSocket, room_id: int, model_config: str | None = Query(default=None, alias="modelConfig")):
+    """房间实时模拟 WebSocket：鉴权 → 上下文装载 → 回合循环（薄传输层）。"""
     parsed_model_config: dict = {}
     if model_config:
         try:
@@ -494,132 +230,21 @@ async def room_websocket(websocket: WebSocket, room_id: int, model_config: str |
             await websocket.close(code=4004, reason="房间不存在")
             return
 
-        token = None
-        # 认证凭证优先从 Sec-WebSocket-Protocol（subprotocol）读取：浏览器 WebSocket
-        # 无法自定义请求头，token 放 query 会进入访问日志/代理日志（敏感泄露）；
-        # JWT 为 base64url 字符集，合法作为 subprotocol 值。
-        sec_protocol = websocket.headers.get("sec-websocket-protocol", "")
-        if sec_protocol:
-            token = sec_protocol.split(",")[0].strip()
-        if not token:
-            auth_header = websocket.headers.get("authorization", "")
-            if auth_header.startswith("Bearer "):
-                token = auth_header[len("Bearer "):]
-
-        if not token:
-            await websocket.close(code=4003, reason="缺少认证")
-            return
-
-        payload = verify_token(token)
-        if not payload:
-            await websocket.close(code=4003)
-            return
-        token_user_id = int(payload.get("sub", 0))
-        if token_user_id != room.user_id:
-            await websocket.close(code=4003)
-            return
+    user_id = await ws_authenticate(websocket, room)
+    if user_id is None:
+        return
 
     await websocket.accept()
 
-    # 构造角色详情 + 场景设定（由关联地点/时间线事件/伏笔/剧情线索生成）
-    char_details: list[dict] = []
-    setting_text = "自由场景"
-
-    async with db_manager.session_factory() as s:
-        if room.location_id:
-            loc = await s.get(Location, room.location_id)
-            if loc:
-                setting_text = f"{loc.name} · {loc.description or ''}"
-
-        # 关联上下文标题：时间线事件 / 伏笔 / 剧情线索
-        if room.related_event_ids:
-            ev_result = await s.execute(select(SceneEvent).where(SceneEvent.id.in_(room.related_event_ids)))
-            ev_titles = [ev.title for ev in ev_result.scalars().all()]
-            if ev_titles:
-                setting_text += f" | 关联事件：{'、'.join(ev_titles)}"
-        if room.related_foreshadowing_ids:
-            fs_result = await s.execute(select(Foreshadowing).where(Foreshadowing.id.in_(room.related_foreshadowing_ids)))
-            fs_titles = [fs.description[:50] for fs in fs_result.scalars().all()]
-            if fs_titles:
-                setting_text += f" | 关联伏笔：{'、'.join(fs_titles)}"
-        if room.related_plot_thread_ids:
-            pt_result = await s.execute(select(PlotThread).where(PlotThread.id.in_(room.related_plot_thread_ids)))
-            pt_titles = [pt.name for pt in pt_result.scalars().all()]
-            if pt_titles:
-                setting_text += f" | 关联剧情线索：{'、'.join(pt_titles)}"
-
-        participants = (await s.execute(
-            select(SimParticipant).where(SimParticipant.room_id == room_id)
-        )).scalars().all()
-
-        # 批量加载参与者引用的角色描述，避免逐个 get(Character) 造成 N+1 查询
-        char_ids_needed = [p.entity_id for p in participants if p.entity_type == "character" and p.entity_id]
-        chars_map: dict[int, Character] = {}
-        if char_ids_needed:
-            char_rows = (await s.execute(
-                select(Character).where(Character.id.in_(char_ids_needed))
-            )).scalars().all()
-            chars_map = {c.id: c for c in char_rows}
-
-        for p in participants:
-            if p.entity_type == "user":
-                continue
-            detail = {"role_label": p.role_label, "entity_type": p.entity_type, "entity_id": p.entity_id, "personality_override": p.personality_override, "description": ""}
-            if p.entity_type == "character" and p.entity_id and p.entity_id in chars_map:
-                detail["description"] = chars_map[p.entity_id].description or ""
-            char_details.append(detail)
-
-        # 用户扮演的「我的身份」角色详情：参与支线上下文/相关角色，但不作为 AI 发言者
-        user_char_detail: dict | None = None
-        for p in participants:
-            if p.entity_type == "user" and p.entity_id and p.entity_id != room.user_id:
-                uchar = await s.get(Character, p.entity_id)
-                if uchar:
-                    user_char_detail = {
-                        "entity_id": p.entity_id,
-                        "role_label": p.role_label or uchar.name,
-                        "description": uchar.description or "",
-                    }
-                break
-
-        # 现有消息列表
-        existing_msgs = (await s.execute(
-            select(SimMessage).where(SimMessage.room_id == room_id).order_by(SimMessage.created_at)
-        )).scalars().all()
-
-    recent_history: list[str] = []
-    for m in existing_msgs[-10:]:
-        recent_history.append(f"[{m.sender_label}][{m.message_type}] {m.content[:200]}")
-
-    # 加载角色记忆
-    character_memories: dict[str, str] = {}
-    async with db_manager.session_factory() as s:
-        for c in char_details:
-            if c.get("entity_id"):
-                source = f"sim_room:{room_id}:char:{c['entity_id']}"
-                mem_result = await s.execute(
-                    select(AgentMemory).where(AgentMemory.source == source)
-                )
-                mem = mem_result.scalar_one_or_none()
-                if mem:
-                    character_memories[c["role_label"]] = mem.content or ""
-
-    # 从已持久化的轮数继续，避免重连后新轮覆盖丢失已有轮数
-    round_count = room.round_count or 0
-
-    async def _execute_sql(stmt):
-        async with db_manager.session_factory() as ss:
-            result = await ss.execute(stmt)
-            return result
-
-    bridge = {"execute_sql": _execute_sql, "room_id": room_id, "character_details": char_details, "user_id": room.user_id, "book_id": room.book_id, "model_config": parsed_model_config}
-
-    # 用户扮演的「我的身份」角色名（entity_type="user" 的参与者）
-    my_role_label = "用户"
-    for p in participants:
-        if p.entity_type == "user" and p.entity_id and p.entity_id != room.user_id:
-            my_role_label = p.role_label or "用户"
-            break
+    ctx = await load_room_context(room_id, room, parsed_model_config)
+    char_details = ctx["char_details"]
+    setting_text = ctx["setting_text"]
+    user_char_detail = ctx["user_char_detail"]
+    recent_history = ctx["recent_history"]
+    character_memories = ctx["character_memories"]
+    round_count = ctx["round_count"]
+    bridge = ctx["bridge"]
+    my_role_label = ctx["my_role_label"]
 
     await websocket.send_text(json.dumps({"type": "connected", "roomId": room_id, "user_id": room.user_id, "userRoleLabel": my_role_label}, ensure_ascii=False))
 

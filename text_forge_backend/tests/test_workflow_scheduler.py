@@ -15,7 +15,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-
+from domains.agent import workflow_execute as we
 from domains.agent import workflow_scheduler as wf
 
 # ---------------------------------------------------------------------------
@@ -146,15 +146,15 @@ async def run_node(monkeypatch, config, node_def=None, book_id=1, **kw):
     """安装假模型 + 空上下文，执行 execute_node。"""
     factories: list[FakeNodeModelFactory] = []
     monkeypatch.setattr(
-        wf, "ModelFactory",
+        we, "ModelFactory",
         lambda cfg: (factories.append(FakeNodeModelFactory(cfg)), factories[-1])[1],
     )
 
     async def _q(*a, **k):
         return {}
 
-    monkeypatch.setattr(wf, "_load_context_pool", _q)
-    monkeypatch.setattr(wf, "_query_structured_context", _q)
+    monkeypatch.setattr(we, "_load_context_pool", _q)
+    monkeypatch.setattr(we, "_query_structured_context", _q)
     result = await wf.execute_node(
         node_def=node_def or {"id": "n1", "system_prompt": "测试节点", "executor": "main"},
         book_id=book_id,
@@ -235,7 +235,7 @@ async def test_execute_node_emits_progress_events(monkeypatch):
 async def test_audit_short_output_passes_without_llm(monkeypatch):
     def should_not_construct(cfg):
         raise AssertionError("短输出不应构造 LLM")
-    monkeypatch.setattr(wf, "ModelFactory", should_not_construct)
+    monkeypatch.setattr(we, "ModelFactory", should_not_construct)
     result = await wf.audit_node_output("短", "prompt", {})
     assert result == {"passed": True}
 
@@ -245,7 +245,7 @@ async def test_audit_fail_prefix(monkeypatch):
     class FailAudit:
         async def ainvoke(self, m):
             return SimpleNamespace(content="FAIL 字数不足")
-    monkeypatch.setattr(wf, "ModelFactory", lambda cfg: SimpleNamespace(audit=FailAudit()))
+    monkeypatch.setattr(we, "ModelFactory", lambda cfg: SimpleNamespace(audit=FailAudit()))
     result = await wf.audit_node_output("这里是一段足够长的输出内容用于审计测试……" * 5, "要求", {})
     assert result["passed"] is False
     assert "FAIL" in result["reason"]
@@ -256,7 +256,7 @@ async def test_audit_llm_exception_defaults_pass(monkeypatch):
     class BoomAudit:
         async def ainvoke(self, m):
             raise RuntimeError("boom")
-    monkeypatch.setattr(wf, "ModelFactory", lambda cfg: SimpleNamespace(audit=BoomAudit()))
+    monkeypatch.setattr(we, "ModelFactory", lambda cfg: SimpleNamespace(audit=BoomAudit()))
     result = await wf.audit_node_output("足够长的输出内容用于触发审计逻辑。" * 20, "要求", {})
     assert result == {"passed": True}
 
@@ -265,7 +265,7 @@ async def test_audit_llm_exception_defaults_pass(monkeypatch):
 async def test_audit_pass_response(monkeypatch):
     class PassAudit:
         async def ainvoke(self, m): return SimpleNamespace(content="PASS 符合要求")
-    monkeypatch.setattr(wf, "ModelFactory", lambda cfg: SimpleNamespace(audit=PassAudit()))
+    monkeypatch.setattr(we, "ModelFactory", lambda cfg: SimpleNamespace(audit=PassAudit()))
     result = await wf.audit_node_output("足够长的输出内容用于触发审计逻辑。" * 20, "要求", {})
     assert result == {"passed": True}
 
@@ -319,8 +319,8 @@ async def test_run_workflow_injects_seed_upstream_outputs(monkeypatch):
         seen_upstreams.append(kwargs.get("upstream_outputs"))
         return {"success": True, "output": "节点输出", "needs_review": False, "quality_check": {"passed": True}, "tokens": 3}
 
-    monkeypatch.setattr(wf, "db_manager", SimpleNamespace(with_db=lambda: FakeWFDB(wf_workflow)))
-    monkeypatch.setattr(wf, "execute_node", fake_execute_node)
+    monkeypatch.setattr(we, "db_manager", SimpleNamespace(with_db=lambda: FakeWFDB(wf_workflow)))
+    monkeypatch.setattr(we, "execute_node", fake_execute_node)
 
     result = await wf.run_workflow(
         workflow_id="wf1",

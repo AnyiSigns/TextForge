@@ -1,10 +1,9 @@
 from typing import Annotated, Any
 
+from config.logging import get_logger
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
 from sqlalchemy import select
-
-from config.logging import get_logger
 
 from ..chapter_context import get_previous_chapter_context
 from ..subgraphs.generate_chapter_graph import (
@@ -42,14 +41,15 @@ def build_generate_chapter_tool(session_factory, model_config: dict | None = Non
         if instruction_hint:
             instruction = f"{instruction}\n\n创作提示：{instruction_hint}"
         async with session_factory() as session:
-            from domains.book.repository import CharacterRepository
-            from domains.world.repository import WorldRepository
             from models.book import (
                 Book,
                 Chapter,
                 ChapterContent,
                 Volume,
             )
+
+            from domains.book.repository import CharacterRepository
+            from domains.world.repository import WorldRepository
 
             book_stmt = select(Book).where(Book.id == book_id)
             book_result = await session.execute(book_stmt)

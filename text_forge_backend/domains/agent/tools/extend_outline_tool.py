@@ -1,15 +1,15 @@
 from typing import Annotated
 
+from config.logging import get_logger
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
+from models.book import Book, Chapter, CreativeSetting, Volume
 from sqlalchemy import func, select
 
-from config.logging import get_logger
 from domains.book.repository import CharacterRepository
 from domains.world.derived_sync import recompute_derived
 from domains.world.repository import WorldRepository
-from models.book import Book, Chapter, CreativeSetting, Volume
 
 logger = get_logger(__name__)
 

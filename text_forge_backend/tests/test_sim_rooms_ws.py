@@ -9,6 +9,9 @@ import pytest
 from fastapi import WebSocketDisconnect
 from starlette.testclient import TestClient
 
+import domains.sim_rooms.auth as sim_auth
+import domains.sim_rooms.context_loader as sim_ctx
+import domains.sim_rooms.orchestration as sim_orch
 import domains.sim_rooms.router as sim_router
 from main import app
 from models.agent_memory import AgentMemory
@@ -104,8 +107,11 @@ def fake_factory(session):
 
 
 def install_ws_deps(monkeypatch, session: FakeSession, final_output: str = "AI 回复", should_end: bool = False):
-    monkeypatch.setattr(sim_router, "db_manager", SimpleNamespace(session_factory=fake_factory(session)))
-    monkeypatch.setattr(sim_router, "verify_token", lambda t: {"sub": "1"} if t else None)
+    fake_db = SimpleNamespace(session_factory=fake_factory(session))
+    monkeypatch.setattr(sim_router, "db_manager", fake_db)
+    monkeypatch.setattr(sim_ctx, "db_manager", fake_db)
+    monkeypatch.setattr(sim_orch, "db_manager", fake_db)
+    monkeypatch.setattr(sim_auth, "verify_token", lambda t: {"sub": "1"} if t else None)
 
     async def fake_stream_round(state, bridge, on_token):
         await on_token(final_output, "测试角色")
@@ -118,7 +124,7 @@ def install_ws_deps(monkeypatch, session: FakeSession, final_output: str = "AI �
             "should_end": should_end,
         }
 
-    monkeypatch.setattr(sim_router, "stream_sim_round", fake_stream_round)
+    monkeypatch.setattr(sim_orch, "stream_sim_round", fake_stream_round)
 
     class FakeLLM:
         async def ainvoke(self, prompt):
@@ -132,7 +138,9 @@ def install_ws_deps(monkeypatch, session: FakeSession, final_output: str = "AI �
         async def astream(self, prompt):
             yield SimpleNamespace(content="开局白")
 
-    monkeypatch.setattr(sim_router, "ModelFactory", lambda cfg: SimpleNamespace(main=FakeLLM(), tool=FakeLLM()))
+    fake_mf = lambda cfg: SimpleNamespace(main=FakeLLM(), tool=FakeLLM())
+    monkeypatch.setattr(sim_router, "ModelFactory", fake_mf)
+    monkeypatch.setattr(sim_orch, "ModelFactory", fake_mf)
 
 
 def make_room_session():
@@ -188,7 +196,7 @@ def test_ws_rejects_room_not_found(monkeypatch, client):
 def test_ws_rejects_missing_token(monkeypatch, client):
     """无 token → 关闭码 4003。"""
     monkeypatch.setattr(sim_router, "db_manager", SimpleNamespace(session_factory=fake_factory(make_room_session())))
-    monkeypatch.setattr(sim_router, "verify_token", lambda t: None)
+    monkeypatch.setattr(sim_auth, "verify_token", lambda t: None)
     with pytest.raises(WebSocketDisconnect) as exc:
         with client.websocket_connect("/api/sim-rooms/1/ws") as ws:
             ws.receive_text()

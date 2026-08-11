@@ -10,7 +10,13 @@ from .workflow_scheduler import run_workflow as scheduler_run_workflow
 logger = get_logger(__name__)
 
 
-async def _finish_with_candidate(result: dict[str, Any], target_chapter_id: int | None = None, preferred_workflow_node: str | None = None, user_id: int = 0, book_id: int | None = None) -> dict[str, Any]:
+async def _finish_with_candidate(
+    result: dict[str, Any],
+    target_chapter_id: int | None = None,
+    preferred_workflow_node: str | None = None,
+    user_id: int = 0,
+    book_id: int | None = None,
+) -> dict[str, Any]:
     """工作流执行完毕后构造「候选正文确认」回复。
 
     直接把候选正文节点整理成一条 AIMessage 作为最终回复（不经 LLM），
@@ -25,8 +31,8 @@ async def _finish_with_candidate(result: dict[str, Any], target_chapter_id: int 
         target_chapter_id: 目标章节 ID。
         preferred_workflow_node: 用户最近一次选定的节点 ID（自动沿用，与
             state.preferred_workflow_node 命名一致）。
-        user_id: 当前用户 ID（任务 29 审计用）。
-        book_id: 当前书籍 ID（任务 29 审计用）。
+        user_id: 当前用户 ID。
+        book_id: 当前书籍 ID。
 
     Returns:
         含 messages(展示回复)、workflow_result、candidate_reply_ready 的状态更新。
@@ -45,7 +51,10 @@ async def _finish_with_candidate(result: dict[str, Any], target_chapter_id: int 
     # 自动沿用：用户已选过节点且候选仍包含该节点 → 直接落库，不再询问
     pending_review: dict | None = None
     if preferred_workflow_node and target_chapter_id:
-        preferred = next((n for n in content_nodes if n.get("node_id") == preferred_workflow_node), None)
+        preferred = next(
+            (n for n in content_nodes if n.get("node_id") == preferred_workflow_node),
+            None,
+        )
         if preferred:
             try:
                 from sqlalchemy import func, select
@@ -70,10 +79,22 @@ async def _finish_with_candidate(result: dict[str, Any], target_chapter_id: int 
                             )
                         ).scalar_one_or_none()
                         if ch and not ch.locked:
-                            max_ver = (await session.execute(select(func.max(ChapterContent.version)).where(ChapterContent.chapter_id == target_chapter_id))).scalar() or 0
-                            session.add(ChapterContent(chapter_id=target_chapter_id, content=content, version=max_ver + 1))
+                            max_ver = (
+                                await session.execute(
+                                    select(func.max(ChapterContent.version)).where(
+                                        ChapterContent.chapter_id == target_chapter_id
+                                    )
+                                )
+                            ).scalar() or 0
+                            session.add(
+                                ChapterContent(
+                                    chapter_id=target_chapter_id,
+                                    content=content,
+                                    version=max_ver + 1,
+                                )
+                            )
                             await session.commit()
-                            # 任务 29 写操作审计：工作流候选正文自动沿用落库留痕
+                            # 写操作审计：工作流候选正文自动沿用落库留痕
                             try:
                                 from .agent_nodes import _get_thread_id
                                 from .metrics import record_write_audit
@@ -85,18 +106,25 @@ async def _finish_with_candidate(result: dict[str, Any], target_chapter_id: int 
                                     book_id=book_id or None,
                                     tool_name="write_workflow_candidate",
                                     operation="workflow.auto_apply",
-                                    args={"chapter_id": target_chapter_id, "node_id": preferred_workflow_node},
+                                    args={
+                                        "chapter_id": target_chapter_id,
+                                        "node_id": preferred_workflow_node,
+                                    },
                                     decision="auto",
                                     result="ok",
                                     meta={"label": label, "chars": len(content)},
                                 )
                             except Exception as audit_exc:
-                                logger.warning(f"[audit] 工作流自动沿用审计失败: {audit_exc}")
+                                logger.warning(
+                                    f"[audit] 工作流自动沿用审计失败: {audit_exc}"
+                                )
                             reply = (
                                 f"已自动沿用您此前选定的【{label}】节点，将第{target_chapter_id}章正文写入章节库"
                                 f"（第 {max_ver + 1} 版，{len(content)} 字）。如需改用其他节点输出，告诉我即可。"
                             )
-                            logger.info(f"[workflow_runner] 自动沿用落库成功: chapter={target_chapter_id} node={preferred_workflow_node}")
+                            logger.info(
+                                f"[workflow_runner] 自动沿用落库成功: chapter={target_chapter_id} node={preferred_workflow_node}"
+                            )
                             _persist_outputs_preferred: dict[str, dict] = {}
                             for n in content_nodes:
                                 nid = n.get("node_id") or ""
@@ -135,7 +163,8 @@ async def _finish_with_candidate(result: dict[str, Any], target_chapter_id: int 
             "node_id": result.get("pending_node_id", ""),
             "node_label": node_label,
             "workflow_id": result.get("workflow_id", ""),
-            "output_preview": result.get("output", "") or (_last.get("output") or "")[:1000],
+            "output_preview": result.get("output", "")
+            or (_last.get("output") or "")[:1000],
             "reason": _qc.get("reason", "输出质量不满足角色节点要求"),
             # 携带目标章节与所属工作流：用户审核决策后续跑时据此精确重跑该节点，
             # 避免 LLM 臆测节点 ID（如误把审计角色 auditor 当作工作流节点）。
@@ -166,19 +195,21 @@ async def _finish_with_candidate(result: dict[str, Any], target_chapter_id: int 
         if not reply:
             reply = "工作流执行完成，但没有产出可用的正文候选（可能是纯审计/规划类节点）。您可以指定具体章节或调整工作流后再试。"
     elif not pending_review:
-        lines = [f"工作流执行完成，请选择哪个节点的输出作为{('第'+str(target)+'章') if target else '本章'}的正文："]
+        lines = [
+            f"工作流执行完成，请选择哪个节点的输出作为{('第'+str(target)+'章') if target else '本章'}的正文："
+        ]
         for i, n in enumerate(content_nodes, 1):
             summary = (n.get("summary") or "").strip()
             label = n.get("node_label") or n.get("node_id")
             # 不用「1. 」markdown 有序列表语法：ReactMarkdown 会把两条候选拆成两个
             # 独立 ol 都从 1 编号，用户无法区分。改用「候选序号」文本前缀。
-            lines.append(f"\n候选{i}：【{label}】\n{summary if summary else '（无摘要）'}")
+            lines.append(
+                f"\n候选{i}：【{label}】\n{summary if summary else '（无摘要）'}"
+            )
         lines.append("\n回复「候选序号」（如：候选2）即可，我会用所选节点的输出落库。")
         reply = "\n".join(lines)
 
-    logger.info(
-        f"[workflow_runner] 候选确认回复前100字: {reply[:100]}"
-    )
+    logger.info(f"[workflow_runner] 候选确认回复前100字: {reply[:100]}")
     # 完整候选正文写入 workflow_node_outputs（merge_dicts 聚合字段，跨回合保留），
     # 供用户选定候选后 write_workflow_candidate 读取落库，避免 workflow_result
     # 在新回合被重置后正文丢失、Agent 只能看到 300 字摘要而误判截断。
@@ -253,15 +284,23 @@ async def workflow_runner_node(state: dict[str, Any]) -> dict[str, Any]:
         from .workflow_scheduler import execute_node as scheduler_execute_node
 
         async with db_manager.with_db() as session:
-            wf_row = (await session.execute(select(Workflow).where(Workflow.id == workflow_id))).scalar_one_or_none()
+            wf_row = (
+                await session.execute(
+                    select(Workflow).where(Workflow.id == workflow_id)
+                )
+            ).scalar_one_or_none()
             if not wf_row:
                 result = {"status": "error", "message": f"工作流不存在: {workflow_id}"}
             else:
-                node_def = next((n for n in (wf_row.nodes or []) if n.get("id") == node_id), None)
+                node_def = next(
+                    (n for n in (wf_row.nodes or []) if n.get("id") == node_id), None
+                )
                 if not node_def:
                     result = {"status": "error", "message": f"节点不存在: {node_id}"}
                 else:
-                    node_label = node_def.get("label") or node_def.get("name") or node_id
+                    node_label = (
+                        node_def.get("label") or node_def.get("name") or node_id
+                    )
                     context_fields = pending.get("context_fields")
                     if context_fields:
                         node_def = {**node_def, "context_fields": context_fields}
@@ -277,7 +316,10 @@ async def workflow_runner_node(state: dict[str, Any]) -> dict[str, Any]:
                             "success": True,
                             "output": forced_output,
                             "needs_review": False,
-                            "quality_check": {"passed": True, "reason": "用户已修改，使用修改后内容"},
+                            "quality_check": {
+                                "passed": True,
+                                "reason": "用户已修改，使用修改后内容",
+                            },
                         }
                     else:
                         try:
@@ -294,7 +336,9 @@ async def workflow_runner_node(state: dict[str, Any]) -> dict[str, Any]:
                             )
                         except Exception as exc:
                             # 兜底：单节点执行异常转 error 结果，避免整个图崩溃断流
-                            logger.exception(f"[workflow_runner] 单节点执行未捕获异常: {exc}")
+                            logger.exception(
+                                f"[workflow_runner] 单节点执行未捕获异常: {exc}"
+                            )
                             res = {
                                 "success": False,
                                 "output": "",
@@ -304,7 +348,9 @@ async def workflow_runner_node(state: dict[str, Any]) -> dict[str, Any]:
                                     "reason": f"节点执行异常: {exc}",
                                 },
                             }
-                    _node_elapsed_ms = round((time.monotonic() - _node_started) * 1000, 1)
+                    _node_elapsed_ms = round(
+                        (time.monotonic() - _node_started) * 1000, 1
+                    )
                     result = {
                         "node_id": node_id,
                         "node_label": node_label,
@@ -330,7 +376,13 @@ async def workflow_runner_node(state: dict[str, Any]) -> dict[str, Any]:
                         ]
                     else:
                         result["content_nodes"] = []
-        return await _finish_with_candidate(result, target_chapter_id, state.get("preferred_workflow_node"), user_id, book_id)
+        return await _finish_with_candidate(
+            result,
+            target_chapter_id,
+            state.get("preferred_workflow_node"),
+            user_id,
+            book_id,
+        )
 
     try:
         result = await scheduler_run_workflow(
@@ -351,4 +403,10 @@ async def workflow_runner_node(state: dict[str, Any]) -> dict[str, Any]:
             "message": f"工作流执行异常: {exc}",
             "content_nodes": [],
         }
-    return await _finish_with_candidate(result, target_chapter_id, state.get("preferred_workflow_node"), user_id, book_id)
+    return await _finish_with_candidate(
+        result,
+        target_chapter_id,
+        state.get("preferred_workflow_node"),
+        user_id,
+        book_id,
+    )

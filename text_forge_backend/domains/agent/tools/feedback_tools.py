@@ -1,10 +1,9 @@
 from typing import Annotated
 
+from config.logging import get_logger
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
 from sqlalchemy import select
-
-from config.logging import get_logger
 
 logger = get_logger(__name__)
 

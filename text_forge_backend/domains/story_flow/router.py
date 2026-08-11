@@ -6,15 +6,14 @@ SSE 事件命名与 agent 流（node_start/node_stream/...）隔离：
 import json
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from config.logging import get_logger
 from core.auth import get_current
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from models.book import Book, Chapter, Volume
+from pydantic import BaseModel, ConfigDict, Field
 from shared.database import db_manager
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import repository as repo
 from . import service

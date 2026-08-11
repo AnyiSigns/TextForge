@@ -39,9 +39,9 @@ def _patch_recompute(monkeypatch):
     async def _noop(session, book_id):
         return None
 
-    import domains.agent.tools_domain as tool_mod
+    from domains.agent.tools import book_tools
 
-    monkeypatch.setattr(tool_mod, "recompute_derived", _noop)
+    monkeypatch.setattr(book_tools, "recompute_derived", _noop)
 
 
 def make_book(**kw) -> Book:
