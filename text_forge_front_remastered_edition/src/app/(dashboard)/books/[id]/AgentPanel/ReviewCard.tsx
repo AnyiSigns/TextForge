@@ -49,7 +49,9 @@ export function ReviewCard({ data, onAction, disabled = false }: ReviewCardProps
   };
 
   const startEditing = () => {
-    setEditText(fullPreview);
+    // 写工具审核卡的 output_preview 以「章节ID=xxx」开头，那是预览前缀而非正文，
+    // 回填编辑框前剥离，避免提交修改时把前缀写进章节正文。
+    setEditText(fullPreview.replace(/^章节ID=\d+\n/, ''));
     setEditing(true);
   };
 

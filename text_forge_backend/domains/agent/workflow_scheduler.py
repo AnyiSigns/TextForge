@@ -800,18 +800,27 @@ async def execute_node(
         qc = await audit_node_output(full_content, system_prompt, model_config or {})
         needs_review = not qc.get("passed", True)
 
-    if on_progress:
-        on_progress(
-            {
-                "event": "node_end",
-                "node_id": node_id,
-                "output_preview": full_content[:500],
-                "tokens": token_count,
-            }
-        )
-    if stream_writer is not None:
-        try:
-            stream_writer(
+    if needs_review:
+        # 质量门拦截：stream_writer 发 node_fail 而非 node_end，使 agent 图内前端节点卡
+        # 呈现失败态而不是「✓ 完成」后紧随审核卡的矛盾状态（与 workflow 域 /run 的
+        # node_fail 语义一致；workflow 域中 stream_writer 为 None 不受影响，仍由
+        # run_workflow 的 on_progress node_fail 兜底）。
+        if stream_writer is not None:
+            try:
+                stream_writer(
+                    {
+                        "event": "node_fail",
+                        "node_id": node_id,
+                        "label": node_def.get("label") or node_def.get("name") or node_id,
+                        "reason": qc.get("reason", "输出质量不满足角色节点要求"),
+                        "output_preview": full_content[:1000],
+                    }
+                )
+            except Exception:
+                pass
+    else:
+        if on_progress:
+            on_progress(
                 {
                     "event": "node_end",
                     "node_id": node_id,
@@ -819,8 +828,18 @@ async def execute_node(
                     "tokens": token_count,
                 }
             )
-        except Exception:
-            pass
+        if stream_writer is not None:
+            try:
+                stream_writer(
+                    {
+                        "event": "node_end",
+                        "node_id": node_id,
+                        "output_preview": full_content[:500],
+                        "tokens": token_count,
+                    }
+                )
+            except Exception:
+                pass
 
     return {
         "success": True,

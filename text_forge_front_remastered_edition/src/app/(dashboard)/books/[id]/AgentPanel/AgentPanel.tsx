@@ -15,7 +15,7 @@ import { MessageList } from './MessageList';
 import { AgentInput } from './AgentInput';
 import { ConversationSidebar } from './ConversationSidebar';
 import { useAgentReview } from './useAgentReview';
-import { onAgentSessionsRefresh, onAgentTitle, onAgentCardDrawStart } from '@/features/agent/agentEvents';
+import { onAgentSessionsRefresh, onAgentTitle } from '@/features/agent/agentEvents';
 
 interface AgentPanelProps {
   panelFullscreen?: boolean;
@@ -296,45 +296,10 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
     void sendMessage(msg);
   }, [sendMessage]);
 
-  // 任务 25：卡片绘制事件走 typed agentEvents
-  useEffect(() => {
-    return onAgentCardDrawStart((detail) => {
-      if (!detail) return;
-
-      const chars = ((detail.characters as Array<{ name: string; roleType?: string; description?: string }>) || [])
-        .map((c) => `${c.name}${c.roleType ? `（${c.roleType}）` : ''}${c.description ? `：${c.description}` : ''}`)
-        .join('、');
-      const locs = ((detail.locations as Array<{ name: string; type?: string }>) || [])
-        .map((l) => `${l.name}${l.type ? `（${l.type}）` : ''}`)
-        .join('、');
-      const parts: string[] = [];
-      if (chars) parts.push(`选定角色：${chars}`);
-      if (locs) parts.push(`场景地点：${locs}`);
-      if (detail.storyDirection) parts.push(`故事方向：${detail.storyDirection}`);
-      if (detail.outlineNode) parts.push(`关联大纲：${detail.outlineNode}`);
-      if (detail.extraRequirements) parts.push(`额外要求：${detail.extraRequirements}`);
-
-      const prompt = `请基于以下创作要素展开剧情：\n\n${parts.join('\n')}\n\n请根据以上设定，生成一段完整的剧情展开（包含场景描写、角色对话和情节推进）。`;
-      void sendMessage(prompt);
-    });
-  }, [sendMessage]);
-
+  // 任务 25：abort 的统一复位语义收敛在 useAgentSender.abort（streaming→system、
+  // running/pending 工具卡→error、清空节点/审核/思考状态），面板侧仅作入口。
   const handleAbort = () => {
     abort();
-    setAgentStreaming(false);
-    setAgentStatus({ kind: 'idle' });
-    useBookDetailStore.setState((state) => ({
-      agentMessages: state.agentMessages.map((m) => {
-        if (m.type === 'streaming') return { ...m, type: 'system' as const };
-        // 任务 22：abort 后复位工具卡片（防止永久「请求外援中」spinner）
-        if (m.type === 'tool' && m.toolStatus === 'running') return { ...m, toolStatus: 'error' as const };
-        return m;
-      }),
-      agentNodeStatuses: [],
-      nodeOutputs: {},
-      pendingReview: null,
-      agentReasoning: '',
-    }));
   };
 
   const handleNewSession = () => {

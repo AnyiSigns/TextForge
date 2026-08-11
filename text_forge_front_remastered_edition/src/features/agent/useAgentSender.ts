@@ -56,9 +56,6 @@ export function useAgentSender(bookIdOverride?: number) {
   // N6：发送互斥——startAgentSession await 窗口内 agentStreaming 尚未置位，
   // 仅靠该守卫存在重复发送竞态；sendingRef 同步置位堵住窗口。
   const sendingRef = useRef(false);
-  // P-F：首 token 延迟与 RAG 耗时埋点
-  const turnStartedRef = useRef(0);
-  const firstTokenAtRef = useRef(0);
   // 任务 25：token 流 rAF 节流——攒批一帧内多次 token 再写一次 store，
   // 避免每 token 全量 set store 导致长消息列表 O(n²) 重渲。
   const pendingTokenRef = useRef('');
@@ -137,13 +134,6 @@ export function useAgentSender(bookIdOverride?: number) {
           // agent_token 为单通道模式下的正文流式事件（与原 token 事件同语义）
           const token = event.token || '';
           if (token) {
-            // P-F：首 token 延迟埋点（performance.now 单调时钟）
-            if (!firstTokenAtRef.current) {
-              firstTokenAtRef.current = performance.now();
-              console.debug(
-                `[agent] 首 token 延迟 ${Math.round(firstTokenAtRef.current - turnStartedRef.current)}ms`,
-              );
-            }
             scheduleToken(token);
           }
           break;
@@ -187,13 +177,15 @@ export function useAgentSender(bookIdOverride?: number) {
           const toolCallId = event.tool_call_id || '';
           const success = (event as { success?: boolean }).success;
           currentToolNameRef.current = '';
-          updateToolMessage(toolName, 'done', {
+          // success=false 时置 error，使「工具执行失败」状态真正可达（否则 toolStatus 的
+          // error 分支只会在 abort 时触发，失败语义全靠 toolSuccess 表达）。
+          updateToolMessage(toolName, success === false ? 'error' : 'done', {
             toolCallId: toolCallId || undefined,
             success,
           });
           // 1.4（v5）：write_chapter_content 审批执行成功 → 通知手稿编辑器刷新当前章内容
           if (toolName === 'write_chapter_content' && success) {
-            emitAgentChapterContentRefresh('');
+            emitAgentChapterContentRefresh();
           }
           break;
         }
@@ -297,7 +289,7 @@ export function useAgentSender(bookIdOverride?: number) {
           assertTurnMetrics(event as unknown as Record<string, unknown>);
           break;
         }
-        case 'review_card':
+        case 'review_card': {
           // 2.2/2.12：契约断言（tokens/elapsed_ms 字段） + live 卡片（可操作）
           assertReviewCard(event as unknown as Record<string, unknown>);
           setAgentStatus({ kind: 'working', label: '等待审核...' });
@@ -309,7 +301,22 @@ export function useAgentSender(bookIdOverride?: number) {
             token: JSON.stringify(event),
             live: true,
           });
+          // 门控写工具被拦截期间后端不发 tool_end，工具卡会一直「请求外援中」；
+          // 审核卡到达时把匹配的门控写工具卡（写工具卡 node_id == 工具名）置 pending，
+          // 文案改为「等待审核」，避免「仍在执行」的误导（工作流审核卡 node_id 是
+          // 节点 id，不匹配任何工具卡，自然跳过）。
+          const gatedTool = (event as { node_id?: string }).node_id || '';
+          if (gatedTool) {
+            useBookDetailStore.setState((s) => ({
+              agentMessages: s.agentMessages.map((m) =>
+                m.type === 'tool' && m.tool === gatedTool && m.toolStatus === 'running'
+                  ? { ...m, toolStatus: 'pending' as const }
+                  : m,
+              ),
+            }));
+          }
           break;
+        }
         case 'suggestions': {
           // 创作建议必须展示给用户（后端每条回复后都会推送）
           const items = event.items;
@@ -345,12 +352,15 @@ export function useAgentSender(bookIdOverride?: number) {
 
   // 任务 25：sendMessage / resume 共用同一流式执行骨架，仅起始差异（消息内容 / 续跑）。
   const runAgentStream = useCallback(
-    async (opts: { message: string; threadId: string; personalRagResults?: Array<Record<string, unknown>> }) => {
+    async (opts: {
+      message: string;
+      threadId: string;
+      personalRagResults?: Array<Record<string, unknown>>;
+      // RAG 检索窗口期间创建的 AbortController（外部注入，检索后已检查 aborted）
+      abortController?: AbortController;
+    }) => {
       setAgentStreaming(true);
-      // P-F：回合起点（首 token 延迟基准）
-      turnStartedRef.current = performance.now();
-      firstTokenAtRef.current = 0;
-      const abort = new AbortController();
+      const abort = opts.abortController ?? new AbortController();
       abortRef.current = abort;
       replyBufferRef.current = '';
       pendingTokenRef.current = '';
@@ -375,6 +385,9 @@ export function useAgentSender(bookIdOverride?: number) {
       }
 
       try {
+        // 后端 _empty_sse 等路径会先发 error 事件再发 end 事件：记录 error 已发生，
+        // onDone 末尾不再把 agentStatus 复位为 idle，避免覆盖 onError 置的错误状态。
+        let streamErrored = false;
         const onDone = (reply: string) => {
           // end.reply 是服务端最终确定的回复（含工作流候选正文确认等非流式内容）。
           // v4：仅当 reply 与当前流式缓冲不同才写入——相同则跳过冗余更新，
@@ -389,10 +402,11 @@ export function useAgentSender(bookIdOverride?: number) {
           // 定型最后一条 streaming 消息（空消息移除），否则残留消息会一直显示 3 点光标/正在酝酿
           commitStreamingMessage();
           setAgentStreaming(false);
-          setAgentStatus({ kind: 'idle' });
+          if (!streamErrored) setAgentStatus({ kind: 'idle' });
           notifyOutlineRefresh();
         };
         const onError = (err: string) => {
+          streamErrored = true;
           flushTokens();
           commitStreamingMessage();
           addAgentMessage({ role: 'assistant', content: err, type: 'error' });
@@ -495,8 +509,10 @@ export function useAgentSender(bookIdOverride?: number) {
         // 短路 + 超时：无个人文档不触发本地 embedding/WASM 冷加载；冷启动超过 1s 直接放弃附带，
         // 不让模型下载阻塞首 token（best-effort，检索失败不影响发送）。
         setAgentStreaming(true);
-        // P-F：RAG 检索耗时埋点
-        const ragStarted = performance.now();
+        // N：RAG 检索前就创建 AbortController——检索窗口内点「停止」也能被捕获，
+        // 检索完成后检查 aborted 再启动流，消除「停止无效」的竞态窗口。
+        const abort = new AbortController();
+        abortRef.current = abort;
         let personalRagResults: Array<Record<string, unknown>> | undefined;
         try {
           const personalDocs = await ragClient.listPersonal().catch(() => []);
@@ -516,16 +532,18 @@ export function useAgentSender(bookIdOverride?: number) {
         } catch {
           // best-effort：个人库不可用时照常发送
         }
-        console.debug(
-          `[agent] RAG 检索耗时 ${Math.round(performance.now() - ragStarted)}ms，命中 ${personalRagResults?.length ?? 0} 条`,
-        );
+        if (abort.signal.aborted) {
+          setAgentStreaming(false);
+          setAgentStatus({ kind: 'idle' });
+          return;
+        }
 
-        await runAgentStream({ message: msg, threadId, personalRagResults });
+        await runAgentStream({ message: msg, threadId, personalRagResults, abortController: abort });
       } finally {
         sendingRef.current = false;
       }
     },
-    [agentStreaming, agentThreadId, bookId, addAgentMessage, setAgentThreadId, setAgentStreaming, runAgentStream],
+    [agentStreaming, agentThreadId, bookId, addAgentMessage, setAgentThreadId, setAgentStreaming, setAgentStatus, runAgentStream],
   );
 
   const abort = useCallback(() => {
@@ -540,7 +558,24 @@ export function useAgentSender(bookIdOverride?: number) {
     replyBufferRef.current = '';
     // N9：冲刷未落库的 node_stream 缓冲（部分正文保留在节点卡片）
     flushNodeOutputs();
-  }, [agentThreadId, flushNodeOutputs]);
+    // 统一复位（与 AgentPanel.handleAbort 同语义，收敛为单入口，消除双 UI abort
+    // 状态不一致）：残留 streaming 定型为 system、running/pending 工具卡转 error、
+    // 清空节点状态卡/审核卡/思考气泡。
+    useBookDetailStore.setState((state) => ({
+      agentMessages: state.agentMessages.map((m) => {
+        if (m.type === 'streaming') return { ...m, type: 'system' as const };
+        if (m.type === 'tool' && (m.toolStatus === 'running' || m.toolStatus === 'pending')) {
+          return { ...m, toolStatus: 'error' as const };
+        }
+        return m;
+      }),
+      agentNodeStatuses: [],
+      nodeOutputs: {},
+      pendingReview: null,
+      agentReasoning: '',
+    }));
+    setAgentStatus({ kind: 'idle' });
+  }, [agentThreadId, flushNodeOutputs, setAgentStatus]);
 
   const resume = useCallback(async () => {
     const threadId = agentThreadId;

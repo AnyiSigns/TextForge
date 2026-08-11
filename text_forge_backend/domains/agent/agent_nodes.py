@@ -23,7 +23,7 @@ logger = get_logger(__name__)
 
 SUBGRAPH_NAMES = ("worldbuilding", "outlining", "drafting", "revising")
 
-# 任务 27b：supervisor 路由低置信度阈值（confidence < 0.5 回 chat）
+# supervisor 路由低置信度阈值（confidence < 0.5 回 chat）
 _ROUTE_CONFIDENCE_MIN = 0.5
 
 # 子图 step cap：各子图在单回合内允许的最大 agent 步数（每次 LLM 调用 = 1 步）。
@@ -35,16 +35,16 @@ SUBGRAPH_STEP_CAPS = {
     "revising": 8,
 }
 
-# 任务：每回合输出字符预算（≈ token 预算的粗略代理，中文 1 字 ≈ 1 token）。
+# 每回合输出字符预算（≈ token 预算的粗略代理，中文 1 字 ≈ 1 token）。
 # agent_call 每步流式输出的字符数累加进 turn_metrics.output_chars，
 # quality_gate_router 超限即 END，防止单回合多步累计产出的长文本烧穿 token 预算。
 # 参考：generate_chapter 单章目标 3000-5000 字，50k 字符 ≈ 3 万字，已足够宽松。
 TURN_OUTPUT_CHAR_BUDGET = 50000
 
-# 任务：绕过门控的写工具（直接落库，不进审批队列）也需审计留痕。
+# 绕过门控的写工具（直接落库，不进审批队列）也需审计留痕。
 # 与 gating_service._TOOL_OP 互补：_TOOL_OP 是「门控写工具」，这里是「非门控写工具」，
 # 新增写工具时必须登记到二者之一，否则审计层静默漏审。
-# 任务：generate_outline_extension 创建卷/章/场景事件并改写
+# generate_outline_extension 创建卷/章/场景事件并改写
 # 情节线/伏笔状态，属写操作，登记到此集合保证审计留痕。
 UNGATED_WRITE_TOOLS = {
     "write_workflow_candidate",
@@ -52,7 +52,7 @@ UNGATED_WRITE_TOOLS = {
     "generate_outline_extension",
 }
 
-# 任务：子图入口 auto-recall 的 per-turn 缓存。
+# 子图入口 auto-recall 的 per-turn 缓存。
 # key = (user_id, book_id, 最后一条用户消息前 500 字)，同一回合内子图被多次调用
 # （工具循环回跳）时命中缓存，避免对同一句用户指令重复做语义检索烧 token。
 _AUTO_RECALL_CACHE: dict[tuple, tuple[float, list]] = {}
@@ -271,7 +271,7 @@ async def agent_call(
             f"\n\n跨章节上下文：{json.dumps(cross_ctx, ensure_ascii=False)}"
         )
 
-    # 任务 13：drafting/revising 域上下文（章摘要+场景+角色卡，supervisor 进入前装配）
+    # drafting/revising 域上下文（章摘要+场景+角色卡，supervisor 进入前装配）
     if state.get("domain_context"):
         system_prompt += f"\n\n【当前创作域上下文】\n{state['domain_context']}"
 
@@ -340,7 +340,7 @@ async def agent_call(
             except Exception:
                 pass
 
-    # 任务 10（扩展）：LLM 调用指数退避重试（仅首块前失败才重试，避免重复内容）
+    # LLM 调用指数退避重试（仅首块前失败才重试，避免重复内容）
     def _stream_once():
         return bound_llm.astream([SystemMessage(system_prompt)] + state["messages"])
 
@@ -372,7 +372,7 @@ async def agent_call(
         # 转为可见的 AIMessage 错误回复；同时清空一次性状态避免后续回合卡在守卫里。
         logger.error(f"[agent_call] 模型调用失败: {exc}", exc_info=True)
         _emit("agent_think_end")
-        # 任务 30（审查修复 M6）：异常文本先脱敏再回显，避免 base_url/api_key 泄漏
+        # 异常文本先脱敏再回显，避免 base_url/api_key 泄漏
         from shared.utils import redact_sensitive
 
         result = AIMessage(
@@ -416,11 +416,11 @@ async def agent_call(
     # 工作流结果确认回合：若模型已直接产出询问回复（无工具调用），
     # 清空 workflow_result，使后续回合（用户选定正文后）能正常调用 write_chapter_content 落库。
     _update_after_call: dict[str, Any] = {"messages": [result]}
-    # 任务 28 指标层：每次子图 agent LLM 调用 = 1 步 + 1 次 LLM 调用，按子图归属统计。
+    # 指标层：每次子图 agent LLM 调用 = 1 步 + 1 次 LLM 调用，按子图归属统计。
     _update_after_call["turn_metrics"] = {
         "llm_calls": 1,
         "llm_calls_per_subgraph": {subgraph: 1},
-        # 任务 10（扩展）：单步输出字符数累加，供每回合 token 预算检查
+        # （扩展）：单步输出字符数累加，供每回合 token 预算检查
         "output_chars": len(full_content),
     }
     _update_after_call["subgraph_steps"] = {subgraph: 1}
@@ -432,7 +432,7 @@ async def agent_call(
 def _extract_route(text: str) -> str:
     """从 supervisor LLM 输出中提取路由；解析失败或低置信度回 chat。
 
-    任务 27b：契约 {route, confidence, reason}。confidence 为 0~1，
+    契约 {route, confidence, reason}。confidence 为 0~1，
     低于 _ROUTE_CONFIDENCE_MIN 时视作无法判断回 chat（不依赖模型分层）。
     """
     if not text:
@@ -492,7 +492,7 @@ async def supervisor_node(state: UserAgentState) -> dict[str, Any]:
     其余回合（resume / 工具循环回跳）不调 LLM，直接沿用现有 subgraph，
     避免对 ToolMessage 内容做无谓分类（计划风险表「supervisor 对 ToolMessage 瞎分类」）。
 
-    任务 13：分类到 drafting/revising 时装配域上下文（章摘要+场景+角色卡）随
+    分类到 drafting/revising 时装配域上下文（章摘要+场景+角色卡）随
     domain_context 下发，agent_call 注入 prompt。
     """
     messages = state.get("messages", [])
@@ -507,10 +507,10 @@ async def supervisor_node(state: UserAgentState) -> dict[str, Any]:
     route = "chat"
     try:
         llm = ModelFactory(state["model_config"])
-        # 任务 10 模型分层：supervisor 路由用轻量 router 模型（未配置 router_config
+        # 模型分层：supervisor 路由用轻量 router 模型（未配置 router_config
         # 时 ModelFactory 已回退 main；测试桩无 router 属性时 getattr 回退 main）。
         supervisor_model = getattr(llm, "router", None) or llm.main
-        # 任务 10（扩展）：LLM 调用指数退避重试（瞬时故障重试 3 次）
+        # （扩展）：LLM 调用指数退避重试（瞬时故障重试 3 次）
         from core.llm_retry import retry_llm
 
         result = await retry_llm(
@@ -532,13 +532,13 @@ async def supervisor_node(state: UserAgentState) -> dict[str, Any]:
     )
     update: dict[str, Any] = {
         "subgraph": route,
-        # 任务 28 指标层：supervisor 分类也是一次 LLM 调用。
+        # 指标层：supervisor 分类也是一次 LLM 调用。
         "turn_metrics": {"llm_calls": 1},
-        # 任务 13：domain_context 是 last-value 通道，非 drafting/revising 路由或装配失败
+        # domain_context 是 last-value 通道，非 drafting/revising 路由或装配失败
         # 时必须显式置 None，否则上一轮（甚至跨书籍）的旧快照会泄漏进后续回合。
         "domain_context": None,
     }
-    # 任务 13：进入正文写作/修订子图前装配域上下文（best-effort，失败不阻断路由）
+    # 进入正文写作/修订子图前装配域上下文（best-effort，失败不阻断路由）
     if route in ("drafting", "revising"):
         try:
             from shared.database import db_manager
@@ -582,10 +582,10 @@ async def chat_node(state: UserAgentState) -> dict[str, Any]:
     llm = ModelFactory(state["model_config"])
     reply = ""
     try:
-        # 任务 10 模型分层：chat 快路径用轻量 audit 模型（未配置 audit_config 时
+        # 模型分层：chat 快路径用轻量 audit 模型（未配置 audit_config 时
         # ModelFactory 已回退 main；测试桩无 audit 属性时 getattr 回退 main）。
         chat_model = getattr(llm, "audit", None) or llm.main
-        # 任务 10（扩展）：LLM 调用指数退避重试（瞬时故障重试 3 次）
+        # （扩展）：LLM 调用指数退避重试（瞬时故障重试 3 次）
         from core.llm_retry import retry_llm
 
         result = await retry_llm(
@@ -602,7 +602,7 @@ async def chat_node(state: UserAgentState) -> dict[str, Any]:
         reply = f"抱歉，模型调用失败，请稍后重试或检查模型配置。（{redact_sensitive(str(exc))}）"
     return {
         "messages": [AIMessage(content=reply)],
-        # 任务 28 指标层：chat 快路径计一次 LLM 调用。
+        # 指标层：chat 快路径计一次 LLM 调用。
         "turn_metrics": {"llm_calls": 1},
     }
 
@@ -731,7 +731,7 @@ def quality_gate_router(state: UserAgentState) -> str:
         )
         return END
 
-    # 任务 28 子图 step cap：单回合内某子图 agent 步数（LLM 调用次数）超过上限即终止，
+    # 子图 step cap：单回合内某子图 agent 步数（LLM 调用次数）超过上限即终止，
     # 防止单子图空转（如模型反复调查询工具却始终不产出正文），与 tool_rounds 互补——
     # tool_rounds 只管「连续工具消息」，step cap 管「跨工具循环的子图总步数」。
     sub = state.get("subgraph")
@@ -744,7 +744,7 @@ def quality_gate_router(state: UserAgentState) -> str:
             )
             return END
 
-    # 任务 10（扩展）：每回合输出字符预算（防 runaway 烧 token）。
+    # （扩展）：每回合输出字符预算（防 runaway 烧 token）。
     # 累积输出超过预算直接 END，避免多步长文本叠加撑爆单回合。
     _out_chars = (state.get("turn_metrics") or {}).get("output_chars", 0)
     if _out_chars >= TURN_OUTPUT_CHAR_BUDGET:
@@ -855,7 +855,7 @@ async def gated_tool_node(
         return str(value)
 
     service = GatingService(session_factory, model_config=model_config)
-    # 任务 29 写操作审计：本节点内累积的审计行，末尾一次事务批量提交。
+    # 写操作审计：本节点内累积的审计行，末尾一次事务批量提交。
     # 必须在函数顶部初始化——审批分支（pending.decision）与正常路径共用，
     # 否则审批分支先于正常路径执行时抛 UnboundLocalError。
     audit_rows: list[dict] = []
@@ -883,7 +883,7 @@ async def gated_tool_node(
             name=head["tool_name"],
             tool_call_id=head.get("tool_id", ""),
         )
-        # 任务 29 写操作审计：执行被审批的写工具留痕（累积到批次，函数末尾统一提交）
+        # 写操作审计：执行被审批的写工具留痕（累积到批次，函数末尾统一提交）
         audit_rows.append(
             _audit_write_row(state, head, op, decision=decision, result=result)
         )
@@ -899,7 +899,7 @@ async def gated_tool_node(
                     )
                     else {"tool_fail": 1}
                 ),
-                # 任务 28 修复：approval_accept 只在真正采纳（accept/edit）时累计，
+                # 修复：approval_accept 只在真正采纳（accept/edit）时累计，
                 # terminate/retry 不计入通过率（retry 后续会重跑并再次弹卡，最终以 accept 为准）。
                 **({"approval_accept": 1} if decision in ("accept", "edit") else {}),
             }
@@ -1015,7 +1015,7 @@ async def gated_tool_node(
     }
     pending_workflow: dict | None = state.get("pending_workflow") or None
     preferred_workflow_node: str | None = state.get("preferred_workflow_node") or None
-    # 任务 28 指标层：本节点内累计的工具调用指标（工具数/成败按子图归属）
+    # 指标层：本节点内累计的工具调用指标（工具数/成败按子图归属）
     tool_metrics_acc: dict[str, Any] = {}
     for tc in tool_calls:
         name = tc.get("name")
@@ -1036,7 +1036,7 @@ async def gated_tool_node(
             pending_tool_queue.append(
                 {"tool_name": name, "tool_args": args, "tool_id": tc.get("id", "")}
             )
-            # 任务 29 写操作审计：写工具被门控拦截留痕（decision 空 = 待审批）
+            # 写操作审计：写工具被门控拦截留痕（decision 空 = 待审批）
             audit_rows.append(
                 _audit_write_row(
                     state,
@@ -1044,13 +1044,13 @@ async def gated_tool_node(
                     resolve_operation(name, args),
                 )
             )
-            # 任务 28 修复：拦截弹卡计一次审批（approval_count），供通过率统计
+            # 修复：拦截弹卡计一次审批（approval_count），供通过率统计
             tool_metrics_acc["approval_count"] = (
                 tool_metrics_acc.get("approval_count", 0) + 1
             )
             continue  # 拦截，不执行，等待审批
         result = await service.invoke(name, args)
-        # 任务 28 指标层：非门控工具执行结果统计（成功/失败按子图归属；
+        # 指标层：非门控工具执行结果统计（成功/失败按子图归属；
         # cancelled 与 error 同视为失败，避免「用户取消」被误计为成功）
         tool_metrics_acc["tool_calls"] = tool_metrics_acc.get("tool_calls", 0) + 1
         tool_metrics_acc.setdefault("tool_calls_per_subgraph", {})
@@ -1064,7 +1064,7 @@ async def gated_tool_node(
         tool_metrics_acc["tool_fail" if _failed else "tool_success"] = (
             tool_metrics_acc.get("tool_fail" if _failed else "tool_success", 0) + 1
         )
-        # 任务 29 写操作审计：绕过门控的写工具（write_workflow_candidate /
+        # 写操作审计：绕过门控的写工具（write_workflow_candidate /
         # generate_chapter 等直接落库）必须留痕；新增写工具须登记到 UNGATED_WRITE_TOOLS。
         if name in UNGATED_WRITE_TOOLS:
             audit_rows.append(
@@ -1102,7 +1102,7 @@ async def gated_tool_node(
         op = resolve_operation(head["tool_name"], head["tool_args"]) or ""
         pending_review = build_preview(op, head["tool_name"], head["tool_args"])
         await _flush_audit_rows(session_factory, audit_rows)
-        # 任务 30（审查修复 M2）：同一批工具调用中若同时含门控写工具与工作流桥接工具
+        # 同一批工具调用中若同时含门控写工具与工作流桥接工具
         # （如 create_entities + execute_workflow），此前提前 return 丢失了
         # pending_workflow / preferred_workflow_node，导致用户看到「已排队」但工作流
         # 永不执行。此处与末尾 return 一样补上这两个字段。

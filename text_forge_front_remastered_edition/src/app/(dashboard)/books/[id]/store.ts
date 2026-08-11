@@ -40,7 +40,8 @@ export interface AgentErrorMessage extends AgentMessageBase {
 export interface AgentToolMessage extends AgentMessageBase {
   type: 'tool';
   tool: string;
-  toolStatus?: 'running' | 'done' | 'error';
+  /** pending：门控写工具被拦截待审核（review_card 到达时置位，区别于 running 的「请求外援中」） */
+  toolStatus?: 'running' | 'done' | 'error' | 'pending';
   /** 任务 25：tool_call_id 配对——同轮同名工具连续调用不错位；失败语义由 toolSuccess 表达 */
   toolCallId?: string;
   toolSuccess?: boolean;
@@ -95,8 +96,6 @@ interface BookDetailState {
   error: string | null;
   activeTab: string;
   creativePhase: string;
-  cardDrawOpen: boolean;
-  cardDrawPreset: Record<string, unknown> | null;
   wizardMode: string | null;
   creativeSetting: Record<string, unknown> | null;
   characters: unknown[];
@@ -124,7 +123,6 @@ interface BookDetailState {
   setCreativePhase: (phase: string) => void;
   setWizardMode: (mode: string | null) => void;
   setAgentOpen: (open: boolean) => void;
-  openCardDraw: (preset?: Record<string, unknown>) => void;
   setAgentThreadId: (id: string | null) => void;
   setAgentStreaming: (v: boolean) => void;
   setAgentStatus: (status: AgentStatus) => void;
@@ -143,7 +141,6 @@ interface BookDetailState {
   updateToolMessage: (tool: string, status: 'done' | 'error', opts?: { toolCallId?: string; success?: boolean }) => void;
   /** 按 nodeId 更新节点卡片消息（node_stream 累积正文 / node_end 状态） */
   updateNodeMessage: (nodeId: string, patch: Partial<AgentNodeMessage>) => void;
-  closeCardDraw: () => void;
   autoDetectPhase: () => void;
 }
 
@@ -161,8 +158,6 @@ export const useBookDetailStore = create<BookDetailState>((set) => ({
   error: null,
   activeTab: 'overview',
   creativePhase: 'overview',
-  cardDrawOpen: false,
-  cardDrawPreset: null,
   wizardMode: null,
   creativeSetting: null,
   characters: [],
@@ -190,7 +185,6 @@ export const useBookDetailStore = create<BookDetailState>((set) => ({
   setCreativePhase: (phase) => set({ creativePhase: phase }),
   setWizardMode: (mode) => set({ wizardMode: mode }),
   setAgentOpen: (open) => set({ agentOpen: open }),
-  openCardDraw: (preset) => set({ cardDrawOpen: true, cardDrawPreset: preset ?? null }),
   setAgentThreadId: (id) => set({ agentThreadId: id }),
   setAgentStreaming: (v) => set({ agentStreaming: v }),
   setAgentStatus: (status) => set({ agentStatus: status }),
@@ -303,6 +297,5 @@ export const useBookDetailStore = create<BookDetailState>((set) => ({
       };
     }),
 
-  closeCardDraw: () => set({ cardDrawOpen: false }),
   autoDetectPhase: () => {},
 }));

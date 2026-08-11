@@ -17,10 +17,8 @@ export interface AgentEventMap {
   'textforge:agent-title': { threadId: string; title: string };
   /** 大纲需要刷新（agent 调用了 outline 类工具） */
   'textforge:refresh-outlines': null;
-  /** 卡片绘制开始（initializer 提议卡片 → Agent 展开剧情） */
-  'textforge:card-draw-start': Record<string, unknown>;
-  /** 章节正文被 Agent 落库（write_chapter_content 审批执行成功），手稿编辑器需刷新当前章 */
-  'textforge:refresh-chapter-content': { chapterId: number | string };
+  /** 章节正文被 Agent 落库（write_chapter_content 审批执行成功），手稿编辑器刷新当前章 */
+  'textforge:refresh-chapter-content': null;
 }
 
 export type AgentEventName = keyof AgentEventMap;
@@ -61,9 +59,9 @@ export function emitAgentOutlinesRefresh(): void {
   dispatchEvent('textforge:refresh-outlines', undefined);
 }
 
-/** 便捷方法：章节内容被 Agent 落库，通知手稿编辑器刷新 */
-export function emitAgentChapterContentRefresh(chapterId: number | string): void {
-  dispatchEvent('textforge:refresh-chapter-content', { chapterId });
+/** 便捷方法：章节内容被 Agent 落库，通知手稿编辑器刷新当前章（消费方按 activeChapterId 刷新，无需载荷） */
+export function emitAgentChapterContentRefresh(): void {
+  dispatchEvent('textforge:refresh-chapter-content', undefined);
 }
 
 /** 便捷方法：监听会话列表刷新 */
@@ -81,14 +79,7 @@ export function onAgentOutlinesRefresh(handler: () => void): () => void {
   return addEventListener('textforge:refresh-outlines', handler);
 }
 
-/** 便捷方法：监听卡片绘制开始 */
-export function onAgentCardDrawStart(handler: (payload: Record<string, unknown>) => void): () => void {
-  return addEventListener('textforge:card-draw-start', handler);
-}
-
 /** 便捷方法：监听章节内容刷新 */
-export function onAgentChapterContentRefresh(
-  handler: (payload: { chapterId: number | string }) => void,
-): () => void {
+export function onAgentChapterContentRefresh(handler: () => void): () => void {
   return addEventListener('textforge:refresh-chapter-content', handler);
 }

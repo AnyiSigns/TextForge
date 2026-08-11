@@ -234,13 +234,6 @@ export function AgentDock() {
       captureRef.current = { kind: 'selection', start: d.start, end: d.end };
       void sendMessage(reviewPrompt(d.text, d.mode || 'grammar'));
     };
-    const handleChapter = (e: Event) => {
-      const d = (e as CustomEvent).detail as Record<string, unknown> | undefined;
-      const chapterId = d?.chapterId as number | undefined;
-      if (!chapterId) return;
-      setHovering(true);
-      void sendMessage(`请调用 read_chapter_content 工具读取本章（chapter_id=${chapterId}），然后基于正文给出续写/修改建议。`);
-    };
     const handleChapterWrite = async (e: Event) => {
       const d = (e as CustomEvent).detail as Record<string, unknown> | undefined;
       const chapterId = d?.chapterId as number | undefined;
@@ -253,12 +246,10 @@ export function AgentDock() {
     };
     window.addEventListener('textforge:transform-selection', handleTransform);
     window.addEventListener('textforge:review-selection', handleReview);
-    window.addEventListener('textforge:chapter-agent', handleChapter);
     window.addEventListener('textforge:chapter-write', handleChapterWrite);
     return () => {
       window.removeEventListener('textforge:transform-selection', handleTransform);
       window.removeEventListener('textforge:review-selection', handleReview);
-      window.removeEventListener('textforge:chapter-agent', handleChapter);
       window.removeEventListener('textforge:chapter-write', handleChapterWrite);
     };
   }, [sendMessage]);

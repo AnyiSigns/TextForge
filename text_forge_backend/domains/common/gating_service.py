@@ -8,6 +8,7 @@
   因此 Agent、workflow、REST 三处可共用同一套审批逻辑与卡片契约。
 """
 import json
+import re
 import uuid
 
 from config.logging import get_logger
@@ -156,6 +157,11 @@ def build_preview(operation: str, tool_name: str, args: dict) -> dict:
     }
 
 
+def _strip_review_prefix(text: str) -> str:
+    """剔除审核卡 output_preview 的「章节ID=xxx」预览前缀（编辑内容防御性清洗）。"""
+    return re.sub(r"^章节ID=\d+\n", "", text, count=1)
+
+
 class GatingService:
     """无状态门控服务：负责真正执行被审批的写操作。
 
@@ -247,7 +253,9 @@ class GatingService:
         if decision == "edit" and edited_content is not None:
             edit_arg = _EDITABLE_ARG.get(operation)
             if edit_arg is not None:
-                effective_args[edit_arg] = edited_content
+                # 防御性清洗：写工具审核卡的 output_preview 以「章节ID=xxx」开头（预览
+                # 前缀而非正文），若前端未剥离就提交，剔除首行避免前缀污染章节正文。
+                effective_args[edit_arg] = _strip_review_prefix(edited_content)
             else:
                 logger.warning(
                     f"[GatingService] edit 决策作用于不支持编辑的操作 {operation}，"

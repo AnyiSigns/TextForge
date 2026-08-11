@@ -68,14 +68,21 @@ export interface MessageItemProps {
   onUnlockAndRetry: (retryMessage: string) => void;
 }
 
-/** 工具卡片：running 显示「请求外援中」，done 显示「外援已找到 ✓」，失败显示失败样式。 */
+/** 工具卡片：running 显示「请求外援中」，pending 显示「等待审核」（门控写工具被拦截），
+ *  done 显示「外援已找到 ✓」，失败显示失败样式。 */
 function ToolCard({ msg }: { msg: Extract<AgentMessage, { type: 'tool' }> }) {
   const running = msg.toolStatus === 'running';
+  const pending = msg.toolStatus === 'pending';
   const failed = msg.toolStatus === 'error' || msg.toolSuccess === false;
   return (
     <div className="flex justify-start">
       <div className="mx-1 mb-1 flex items-center gap-2 rounded-lg border border-border/40 bg-background/40 px-3 py-1.5 text-[11px]">
-        {running ? (
+        {pending ? (
+          <>
+            <span className="text-amber-500/90">等待审核确认</span>
+            <span className="ml-auto text-amber-500/70">●</span>
+          </>
+        ) : running ? (
           <>
             <span className="thinking-shimmer-text">{msg.tool === 'execute_workflow' || msg.tool === 'execute_workflow_node' ? '执行工作流中' : '请求外援中'}</span>
             <span className="ml-auto inline-block h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-foreground/30 border-t-foreground/70" />
