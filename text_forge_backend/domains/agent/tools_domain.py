@@ -104,7 +104,7 @@ def _build_lookup_tools(session_factory):
         query: Annotated[str | None, "搜索关键词，匹配事件名称或描述"] = None,
         book_id: Annotated[int, InjectedState("active_book_id")] = 0,
     ) -> list[dict]:
-        """查询书籍的时间线事件，可按章节位置和关键词筛选。
+        """查询书籍的时间线事件（即场景事件 scene_event，与 get_book_context 的 scene_events / build_outline 的 scene_events 同一实体），可按章节位置和关键词筛选。
 
         Args:
             before_chapter: 只返回在此章节ID之前的事件，为空则不过滤。
@@ -383,101 +383,110 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
 
     @tool
     async def get_book_context(
+        sections: Annotated[list | None, "裁剪参数：book/characters/volumes/creative_setting 子集，缺省返回全部"] = None,
         user_id: Annotated[int, InjectedState("user_id")] = 0,
         book_id: Annotated[int, InjectedState("active_book_id")] = 0,
     ) -> dict:
         """获取当前书籍的完整上下文：基本信息、创作设定、角色列表与完整大纲树（卷→章→场景事件概要，不含正文）。
 
+        sections 可裁剪返回内容（book/characters/volumes/creative_setting），
+        只需要某个子集时传小清单省 token，缺省返回全部。
+
         Returns:
             包含 book、creative_setting、characters、volumes（含各卷 chapters 及各章 scene_events 概要）的字典。
         """
-        logger.debug(f"[tool] get_book_context  user_id={user_id}  book_id={book_id}")
+        logger.debug(f"[tool] get_book_context  book_id={book_id}  sections={sections}")
+        want = set(sections or []) or {"book", "characters", "volumes", "creative_setting"}
         async with session_factory() as session:
             book_stmt = select(Book).where(Book.id == book_id, Book.user_id == user_id)
             book_result = await session.execute(book_stmt)
             book = book_result.scalar_one_or_none()
             if not book:
                 return {"error": "书籍不存在或无权访问"}
-            char_stmt = select(Character).where(Character.book_id == book_id).order_by(Character.id)
-            characters = (await session.execute(char_stmt)).scalars().all()
-            vol_stmt = select(Volume).where(Volume.book_id == book_id).order_by(Volume.sort_order, Volume.id)
-            volumes = (await session.execute(vol_stmt)).scalars().all()
-            creative_stmt = select(CreativeSetting).where(CreativeSetting.book_id == book_id)
-            creative = (await session.execute(creative_stmt)).scalar_one_or_none()
-            volumes_out = []
-            for v in volumes:
-                ch_stmt = (
-                    select(Chapter)
-                    .where(Chapter.volume_id == v.id)
-                    .order_by(Chapter.sort_order, Chapter.id)
-                )
-                chapters = (await session.execute(ch_stmt)).scalars().all()
-                chapters_out = []
-                for ch in chapters:
-                    ev_stmt = (
-                        select(SceneEvent)
-                        .where(SceneEvent.chapter_id == ch.id)
-                        .order_by(SceneEvent.sort_order, SceneEvent.id)
-                    )
-                    events = (await session.execute(ev_stmt)).scalars().all()
-                    chapters_out.append(
-                        {
-                            "id": ch.id,
-                            "title": ch.title,
-                            "summary": ch.summary,
-                            "sort_order": ch.sort_order,
-                            "generation_batch": ch.generation_batch,
-                            "character_ids": ch.character_ids,
-                            # 上下文保护：每章最多返回 20 个场景事件概要，避免护栏上限
-                            # （50 章 × 200 事件）下全量返回撑爆模型上下文
-                            "scene_events": [
-                                {
-                                    "id": ev.id,
-                                    "title": ev.title,
-                                    "content": (ev.content or "")[:200],
-                                    "event_type": ev.event_type,
-                                    "story_label": ev.story_label,
-                                    "story_ts": ev.story_ts,
-                                    "location_id": ev.location_id,
-                                    "character_ids": ev.character_ids or [],
-                                    "plot_thread_ids": ev.plot_thread_ids or [],
-                                    "completed_plot_thread_ids": ev.completed_plot_thread_ids or [],
-                                    "resolved_foreshadowing_ids": ev.resolved_foreshadowing_ids or [],
-                                }
-                                for ev in events[:20]
-                            ],
-                            "scene_event_total": len(events),
-                        }
-                    )
-                volumes_out.append(
-                    {
-                        "id": v.id,
-                        "title": v.title,
-                        "summary": v.summary,
-                        "sort_order": v.sort_order,
-                        "chapters": chapters_out,
-                    }
-                )
-            return {
-                "book": {
+            out: dict = {}
+            if "book" in want:
+                out["book"] = {
                     "id": book.id, "title": book.title,
                     "description": book.description, "genre": book.genre,
                     "total_word_goal": book.total_word_goal, "current_word_count": book.current_word_count,
                     "workflow_id": book.workflow_id,
-                },
-                "creative_setting": {
+                }
+            if "creative_setting" in want:
+                creative_stmt = select(CreativeSetting).where(CreativeSetting.book_id == book_id)
+                creative = (await session.execute(creative_stmt)).scalar_one_or_none()
+                out["creative_setting"] = {
                     "tone": creative.tone, "worldview": creative.worldview,
                     "writing_taboos": creative.writing_taboos,
                     "custom_dimensions": creative.custom_dimensions or {},
-                } if creative else None,
-                "character_count": len(characters),
-                "characters": [
+                } if creative else None
+            if "characters" in want:
+                char_stmt = select(Character).where(Character.book_id == book_id).order_by(Character.id)
+                characters = (await session.execute(char_stmt)).scalars().all()
+                out["character_count"] = len(characters)
+                out["characters"] = [
                     {"id": c.id, "name": c.name, "role_type": c.role_type, "description": c.description}
                     for c in characters
-                ],
-                "volume_count": len(volumes),
-                "volumes": volumes_out,
-            }
+                ]
+            if "volumes" in want:
+                vol_stmt = select(Volume).where(Volume.book_id == book_id).order_by(Volume.sort_order, Volume.id)
+                volumes = (await session.execute(vol_stmt)).scalars().all()
+                volumes_out = []
+                for v in volumes:
+                    ch_stmt = (
+                        select(Chapter)
+                        .where(Chapter.volume_id == v.id)
+                        .order_by(Chapter.sort_order, Chapter.id)
+                    )
+                    chapters = (await session.execute(ch_stmt)).scalars().all()
+                    chapters_out = []
+                    for ch in chapters:
+                        ev_stmt = (
+                            select(SceneEvent)
+                            .where(SceneEvent.chapter_id == ch.id)
+                            .order_by(SceneEvent.sort_order, SceneEvent.id)
+                        )
+                        events = (await session.execute(ev_stmt)).scalars().all()
+                        chapters_out.append(
+                            {
+                                "id": ch.id,
+                                "title": ch.title,
+                                "summary": ch.summary,
+                                "sort_order": ch.sort_order,
+                                "generation_batch": ch.generation_batch,
+                                "character_ids": ch.character_ids,
+                                # 上下文保护：每章最多返回 20 个场景事件概要，避免护栏上限
+                                # （50 章 × 200 事件）下全量返回撑爆模型上下文
+                                "scene_events": [
+                                    {
+                                        "id": ev.id,
+                                        "title": ev.title,
+                                        "content": (ev.content or "")[:200],
+                                        "event_type": ev.event_type,
+                                        "story_label": ev.story_label,
+                                        "story_ts": ev.story_ts,
+                                        "location_id": ev.location_id,
+                                        "character_ids": ev.character_ids or [],
+                                        "plot_thread_ids": ev.plot_thread_ids or [],
+                                        "completed_plot_thread_ids": ev.completed_plot_thread_ids or [],
+                                        "resolved_foreshadowing_ids": ev.resolved_foreshadowing_ids or [],
+                                    }
+                                    for ev in events[:20]
+                                ],
+                                "scene_event_total": len(events),
+                            }
+                        )
+                    volumes_out.append(
+                        {
+                            "id": v.id,
+                            "title": v.title,
+                            "summary": v.summary,
+                            "sort_order": v.sort_order,
+                            "chapters": chapters_out,
+                        }
+                    )
+                out["volume_count"] = len(volumes)
+                out["volumes"] = volumes_out
+            return out
 
     @tool
     async def lookup_workflows(
@@ -630,7 +639,7 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
     async def create_entities(
         characters: Annotated[list | None, "角色列表，每项 {name, description, role_type?, aliases?, status?, relationship_chain?, locked?}"] = None,
         locations: Annotated[list | None, "地点列表，每项 {name, type, description, parent_id?}"] = None,
-        scene_events: Annotated[list | None, "时间线事件列表，每项 {title, content, event_type?, chapter_id?, character_ids?, location_id?, plot_thread_ids?, story_label?, story_ts?}"] = None,
+        scene_events: Annotated[list | None, "时间线事件列表，每项 {title, description(或 content), event_type?, chapter_id?, character_ids?, location_id?, plot_thread_ids?, completed_plot_thread_ids?, resolved_foreshadowing_ids?, story_label?, story_ts?}"] = None,
         foreshadowings: Annotated[list | None, "伏笔列表，每项 {description, status?, planted_at_chapter_id?, related_character_ids?, notes?}"] = None,
         plot_threads: Annotated[list | None, "情节线索列表，每项 {name, description, type?, status?, progress_note?}"] = None,
         source_text: Annotated[str | None, "可选：提供原始文本，由模型一次性抽取人物/地点/事件后直接落库（替代逐条传入）"] = None,
@@ -679,8 +688,16 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
                 if not isinstance(ev, dict) or not ev.get("title"):
                     continue
                 try:
-                    data = {"title": ev["title"], "content": ev.get("content", "")}
-                    for k in ("event_type", "chapter_id", "character_ids", "location_id", "plot_thread_ids", "story_label", "story_ts"):
+                    # 任务 18：与 build_outline 场景事件字段对齐——正文用 description（兼容 content）
+                    data = {
+                        "title": ev["title"],
+                        "content": ev.get("description") or ev.get("content") or "",
+                    }
+                    for k in (
+                        "event_type", "chapter_id", "character_ids", "location_id",
+                        "plot_thread_ids", "completed_plot_thread_ids",
+                        "resolved_foreshadowing_ids", "story_label", "story_ts",
+                    ):
                         if ev.get(k) is not None:
                             data[k] = ev[k]
                     inst = await repo.create_scene_event(book_id, data)
@@ -1048,33 +1065,78 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
 
     @tool
     async def read_chapter_content(
-        chapter_id: Annotated[int, "章节ID"],
+        chapter_id: Annotated[int | None, "章节ID（与 chapter_ids 二选一）"] = None,
+        chapter_ids: Annotated[list | None, "批量读取的章节ID列表（与 chapter_id 二选一，drafting 并行读多章时用）"] = None,
         version: Annotated[int | None, "指定版本号，缺省取最新版本"] = None,
         max_chars: Annotated[int, "返回内容的最大字符数"] = 8000,
         book_id: Annotated[int, InjectedState("active_book_id")] = 0,
     ) -> dict:
-        """读取章节正文内容（缺省最新版本）。"""
-        logger.debug(f"[tool] read_chapter_content  chapter_id={chapter_id}  book_id={book_id}")
-        async with session_factory() as session:
-            stmt = select(ChapterContent).where(ChapterContent.chapter_id == chapter_id)
-            if version is not None:
-                stmt = stmt.where(ChapterContent.version == version)
-            stmt = stmt.order_by(ChapterContent.version.desc()).limit(1)
-            content = (await session.execute(stmt)).scalar_one_or_none()
-            if not content:
-                # 无正文时返回正常结构而非 error，避免被 quality_gate 计为工具失败、
-                # 诱发模型无谓的空转重试；Agent 据此应改用 write_chapter_content 落库。
+        """读取章节正文内容（缺省最新版本）。传 chapter_ids 时批量读取多章，返回 {chapters: [...]}。
+
+        归属校验：正文必须属于当前 active_book_id 的卷下，跨书章节一律返回「暂无正文」
+        （不泄露存在性），防止批量参数被用来枚举其他书籍的章节正文。
+        """
+        logger.debug(f"[tool] read_chapter_content  chapter_id={chapter_id}  chapter_ids={chapter_ids}  book_id={book_id}")
+        ids = list(chapter_ids or []) if chapter_ids else ([chapter_id] if chapter_id else [])
+        if not ids:
+            return {"error": "请传入 chapter_id 或 chapter_ids"}
+
+        def _format(content: ChapterContent | None, cid: int) -> dict:
+            if content is None:
+                # 无正文（或不属于当前书）时返回正常结构而非 error，避免被 quality_gate
+                # 计为工具失败、诱发模型无谓的空转重试；Agent 据此应改用 write_chapter_content 落库。
                 return {
-                    "chapter_id": chapter_id, "version": 0,
+                    "chapter_id": cid, "version": 0,
                     "word_count": 0, "truncated": False,
                     "content": "", "note": "该章节暂无正文（工作流生成的内容尚未落库），如需要保存请调用 write_chapter_content 写入。",
                 }
             text = content.content or ""
             truncated = len(text) > max_chars
             return {
-                "chapter_id": chapter_id, "version": content.version,
+                "chapter_id": cid, "version": content.version,
                 "word_count": len(text), "truncated": truncated,
                 "content": text[:max_chars] if truncated else text,
+            }
+
+        async with session_factory() as session:
+            if len(ids) == 1:
+                stmt = (
+                    select(ChapterContent)
+                    .join(Chapter, Chapter.id == ChapterContent.chapter_id)
+                    .join(Volume, Volume.id == Chapter.volume_id)
+                    .where(ChapterContent.chapter_id == ids[0], Volume.book_id == book_id)
+                )
+                if version is not None:
+                    stmt = stmt.where(ChapterContent.version == version)
+                stmt = stmt.order_by(ChapterContent.version.desc()).limit(1)
+                content = (await session.execute(stmt)).scalar_one_or_none()
+                return _format(content, ids[0])
+            # 批量：单条 IN 查询 + Postgres DISTINCT ON 只取各章最新版本一次
+            # （不把所有历史版本整行取回再丢弃，避免版本越改越多时传输/ORM 成本线性上涨），
+            # 且尊重 version 参数（缺省取最新，指定则取该版本）。
+            stmt = (
+                select(ChapterContent)
+                .join(Chapter, Chapter.id == ChapterContent.chapter_id)
+                .join(Volume, Volume.id == Chapter.volume_id)
+                .where(ChapterContent.chapter_id.in_(ids), Volume.book_id == book_id)
+                .distinct(ChapterContent.chapter_id)
+                .order_by(
+                    ChapterContent.chapter_id,
+                    ChapterContent.version.desc(),
+                )
+            )
+            if version is not None:
+                stmt = stmt.where(ChapterContent.version == version)
+            rows = (await session.execute(stmt)).scalars().all()
+            latest: dict[int, ChapterContent] = {}
+            for content in rows:
+                if content.chapter_id not in latest:
+                    latest[content.chapter_id] = content
+            return {
+                "chapters": [
+                    _format(latest.get(cid), cid)
+                    for cid in ids
+                ]
             }
 
     @tool
@@ -1273,6 +1335,7 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
         mode: Annotated[str, "操作：save/recall/list/forget/update"],
         content: Annotated[str | None, "记忆内容（save 必填）"] = None,
         memory_type: Annotated[str, "记忆类型：character/plot/world/note（创作偏好等非角色/情节/世界设定类用 note 并可在 meta.kind 标注）"] = "note",
+        title: Annotated[str | None, "记忆标题（save 可选，便于列表阅读）"] = None,
         memory_id: Annotated[int | None, "记忆ID（recall 按类型筛选/list 按类型/forget/update 必填）"] = None,
         query: Annotated[str | None, "检索文本（recall 必填）"] = None,
         top_k: Annotated[int, "返回数量"] = 5,
@@ -1298,7 +1361,7 @@ def _build_agent_tools(session_factory, model_config: dict | None = None):
                 svc = AgentMemoryService(session)
                 mem = await svc.save_memory(
                     user_id=user_id, book_id=effective_book_id, memory_type=memory_type,
-                    content=content, related_chapter_id=related_chapter_id,
+                    content=content, title=title, related_chapter_id=related_chapter_id,
                     related_character_ids=related_character_ids or [], priority=priority,
                     source="agent_self_reflection", meta=meta or {},
                     model_config=model_config,

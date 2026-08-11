@@ -111,6 +111,16 @@ def _sync_missing_columns(sync_conn):
                 logger.info("已迁移 agent_memories.embedding 为不定维度 vector")
         except Exception as e:
             logger.warning(f"agent_memories.embedding 维度迁移跳过: {e}")
+        # 任务 16：save 可选记忆标题（存量库补列）
+        try:
+            _mem_cols = {c["name"] for c in inspect(sync_conn).get_columns("agent_memories")}
+            if "title" not in _mem_cols:
+                sync_conn.exec_driver_sql(
+                    "ALTER TABLE agent_memories ADD COLUMN title VARCHAR(200)"
+                )
+                logger.info("已为 agent_memories 表补充列 title")
+        except Exception as e:
+            logger.warning(f"agent_memories.title 列补充跳过: {e}")
     # 热点查询索引：messages 按 (conversation_id, create_at) 取历史消息，
     # 单 conversation_id 索引 + 内存排序在大数据量下退化为排序开销，补复合索引。
     if "messages" in tables:

@@ -44,12 +44,26 @@ export const ragClient = {
     const id = `doc-${Date.now()}`;
     const content = await file.text().catch(() => '');
     const rec: KbDocRecord = {
-      id, name: file.name, status: 'indexed', createdAt: new Date().toISOString(),
+      id, name: file.name, status: 'indexing', createdAt: new Date().toISOString(),
       scope: 'personal', uploaderId: userId, uploaderName: userName, content,
     };
+    // 任务 20：先落「索引中」，索引完成才置 indexed，失败置 failed 并上抛，
+    // 避免索引失败仍显示已索引（检索空手用户无感知）。
+    // 空/不可读内容（二进制、PDF、读取失败）indexDocument 会直接 return 不抛错，
+    // 必须在此显式判失败，否则 0 chunk 仍显示「已索引」。
+    if (!content.trim()) {
+      await putKbDoc({ ...rec, status: 'failed' }).catch(() => {});
+      throw new Error('个人文档内容为空或无法读取，仅支持可解析为文本的文件（txt/md 等）');
+    }
     await putKbDoc(rec);
-    indexDocument(rec).catch(() => {});
-    return rec;
+    try {
+      await indexDocument(rec);
+    } catch (e) {
+      await putKbDoc({ ...rec, status: 'failed' }).catch(() => {});
+      throw new Error(`个人文档索引失败：${(e as Error)?.message || '未知错误'}，请在设置页检查本地检索模型配置`);
+    }
+    await putKbDoc({ ...rec, status: 'indexed' });
+    return { ...rec, status: 'indexed' };
   },
 
   async listPersonal(): Promise<KbDocMeta[]> {

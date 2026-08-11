@@ -4,11 +4,12 @@
 - supervisor_node：新用户消息 → LLM 分类写入 subgraph；非用户消息回合不分类（防对 ToolMessage 瞎分类）；
   resume_from_subgraph 优先；分类失败默认 chat
 - _extract_route：JSON 解析 / 关键词兜底 / 非法回 chat
-- supervisor_router：pending_tool.decision→tool_calls、pending_workflow→workflow_runner、
-  pending_review→END、有子图→回子图、chat→chat、无上下文→END
+- supervisor_router（嵌套子图版）：candidate_reply_ready / pending_review → END；
+  已审批工具与排队工作流经 resume_from_subgraph 回子图由入口路由处理；有子图→回子图、chat→chat、无上下文→END
 - guardrail_node：空消息 / 超长消息拦截，正常放行
 - quality_gate_router：按子图放宽并行阈值（drafting 8 轮 / 默认 4 轮）
-- build_user_agent_graph：新拓扑可正常编译
+- build_user_agent_graph：嵌套拓扑可正常编译（父图 = guardrail/supervisor/chat/4 子图/sync，
+  tool_calls/quality_gate/workflow_runner/compress 收进子图内部）
 """
 
 from __future__ import annotations
@@ -65,6 +66,18 @@ def test_extract_route_invalid_falls_back_chat():
     assert _extract_route("随便聊聊") == "chat"
     assert _extract_route("") == "chat"
     assert _extract_route('{"route": "unknown"}') == "chat"
+
+
+def test_extract_route_low_confidence_falls_back_chat():
+    # 任务 27b：confidence < 0.5 时即使 route 合法也回 chat
+    assert _extract_route('{"route": "drafting", "confidence": 0.2, "reason": "不确定"}') == "chat"
+    assert _extract_route('{"route": "drafting", "confidence": 0.49, "reason": "边缘"}') == "chat"
+
+
+def test_extract_route_high_confidence_keeps_route():
+    assert _extract_route('{"route": "drafting", "confidence": 0.9, "reason": "写正文"}') == "drafting"
+    # 无 confidence 字段：缺省视为高置信（兼容旧模型输出）
+    assert _extract_route('{"route": "worldbuilding", "reason": "设定"}') == "worldbuilding"
 
 
 # ---------------------------------------------------------------------------
@@ -129,14 +142,19 @@ async def test_supervisor_defaults_chat_on_classify_failure(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_supervisor_router_routes_to_tool_calls_on_approved_tool():
-    state = base_state(pending_tool={"queue": [{"tool_name": "build_outline", "tool_args": {}}], "decision": "accept"})
-    assert supervisor_router(state) == "tool_calls"
+def test_supervisor_router_routes_approved_tool_back_to_subgraph():
+    # 嵌套子图版：已审批写工具不再直达父层 tool_calls（节点已收进子图），
+    # 回子图后由 subgraph_entry_router 承接执行
+    state = base_state(
+        pending_tool={"queue": [{"tool_name": "build_outline", "tool_args": {}}], "decision": "accept"},
+        subgraph="outlining",
+    )
+    assert supervisor_router(state) == "outlining"
 
 
-def test_supervisor_router_routes_to_workflow_runner():
-    state = base_state(pending_workflow={"workflow_id": "wf-1"})
-    assert supervisor_router(state) == "workflow_runner"
+def test_supervisor_router_routes_pending_workflow_back_to_subgraph():
+    state = base_state(pending_workflow={"workflow_id": "wf-1"}, subgraph="drafting")
+    assert supervisor_router(state) == "drafting"
 
 
 def test_supervisor_router_ends_on_pending_review():
@@ -239,5 +257,14 @@ def test_graph_compiles_with_supervisor_topology():
 
     graph = build_user_agent_graph(db_manager.with_db, model_config={"base_url": "x", "model_id": "y"})
     nodes = set(graph.get_graph().nodes.keys())
+    # 嵌套子图版：父图只保留 调度/护栏/supervisor/chat/4 子图/sync；
+    # tool_calls/quality_gate/workflow_runner/compress 已收进各子图内部
     assert {"guardrail", "supervisor", "chat", "worldbuilding", "outlining", "drafting", "revising",
-            "tool_calls", "quality_gate", "workflow_runner", "compress"} <= nodes
+            "sync"} <= nodes
+    assert not ({"tool_calls", "quality_gate", "workflow_runner", "compress"} <= nodes)
+    subgraphs = dict(graph.get_subgraphs())
+    assert set(subgraphs) == {"worldbuilding", "outlining", "drafting", "revising"}
+    for name, sub in subgraphs.items():
+        sub_nodes = set(sub.get_graph().nodes.keys())
+        assert {"final"} <= sub_nodes
+        assert {"tool_calls", "quality_gate", "workflow_runner", "compress"} <= sub_nodes

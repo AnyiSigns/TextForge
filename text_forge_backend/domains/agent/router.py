@@ -46,6 +46,7 @@ async def _generate_title(model_config: dict, user_msg: str, reply: str) -> str 
     """
     try:
         from langchain_core.messages import HumanMessage
+        from core.llm_retry import retry_llm
 
         model = ModelFactory(model_config).main
         prompt = (
@@ -54,7 +55,11 @@ async def _generate_title(model_config: dict, user_msg: str, reply: str) -> str 
             f"用户：{user_msg[:200]}\n"
             f"AI：{reply[:200]}"
         )
-        res = await model.ainvoke([HumanMessage(content=prompt)])
+        # 任务 10（扩展）：LLM 调用指数退避重试（瞬时故障重试 3 次）
+        res = await retry_llm(
+            lambda: model.ainvoke([HumanMessage(content=prompt)]),
+            desc="generate_title",
+        )
         text = getattr(res, "content", "") or ""
         text = text.strip().strip('"').strip("'").strip()
         text = text.split("\n")[0].strip()
@@ -105,6 +110,7 @@ async def _auto_digest_if_due(
         return
     try:
         from langchain_core.messages import HumanMessage, SystemMessage
+        from core.llm_retry import retry_llm
 
         llm = ModelFactory(model_config)
         parts = []
@@ -121,11 +127,15 @@ async def _auto_digest_if_due(
             "请总结以下最近的对话，保留关键创作决策、用户偏好、剧情设定和重要信息。"
             "这份摘要将作为 Agent 的长期记忆存档：\n\n" + combined[:12000]
         )
-        result = await llm.main.ainvoke(
-            [
-                SystemMessage(content="你是专业的对话摘要助手。"),
-                HumanMessage(content=prompt),
-            ]
+        # 任务 10（扩展）：LLM 调用指数退避重试（瞬时故障重试 3 次）
+        result = await retry_llm(
+            lambda: llm.main.ainvoke(
+                [
+                    SystemMessage(content="你是专业的对话摘要助手。"),
+                    HumanMessage(content=prompt),
+                ]
+            ),
+            desc="auto_digest",
         )
         summary = getattr(result, "content", "") or ""
         if not summary:
@@ -332,6 +342,8 @@ async def _prepare_agent_state(
             "pending_review": None,
             "review_decision": None,
             "edited_content": None,
+            "resume_from_subgraph": None,
+            "domain_context": None,
             "candidate_reply_ready": False,
             "workflow_node_outputs": {},
             "personal_rag_results": None,
@@ -346,6 +358,8 @@ async def _prepare_agent_state(
             # 任务 28 指标层：每回合独立计数，新回合清零（__reset__ 让 reducer 覆盖旧值）。
             "turn_metrics": {"__reset__": True},
             "subgraph_steps": {"__reset__": True},
+            # 嵌套子图版：子图出口结算报告，回合开始显式清空（sync 节点也会清，双保险）
+            "subgraph_report": None,
             # 注意：suggestions_signature / message_count_at_compress 不在新回合重置，
             # 缺省 key 时 LangGraph 保留 checkpoint 旧值，跨轮建议去重与压缩计数才能生效；
             # 若此处强制置 None 会覆盖 checkpoint 值，导致去重失效、每轮重复推送建议。
@@ -688,12 +702,20 @@ async def stream_agent(
             # 从输入中剔除这两个键：LangGraph 保留 checkpoint 原值，新节点执行继续累加。
             state_data.pop("turn_metrics", None)
             state_data.pop("subgraph_steps", None)
+            # 嵌套子图版：subgraph_report 是 LastValue 回流通道，sync 节点已清空；
+            # 剔除 checkpoint 旧值（若有残留），防子图失败路径读到陈旧 report 二次合并。
+            state_data.pop("subgraph_report", None)
+            # 任务 7 接线：resume 回合（无新用户消息）不重新做意图分类，
+            # supervisor_node 见 resume_from_subgraph 直接沿用原子图；新消息回合在
+            # _prepare_agent_state 置 None 复位。
+            _resume_subgraph = state_data.get("subgraph")
             pending_tool = state_data.get("pending_tool")
             if pending_tool:
                 # 被门控拦截的写工具审批：直接交回 tool_calls 节点执行，不重跑 agent
                 _tool_decision = state_data.get("review_decision") or "accept"
                 state = {
                     **state_data,
+                    "resume_from_subgraph": _resume_subgraph,
                     "pending_tool": {
                         **pending_tool,
                         "decision": _tool_decision,
@@ -746,6 +768,7 @@ async def stream_agent(
                     state = {
                         **state_data,
                         "messages": messages,
+                        "resume_from_subgraph": _resume_subgraph,
                         "pending_review": None,
                         "review_decision": None,
                         "edited_content": None,
@@ -760,70 +783,73 @@ async def stream_agent(
                         "candidate_reply_ready": False,
                         "workflow_result": None,
                     }
-                wf_id = pending_review.get("workflow_id")
-                nid = pending_review.get("node_id")
-                tcid = pending_review.get("target_chapter_id")
-                if wf_id and nid:
-                    # 确定性续跑：按待审节点的精确 workflow_id + node_id 重跑，
-                    # 不再让 LLM 臆测节点 ID（此前误把审计角色 auditor 当节点导致「节点不存在」）。
-                    queued: dict = {"workflow_id": wf_id, "node_id": nid}
-                    if tcid is not None:
-                        queued["target_chapter_id"] = tcid
-                    if review_decision == "accept":
-                        # 用户接受当前输出：重跑该节点但跳过自动质量审计，直接作为候选呈现
-                        queued["skip_audit"] = True
-                        note = f"节点 [{node_label}] 的输出已被用户接受，正在重新执行并继续。"
-                    elif review_decision == "edit" and edited_content:
-                        # 用户修改后内容：直接作为节点输出，跳过生成与审计
-                        queued["forced_output"] = edited_content
-                        note = f"节点 [{node_label}] 的输出已被用户修改，正在按修改后内容继续。"
-                    else:  # retry：重跑同一节点并重新审计
-                        note = f"节点 [{node_label}] 的输出被用户拒绝，正在重新生成。"
-                    messages.append(HumanMessage(content=note))
-                    state = {
-                        **state_data,
-                        "messages": messages,
-                        "pending_review": None,
-                        "review_decision": None,
-                        "edited_content": None,
-                        # 续跑必须清 candidate_reply_ready 与 workflow_result，
-                        # 否则图在 _entry_router 立即 END、审核决定失效。
-                        "candidate_reply_ready": False,
-                        "workflow_result": None,
-                        "pending_workflow": queued,
-                    }
                 else:
-                    # 兜底：缺少 workflow_id/node_id 时退回自然语言续跑（旧行为）
-                    if review_decision == "retry":
-                        messages.append(
-                            HumanMessage(
-                                content=f"节点 [{node_label}] 的输出被用户拒绝。请调整参数或从不同的角度重新生成，确保输出严格遵循该节点的写作要求。"
-                            )
-                        )
-                    elif review_decision == "edit" and edited_content:
-                        messages.append(
-                            HumanMessage(
-                                content=f"节点 [{node_label}] 的输出已被用户修改为以下内容：\n\n{edited_content}\n\n请基于此修改后的内容继续工作，并相应调整后续节点的上下文。"
-                            )
-                        )
+                    wf_id = pending_review.get("workflow_id")
+                    nid = pending_review.get("node_id")
+                    tcid = pending_review.get("target_chapter_id")
+                    if wf_id and nid:
+                        # 确定性续跑：按待审节点的精确 workflow_id + node_id 重跑，
+                        # 不再让 LLM 臆测节点 ID（此前误把审计角色 auditor 当节点导致「节点不存在」）。
+                        queued: dict = {"workflow_id": wf_id, "node_id": nid}
+                        if tcid is not None:
+                            queued["target_chapter_id"] = tcid
+                        if review_decision == "accept":
+                            # 用户接受当前输出：重跑该节点但跳过自动质量审计，直接作为候选呈现
+                            queued["skip_audit"] = True
+                            note = f"节点 [{node_label}] 的输出已被用户接受，正在重新执行并继续。"
+                        elif review_decision == "edit" and edited_content:
+                            # 用户修改后内容：直接作为节点输出，跳过生成与审计
+                            queued["forced_output"] = edited_content
+                            note = f"节点 [{node_label}] 的输出已被用户修改，正在按修改后内容继续。"
+                        else:  # retry：重跑同一节点并重新审计
+                            note = f"节点 [{node_label}] 的输出被用户拒绝，正在重新生成。"
+                        messages.append(HumanMessage(content=note))
+                        state = {
+                            **state_data,
+                            "messages": messages,
+                            "resume_from_subgraph": _resume_subgraph,
+                            "pending_review": None,
+                            "review_decision": None,
+                            "edited_content": None,
+                            # 续跑必须清 candidate_reply_ready 与 workflow_result，
+                            # 否则图在 _entry_router 立即 END、审核决定失效。
+                            "candidate_reply_ready": False,
+                            "workflow_result": None,
+                            "pending_workflow": queued,
+                        }
                     else:
-                        messages.append(
-                            HumanMessage(
-                                content=f"节点 [{node_label}] 的输出已被用户接受。请继续执行下一个节点。"
+                        # 兜底：缺少 workflow_id/node_id 时退回自然语言续跑（旧行为）
+                        if review_decision == "retry":
+                            messages.append(
+                                HumanMessage(
+                                    content=f"节点 [{node_label}] 的输出被用户拒绝。请调整参数或从不同的角度重新生成，确保输出严格遵循该节点的写作要求。"
+                                )
                             )
-                        )
+                        elif review_decision == "edit" and edited_content:
+                            messages.append(
+                                HumanMessage(
+                                    content=f"节点 [{node_label}] 的输出已被用户修改为以下内容：\n\n{edited_content}\n\n请基于此修改后的内容继续工作，并相应调整后续节点的上下文。"
+                                )
+                            )
+                        else:
+                            messages.append(
+                                HumanMessage(
+                                    content=f"节点 [{node_label}] 的输出已被用户接受。请继续执行下一个节点。"
+                                )
+                            )
 
-                    state = {
-                        **state_data,
-                        "messages": messages,
-                        "pending_review": None,
-                        "review_decision": None,
-                        "edited_content": None,
-                        # 同 terminate 分支：审计拦截续跑必须清 candidate_reply_ready 与
-                        # workflow_result，否则图在 _entry_router 立即 END、审核决定失效。
-                        "candidate_reply_ready": False,
-                        "workflow_result": None,
-                    }
+                        state = {
+                            **state_data,
+                            "messages": messages,
+                            "resume_from_subgraph": _resume_subgraph,
+                            "pending_review": None,
+                            "review_decision": None,
+                            "edited_content": None,
+                            # 同 terminate 分支：审计拦截续跑必须清 candidate_reply_ready 与
+                            # workflow_result，否则图在 _entry_router 立即 END、审核决定失效。
+                            "candidate_reply_ready": False,
+                            "workflow_result": None,
+                        }
         else:
             # 锁在 _prepare_agent_state 内部获取（先加锁后写消息，失败不污染历史）
             conversation, state, book_id, lock_key, holder_id = (
@@ -836,6 +862,14 @@ async def stream_agent(
                     body.book_id,
                 )
             )
+        # 任务 20：个人库检索结果随回合下发（请求体优先）。
+        # 不能靠 PATCH checkpoint——_prepare_agent_state 对 personal_rag_results
+        # 显式置 None，last-value 语义会覆盖 PATCH 值；此处直接覆盖回合输入。
+        # PersonalRagHit 模型 → dict（workflow_scheduler 用 item.get(...) 读取）。
+        if body.personal_rag_results is not None:
+            state["personal_rag_results"] = [
+                r.model_dump() for r in body.personal_rag_results
+            ]
         if book_id and not lock_key:
             # resume 分支未经 _prepare_agent_state，需自行获取书籍锁
             locked, lock_key, holder_id = await _acquire_book_lock(book_id, user_id)
@@ -874,7 +908,14 @@ async def stream_agent(
                 from langchain_core.messages import ToolMessage as _TMsg
 
                 _ag_iter = graph.astream(
-                    state, config=config, stream_mode=["updates", "custom"]
+                    state,
+                    config=config,
+                    stream_mode=["updates", "custom"],
+                    # 嵌套子图版（任务 7 重建）：必须开 subgraphs=True，子图内
+                    # get_stream_writer() 才会继承父流（否则 agent_token 等 custom
+                    # 事件在子图内丢失）；事件随之变 (ns, mode, data) 三元组，
+                    # 顶层 ns=()、子图内部 ns=("子图名:hash",)。
+                    subgraphs=True,
                 ).__aiter__()
                 _idle_timeout = settings.LLM_TIMEOUT
                 while True:
@@ -888,7 +929,7 @@ async def stream_agent(
                         logger.error("Agent 流式空闲超时，主动终止回合")
                         yield f"data: {json.dumps({'type': 'error', 'message': '生成超时，请稍后重试'}, ensure_ascii=False)}\n\n"
                         break
-                    mode, data = _step
+                    ns, mode, data = _step
                     # 客户端断连：尽快终止并释放书籍锁，避免空占锁到 TTL
                     if await request.is_disconnected():
                         logger.info("客户端已断开，终止 Agent 流式")
@@ -925,6 +966,17 @@ async def stream_agent(
                     for node_name, update in data.items():
                         if not isinstance(update, dict):
                             continue
+                        # 嵌套子图版：子图节点的顶层 update = 子图输出全量（messages
+                        # 累计 + report 等），其内容已由 ns!=() 的子图内部 updates
+                        # 逐节点处理过（agent 步进/tool 执行/审核卡），跳过避免
+                        # tool_start/progress/审核卡等事件重复推送。
+                        if not ns and node_name in (
+                            "worldbuilding",
+                            "outlining",
+                            "drafting",
+                            "revising",
+                        ):
+                            continue
                         # agent/子图节点返回 messages 增量：若含 tool_calls 则模型决定调工具
                         if node_name in ("agent", "worldbuilding", "outlining", "drafting", "revising"):
                             msgs = update.get("messages") or []
@@ -952,6 +1004,25 @@ async def stream_agent(
                                             yield f"data: {json.dumps({'type': 'progress', 'step': 'generate_chapter', 'n': _gc_n, 'total': _gc_total, 'words': 0, 'eta': 0}, ensure_ascii=False)}\n\n"
                                         elif tname == "generate_outline_extension":
                                             yield f"data: {json.dumps({'type': 'extend_outline', 'step': 'extend_outline', 'n': 0, 'total': 1}, ensure_ascii=False)}\n\n"
+                                        elif tname == "build_outline":
+                                            # 任务 14：build_outline 批量建卷的 N/M 进度（按卷粒度）
+                                            _bo_args = (
+                                                _tc.get("args")
+                                                if isinstance(_tc, dict)
+                                                else getattr(_tc, "args", None)
+                                            )
+                                            _bo_vols = (
+                                                _bo_args.get("volumes")
+                                                if isinstance(_bo_args, dict)
+                                                and isinstance(_bo_args.get("volumes"), list)
+                                                else []
+                                            )
+                                            _bo_total = max(len(_bo_vols), 1)
+                                            for _vi, _v in enumerate(_bo_vols, 1):
+                                                _v_title = ""
+                                                if isinstance(_v, dict):
+                                                    _v_title = str(_v.get("title") or "")[:50]
+                                                yield f"data: {json.dumps({'type': 'progress', 'step': 'build_outline', 'n': _vi, 'total': _bo_total, 'words': 0, 'eta': 0, 'label': _v_title}, ensure_ascii=False)}\n\n"
                                         # 任务 25：tool_start 携带 tool_call_id，供前端按 id 配对工具卡片
                                         # （同轮同名工具连续调用不再错位更新）
                                         _tc_id = (

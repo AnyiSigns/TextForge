@@ -49,6 +49,85 @@ def _should_compress(state: UserAgentState) -> bool:
     return _estimate_tokens(messages) > COMPRESS_TOKEN_BUDGET
 
 
+async def _book_outline_brief(session, book_id: int | None) -> str:
+    """构造压缩摘要中的「书上下文 + 大纲」节（从 DB 取最新快照，每次压缩重建，不会累积膨胀）。
+
+    计划任务 12：compressed_context 结构 = 书上下文 + 大纲 + 最近 N 轮对话摘要。
+    """
+    if not book_id:
+        return ""
+    try:
+        from sqlalchemy import select
+
+        from models.book import Book, Chapter, CreativeSetting, Volume
+
+        book = (
+            await session.execute(select(Book).where(Book.id == book_id))
+        ).scalar_one_or_none()
+        if not book:
+            return ""
+        lines = [
+            f"书名：{book.title or ''}",
+            f"简介：{(book.description or '')[:200]}",
+            f"分类：{book.genre or ''}",
+        ]
+        creative = (
+            await session.execute(
+                select(CreativeSetting).where(CreativeSetting.book_id == book_id)
+            )
+        ).scalar_one_or_none()
+        if creative:
+            if creative.tone:
+                lines.append(f"文风：{(creative.tone or '')[:100]}")
+            if creative.worldview:
+                lines.append(f"世界观：{(creative.worldview or '')[:100]}")
+            if creative.writing_taboos:
+                lines.append(f"写作禁忌：{(creative.writing_taboos or '')[:100]}")
+        vols = (
+            (
+                await session.execute(
+                    select(Volume)
+                    .where(Volume.book_id == book_id)
+                    .order_by(Volume.sort_order, Volume.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if vols:
+            lines.append("大纲：")
+            for v in vols:
+                chs = (
+                    (
+                        await session.execute(
+                            select(Chapter)
+                            .where(Chapter.volume_id == v.id)
+                            .order_by(Chapter.sort_order, Chapter.id)
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                ch_titles = [f"{c.sort_order}.{c.title}" for c in chs]
+                lines.append(f"  《{v.title}》：{'、'.join(ch_titles[:20])}")
+        return "\n".join(lines)[:2000]
+    except Exception as exc:
+        logger.warning(f"auto_compress 书上下文快照失败: {exc}")
+        return ""
+
+
+def _conversation_part(text: str) -> str:
+    """取压缩上下文中「对话摘要」分段之后的纯摘要（失败路径/下一轮输入复用）。
+
+    compressed_context = 【书籍上下文】+【对话摘要】+summary，上一轮的 book 快照
+    是随机的旧值，不能作为「已有摘要」再喂给模型（否则新旧大纲并存且失败时逐层嵌套），
+    只回取摘要部分。
+    """
+    marker = "【对话摘要】\n"
+    idx = text.rfind(marker)
+    return text[idx + len(marker):] if idx != -1 else text
+
+
 async def auto_compress_node(state: UserAgentState, session_factory=None) -> dict[str, Any]:
     messages = state.get("messages", [])
     if len(messages) <= COMPRESS_KEEP:
@@ -56,14 +135,26 @@ async def auto_compress_node(state: UserAgentState, session_factory=None) -> dic
 
     old_messages = messages[:-COMPRESS_KEEP]
     prior_summary = state.get("compressed_context") or ""
+    book_id = state.get("active_book_id", 0) or 0
     llm = ModelFactory(state["model_config"])
 
-    # 增量摘要：在已有摘要基础上并入本轮被裁剪的早期消息，
-    # 避免每次全量重压、并保留跨轮的长期设定/决策。
+    # 任务 12：书上下文 + 大纲快照（每次重建，随摘要一起进入压缩上下文）
+    book_brief = ""
+    if session_factory:
+        try:
+            async with session_factory() as session:
+                book_brief = await _book_outline_brief(session, book_id)
+        except Exception as exc:
+            logger.warning(f"auto_compress 书上下文读取失败: {exc}")
+
+    # 增量摘要：在已有「对话摘要」基础上并入本轮被裁剪的早期消息。
+    # 已有摘要只取摘要段（不带旧 book 快照），避免新旧大纲并存；book_brief 是
+    # 本次重建的新快照，交给模型保持创作设定一致，但仍由下方结构化前缀重附。
     human_content = (
-        f"已有摘要：\n{prior_summary}\n\n"
+        f"书籍上下文与大纲：\n{book_brief}\n\n"
+        f"已有摘要：\n{_conversation_part(prior_summary)}\n\n"
         f"需要并入的新对话（早期消息，将被压缩掉）：\n{_format_messages_for_summary(old_messages)}"
-        if prior_summary
+        if (book_brief or prior_summary)
         else _format_messages_for_summary(old_messages)
     )
     prompt = ChatPromptTemplate.from_messages([
@@ -77,12 +168,31 @@ async def auto_compress_node(state: UserAgentState, session_factory=None) -> dic
         HumanMessage(content=human_content),
     ])
     try:
-        result = await llm.main.ainvoke(prompt.format_messages())
+        from core.llm_retry import retry_llm
+
+        # 任务 10（扩展）：LLM 调用指数退避重试（瞬时故障重试 3 次）
+        result = await retry_llm(
+            lambda: llm.main.ainvoke(prompt.format_messages()),
+            desc="auto_compress",
+        )
         summary = result.content if hasattr(result, "content") else str(result)
     except Exception as exc:
         logger.error(f"auto_compress 摘要生成失败: {exc}", exc_info=True)
         # 摘要失败不应阻断裁剪：沿用旧摘要，保证对话可继续
         summary = prior_summary
+
+    # 任务 12：压缩上下文 = 书上下文 + 大纲 + 对话摘要（结构化分段，子图切换时 agent_call 统一注入）。
+    # 失败路径 summary == prior_summary（已含前缀），直接沿用不再二次嵌套；
+    # 首次失败（prior 为空）至少保留书上下文快照，保证模型不丢创作设定。
+    if book_brief:
+        if summary and summary != prior_summary:
+            compressed_context = f"【书籍上下文】\n{book_brief}\n\n【对话摘要】\n{summary}"
+        elif summary:
+            compressed_context = summary
+        else:
+            compressed_context = f"【书籍上下文】\n{book_brief}"
+    else:
+        compressed_context = summary
 
     # 静默归档到 AgentMemory（不展示给用户，也不进面板）
     if summary and session_factory:
@@ -112,7 +222,7 @@ async def auto_compress_node(state: UserAgentState, session_factory=None) -> dic
 
     return {
         "messages": messages[-COMPRESS_KEEP:],
-        "compressed_context": summary,
+        "compressed_context": compressed_context,
         "message_count_at_compress": len(messages),
         # 任务 28 指标层：压缩次数计数
         "turn_metrics": {"compress_count": 1},

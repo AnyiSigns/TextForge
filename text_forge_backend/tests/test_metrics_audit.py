@@ -51,7 +51,7 @@ def test_merge_metrics_reset_marker():
 
 
 class _FakeChunk:
-    content = ""
+    content = "第一章 测试正文"
     additional_kwargs = {}
     reasoning_content = ""
 
@@ -85,6 +85,7 @@ async def test_agent_call_counts_llm_and_subgraph_step(monkeypatch):
     update = await agent_call(state, subgraph="drafting")
     assert update["turn_metrics"]["llm_calls"] == 1
     assert update["turn_metrics"]["llm_calls_per_subgraph"] == {"drafting": 1}
+    assert update["turn_metrics"]["output_chars"] == len(_FakeChunk.content)
     assert update["subgraph_steps"] == {"drafting": 1}
     assert len(update["messages"]) == 1
 
@@ -137,6 +138,39 @@ def test_step_cap_allows_below_limit():
 def test_step_cap_ignores_unknown_subgraph():
     state = base_state(subgraph=None, messages=[tool_msg()], subgraph_steps={"x": 999})
     assert quality_gate_router(state) == "supervisor"
+
+
+# ---------------------------------------------------------------------------
+# 每回合输出字符预算（任务 10 扩展）
+# ---------------------------------------------------------------------------
+
+
+def test_output_budget_ends_when_exceeded():
+    from domains.agent.agent_nodes import TURN_OUTPUT_CHAR_BUDGET
+
+    state = base_state(
+        subgraph="drafting",
+        messages=[tool_msg(n=i) for i in range(3)],
+        turn_metrics={"output_chars": TURN_OUTPUT_CHAR_BUDGET},
+    )
+    assert quality_gate_router(state) == END
+
+
+def test_output_budget_allows_below_limit():
+    state = base_state(
+        subgraph="drafting",
+        messages=[tool_msg(n=i) for i in range(3)],
+        turn_metrics={"output_chars": 1000},
+    )
+    assert quality_gate_router(state) == "supervisor"
+
+
+def test_output_budget_merges_across_agent_calls():
+    from domains.agent.agent_state import merge_metrics
+
+    acc = merge_metrics({}, {"output_chars": 200})
+    acc = merge_metrics(acc, {"output_chars": 300})
+    assert acc == {"output_chars": 500}
 
 
 # ---------------------------------------------------------------------------

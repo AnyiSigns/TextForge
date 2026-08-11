@@ -112,14 +112,17 @@ def classify_model_error(exc: Exception) -> AppException:
     # 3) 文本模式兜底（anthropic / gemini / 其它 provider 或包装异常）
     if any(k in text for k in ("api key", "apikey", "authentication", "unauthorized", "401", "permission")):
         return AppException(400, "API Key 无效或权限不足。", ErrCode.INVALID_API_KEY)
-    if any(k in text for k in ("quota", "rate limit", "rate_limit", "too many requests", "429")):
+    if any(k in text for k in ("quota", "rate limit", "rate_limit", "too many requests", "429", "限流", "频率超限", "额度")):
         return AppException(429, "模型调用频率超限或额度已用尽。", ErrCode.QUOTA_OR_RATE)
     if any(k in text for k in ("context length", "maximum context", "too many tokens", "token limit")):
         return AppException(400, "输入内容超出模型上下文长度上限。", ErrCode.MODEL_CONTEXT)
-    if any(k in text for k in ("timeout", "timed out", "deadline")):
+    if any(k in text for k in ("timeout", "timed out", "deadline", "超时")):
         return AppException(504, "模型响应超时。", ErrCode.MODEL_TIMEOUT)
-    if any(k in text for k in ("connection", "connect", "resolve", "refused", "network", "base_url", "name or service not known", "getaddrinfo")):
+    if any(k in text for k in ("connection", "connect", "resolve", "refused", "network", "base_url", "name or service not known", "getaddrinfo", "网络", "连接")):
         return AppException(502, "无法连接模型服务。", ErrCode.MODEL_NETWORK)
+    # 服务端瞬时故障（国内 MaaS 常见中文错误文案）→ 归类为可重试的服务端错误
+    if any(k in text for k in ("overloaded", "server error", "service unavailable", "暂时", "不可用", "繁忙", "过载")):
+        return AppException(502, "模型服务暂时不可用。", ErrCode.MODEL_SERVER_ERROR)
 
     # 4) 无法识别：不泄露原始异常，返回通用文案
     return AppException(502, "模型调用失败，请检查模型配置后重试。", ErrCode.MODEL_UNKNOWN)

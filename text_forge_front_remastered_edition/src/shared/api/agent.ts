@@ -50,6 +50,7 @@ export async function streamAgent(
   onError: (err: string) => void,
   abortSignal?: AbortSignal,
   bookId?: number,
+  personalRagResults?: Array<Record<string, unknown>>,
 ): Promise<void> {
   const modelConfigData = await getModelConfigData();
 
@@ -61,6 +62,7 @@ export async function streamAgent(
       message,
       model_config_data: modelConfigData,
       book_id: bookId,
+      personal_rag_results: personalRagResults || null,
     }),
     signal: abortSignal,
   });

@@ -3,6 +3,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import { useBookDetailStore } from '@/app/(dashboard)/books/[id]/store';
 import * as agentApi from '@/shared/api/agent';
+import { ragClient } from '@/lib/knowledge';
 import type { SSEEvent } from '@/shared/api/types';
 import {
   emitAgentOutlinesRefresh,
@@ -212,12 +213,23 @@ export function useAgentSender() {
           });
           break;
         case 'progress':
-          setAgentStatus({
-            kind: 'working',
-            label: (event as { n?: number; total?: number }).total
-              ? `生成章节中 ${event.n ?? 0}/${event.total}...`
-              : '生成章节中...',
-          });
+          // 任务 14：区分 build_outline（建大纲 N/M）与 generate_chapter（生成章节 N/M）
+          if ((event as { step?: string }).step === 'build_outline') {
+            const label = (event as { label?: string }).label || '';
+            setAgentStatus({
+              kind: 'working',
+              label: (event as { total?: number }).total
+                ? `正在建大纲 ${event.n ?? 0}/${event.total}${label ? `：${label}` : ''}...`
+                : '正在建大纲...',
+            });
+          } else {
+            setAgentStatus({
+              kind: 'working',
+              label: (event as { n?: number; total?: number }).total
+                ? `生成章节中 ${event.n ?? 0}/${event.total}...`
+                : '生成章节中...',
+            });
+          }
           break;
         case 'turn_metrics':
           // 任务 28：回合指标事件——仅作调试/日志展示，不影响 UI 状态
@@ -281,7 +293,7 @@ export function useAgentSender() {
 
   // 任务 25：sendMessage / resume 共用同一流式执行骨架，仅起始差异（消息内容 / 续跑）。
   const runAgentStream = useCallback(
-    async (opts: { message: string; threadId: string }) => {
+    async (opts: { message: string; threadId: string; personalRagResults?: Array<Record<string, unknown>> }) => {
       setAgentStreaming(true);
       const abort = new AbortController();
       abortRef.current = abort;
@@ -334,6 +346,7 @@ export function useAgentSender() {
             onError,
             abort.signal,
             bookId || undefined,
+            opts.personalRagResults,
           );
         } else {
           await agentApi.resumeAgent(
@@ -397,9 +410,34 @@ export function useAgentSender() {
         }
       }
 
-      await runAgentStream({ message: msg, threadId });
+      // 任务 20：发送时附带个人库检索结果（随流请求体下发，键形状对齐后端契约 {doc_name, content, score}）。
+      // 先置流式态：检索窗口内阻塞发送按钮（sendMessage 的 agentStreaming 守卫），避免重复发送。
+      // 短路 + 超时：无个人文档不触发本地 embedding/WASM 冷加载；冷启动超过 1s 直接放弃附带，
+      // 不让模型下载阻塞首 token（best-effort，检索失败不影响发送）。
+      setAgentStreaming(true);
+      let personalRagResults: Array<Record<string, unknown>> | undefined;
+      try {
+        const personalDocs = await ragClient.listPersonal().catch(() => []);
+        if (personalDocs.length > 0) {
+          const ragHits = await Promise.race([
+            ragClient.search(msg, 'personal', 3).catch(() => []),
+            new Promise<never[]>((resolve) => setTimeout(() => resolve([]), 1000)),
+          ]);
+          if (ragHits.length > 0) {
+            personalRagResults = ragHits.map((h) => ({
+              doc_name: h.docName,
+              content: h.text,
+              score: h.score,
+            }));
+          }
+        }
+      } catch {
+        // best-effort：个人库不可用时照常发送
+      }
+
+      await runAgentStream({ message: msg, threadId, personalRagResults });
     },
-    [agentStreaming, agentThreadId, bookId, addAgentMessage, setAgentThreadId, runAgentStream],
+    [agentStreaming, agentThreadId, bookId, addAgentMessage, setAgentThreadId, setAgentStreaming, runAgentStream],
   );
 
   const abort = useCallback(() => {

@@ -116,9 +116,6 @@ interface BookDetailState {
   setBookId: (id: number) => void;
   loadBook: (id: number) => Promise<void>;
   loadChapters: () => Promise<void>;
-  loadCharacters: () => Promise<void>;
-  loadWorld: () => Promise<void>;
-  loadCreativeSetting: () => Promise<void>;
   loadWritingStats: () => Promise<void>;
   setActiveTab: (tab: string) => void;
   setCreativePhase: (phase: string) => void;
@@ -184,9 +181,6 @@ export const useBookDetailStore = create<BookDetailState>((set) => ({
 
   loadBook: async () => {},
   loadChapters: async () => {},
-  loadCharacters: async () => {},
-  loadWorld: async () => {},
-  loadCreativeSetting: async () => {},
   loadWritingStats: async () => {},
 
   setActiveTab: (tab) => set({ activeTab: tab }),

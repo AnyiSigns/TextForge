@@ -14,7 +14,7 @@ class AgentMemoryService:
     def __init__(self, session: AsyncSession):
         self.repo = AgentMemoryRepository(session)
 
-    async def save_memory(self, user_id: int, book_id: int | None, memory_type: str, content: str, related_chapter_id: int | None = None, related_character_ids: list | None = None, priority: int = 5, source: str = "agent_self_reflection", meta: dict | None = None, model_config: dict | None = None):
+    async def save_memory(self, user_id: int, book_id: int | None, memory_type: str, content: str, title: str | None = None, related_chapter_id: int | None = None, related_character_ids: list | None = None, priority: int = 5, source: str = "agent_self_reflection", meta: dict | None = None, model_config: dict | None = None):
         if related_character_ids is None:
             related_character_ids = []
         payload = {
@@ -27,6 +27,8 @@ class AgentMemoryService:
             "source": source,
             "meta": meta or {},
         }
+        if title is not None:
+            payload["title"] = title
         # 保存时同步生成向量嵌入：语义检索依赖非 NULL 的 embedding，
         # 否则刚保存的记忆永远查不到（此前 save 路径从不写 embedding）。
         # 计算失败（无嵌入模型/网络异常）时静默降级为全文检索。
@@ -100,6 +102,7 @@ class AgentMemoryService:
             "user_id": memory.user_id,
             "book_id": memory.book_id,
             "memory_type": memory.memory_type,
+            "title": memory.title,
             "content": memory.content,
             "related_chapter_id": memory.related_chapter_id,
             "related_character_ids": memory.related_character_ids or [],

@@ -1,3 +1,4 @@
+import time
 from typing import Any
 
 from langgraph.config import get_stream_writer
@@ -127,6 +128,9 @@ async def _finish_with_candidate(result: dict[str, Any], target_chapter_id: int 
             # 携带目标章节与所属工作流：用户审核决策后续跑时据此精确重跑该节点，
             # 避免 LLM 臆测节点 ID（如误把审计角色 auditor 当作工作流节点）。
             "target_chapter_id": target_chapter_id,
+            # 任务 31：卡片展示节点 tokens 与耗时
+            "tokens": _last.get("tokens", 0),
+            "elapsed_ms": _last.get("elapsed_ms", 0),
         }
         reply = f"工作流在节点「{node_label}」触发审计拦截，需要您审核后再继续。请查看审核卡进行确认。"
     elif result.get("needs_review"):
@@ -141,6 +145,9 @@ async def _finish_with_candidate(result: dict[str, Any], target_chapter_id: int 
             "output_preview": (result.get("output") or "")[:1000],
             "reason": _qc.get("reason", "输出质量不满足角色节点要求"),
             "target_chapter_id": target_chapter_id,
+            # 任务 31：卡片展示节点 tokens 与耗时
+            "tokens": result.get("tokens", 0),
+            "elapsed_ms": result.get("elapsed_ms", 0),
         }
         reply = f"工作流在节点「{node_label}」触发审计拦截，需要您审核后再继续。请查看审核卡进行确认。"
     elif not content_nodes:
@@ -251,6 +258,8 @@ async def workflow_runner_node(state: dict[str, Any]) -> dict[str, Any]:
                     # - skip_audit：用户「接受」后重跑该节点但跳过自动审计，避免重复拦截死循环。
                     forced_output = pending.get("forced_output")
                     skip_audit = pending.get("skip_audit", False)
+                    # 任务 31：单节点重跑也统计耗时（审核卡展示 tokens/耗时）
+                    _node_started = time.monotonic()
                     if forced_output is not None:
                         res = {
                             "success": True,
@@ -283,6 +292,7 @@ async def workflow_runner_node(state: dict[str, Any]) -> dict[str, Any]:
                                     "reason": f"节点执行异常: {exc}",
                                 },
                             }
+                    _node_elapsed_ms = round((time.monotonic() - _node_started) * 1000, 1)
                     result = {
                         "node_id": node_id,
                         "node_label": node_label,
@@ -291,6 +301,9 @@ async def workflow_runner_node(state: dict[str, Any]) -> dict[str, Any]:
                         "status": "completed" if res.get("success") else "error",
                         "needs_review": res.get("needs_review", False),
                         "quality_check": res.get("quality_check"),
+                        # 任务 31：单节点重跑透传 tokens 与耗时（execute_node 返回 tokens）
+                        "tokens": res.get("tokens", 0),
+                        "elapsed_ms": _node_elapsed_ms,
                     }
                     # 单节点执行：该节点若是内容节点（executor=main），即作为唯一候选正文
                     _executor = node_def.get("executor")

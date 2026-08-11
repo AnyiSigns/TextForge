@@ -30,6 +30,9 @@ export function ReviewCard({ data, onAction }: ReviewCardProps) {
   const outputPreview = fullPreview.slice(0, 300);
   // 后端审计拦截卡携带目标章节；「终止并生成正文」需回传定位落库章节
   const targetChapterId = typeof data.target_chapter_id === 'number' ? data.target_chapter_id : undefined;
+  // 任务 31：卡片展示节点 tokens 与耗时（后端 pending_review 附带）
+  const tokens = typeof data.tokens === 'number' ? data.tokens : undefined;
+  const elapsedMs = typeof data.elapsed_ms === 'number' ? data.elapsed_ms : undefined;
   const category = reasonCategory(reason);
 
   const handleAction = (action: 'accept' | 'retry' | 'edit' | 'terminate', editedContent?: string) => {
@@ -53,6 +56,13 @@ export function ReviewCard({ data, onAction }: ReviewCardProps) {
       <div className="flex items-center gap-2 mb-2">
         <AlertTriangle size={14} className="text-destructive shrink-0" />
         <span className="text-xs font-semibold text-destructive">审核请求</span>
+        {(tokens !== undefined || elapsedMs !== undefined) && (
+          <span className="text-[10px] text-muted-foreground/60 tabular-nums">
+            {tokens !== undefined && `${tokens}t`}
+            {tokens !== undefined && elapsedMs !== undefined && ' · '}
+            {elapsedMs !== undefined && `${(elapsedMs / 1000).toFixed(1)}s`}
+          </span>
+        )}
         <span className={cn('ml-auto text-[10px] px-1.5 py-px rounded-full border', category.cls)}>{category.label}</span>
       </div>
       <div className="text-xs text-muted-foreground mb-1">
