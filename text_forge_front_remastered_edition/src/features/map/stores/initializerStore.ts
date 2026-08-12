@@ -1,10 +1,21 @@
 import { create } from 'zustand';
 import { useEntityStore } from './entityStore';
-import { saveStepText } from '@/features/map/wizard/saveStepText';
+import { saveStepText, saveStepItems, parseStepItems } from '@/features/map/wizard/saveStepText';
+import type { ParsedStepResult, ParsedOutlineVolume } from '@/features/map/lib/wizardMarkdown';
 
 const STEP_LABELS = [
   '世界观', '地点', '角色', '情节线', '大纲', '事件', '伏笔',
 ];
+
+/** 各步空条目模板（表单「新增条目」用）。 */
+const EMPTY_ITEM: Record<number, unknown> = {
+  1: { name: '', type: '', description: '', parentName: '', customFields: {} },
+  2: { name: '', roleType: '', aliases: [], status: '', description: '', spawnLocationName: '', relationships: [], customFields: {} },
+  3: { name: '', type: '', description: '', parentName: '', level: 1 },
+  4: { title: '', summary: '', chapters: [{ title: '', summary: '', scenes: [{ title: '', timeLabel: '', location: '', characters: [], plotThreads: [] }] }] },
+  5: { title: '', summary: '', chapterRef: '', timeLabel: '', location: '', characters: [], plotThreads: [] },
+  6: { title: '', description: '', type: '', characters: [], relatedEvent: '', revealTiming: '' },
+};
 
 /** 依据已加载的实体数据推断本次打开为初始化还是追加（追加不覆盖已有数据）。 */
 function inferMode(): 'init' | 'append' {
@@ -38,6 +49,10 @@ interface InitializerState {
   /** 已成功落库的步骤集合：回退再前进不重复保存；重新生成后清除对应标记 */
   savedSteps: Set<number>;
   creativeForm: { name: string; tone: string; worldview: string; taboos: string; customFields: Array<{ key: string; value: string; _uid?: string }> };
+  /** 表单确认模式：true 时当前步展示实体卡片表单（生成 → 确认方案 → 表单 → 确定落库） */
+  review: boolean;
+  /** 当前步解析出的结构化实体（表单数据源；step4 为卷数组） */
+  items: ParsedStepResult | null;
 
   open: () => void;
   close: () => void;
@@ -45,6 +60,21 @@ interface InitializerState {
   prevStep: () => void;
   setCreativeForm: (data: Partial<InitializerState['creativeForm']>) => void;
   regenerateCandidates: (extraInstruction?: string) => Promise<void>;
+  /** 生成完成进入表单确认模式：解析 stepText → items */
+  enterReview: () => void;
+  /** 返回流式预览（放弃本次表单微调） */
+  backToPreview: () => void;
+  /** 表单条目编辑（顶层字段；step4 卷字段） */
+  updateItem: (index: number, patch: Record<string, unknown>) => void;
+  /** step4 章/场景字段编辑 */
+  /** step4 卷/章/场景字段编辑：chIdx 与 scIdx 均为 null 时编辑卷本体字段 */
+  updateNestedItem: (volIdx: number, chIdx: number | null, scIdx: number | null, patch: Record<string, unknown>) => void;
+  removeItem: (index: number) => void;
+  removeNestedItem: (volIdx: number, chIdx: number | null, scIdx: number | null) => void;
+  addItem: () => void;
+  addNestedItem: (volIdx: number, chIdx: number | null) => void;
+  /** 表单「确定落库」：校验（引用不合法抛错提示）→ 落库 → 前进/完成 */
+  confirmSave: () => Promise<void>;
   finish: () => Promise<void>;
   clearError: () => void;
 }
@@ -62,6 +92,8 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
   warnings: [],
   volumeProgress: null,
   savedSteps: new Set<number>(),
+  review: false,
+  items: null,
   creativeForm: { name: '', tone: '', worldview: '', taboos: '', customFields: [{ key: '战力体系', value: '', _uid: crypto.randomUUID() }, { key: '势力', value: '', _uid: crypto.randomUUID() }, { key: '交易单位', value: '', _uid: crypto.randomUUID() }] },
 
   open: () => set({
@@ -71,6 +103,8 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
     error: null,
     warnings: [],
     volumeProgress: null,
+    review: false,
+    items: null,
     mode: inferMode(),
   }),
 
@@ -125,8 +159,11 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
               await useEntityStore.getState().loadFromApi(bookId);
               set((s) => ({ savedSteps: new Set(s.savedSteps).add(currentStep) }));
             } catch (e) {
+              // 引用校验失败：透出明细（含正确格式提示），停留当前步让用户微调后重试
               console.error(`[wizard:store] nextStep saveStepText FAILED`, e);
-              set({ error: '方案保存失败，请重试' });
+              const detail = e instanceof Error && e.message ? e.message : '方案保存失败，请重试';
+              set({ error: detail });
+              return;
             }
           }
         }
@@ -156,7 +193,8 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
     }
 
     const controller = new AbortController();
-    set({ generating: true, streaming: true, error: null, abortRef: controller, warnings: [], volumeProgress: null });
+    // 重新生成：回到流式预览，清除表单确认状态与该步骤已保存标记
+    set({ generating: true, streaming: true, error: null, abortRef: controller, warnings: [], volumeProgress: null, review: false, items: null });
     // 节流合并 delta 更新，避免每个 SSE 行都触发 zustand set 造成高频重渲染；
     // 声明在 try 外，使 finally 在异常/中止路径也能取消定时器
     let pendingText = '';
@@ -232,6 +270,127 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
       // 任何退出路径（成功/异常/中止）都取消节流定时器，避免残留文本在流关闭后写入 stepText
       if (flushTimer) clearTimeout(flushTimer);
       set({ generating: false, streaming: false, abortRef: null });
+    }
+  },
+
+  /* ── 表单确认模式：生成 → 确认方案 → 卡片表单微调 → 确定落库 ── */
+
+  enterReview: () => {
+    const { currentStep, stepText } = get();
+    const text = stepText[currentStep] ?? '';
+    const items = parseStepItems(text, currentStep);
+    if (items == null || (Array.isArray(items) && items.length === 0)) {
+      set({ error: '方案解析失败，请重新生成，或检查输出格式' });
+      return;
+    }
+    set({ review: true, items, error: null });
+  },
+
+  backToPreview: () => {
+    set({ review: false, items: null });
+  },
+
+  updateItem: (index, patch) => set((s) => {
+    if (!Array.isArray(s.items)) return {};
+    const items = [...s.items] as unknown as Record<string, unknown>[];
+    if (!items[index]) return {};
+    items[index] = { ...items[index], ...patch };
+    return { items: items as unknown as ParsedStepResult };
+  }),
+
+  updateNestedItem: (volIdx, chIdx, scIdx, patch) => set((s) => {
+    const items = Array.isArray(s.items) ? [...s.items] as ParsedOutlineVolume[] : null;
+    if (!items || !items[volIdx]) return {};
+    const vol = { ...items[volIdx], chapters: items[volIdx].chapters.map((c) => ({ ...c })) };
+    if (chIdx == null && scIdx == null) {
+      // 卷本体字段编辑（卷标题/卷摘要）
+      Object.assign(vol, patch);
+    } else if (scIdx == null && chIdx != null) {
+      if (!vol.chapters[chIdx]) return {};
+      vol.chapters[chIdx] = { ...vol.chapters[chIdx], ...patch };
+    } else if (chIdx != null && scIdx != null) {
+      if (!vol.chapters[chIdx]?.scenes[scIdx]) return {};
+      const scenes = vol.chapters[chIdx].scenes.map((sc) => ({ ...sc }));
+      scenes[scIdx] = { ...scenes[scIdx], ...patch };
+      vol.chapters[chIdx] = { ...vol.chapters[chIdx], scenes };
+    }
+    items[volIdx] = vol;
+    return { items: items as ParsedStepResult };
+  }),
+
+  removeItem: (index) => set((s) => {
+    if (!Array.isArray(s.items)) return {};
+    return { items: s.items.filter((_, i) => i !== index) as ParsedStepResult };
+  }),
+
+  removeNestedItem: (volIdx, chIdx, scIdx) => set((s) => {
+    const items = Array.isArray(s.items) ? [...s.items] as ParsedOutlineVolume[] : null;
+    if (!items || !items[volIdx]) return {};
+    const vol = { ...items[volIdx], chapters: items[volIdx].chapters.map((c) => ({ ...c, scenes: c.scenes.map((sc) => ({ ...sc })) })) };
+    if (scIdx != null && chIdx != null) {
+      if (!vol.chapters[chIdx]) return {};
+      vol.chapters[chIdx] = { ...vol.chapters[chIdx], scenes: vol.chapters[chIdx].scenes.filter((_, j) => j !== scIdx) };
+    } else if (chIdx != null) {
+      vol.chapters = vol.chapters.filter((_, i) => i !== chIdx);
+    }
+    items[volIdx] = vol;
+    return { items: items as ParsedStepResult };
+  }),
+
+  addItem: () => set((s) => {
+    const template = EMPTY_ITEM[s.currentStep];
+    if (!template || !Array.isArray(s.items)) return {};
+    return { items: [...s.items, template] as ParsedStepResult };
+  }),
+
+  addNestedItem: (volIdx, chIdx) => set((s) => {
+    const items = Array.isArray(s.items) ? [...s.items] as ParsedOutlineVolume[] : null;
+    if (!items || !items[volIdx]) return {};
+    const vol = { ...items[volIdx], chapters: items[volIdx].chapters.map((c) => ({ ...c, scenes: c.scenes.map((sc) => ({ ...sc })) })) };
+    if (chIdx == null) {
+      vol.chapters.push({ title: '', summary: '', scenes: [] });
+    } else if (vol.chapters[chIdx]) {
+      vol.chapters[chIdx] = {
+        ...vol.chapters[chIdx],
+        scenes: [...vol.chapters[chIdx].scenes, { title: '', summary: '', timeLabel: '', location: '', characters: [], plotThreads: [] }],
+      };
+    }
+    items[volIdx] = vol;
+    return { items: items as ParsedStepResult };
+  }),
+
+  confirmSave: async () => {
+    const { currentStep, items } = get();
+    const { useBookDetailStore } = await import('@/app/(dashboard)/books/[id]/store');
+    const bookId = useBookDetailStore.getState().bookId;
+    if (!bookId) {
+      set({ error: '未找到当前书籍' });
+      return;
+    }
+    if (items == null) {
+      set({ error: '没有可保存的方案数据，请先生成方案' });
+      return;
+    }
+    set({ saving: true, error: null });
+    try {
+      await saveStepItems(bookId, currentStep, items);
+      await useEntityStore.getState().loadFromApi(bookId);
+      set((s) => ({
+        savedSteps: new Set(s.savedSteps).add(currentStep),
+        review: false,
+        items: null,
+        saving: false,
+      }));
+      if (currentStep === 6) {
+        set({ isOpen: false });
+      } else {
+        set((s) => ({ currentStep: s.currentStep + 1 }));
+      }
+    } catch (e) {
+      // 引用校验失败：透出明细（含正确格式提示），停留在表单让用户微调后重试
+      console.error(`[wizard:store] confirmSave FAILED`, e);
+      const detail = e instanceof Error && e.message ? e.message : '方案保存失败，请重试';
+      set({ saving: false, error: detail });
     }
   },
 

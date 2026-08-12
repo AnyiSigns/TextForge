@@ -33,7 +33,13 @@ STEP0_WORLDVIEW_PROMPT = """你是小说世界观架构师。根据用户提供�
 自定义字段：
 战力体系：星辰等级制
 势力：三大公会
-直接输出 Markdown，不要任何额外文字。"""
+
+**JSON 数据块（必须输出，字段与上方 Markdown 完全一致，前端以 JSON 为准落库）：**
+在方案末尾输出一个 ```json 围栏代码块，结构如下：
+```json
+{"creativeSetting": {"name": "方案名称", "tone": "文风基调", "worldview": "完整世界观文本", "taboos": "写作禁忌", "customFields": {"战力体系": "星辰等级制"}}}
+```
+"""
 
 
 # ── Step 1: 地点（Markdown 单份方案） ──
@@ -64,7 +70,13 @@ STEP1_LOCATIONS_PROMPT = """你是小说世界场景设计师。根据已有的�
 
 ### 地点：孙级名称 - 描述
 类型：类型
-直接输出 Markdown，不要任何额外文字。"""
+
+**JSON 数据块（必须输出，字段与上方 Markdown 完全一致，前端以 JSON 为准落库）：**
+在方案末尾输出一个 ```json 围栏代码块；parent 为父地点名（顶层地点为 null）；引用字段（parent 等）可写成「名称」或「[id] 名称」：
+```json
+{"locations": [{"name": "名称", "type": "类型", "description": "描述", "parent": "父地点名或 null", "customFields": {"键": "值"}}]}
+```
+"""
 
 # ── Step 2: 角色（Markdown 单份方案） ──
 STEP2_CHARACTERS_PROMPT = """你是小说角色设计师。根据已有的世界观和地点设定，一次生成一份完整的角色方案（Markdown）。
@@ -101,7 +113,13 @@ STEP2_CHARACTERS_PROMPT = """你是小说角色设计师。根据已有的世界
 自定义字段：
 键1：值1
 键2：值2
-直接输出 Markdown，不要任何额外文字。"""
+
+**JSON 数据块（必须输出，字段与上方 Markdown 完全一致，前端以 JSON 为准落库）：**
+在方案末尾输出一个 ```json 围栏代码块；spawnLocation 与 relationships[].targetName 为地点名/角色名（须取自清单或本方案，可写成「名称」或「[id] 名称」）：
+```json
+{"characters": [{"name": "姓名", "roleType": "类型", "aliases": ["别名"], "status": "状态", "spawnLocation": "地点名或 null", "description": "描述", "relationships": [{"type": "关系类型", "targetName": "目标角色名", "description": "关系描述"}], "customFields": {"键": "值"}}]}
+```
+"""
 
 # ── Step 3: 情节线 ──
 STEP3_PLOT_THREADS_PROMPT = """你是故事架构师。根据已有的世界观、地点和角色设定，生成一份完整的情节线方案，包含主线、支线、暗线、感情线等。
@@ -125,8 +143,13 @@ STEP3_PLOT_THREADS_PROMPT = """你是故事架构师。根据已有的世界观�
 
 # 线：另一条主线 - 描述
 类型：暗线
-直接输出 Markdown，不要任何额外文字。"""
 
+**JSON 数据块（必须输出，字段与上方 Markdown 完全一致，前端以 JSON 为准落库）：**
+在方案末尾输出一个 ```json 围栏代码块；parent 为父线名（独立主线为 null）：
+```json
+{"plotThreads": [{"name": "名称", "type": "主线", "parent": "父线名或 null", "description": "描述"}]}
+```
+"""
 # ── Step 4: 大纲 ──
 STEP4_OUTLINE_PROMPT = """你是大纲规划师。根据已有的世界观、角色和情节线，生成完整的卷章大纲，用于书籍初始化，不要直接结局。
 
@@ -154,8 +177,13 @@ STEP4_OUTLINE_PROMPT = """你是大纲规划师。根据已有的世界观、角
 地点：已有地点名
 角色：角色名、角色名
 情节线：情节线名、情节线名
-直接输出 Markdown，不要任何额外文字。"""
 
+**JSON 数据块（必须输出，字段与上方 Markdown 完全一致，前端以 JSON 为准落库）：**
+在当前卷的 Markdown 末尾输出一个 ```json 围栏代码块（每卷各输出一个）；location/characters/plotThreads 为已有清单中的名称，可写成「名称」或「[id] 名称」：
+```json
+{"volume": {"title": "卷标题", "summary": "卷摘要", "chapters": [{"title": "章标题", "summary": "章摘要", "scenes": [{"title": "场景标题", "timeLabel": "时间标签", "location": "地点名或 null", "characters": ["角色名"], "plotThreads": ["情节线名"]}]}]}}
+```
+"""
 # ── Step 5: 事件 ──
 STEP5_EVENTS_PROMPT = """你是场景分镜师。根据已有的大纲、场景节点、角色和地点，生成关键场景事件，作为大纲场景节点的精选补充。
 
@@ -175,8 +203,13 @@ STEP5_EVENTS_PROMPT = """你是场景分镜师。根据已有的大纲、场景�
 地点：地点名
 角色：角色名、角色名
 情节线：情节线名、情节线名
-直接输出 Markdown，不要任何额外文字。"""
 
+**JSON 数据块（必须输出，字段与上方 Markdown 完全一致，前端以 JSON 为准落库）：**
+在方案末尾输出一个 ```json 围栏代码块；chapterRef 为「卷标题·章标题」或章标题或「[id] 章名」，location/characters/plotThreads 为已有清单中的名称，均可写成「名称」或「[id] 名称」：
+```json
+{"events": [{"title": "事件名", "chapterRef": "卷·章或null", "timeLabel": "时间标签或null", "location": "地点名或null", "characters": ["角色名"], "plotThreads": ["情节线名"], "summary": "描述"}]}
+```
+"""
 # ── Step 6: 伏笔 ──
 STEP6_FORESHADOWINGS_PROMPT = """你是悬疑设计专家。根据已有的全部设定（世界观、角色、情节线、大纲、事件），设计一份完整的伏笔方案。
 
@@ -202,8 +235,13 @@ STEP6_FORESHADOWINGS_PROMPT = """你是悬疑设计专家。根据已有的全�
 角色：角色名、角色名
 埋下事件：事件名
 揭示建议：建议揭示时机
-直接输出 Markdown，不要任何额外文字。"""
 
+**JSON 数据块（必须输出，字段与上方 Markdown 完全一致，前端以 JSON 为准落库）：**
+在方案末尾输出一个 ```json 围栏代码块；relatedEvent 为注入事件列表中的事件名（可写成「名称」或「[id] 名称」），characters 为已有角色名：
+```json
+{"foreshadowings": [{"title": "伏笔名称", "description": "内容描述", "type": "伏笔类型", "characters": ["角色名"], "relatedEvent": "事件名或null", "revealTiming": "揭示时机或null"}]}
+```
+"""
 # ── Step → prompt 映射 ──
 STEP_PROMPTS: dict[int, str] = {
     0: STEP0_WORLDVIEW_PROMPT,

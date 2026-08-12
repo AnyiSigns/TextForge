@@ -90,8 +90,11 @@ export interface ParsedLocation {
   name: string;
   type: string;
   description: string;
+  /** Markdown 标题层级深度（JSON 数据块路径不填，落库只用 parentName） */
+  level?: number;
   parentName?: string;
-  level: number;
+  /** JSON 数据块路径：父地点 [id] 引用（markdown 路径为空） */
+  parentRefId?: number;
   customFields: Record<string, string>;
 }
 
@@ -167,6 +170,8 @@ export function parseLocations(markdown: string): ParsedLocation[] {
 export interface ParsedCharacterRelation {
   type: string;
   targetName: string;
+  /** JSON 数据块路径：目标角色 [id] 引用 */
+  targetRefId?: number;
   description: string;
 }
 
@@ -177,6 +182,8 @@ export interface ParsedCharacter {
   status: string;
   description: string;
   spawnLocationName?: string;
+  /** JSON 数据块路径：首次出场地点 [id] 引用 */
+  spawnLocationRefId?: number;
   relationships: ParsedCharacterRelation[];
   customFields: Record<string, string>;
 }
@@ -262,6 +269,8 @@ export interface ParsedPlotThread {
   type: string;
   description: string;
   parentName?: string;
+  /** JSON 数据块路径：父线 [id] 引用 */
+  parentRefId?: number;
   level: number;
 }
 
@@ -299,8 +308,12 @@ export interface ParsedOutlineScene {
   summary: string;
   timeLabel: string;
   location: string;
+  /** JSON 数据块路径：地点/角色/情节线 [id] 引用 */
+  locationRefId?: number;
   characters: string[];
+  charactersRefIds?: number[];
   plotThreads: string[];
+  plotThreadsRefIds?: number[];
 }
 
 export interface ParsedOutlineChapter {
@@ -385,10 +398,15 @@ export interface ParsedEvent {
   title: string;
   summary: string;
   chapterRef: string;
+  /** JSON 数据块路径：章节 [id] 引用 */
+  chapterRefId?: number;
   timeLabel: string;
   location: string;
+  locationRefId?: number;
   characters: string[];
+  charactersRefIds?: number[];
   plotThreads: string[];
+  plotThreadsRefIds?: number[];
 }
 
 export function parseEvents(markdown: string): ParsedEvent[] {
@@ -424,7 +442,10 @@ export interface ParsedForeshadowing {
   description: string;
   type: string;
   characters: string[];
+  charactersRefIds?: number[];
   relatedEvent: string;
+  /** JSON 数据块路径：埋下事件 [id] 引用 */
+  relatedEventRefId?: number;
   revealTiming: string;
 }
 
@@ -451,4 +472,231 @@ export function parseForeshadowings(markdown: string): ParsedForeshadowing[] {
     }
   }
   return items;
+}
+
+/* ── JSON 数据块解析（Markdown 方案末尾的 ```json 结构化数据） ──
+ * 方案 A：Markdown 负责展示，末尾 JSON 块负责落库。
+ * 引用字段支持「[id] 名称」或纯名称两种写法；id 优先用于落库匹配。
+ */
+
+/** 提取文本中所有围栏 JSON 块并逐个解析，返回成功解析的对象列表。 */
+export function extractJsonBlocks(text: string): Record<string, unknown>[] {
+  const blocks: Record<string, unknown>[] = [];
+  const re = /```(?:json)?\s*\n([\s\S]*?)```/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    try {
+      const parsed = JSON.parse(m[1].trim());
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        blocks.push(parsed as Record<string, unknown>);
+      }
+    } catch { /* 单个块损坏不影响其他块 */ }
+  }
+  return blocks;
+}
+
+/** 引用值解析：「[id] 名称」→ { id, name }；纯名称 → { name }。 */
+export function parseRef(value: string | null | undefined): { id?: number; name: string } {
+  if (!value) return { name: '' };
+  const m = value.trim().match(/^\[\s*(\d+)\s*\]\s*(.*)$/);
+  if (m) return { id: Number(m[1]), name: m[2].trim() };
+  return { name: value.trim() };
+}
+
+function asArray(v: unknown): unknown[] {
+  return Array.isArray(v) ? v : [];
+}
+
+function asString(v: unknown): string {
+  return typeof v === 'string' ? v : '';
+}
+
+function asRecord(v: unknown): Record<string, unknown> {
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+}
+
+function asStringMap(v: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, val] of Object.entries(asRecord(v))) {
+    if (typeof val === 'string') out[k] = val;
+  }
+  return out;
+}
+
+/** 引用项解析：纯数字（LLM 直接输出 id）→ { id }；「[id] 名称」→ { id, name }；纯名称 → { name }。 */
+function refParts(v: unknown): { id?: number; name: string } {
+  if (typeof v === 'number' && Number.isInteger(v)) return { id: v, name: '' };
+  return parseRef(asString(v));
+}
+
+function refsToNames(values: unknown[]): string[] {
+  return values.map((v) => refParts(v).name).filter(Boolean);
+}
+
+function refsToIds(values: unknown[]): number[] | undefined {
+  const ids = values.map((v) => refParts(v).id).filter((x): x is number => x != null);
+  return ids.length > 0 ? ids : undefined;
+}
+
+export type ParsedStepResult =
+  | ParsedCreativeSetting
+  | ParsedLocation[]
+  | ParsedCharacter[]
+  | ParsedPlotThread[]
+  | ParsedOutlineVolume[]
+  | ParsedEvent[]
+  | ParsedForeshadowing[];
+
+/** 按步骤解析 JSON 块为与 markdown 解析器同构的实体结构；无有效块返回 null（调用方回退 markdown）。 */
+export function parseStepJson(text: string, step: number): ParsedStepResult | null {
+  const blocks = extractJsonBlocks(text);
+  if (blocks.length === 0) return null;
+  const first = blocks[0];
+
+  switch (step) {
+    case 0: {
+      const cs = asRecord(first.creativeSetting ?? first);
+      if (Object.keys(cs).length === 0) return null;
+      return {
+        name: asString(cs.name),
+        tone: asString(cs.tone),
+        worldview: asString(cs.worldview),
+        taboos: asString(cs.taboos),
+        customFields: asStringMap(cs.customFields),
+      };
+    }
+    case 1: {
+      // 长输出可能拆多个块：合并全部块的 locations
+      const items = blocks.flatMap((b) => asArray(b.locations));
+      if (items.length === 0) return null;
+      return items.map((raw) => {
+        const it = asRecord(raw);
+        const parent = refParts(it.parent);
+        return {
+          name: asString(it.name),
+          type: asString(it.type),
+          description: asString(it.description),
+          parentName: parent.name || undefined,
+          parentRefId: parent.id,
+          customFields: asStringMap(it.customFields),
+        };
+      });
+    }
+    case 2: {
+      const items = blocks.flatMap((b) => asArray(b.characters));
+      if (items.length === 0) return null;
+      return items.map((raw) => {
+        const it = asRecord(raw);
+        const spawn = refParts(it.spawnLocation);
+        const relations = asArray(it.relationships).map((r) => {
+          const rr = asRecord(r);
+          const target = refParts(rr.targetName);
+          return {
+            type: asString(rr.type),
+            targetName: target.name,
+            targetRefId: target.id,
+            description: asString(rr.description),
+          };
+        });
+        return {
+          name: asString(it.name),
+          roleType: asString(it.roleType),
+          aliases: asArray(it.aliases).map(asString).filter(Boolean),
+          status: asString(it.status),
+          description: asString(it.description),
+          spawnLocationName: spawn.name || undefined,
+          spawnLocationRefId: spawn.id,
+          relationships: relations,
+          customFields: asStringMap(it.customFields),
+        };
+      });
+    }
+    case 3: {
+      const items = blocks.flatMap((b) => asArray(b.plotThreads));
+      if (items.length === 0) return null;
+      return items.map((raw) => {
+        const it = asRecord(raw);
+        const parent = refParts(it.parent);
+        return {
+          name: asString(it.name),
+          type: asString(it.type),
+          description: asString(it.description),
+          parentName: parent.name || undefined,
+          parentRefId: parent.id,
+          level: parent.name || parent.id != null ? 2 : 1,
+        };
+      });
+    }
+    case 4: {
+      // Step 4 按卷分批：每卷末尾各有一个 {"volume": {...}} 块，全部收集
+      const volumes: ParsedOutlineVolume[] = [];
+      for (const block of blocks) {
+        const vol = asRecord(block.volume);
+        if (!asString(vol.title)) continue;
+        const chapters = asArray(vol.chapters).map((c) => {
+          const ch = asRecord(c);
+          const scenes = asArray(ch.scenes).map((s) => {
+            const sc = asRecord(s);
+            const loc = refParts(sc.location);
+            return {
+              title: asString(sc.title),
+              summary: asString(sc.summary),
+              timeLabel: asString(sc.timeLabel),
+              location: loc.name,
+              locationRefId: loc.id,
+              characters: refsToNames(asArray(sc.characters)),
+              charactersRefIds: refsToIds(asArray(sc.characters)),
+              plotThreads: refsToNames(asArray(sc.plotThreads)),
+              plotThreadsRefIds: refsToIds(asArray(sc.plotThreads)),
+            };
+          });
+          return { title: asString(ch.title), summary: asString(ch.summary), scenes };
+        });
+        volumes.push({ title: asString(vol.title), summary: asString(vol.summary), chapters });
+      }
+      return volumes.length > 0 ? volumes : null;
+    }
+    case 5: {
+      const items = blocks.flatMap((b) => asArray(b.events));
+      if (items.length === 0) return null;
+      return items.map((raw) => {
+        const it = asRecord(raw);
+        const chapter = refParts(it.chapterRef);
+        const loc = refParts(it.location);
+        return {
+          title: asString(it.title),
+          summary: asString(it.summary),
+          chapterRef: chapter.name,
+          chapterRefId: chapter.id,
+          timeLabel: asString(it.timeLabel),
+          location: loc.name,
+          locationRefId: loc.id,
+          characters: refsToNames(asArray(it.characters)),
+          charactersRefIds: refsToIds(asArray(it.characters)),
+          plotThreads: refsToNames(asArray(it.plotThreads)),
+          plotThreadsRefIds: refsToIds(asArray(it.plotThreads)),
+        };
+      });
+    }
+    case 6: {
+      const items = blocks.flatMap((b) => asArray(b.foreshadowings));
+      if (items.length === 0) return null;
+      return items.map((raw) => {
+        const it = asRecord(raw);
+        const ev = refParts(it.relatedEvent);
+        return {
+          title: asString(it.title),
+          description: asString(it.description),
+          type: asString(it.type),
+          characters: refsToNames(asArray(it.characters)),
+          charactersRefIds: refsToIds(asArray(it.characters)),
+          relatedEvent: ev.name,
+          relatedEventRefId: ev.id,
+          revealTiming: asString(it.revealTiming),
+        };
+      });
+    }
+    default:
+      return null;
+  }
 }

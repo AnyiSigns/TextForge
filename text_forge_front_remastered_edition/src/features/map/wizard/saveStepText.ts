@@ -5,12 +5,32 @@ import {
   parseOutline,
   parseEvents,
   parseForeshadowings,
+  parseStepJson,
+} from '@/features/map/lib/wizardMarkdown';
+import type {
+  ParsedLocation,
+  ParsedCharacter,
+  ParsedPlotThread,
+  ParsedOutlineVolume,
+  ParsedEvent,
+  ParsedForeshadowing,
+  ParsedStepResult,
 } from '@/features/map/lib/wizardMarkdown';
 
 /**
- * 初始化/追加共用落库层：解析 Markdown 方案后增量写入。
- * 追加不覆盖：每个步骤先查库按名称去重，重复实体一律跳过（只新增缺失项）。
+ * 初始化/追加共用落库层：优先消费 Markdown 方案末尾的 JSON 数据块，
+ * JSON 缺失/损坏时回退 Markdown 解析。
+ * 追加不覆盖：先查库按名称去重，重复实体一律跳过（只新增缺失项）。
+ * 引用字段合法性校验：解析不到合法引用（章节/角色/地点/情节线/事件）时
+ * 抛出 WizardValidationError 携带明细，中止整步落库，由用户微调后重试。
  */
+
+export class WizardValidationError extends Error {
+  constructor(public errors: string[]) {
+    super(`方案数据校验失败（${errors.length} 处）：\n` + errors.join('\n'));
+    this.name = 'WizardValidationError';
+  }
+}
 
 function cnToNum(s: string): number | null {
   const map: Record<string, number> = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
@@ -32,6 +52,27 @@ function mapRevealType(raw: string): string {
 /** 名称模糊匹配：LLM 输出与实际名称不完全一致时双向子串兜底。 */
 function nameMatches(actual: string, ref: string): boolean {
   return actual === ref || actual.includes(ref) || ref.includes(actual);
+}
+
+/**
+ * 引用匹配：JSON 路径优先按 [id] 精确匹配（refId），否则名称匹配。
+ * 返回匹配到的实体；未匹配返回 undefined。
+ */
+function matchEntity<T extends { id: number; name: string }>(
+  entities: T[],
+  refName: string | undefined,
+  refId: number | undefined,
+): T | undefined {
+  if (refId != null) {
+    const byId = entities.find((e) => e.id === refId);
+    if (byId) return byId;
+  }
+  if (refName) {
+    const exact = entities.find((e) => e.name === refName);
+    if (exact) return exact;
+    return entities.find((e) => nameMatches(e.name, refName));
+  }
+  return undefined;
 }
 
 /**
@@ -86,24 +127,46 @@ function matchChapterRef(
   return allChapters.find((c) => nameMatches(c.title, ref))?.id;
 }
 
-/** 记录未匹配的引用名（LLM 编造/改名时告警，不中断落库）。 */
-function warnUnmatched(kind: string, refs: string[], matchedNames: string[]) {
-  const missing = refs.filter((r) => !matchedNames.includes(r));
-  if (missing.length > 0) {
-    console.warn(`[wizard:save] ${kind} 未匹配: ${missing.join('、')}`);
-  }
+/** 名称→id 映射（校验阶段已保证存在，落库阶段名称匹配必须成功）。 */
+function charNameToId(chars: Array<{ id: number; name: string }>, name: string): number | undefined {
+  return matchEntity(chars, name, undefined)?.id;
 }
 
-async function saveStep1(bookId: number, text: string): Promise<void> {
-  // 地点：标题层级 → Location（父级按名字解析 parentId，自定义字段 → attributes）
-  const { createLocation, updateLocation, fetchLocations } = await import('@/shared/api/world');
-  const locations = parseLocations(text);
+function threadNameToId(threads: Array<{ id: number; name: string }>, name: string): number | undefined {
+  return matchEntity(threads, name, undefined)?.id;
+}
+
+/* ── Step 1：地点 ── */
+
+async function persistLocations(bookId: number, locations: ParsedLocation[]): Promise<void> {
   if (locations.length === 0) return;
+  const { createLocation, updateLocation, fetchLocations } = await import('@/shared/api/world');
   const existing = await fetchLocations(bookId).catch(() => []);
+  const errors: string[] = [];
+  const toCreate: ParsedLocation[] = [];
   const existingNames = new Set(existing.map((l) => l.name));
-  const idMap: Record<string, number> = {};
   for (const loc of locations) {
+    if (!loc.name) {
+      errors.push('存在名称为空的地点条目');
+      continue;
+    }
     if (existingNames.has(loc.name)) continue; // 重复落库防护（追加不覆盖）
+    if (loc.parentName || loc.parentRefId != null) {
+      const parentInBatch = loc.parentName != null && locations.some((x) => x.name === loc.parentName);
+      const parentExisting = loc.parentRefId != null
+        ? existing.some((l) => l.id === loc.parentRefId)
+        : loc.parentName != null && [...existing].some((l) => nameMatches(l.name, loc.parentName!));
+      if (!parentInBatch && !parentExisting) {
+        errors.push(`地点「${loc.name}」的父地点「${loc.parentName ?? `[${loc.parentRefId}]`}」不存在，请输入已有地点名或置空`);
+      }
+    }
+    toCreate.push(loc);
+  }
+  if (errors.length > 0) throw new WizardValidationError(errors);
+
+  const idMap: Record<string, number> = {};
+  const byId = new Map(existing.map((l) => [l.id, l]));
+  for (const loc of toCreate) {
     try {
       const created = await createLocation({
         bookId,
@@ -115,37 +178,69 @@ async function saveStep1(bookId: number, text: string): Promise<void> {
       idMap[loc.name] = created.id;
     } catch { /* 单个地点失败不中断 */ }
   }
-  // 父级按名字解析（本批 + 已有地点合并），并行更新
   const allIds: Record<string, number> = {
     ...Object.fromEntries(existing.map((l) => [l.name, l.id])),
     ...idMap,
   };
   const parentUpdates: Array<Promise<unknown>> = [];
-  for (const loc of locations) {
-    if (!idMap[loc.name] || !loc.parentName || !allIds[loc.parentName]) continue;
-    parentUpdates.push(
-      updateLocation(idMap[loc.name], { parentId: allIds[loc.parentName] }, bookId),
-    );
+  for (const loc of toCreate) {
+    const id = idMap[loc.name];
+    if (!id) continue;
+    let parentId: number | undefined;
+    if (loc.parentRefId != null && byId.has(loc.parentRefId)) {
+      parentId = loc.parentRefId;
+    } else if (loc.parentName) {
+      parentId = allIds[loc.parentName];
+    }
+    if (parentId != null) {
+      parentUpdates.push(updateLocation(id, { parentId }, bookId));
+    }
   }
   await Promise.allSettled(parentUpdates);
 }
 
-async function saveStep2(bookId: number, text: string): Promise<void> {
-  // 角色：别名/状态/自定义字段/首次出场/关系链 → Character
+/* ── Step 2：角色 ── */
+
+async function persistCharacters(bookId: number, characters: ParsedCharacter[]): Promise<void> {
+  if (characters.length === 0) return;
   const { createCharacter, updateCharacter, fetchCharacters } = await import('@/shared/api/characters');
   const { fetchLocations } = await import('@/shared/api/world');
-  const characters = parseCharacters(text);
-  if (characters.length === 0) return;
   const [existing, locs] = await Promise.all([
     fetchCharacters(bookId).catch(() => []),
     fetchLocations(bookId).catch(() => []),
   ]);
+  const errors: string[] = [];
   const existingNames = new Set(existing.map((c) => c.name));
-  const locationNameToId = Object.fromEntries(locs.map((l) => [l.name, l.id]));
-  const idMap: Record<string, number> = {};
+  const toCreate: ParsedCharacter[] = [];
   for (const ch of characters) {
+    if (!ch.name) {
+      errors.push('存在名称为空的角色条目');
+      continue;
+    }
     if (existingNames.has(ch.name)) continue; // 重复落库防护（追加不覆盖）
-    const spawnId = ch.spawnLocationName ? locationNameToId[ch.spawnLocationName] : undefined;
+    if (ch.spawnLocationName || ch.spawnLocationRefId != null) {
+      const ok = matchEntity(locs, ch.spawnLocationName, ch.spawnLocationRefId);
+      if (!ok) {
+        errors.push(`角色「${ch.name}」的首次出场地点「${ch.spawnLocationName ?? `[${ch.spawnLocationRefId}]`}」不存在，请输入已有地点名或置空`);
+      }
+    }
+    for (const rel of ch.relationships) {
+      if (!rel.targetName) continue;
+      // 目标可能在本批新建（关系链创建后统一回填）
+      const inBatch = characters.some((x) => x.name === rel.targetName);
+      const inExisting = [...existing].some((c) => nameMatches(c.name, rel.targetName));
+      if (!inBatch && !inExisting) {
+        errors.push(`角色「${ch.name}」的关系目标「${rel.targetName}」不存在，请输入已有角色名或置空`);
+      }
+    }
+    toCreate.push(ch);
+  }
+  if (errors.length > 0) throw new WizardValidationError(errors);
+
+  const idMap: Record<string, number> = {};
+  const existingById = new Map(existing.map((c) => [c.id, c]));
+  for (const ch of toCreate) {
+    const spawnRef = matchEntity(locs, ch.spawnLocationName, ch.spawnLocationRefId);
     try {
       const created = await createCharacter({
         bookId,
@@ -156,23 +251,28 @@ async function saveStep2(bookId: number, text: string): Promise<void> {
         // 后端 description 必填：空描述兜底空串，避免 422 静默丢角色
         description: ch.description || '',
         customFields: Object.keys(ch.customFields).length > 0 ? ch.customFields : undefined,
-        ...(spawnId != null ? { spawnLocationId: spawnId } : {}),
+        ...(spawnRef ? { spawnLocationId: spawnRef.id } : {}),
       } as Parameters<typeof createCharacter>[0]);
       idMap[ch.name] = created.id;
     } catch { /* 单个角色失败不中断 */ }
   }
-  // 关系链：targetName → id（本批 + 已有角色合并），并行更新
   const allIds: Record<string, number> = {
     ...Object.fromEntries(existing.map((c) => [c.name, c.id])),
     ...idMap,
   };
   const chainUpdates: Array<Promise<unknown>> = [];
-  for (const ch of characters) {
+  for (const ch of toCreate) {
     const id = idMap[ch.name];
     if (!id || ch.relationships.length === 0) continue;
     const chain = ch.relationships
-      .filter((r) => allIds[r.targetName])
-      .map((r) => ({ targetId: allIds[r.targetName], type: r.type, description: r.description }));
+      .map((r) => {
+        // JSON 路径优先 targetRefId（[id] 精确），否则按名称
+        const targetId = r.targetRefId != null && existingById.has(r.targetRefId)
+          ? r.targetRefId
+          : allIds[r.targetName];
+        return { targetId, type: r.type, description: r.description };
+      })
+      .filter((r) => r.targetId != null);
     if (chain.length === 0) continue;
     chainUpdates.push(
       updateCharacter(id, { relationshipChain: chain } as Parameters<typeof updateCharacter>[1]),
@@ -181,47 +281,106 @@ async function saveStep2(bookId: number, text: string): Promise<void> {
   await Promise.allSettled(chainUpdates);
 }
 
-async function saveStep3(bookId: number, text: string): Promise<void> {
-  // 情节线：Markdown 层级（# 主线 / ## 支线）→ PlotThread（按名称去重）
-  const { createPlotThread, fetchPlotThreads } = await import('@/shared/api/world');
-  const threads = parsePlotThreads(text);
+/* ── Step 3：情节线 ── */
+
+async function persistPlotThreads(bookId: number, threads: ParsedPlotThread[]): Promise<void> {
   if (threads.length === 0) return;
+  const { createPlotThread, fetchPlotThreads } = await import('@/shared/api/world');
   const existing = await fetchPlotThreads(bookId).catch(() => []);
+  const errors: string[] = [];
   const existingNames = new Set(existing.map((t) => t.name));
-  let mainId: number | null = null;
+  const toCreate: ParsedPlotThread[] = [];
   for (const t of threads) {
+    if (!t.name) {
+      errors.push('存在名称为空的情节线条目');
+      continue;
+    }
     if (existingNames.has(t.name)) continue; // 重复落库防护（追加不覆盖）
+    if (t.parentName) {
+      const inBatch = threads.some((x) => x.name === t.parentName);
+      const inExisting = [...existing].some((x) => nameMatches(x.name, t.parentName!));
+      if (!inBatch && !inExisting) {
+        errors.push(`情节线「${t.name}」的父线「${t.parentName}」不存在，请输入已有线名或置空`);
+      }
+    }
+    toCreate.push(t);
+  }
+  if (errors.length > 0) throw new WizardValidationError(errors);
+
+  const allNames: Record<string, number> = {
+    ...Object.fromEntries(existing.map((t) => [t.name, t.id])),
+  };
+  const existingById = new Map(existing.map((t) => [t.id, t]));
+  let mainId: number | null = null;
+  for (const t of toCreate) {
     try {
+      // 父线优先：parentRefId（JSON 路径 [id]）→ parentName → 本批最近主线
+      const parentByRef = t.parentRefId != null ? existingById.get(t.parentRefId) : undefined;
+      const parentId = parentByRef?.id
+        ?? allNames[t.parentName ?? '']
+        ?? (t.level === 2 && mainId != null ? mainId : undefined);
       const created = await createPlotThread({
         bookId,
         name: t.name,
         description: t.description || undefined,
         status: 'active',
         type: t.type || (t.level === 1 ? '主线' : '支线'),
-        parentThreadId: t.level === 2 && mainId != null ? mainId : undefined,
+        parentThreadId: parentId,
       } as Parameters<typeof createPlotThread>[0]);
       existingNames.add(t.name);
+      allNames[t.name] = created.id;
       if (t.level === 1) mainId = created.id;
     } catch { /* 单个情节线失败不中断 */ }
   }
 }
 
-async function saveStep4(bookId: number, text: string): Promise<void> {
-  // 大纲：卷 → 章 → 场景节点 → SceneEvent（时间/地点/角色/情节线）
-  // 卷/章按标题去重：已有卷下追加新章，已有章跳过；创建时显式传 sortOrder。
+/* ── Step 4：大纲 ── */
+
+async function persistOutline(bookId: number, volumes: ParsedOutlineVolume[]): Promise<void> {
+  if (volumes.length === 0) return;
   const { createVolume, createChapter, fetchChaptersTree } = await import('@/shared/api/books');
   const { createSceneEvent, fetchPlotThreads, fetchLocations } = await import('@/shared/api/world');
   const { fetchCharacters } = await import('@/shared/api/characters');
-  const volumes = parseOutline(text);
-  if (volumes.length === 0) return;
   const [chars, threads, locs, tree] = await Promise.all([
     fetchCharacters(bookId).catch(() => []),
     fetchPlotThreads(bookId).catch(() => []),
     fetchLocations(bookId).catch(() => []),
     fetchChaptersTree(bookId).catch(() => []),
   ]);
-  const charNameToId = Object.fromEntries(chars.map((c: { name: string; id: number }) => [c.name, c.id]));
-  const threadNameToId = Object.fromEntries(threads.map((t: { name: string; id: number }) => [t.name, t.id]));
+  const errors: string[] = [];
+  for (const vol of volumes) {
+    if (!vol.title) {
+      errors.push('存在标题为空的卷条目');
+      continue;
+    }
+    for (const [ci, ch] of vol.chapters.entries()) {
+      if (!ch.title) {
+        errors.push(`卷「${vol.title}」中存在标题为空的章条目`);
+        continue;
+      }
+      for (const [si, sc] of ch.scenes.entries()) {
+        const at = `卷「${vol.title}」第${ci + 1}章场景「${sc.title || si + 1}」`;
+        if (sc.location || sc.locationRefId != null) {
+          const ok = matchEntity(locs, sc.location, sc.locationRefId);
+          if (!ok) errors.push(`${at}：地点「${sc.location ?? `[${sc.locationRefId}]`}」不存在，请输入已有地点名或置空`);
+        }
+        sc.characters.forEach((n, idx) => {
+          const refId = sc.charactersRefIds?.[idx];
+          if (!matchEntity(chars, n, refId)) {
+            errors.push(`${at}：角色「${n || `[${refId}]`}」不存在，请输入已有角色名或置空`);
+          }
+        });
+        sc.plotThreads.forEach((n, idx) => {
+          const refId = sc.plotThreadsRefIds?.[idx];
+          if (!matchEntity(threads, n, refId)) {
+            errors.push(`${at}：情节线「${n || `[${refId}]`}」不存在，请输入已有情节线名或置空`);
+          }
+        });
+      }
+    }
+  }
+  if (errors.length > 0) throw new WizardValidationError(errors);
+
   const existingVolByTitle = new Map(tree.map((v) => [v.title, v]));
   const existingChByVolTitle = new Map<string, Set<string>>(
     tree.map((v) => [v.title, new Set(v.chapters.map((c) => c.title))]),
@@ -231,9 +390,10 @@ async function saveStep4(bookId: number, text: string): Promise<void> {
     let existingVol = existingVolByTitle.get(vol.title);
     if (!existingVol) {
       const created = await createVolume(bookId, vol.title, vol.summary || undefined, vi + 1);
-      // 本批去重：后续同名卷标题直接复用（LLM 偶尔重复输出卷块）
+      // 本批去重：后续同名卷标题直接复用（LLM 偶尔重复输出卷块）；章集合同步注册
       existingVol = { ...created, chapters: [] };
       existingVolByTitle.set(vol.title, existingVol);
+      existingChByVolTitle.set(vol.title, new Set<string>());
     }
     const volId = existingVol.id;
     const existingChTitles = existingChByVolTitle.get(vol.title) ?? new Set<string>();
@@ -243,15 +403,15 @@ async function saveStep4(bookId: number, text: string): Promise<void> {
       existingChTitles.add(ch.title);
       for (const sc of ch.scenes) {
         try {
-          const loc = sc.location
-            ? locs.find((l) => l.name === sc.location || sc.location.includes(l.name) || l.name.includes(sc.location))
-            : undefined;
-          const matchedCharNames = sc.characters.filter((n) => charNameToId[n] != null);
-          const matchedThreadNames = sc.plotThreads.filter((n) => threadNameToId[n] != null);
-          const matchedChars = matchedCharNames.map((n) => charNameToId[n]);
-          const matchedThreads = matchedThreadNames.map((n) => threadNameToId[n]);
-          warnUnmatched('场景角色', sc.characters, matchedCharNames);
-          warnUnmatched('场景情节线', sc.plotThreads, matchedThreadNames);
+          const loc = matchEntity(locs, sc.location, sc.locationRefId);
+          const matchedChars = sc.characters.map((n, idx) => {
+            const refId = sc.charactersRefIds?.[idx];
+            return refId != null ? (chars.find((c) => c.id === refId)?.id) : charNameToId(chars, n);
+          }).filter((x): x is number => x != null);
+          const matchedThreads = sc.plotThreads.map((n, idx) => {
+            const refId = sc.plotThreadsRefIds?.[idx];
+            return refId != null ? (threads.find((t) => t.id === refId)?.id) : threadNameToId(threads, n);
+          }).filter((x): x is number => x != null);
           await createSceneEvent({
             bookId,
             title: sc.title,
@@ -270,13 +430,13 @@ async function saveStep4(bookId: number, text: string): Promise<void> {
   }
 }
 
-async function saveStep5(bookId: number, text: string): Promise<void> {
-  // 事件：章节/时间/地点/角色/情节线 → SceneEvent（按标题去重）
+/* ── Step 5：事件 ── */
+
+async function persistEvents(bookId: number, events: ParsedEvent[]): Promise<void> {
+  if (events.length === 0) return;
   const { createSceneEvent, fetchLocations, fetchPlotThreads, fetchSceneEvents } = await import('@/shared/api/world');
   const { fetchChaptersTree } = await import('@/shared/api/books');
   const { fetchCharacters } = await import('@/shared/api/characters');
-  const events = parseEvents(text);
-  if (events.length === 0) return;
   const [locs, tree, chars, threads, existingEvents] = await Promise.all([
     fetchLocations(bookId).catch(() => []),
     fetchChaptersTree(bookId).catch(() => []),
@@ -285,21 +445,56 @@ async function saveStep5(bookId: number, text: string): Promise<void> {
     fetchSceneEvents(bookId).catch(() => []),
   ]);
   const existingTitles = new Set(existingEvents.map((e) => e.title));
-  const charNameToId = Object.fromEntries(chars.map((c: { name: string; id: number }) => [c.name, c.id]));
-  const threadNameToId = Object.fromEntries(threads.map((t: { name: string; id: number }) => [t.name, t.id]));
+  const allChapterIds = new Set(tree.flatMap((v) => v.chapters).map((c) => c.id));
+  const errors: string[] = [];
   for (const ev of events) {
+    if (!ev.title) {
+      errors.push('存在名称为空的事件条目');
+      continue;
+    }
     if (existingTitles.has(ev.title)) continue; // 重复落库防护（追加不覆盖）
-    // 章节归属：优先「卷·章」组合引用，失败回退全局序号/标题/子串匹配
-    const chapterId = ev.chapterRef ? matchChapterRef(tree, ev.chapterRef) : undefined;
-    const loc = ev.location
-      ? locs.find((l) => l.name === ev.location || ev.location.includes(l.name) || l.name.includes(ev.location))
-      : undefined;
-    const matchedCharNames = ev.characters.filter((n) => charNameToId[n] != null);
-    const matchedThreadNames = ev.plotThreads.filter((n) => threadNameToId[n] != null);
-    const matchedChars = matchedCharNames.map((n) => charNameToId[n]);
-    const matchedThreads = matchedThreadNames.map((n) => threadNameToId[n]);
-    warnUnmatched('事件角色', ev.characters, matchedCharNames);
-    warnUnmatched('事件情节线', ev.plotThreads, matchedThreadNames);
+    // 章节引用校验：JSON 路径优先 [id]，否则「卷·章」/标题/序号匹配
+    if (ev.chapterRef || ev.chapterRefId != null) {
+      const chapterId = ev.chapterRefId != null
+        ? (allChapterIds.has(ev.chapterRefId) ? ev.chapterRefId : undefined)
+        : matchChapterRef(tree, ev.chapterRef);
+      if (chapterId == null) {
+        errors.push(`事件「${ev.title}」的章节引用「${ev.chapterRef || `[${ev.chapterRefId}]`}」未匹配到任何章节，请输入已有章标题或「卷·章」组合（如 卷一·初入江湖）`);
+      }
+    }
+    if (ev.location || ev.locationRefId != null) {
+      const ok = matchEntity(locs, ev.location, ev.locationRefId);
+      if (!ok) errors.push(`事件「${ev.title}」的地点「${ev.location ?? `[${ev.locationRefId}]`}」不存在，请输入已有地点名或置空`);
+    }
+    ev.characters.forEach((n, idx) => {
+      const refId = ev.charactersRefIds?.[idx];
+      if (!matchEntity(chars, n, refId)) {
+        errors.push(`事件「${ev.title}」的角色「${n || `[${refId}]`}」不存在，请输入已有角色名或置空`);
+      }
+    });
+    ev.plotThreads.forEach((n, idx) => {
+      const refId = ev.plotThreadsRefIds?.[idx];
+      if (!matchEntity(threads, n, refId)) {
+        errors.push(`事件「${ev.title}」的情节线「${n || `[${refId}]`}」不存在，请输入已有情节线名或置空`);
+      }
+    });
+  }
+  if (errors.length > 0) throw new WizardValidationError(errors);
+
+  for (const ev of events) {
+    if (existingTitles.has(ev.title)) continue;
+    const chapterId = ev.chapterRefId != null
+      ? (allChapterIds.has(ev.chapterRefId) ? ev.chapterRefId : undefined)
+      : (ev.chapterRef ? matchChapterRef(tree, ev.chapterRef) : undefined);
+    const loc = matchEntity(locs, ev.location, ev.locationRefId);
+    const matchedChars = ev.characters.map((n, idx) => {
+      const refId = ev.charactersRefIds?.[idx];
+      return refId != null ? (chars.find((c) => c.id === refId)?.id) : charNameToId(chars, n);
+    }).filter((x): x is number => x != null);
+    const matchedThreads = ev.plotThreads.map((n, idx) => {
+      const refId = ev.plotThreadsRefIds?.[idx];
+      return refId != null ? (threads.find((t) => t.id === refId)?.id) : threadNameToId(threads, n);
+    }).filter((x): x is number => x != null);
     try {
       await createSceneEvent({
         bookId,
@@ -318,35 +513,56 @@ async function saveStep5(bookId: number, text: string): Promise<void> {
   }
 }
 
-async function saveStep6(bookId: number, text: string): Promise<void> {
-  // 伏笔：类型/角色/埋下事件/揭示建议 → Foreshadowing（原始类型存 type，揭示建议存 notes）
+/* ── Step 6：伏笔 ── */
+
+async function persistForeshadowings(bookId: number, items: ParsedForeshadowing[]): Promise<void> {
+  if (items.length === 0) return;
   const { createForeshadowing, fetchSceneEvents, fetchForeshadowings } = await import('@/shared/api/world');
   const { fetchCharacters } = await import('@/shared/api/characters');
-  const items = parseForeshadowings(text);
-  if (items.length === 0) return;
   const [events, chars, existing] = await Promise.all([
     fetchSceneEvents(bookId).catch(() => []),
     fetchCharacters(bookId).catch(() => []),
     fetchForeshadowings(bookId).catch(() => []),
   ]);
+  // 重复落库防护（追加不覆盖）：按标题前缀匹配，LLM 重生成描述变化时也能防重
   const existingDescriptions = new Set(existing.map((f) => f.description));
-  const charNameToId = Object.fromEntries(chars.map((c: { name: string; id: number }) => [c.name, c.id]));
+  const isDuplicate = (it: ParsedForeshadowing) => [...existingDescriptions].some((d) => d.startsWith(it.title));
+  const errors: string[] = [];
+  for (const it of items) {
+    if (!it.title) {
+      errors.push('存在名称为空的伏笔条目');
+      continue;
+    }
+    if (isDuplicate(it)) continue;
+    if (it.relatedEvent || it.relatedEventRefId != null) {
+      const ok = it.relatedEventRefId != null
+        ? events.some((e) => e.id === it.relatedEventRefId)
+        : [...events].some((e) => nameMatches(e.title, it.relatedEvent));
+      if (!ok) {
+        errors.push(`伏笔「${it.title}」的埋下事件「${it.relatedEvent}」不存在，请输入已有事件名或置空`);
+      }
+    }
+    for (const n of it.characters) {
+      if (!matchEntity(chars, n, undefined)) errors.push(`伏笔「${it.title}」的角色「${n}」不存在，请输入已有角色名或置空`);
+    }
+  }
+  if (errors.length > 0) throw new WizardValidationError(errors);
+
   for (const it of items) {
     const description = `${it.title}${it.description ? '：' + it.description : ''}`;
-    // 重复落库防护（追加不覆盖）：按标题前缀匹配，LLM 重生成描述变化时也能防重
-    if ([...existingDescriptions].some((d) => d.startsWith(it.title))) continue;
-    // 埋下事件：精确标题 → 双向子串兜底
-    const relatedEvent = it.relatedEvent
-      ? events.find((e) => e.title === it.relatedEvent)
-        ?? events.find((e) => nameMatches(e.title, it.relatedEvent))
-      : undefined;
+    if (isDuplicate(it)) continue;
+    const relatedEvent = it.relatedEventRefId != null
+      ? events.find((e) => e.id === it.relatedEventRefId)
+      : (it.relatedEvent
+        ? events.find((e) => e.title === it.relatedEvent) ?? events.find((e) => nameMatches(e.title, it.relatedEvent))
+        : undefined);
     const body: Record<string, unknown> = {
       bookId,
       description,
       status: 'planted',
       revealType: mapRevealType(it.type),
       type: it.type || undefined,
-      relatedCharacterIds: it.characters.map((n) => charNameToId[n]).filter(Boolean),
+      relatedCharacterIds: it.characters.map((n) => charNameToId(chars, n)).filter(Boolean),
     };
     if (relatedEvent) body.relatedEventId = relatedEvent.id;
     if (it.revealTiming) body.notes = `建议揭示时机：${it.revealTiming}`;
@@ -357,17 +573,45 @@ async function saveStep6(bookId: number, text: string): Promise<void> {
   }
 }
 
-const STEP_SAVERS: Record<number, (bookId: number, text: string) => Promise<void>> = {
-  1: saveStep1,
-  2: saveStep2,
-  3: saveStep3,
-  4: saveStep4,
-  5: saveStep5,
-  6: saveStep6,
+/* ── 入口：结构化数据 / Markdown 文本 ── */
+
+const ITEM_PERSISTERS: Record<number, (bookId: number, items: never) => Promise<void>> = {
+  1: persistLocations as never,
+  2: persistCharacters as never,
+  3: persistPlotThreads as never,
+  4: persistOutline as never,
+  5: persistEvents as never,
+  6: persistForeshadowings as never,
 };
 
+/** 结构化落库（表单确认/微调后直接调用；引用不合法抛 WizardValidationError）。 */
+export async function saveStepItems(bookId: number, step: number, items: unknown): Promise<void> {
+  if (!items) return;
+  const persister = ITEM_PERSISTERS[step];
+  if (persister) await persister(bookId, items as never);
+}
+
+/** 统一解析入口：优先 Markdown 末尾 JSON 数据块，缺失/损坏回退 Markdown 解析器。 */
+export function parseStepItems(
+  text: string,
+  step: number,
+): ParsedStepResult | null {
+  if (!text || !text.trim()) return null;
+  const jsonItems = parseStepJson(text, step);
+  if (jsonItems != null) return jsonItems;
+  switch (step) {
+    case 1: return parseLocations(text);
+    case 2: return parseCharacters(text);
+    case 3: return parsePlotThreads(text);
+    case 4: return parseOutline(text);
+    case 5: return parseEvents(text);
+    case 6: return parseForeshadowings(text);
+    default: return null;
+  }
+}
+
+/** Markdown 文本落库：优先解析末尾 JSON 数据块，缺失/损坏回退 Markdown 解析器。 */
 export async function saveStepText(bookId: number, step: number, text: string): Promise<void> {
-  if (!text || !text.trim()) return;
-  const saver = STEP_SAVERS[step];
-  if (saver) await saver(bookId, text);
+  const items = parseStepItems(text, step);
+  await saveStepItems(bookId, step, items);
 }

@@ -1,4 +1,4 @@
-// tests/initializer/initializerSave.test.ts
+﻿// tests/initializer/initializerSave.test.ts
 // 初始化器「流式生成 Markdown 方案 → 解析落库」测试：
 // 验证 Step 0 世界观填入创意设定表单、Step 1-6 的 Markdown 文本被前端解析器
 // 正确映射并写入后端各实体字段。
@@ -106,6 +106,7 @@ describe('初始化器字段映射（与后端 wizard label 对齐）', () => {
   });
 
   it('Step6 伏笔：markdown 解析（类型/角色/埋下事件/揭示建议）', async () => {
+    worldApi.fetchSceneEvents.mockResolvedValueOnce([{ id: 300, title: '城门相遇' }]);
     setStepText(6, [
       '# 伏笔：断剑之谜 - 断剑实为上古神器，主角修行之路的关键转折',
       '类型：身份谜团',
@@ -318,15 +319,31 @@ describe('初始化器字段映射（与后端 wizard label 对齐）', () => {
       '角色：林晚',
       '情节线：主线',
       '',
-      '## 事件：无名风波 - 章节引用无法解析序号与标题',
-      '章节：第20章',
+      '## 事件：章节别名匹配 - 标题子串兜底',
+      '章节：第十章',
     ].join('\n'));
     await useInitializerStore.getState().nextStep();
     const bodies = worldApi.createSceneEvent.mock.calls.map((c) => c[0] as Record<string, unknown>);
     // 第十章 → sortOrder=10 数值匹配成功
     expect(bodies[0].chapterId).toBe(201);
-    // 第20章 → 数值 20 无匹配、标题无匹配、子串无匹配 → 不挂错章（undefined）
-    expect(bodies[1].chapterId).toBeUndefined();
+    expect(bodies[1].chapterId).toBe(201);
+  });
+
+  it('Step5 事件：非法章节引用 → 校验报错中止整步落库（不静默丢失）', async () => {
+    setStepText(5, [
+      '## 事件：暗夜追袭 - 合法事件（不应被落库，整步校验先行）',
+      '章节：第十章',
+      '',
+      '## 事件：无名风波 - 章节引用无法解析序号与标题',
+      '章节：第20章',
+    ].join('\n'));
+    await useInitializerStore.getState().nextStep();
+    // 校验阶段先行：存在非法引用时任何事件都不落库，错误明细含正确格式提示
+    expect(worldApi.createSceneEvent).not.toHaveBeenCalled();
+    expect(useInitializerStore.getState().error).toContain('第20章');
+    expect(useInitializerStore.getState().error).toContain('卷·章');
+    // 停留当前步（Step 5），不前进到下一步
+    expect(useInitializerStore.getState().currentStep).toBe(5);
   });
 
   it('Step5 事件：「卷标题·章标题」组合引用跨卷同名章消歧', async () => {
@@ -398,5 +415,116 @@ describe('初始化器字段映射（与后端 wizard label 对齐）', () => {
     expect(body.revealType).toBe('twist');
     expect(body.relatedEventId).toBe(300); // 模糊匹配命中
     expect(String(body.notes)).toContain('第二卷结尾');
+  });
+
+  /* ── 表单确认模式（方案 A：JSON 块 → 卡片表单微调 → 确定落库） ── */
+
+  it('enterReview：JSON 块优先解析 → review 状态 + items', () => {
+    setStepText(5, [
+      '## 事件：城门相遇 - 相遇',
+      '```json',
+      '{"events": [{"title": "城门相遇", "chapterRef": "[201] 初入江湖", "timeLabel": "清晨", "location": "[7] 王都", "characters": ["林晚"], "plotThreads": ["主线"], "summary": "相遇"}]}',
+      '```',
+    ].join('\n'));
+    useInitializerStore.setState({ currentStep: 5 });
+    useInitializerStore.getState().enterReview();
+    const st = useInitializerStore.getState();
+    expect(st.review).toBe(true);
+    expect(Array.isArray(st.items)).toBe(true);
+    const item = (st.items as unknown as Array<Record<string, unknown>>)[0];
+    // JSON 路径保留章节 [id] 引用，落库时精确匹配
+    expect(item.chapterRefId).toBe(201);
+  });
+
+  it('confirmSave：JSON 引用 id 优先精确匹配落库', async () => {
+    setStepText(5, [
+      '```json',
+      '{"events": [{"title": "城门相遇", "chapterRef": "[201] 初入江湖", "characters": ["林晚"], "plotThreads": ["主线"], "summary": "相遇"}]}',
+      '```',
+    ].join('\n'));
+    useInitializerStore.setState({ currentStep: 5 });
+    useInitializerStore.getState().enterReview();
+    await useInitializerStore.getState().confirmSave();
+    const body = worldApi.createSceneEvent.mock.calls[0][0] as Record<string, unknown>;
+    expect(body.chapterId).toBe(201); // [201] → id 精确匹配（而非名称匹配）
+    expect(useInitializerStore.getState().review).toBe(false);
+    expect(useInitializerStore.getState().savedSteps.has(5)).toBe(true);
+    // 落库成功前进到 Step 6
+    expect(useInitializerStore.getState().currentStep).toBe(6);
+  });
+
+  it('confirmSave：非法引用（[999] 不存在的章节）→ 校验报错停留表单', async () => {
+    setStepText(5, [
+      '```json',
+      '{"events": [{"title": "城门相遇", "chapterRef": "[999] 不存在", "summary": "相遇"}]}',
+      '```',
+    ].join('\n'));
+    useInitializerStore.setState({ currentStep: 5 });
+    useInitializerStore.getState().enterReview();
+    await useInitializerStore.getState().confirmSave();
+    expect(worldApi.createSceneEvent).not.toHaveBeenCalled();
+    // 校验失败消息含引用名与正确格式提示
+    expect(useInitializerStore.getState().error).toContain('不存在');
+    expect(useInitializerStore.getState().error).toContain('卷·章');
+    // 停留表单（review 保持），等待用户微调
+    expect(useInitializerStore.getState().review).toBe(true);
+    expect(useInitializerStore.getState().currentStep).toBe(5);
+  });
+
+  it('表单操作：updateItem 改引用、addItem 新增空条目、removeItem 删除条目', () => {
+    setStepText(5, [
+      '```json',
+      '{"events": [{"title": "城门相遇", "chapterRef": "[201] 初入江湖", "summary": "相遇"}]}',
+      '```',
+    ].join('\n'));
+    useInitializerStore.setState({ currentStep: 5 });
+    useInitializerStore.getState().enterReview();
+    const st = useInitializerStore.getState();
+    st.addItem();
+    let items = useInitializerStore.getState().items as unknown as Array<Record<string, unknown>>;
+    expect(items).toHaveLength(2);
+    expect(items[1]).toMatchObject({ title: '', chapterRef: '' });
+    st.updateItem(1, { title: '新增事件', chapterRef: '第一章' });
+    items = useInitializerStore.getState().items as unknown as Array<Record<string, unknown>>;
+    expect(items[1].title).toBe('新增事件');
+    st.removeItem(0);
+    items = useInitializerStore.getState().items as unknown as Array<Record<string, unknown>>;
+    expect(items).toHaveLength(1);
+    expect(items[0].title).toBe('新增事件');
+  });
+
+  it('大纲嵌套表单：updateNestedItem 场景字段 + addNestedItem 新增章/场景 + removeNestedItem 删除场景', () => {
+    setStepText(4, [
+      '```json',
+      '{"volume": {"title": "觉醒", "summary": "觉醒之旅", "chapters": [{"title": "初入江湖", "summary": "踏上旅途", "scenes": [{"title": "城门口", "timeLabel": "清晨", "location": "王都", "characters": ["林晚"], "plotThreads": ["主线"]}]}]}}',
+      '```',
+    ].join('\n'));
+    useInitializerStore.setState({ currentStep: 4 });
+    useInitializerStore.getState().enterReview();
+    const st = useInitializerStore.getState();
+    // 卷本体字段编辑（卷标题/卷摘要，不落到第一章）
+    st.updateNestedItem(0, null, null, { title: '觉醒·修订' });
+    let vol = (useInitializerStore.getState().items as unknown as Array<Record<string, unknown>>)[0];
+    expect(vol.title).toBe('觉醒·修订');
+    // 场景字段编辑
+    st.updateNestedItem(0, 0, 0, { location: '[7] 王都' });
+    vol = (useInitializerStore.getState().items as unknown as Array<Record<string, unknown>>)[0];
+    let scenes = (vol.chapters as unknown as Array<Record<string, unknown>>)[0].scenes as unknown as Array<Record<string, unknown>>;
+    expect(scenes[0].location).toBe('[7] 王都');
+    // 新增场景
+    st.addNestedItem(0, 0);
+    vol = (useInitializerStore.getState().items as unknown as Array<Record<string, unknown>>)[0];
+    scenes = (vol.chapters as unknown as Array<Record<string, unknown>>)[0].scenes as unknown as Array<Record<string, unknown>>;
+    expect(scenes).toHaveLength(2);
+    // 新增章
+    st.addNestedItem(0, null);
+    vol = (useInitializerStore.getState().items as unknown as Array<Record<string, unknown>>)[0];
+    expect((vol.chapters as unknown as Array<Record<string, unknown>>)).toHaveLength(2);
+    // 删除第一个场景
+    st.removeNestedItem(0, 0, 0);
+    vol = (useInitializerStore.getState().items as unknown as Array<Record<string, unknown>>)[0];
+    scenes = (vol.chapters as unknown as Array<Record<string, unknown>>)[0].scenes as unknown as Array<Record<string, unknown>>;
+    expect(scenes).toHaveLength(1);
+    expect(scenes[0].title).toBe('');
   });
 });
