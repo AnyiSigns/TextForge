@@ -64,8 +64,12 @@ describe('Step2 关系链复核表单（relations 渲染器）', () => {
 
   it('关系描述多行编辑保留', () => {
     render(<Initializer />);
-    const desc = screen.getByDisplayValue('名义师徒，实为仇人') as HTMLInputElement;
+    // 描述初始为只读 div（EditableField 非编辑态），点击进入编辑态后才是 textarea
+    fireEvent.click(screen.getByText('名义师徒，实为仇人'));
+    const desc = screen.getByDisplayValue('名义师徒，实为仇人') as HTMLTextAreaElement;
     fireEvent.change(desc, { target: { value: '修订后的关系描述' } });
+    // 失焦回写（EditableField 在 onBlur 时 onChange）
+    fireEvent.blur(desc);
     const items = useInitializerStore.getState().items as unknown as Array<Record<string, unknown>>;
     const rels = items[0].relationships as Array<Record<string, unknown>>;
     expect(rels[0].description).toBe('修订后的关系描述');

@@ -89,7 +89,9 @@ async def upload_public_document(
     service = KnowledgeService(session)
     try:
         result = await service.upload_public(
-            file, emb_config=model_config.get("embedding_config") if model_config else None
+            file,
+            user_id=user_id,
+            emb_config=model_config.get("embedding_config") if model_config else None
         )
     except Exception as exc:
         # 文件解析/编码等可控异常 → 具体友好提示；其余归为内部错误不泄露
@@ -139,6 +141,8 @@ async def list_public_documents_summary(
             "file_size": item.file_size,
             "scope": item.scope,
             "createdAt": item.created_at.isoformat() if item.created_at else None,
+            # author 为 NULL（历史存量上传）时返回 null，前端据此显示"暂无作者数据"
+            "uploaderName": item.author,
         }
         for item in items
     ]}

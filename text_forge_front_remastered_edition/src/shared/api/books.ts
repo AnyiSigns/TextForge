@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import type { Book, Volume, Chapter, SceneEvent, CreativeSetting, WritingStats, BookContextConfig } from './types';
+import type { Book, Volume, Chapter, CreativeSetting, BookContextConfig } from './types';
 
 export async function fetchBooks(): Promise<Book[]> {
   const { data } = await apiClient.get<{ books: Book[] }>('/books/');
@@ -68,11 +68,6 @@ export async function updateChapter(chapterId: number, patch: Partial<Chapter>):
   return data;
 }
 
-export async function fetchOutlineTree(bookId: number): Promise<{ volumes: Volume[]; chapters: Chapter[]; nodes: SceneEvent[] }> {
-  const { data } = await apiClient.get<{ volumes: Volume[]; chapters: Chapter[]; nodes: SceneEvent[] }>(`/books/${bookId}/outline-tree`);
-  return { volumes: data.volumes ?? [], chapters: data.chapters ?? [], nodes: data.nodes ?? [] };
-}
-
 export async function deleteChapter(chapterId: number): Promise<void> {
   await apiClient.delete(`/chapters/${chapterId}`);
 }
@@ -87,34 +82,8 @@ export async function updateCreativeSetting(bookId: number, setting: Partial<Cre
   return data;
 }
 
-export async function fetchBookContextConfig(bookId: number): Promise<BookContextConfig> {
-  const { data } = await apiClient.get<BookContextConfig>(`/books/${bookId}/context-config`);
-  return data;
-}
-
 export async function saveBookContextConfig(bookId: number, config: Partial<BookContextConfig>): Promise<BookContextConfig> {
   const { data } = await apiClient.put<BookContextConfig>(`/books/${bookId}/context-config`, config);
   return data;
 }
 
-export async function fetchWritingStats(bookId: number): Promise<WritingStats> {
-  const { data } = await apiClient.get<{
-    session_count: number;
-    total_words: number;
-    total_duration_seconds: number;
-    active_days: number;
-  }>(`/writing-sessions/statistics/summary?book_id=${bookId}`);
-  return {
-    summary: {
-      totalWords: data.total_words ?? 0,
-      totalSessions: data.session_count ?? 0,
-      totalDurationSeconds: data.total_duration_seconds ?? 0,
-      activeDays: data.active_days ?? 0,
-    },
-  };
-}
-
-export async function fetchWritingTrend(bookId: number, days = 7): Promise<{ date: string; words: number }[]> {
-  const { data } = await apiClient.get<{ trend: { date: string; words: number }[] }>(`/writing-sessions/statistics/writing-trend?book_id=${bookId}&days=${days}`);
-  return data.trend ?? [];
-}

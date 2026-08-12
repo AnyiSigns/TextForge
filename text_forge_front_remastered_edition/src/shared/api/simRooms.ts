@@ -82,13 +82,13 @@ export interface CreateSimRoomPayload {
   relatedPlotThreadIds?: number[];
 }
 
-// 拉取指定书籍下的模拟房间列表。
+// 拉取指定书籍下的模拟房间列表。后端分页上限 page_size=100，一次拉全避免 >10 房间不可见。
 export async function listSimRooms(bookId: number): Promise<SimRoomSummary[]> {
   try {
-    const { data } = await apiClient.get<{ items?: SimRoomSummary[]; rooms?: SimRoomSummary[] }>(
-      `/sim-rooms/?bookId=${bookId}`,
+    const { data } = await apiClient.get<{ items?: SimRoomSummary[] }>(
+      `/sim-rooms/?bookId=${bookId}&page_size=100`,
     );
-    return data.items ?? data.rooms ?? [];
+    return data.items ?? [];
   } catch {
     return [];
   }

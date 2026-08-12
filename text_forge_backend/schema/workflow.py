@@ -18,7 +18,6 @@ class WorkflowNode(BaseModel):
     id: str
     label: str
     system_prompt: str | None = Field(default=None, alias="systemPrompt")
-    tier: Literal["cheap", "standard"] | None = None
     context_fields: list[str] | None = Field(default=None, alias="contextFields")
     rag_filter: RagFilter | None = Field(default=None, alias="ragFilter")
     rag_top_k: int | None = Field(default=3, alias="ragTopK")

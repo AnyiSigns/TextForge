@@ -11,6 +11,9 @@ class AgentMemoryRequest(BaseModel):
     priority: int | None = Field(default=5)
     source: str | None = "user_manual"
     meta: dict | None = Field(default=None)
+    # 保存时同步生成向量嵌入（模型配置，通常只含 embedding_config）；
+    # 缺失时静默降级全文检索，保证保存不失败。
+    model_config_data: dict | None = Field(default=None, alias="modelConfig")
 
     model_config = ConfigDict(populate_by_name=True)
 

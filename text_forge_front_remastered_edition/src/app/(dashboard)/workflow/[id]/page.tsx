@@ -51,6 +51,7 @@ function getLayer(executor: string, label: string): 'decision' | 'execution' | '
   if (executor === 'audit') return 'audit';
   if (executor === 'router') return 'decision';
   if (executor === 'tool') return 'execution';
+  // main 档位无专用分支，按 label 中文关键词兜底推断层级
   if (label.includes('策划') || label.includes('分镜')) return 'decision';
   return 'execution';
 }

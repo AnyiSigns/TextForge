@@ -53,12 +53,19 @@ class ModelFactory:
         self.user_config = user_config
         self._cache = _MODEL_CACHE  # 指向进程级共享缓存
 
-        for attr_name, config_field in self.DETAILED:
-            config = user_config.get(config_field)
-            if not config:
-                config = user_config.get("main_config", {})
-            model = self._get_create_model(config)
-            setattr(self, attr_name, model)
+        # embedding-only 场景（如记忆语义检索/保存，前端只下发 embedding_config）：
+        # 不要求 main_config 存在，避免 get_model({}) 抛「没有配置提供商」导致
+        # 语义检索静默失效。仅当存在任一 chat 档位配置时才构建 chat 模型。
+        if any(user_config.get(f) for f in ("main_config", "router_config", "tool_config", "audit_config")):
+            for attr_name, config_field in self.DETAILED:
+                config = user_config.get(config_field)
+                if not config:
+                    config = user_config.get("main_config", {})
+                model = self._get_create_model(config)
+                setattr(self, attr_name, model)
+        else:
+            for attr_name, _ in self.DETAILED:
+                setattr(self, attr_name, None)
 
         emb_cfg = user_config.get("embedding_config") or {}
         emb_key = _embedding_key(emb_cfg)

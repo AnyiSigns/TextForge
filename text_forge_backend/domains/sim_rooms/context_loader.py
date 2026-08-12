@@ -9,6 +9,18 @@ from sqlalchemy import select
 logger = get_logger(__name__)
 
 
+async def execute_sql(stmt):
+    """执行 SQL 并提交（insert/update 生效；select 上 commit 无害）。
+
+    graph.compress_memories_node 经此桥接落库角色记忆；session_factory 为
+    autocommit=False，故必须显式 commit，否则会话关闭后回滚导致记忆从未持久化。
+    """
+    async with db_manager.session_factory() as ss:
+        result = await ss.execute(stmt)
+        await ss.commit()
+        return result
+
+
 async def load_room_context(room_id: int, room: SimRoom, model_config: dict) -> dict:
     """装载房间 WebSocket 上下文。
 
@@ -110,12 +122,7 @@ async def load_room_context(room_id: int, room: SimRoom, model_config: dict) -> 
     # 从已持久化的轮数继续，避免重连后新轮覆盖丢失已有轮数
     round_count = room.round_count or 0
 
-    async def _execute_sql(stmt):
-        async with db_manager.session_factory() as ss:
-            result = await ss.execute(stmt)
-            return result
-
-    bridge = {"execute_sql": _execute_sql, "room_id": room_id, "character_details": char_details, "user_id": room.user_id, "book_id": room.book_id, "model_config": model_config}
+    bridge = {"execute_sql": execute_sql, "room_id": room_id, "character_details": char_details, "user_id": room.user_id, "book_id": room.book_id, "model_config": model_config}
 
     # 用户扮演的「我的身份」角色名（entity_type="user" 的参与者）
     my_role_label = "用户"

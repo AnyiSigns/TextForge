@@ -1,38 +1,46 @@
 'use client';
 
-import { FileText, BookOpen } from 'lucide-react';
+import { FileText, BookOpen, FileDown } from 'lucide-react';
+
+export type ExportFormat = 'txt' | 'md' | 'epub' | 'pdf';
 
 interface ExportBookDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onExport: (format: 'txt' | 'markdown') => void;
+  onExport: (format: ExportFormat) => void;
 }
+
+const FORMATS: { key: ExportFormat; label: string; hint: string }[] = [
+  { key: 'txt', label: '纯文本', hint: 'TXT' },
+  { key: 'md', label: 'Markdown', hint: 'MD' },
+  { key: 'epub', label: 'EPUB', hint: '电子书' },
+  { key: 'pdf', label: 'PDF', hint: '打印/分享' },
+];
 
 export function ExportBookDialog({ open, onOpenChange, onExport }: ExportBookDialogProps) {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70" onClick={() => onOpenChange(false)}>
       <div
-        className="w-[320px] max-w-[92vw] rounded-lg border border-border bg-background shadow-lg"
+        className="w-[340px] max-w-[92vw] rounded-lg border border-border bg-background shadow-lg"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-4 py-3 border-b border-border">
           <h3 className="text-sm font-semibold">导出书籍正文</h3>
-          <p className="text-xs text-muted-foreground mt-1">仅导出手稿章节正文（不含设定/角色）。</p>
+          <p className="text-xs text-muted-foreground mt-1">由服务端整书导出（支持多格式，含卷/章结构）。</p>
         </div>
-        <div className="flex gap-2 p-4">
-          <button
-            onClick={() => onExport('txt')}
-            className="flex-1 flex items-center justify-center gap-1 h-9 rounded-md text-xs font-medium bg-foreground text-background border-none cursor-pointer hover:opacity-90"
-          >
-            <FileText size={14} /> 纯文本 (TXT)
-          </button>
-          <button
-            onClick={() => onExport('markdown')}
-            className="flex-1 flex items-center justify-center gap-1 h-9 rounded-md text-xs border border-border cursor-pointer bg-transparent hover:bg-muted"
-          >
-            <BookOpen size={14} /> Markdown
-          </button>
+        <div className="grid grid-cols-2 gap-2 p-4">
+          {FORMATS.map((f) => (
+            <button
+              key={f.key}
+              onClick={() => onExport(f.key)}
+              className="flex flex-col items-center gap-1 h-16 rounded-md text-xs font-medium border border-border bg-transparent cursor-pointer hover:bg-muted"
+            >
+              {f.key === 'txt' ? <FileText size={14} /> : f.key === 'md' ? <BookOpen size={14} /> : <FileDown size={14} />}
+              <span>{f.label}</span>
+              <span className="text-[9px] text-foreground/30 font-normal">{f.hint}</span>
+            </button>
+          ))}
         </div>
         <div className="px-4 pb-3 flex justify-end">
           <button

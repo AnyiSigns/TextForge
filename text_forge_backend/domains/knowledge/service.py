@@ -78,11 +78,14 @@ class KnowledgeService:
             )
         return items
 
-    async def upload_public(self, file, emb_config: dict | None = None):
+    async def upload_public(
+        self, file, user_id: int, emb_config: dict | None = None
+    ):
         """上传公共知识库文档。
 
         Args:
             file: 上传文件对象。
+            user_id: 当前用户 ID，用于补全文档作者（author = 用户名）。
             emb_config: embedding 配置。
 
         Returns:
@@ -90,7 +93,37 @@ class KnowledgeService:
         """
         from domains.book.upload_repository import process_upload
 
-        return await process_upload(self.session, file, emb_config=emb_config)
+        result = await process_upload(self.session, file, emb_config=emb_config)
+        # P1-10 补全 author 链路：新上传文档将作者记为上传者用户名。
+        # 存量文档（status=existed/MD5 命中）保持原样，不覆盖历史 author；
+        # 存量 author 为 NULL 的文档在检索时 author_ids 过滤恒为 0 行，
+        # 属历史数据，由后续数据修复处理，不在上传链路改动。
+        if result.get("status") == "uploaded" and result.get("document_id"):
+            user_name = await self._resolve_user_name(user_id)
+            if user_name:
+                doc = await self.session.get(Document, result["document_id"])
+                if doc:
+                    doc.author = user_name
+                    await self.session.flush()
+        # 提交整个上传事务（Document + Chunks + author）：get_db 正常路径不自动
+        # 提交，session 退出即回滚，缺 commit 会导致上传的文档与切片从不落库。
+        await self.session.commit()
+        return result
+
+    async def _resolve_user_name(self, user_id: int) -> str | None:
+        """根据用户 ID 查询用户名，用于填充新上传文档的 author 字段。
+
+        Args:
+            user_id: 用户 ID。
+
+        Returns:
+            用户名；用户不存在时返回 None。
+        """
+        from models.user import User
+
+        stmt = select(User.user_name).where(User.id == user_id)
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
 
     async def list_public(self, page: int = 1, page_size: int = 20):
         """分页查询公共知识库文档列表。

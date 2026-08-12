@@ -1,4 +1,5 @@
 import { apiClient } from './client';
+import { getModelConfigData } from './agent';
 import type { AgentMemory } from './types';
 
 /** 2.7：消费后端 PageResult 分页契约（total/total_pages/has_next）。 */
@@ -31,7 +32,12 @@ export async function fetchAgentMemories(
 }
 
 export async function createAgentMemory(body: Partial<AgentMemory>): Promise<AgentMemory> {
-  const { data } = await apiClient.post<AgentMemory>('/agent-memories/', body);
+  // 携带模型配置（通常为 embedding_config）让后端在保存时同步生成向量嵌入，
+  // 否则语义检索永远查不到新保存的记忆（embedding 列恒 NULL）。
+  const full = await getModelConfigData();
+  const payload: Partial<AgentMemory> & { modelConfig?: Record<string, unknown> } = { ...body };
+  if (full) payload.modelConfig = full;
+  const { data } = await apiClient.post<AgentMemory>('/agent-memories/', payload);
   return data;
 }
 

@@ -219,7 +219,7 @@ def test_format_chapter_scene_event_with_chain():
                         role_type="主角", status="活跃",
                         custom_fields={"功法": "青莲剑诀", "武器": ["承影剑", "软鞭"]},
                         base_location_name="悦来客栈",
-                        relationship_chain=[{"target": "苏妧", "relation": "师姐"}],
+                        relationship_chain=[{"targetName": "苏妧", "type": "师姐"}],
                         chain_characters=[
                             SimpleNamespace(
                                 id=2, name="苏妧", aliases=[], description="青城大师姐",

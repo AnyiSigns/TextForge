@@ -4,7 +4,6 @@ export interface WorkflowNode {
   id: string;
   label: string;
   systemPrompt?: string;
-  tier?: 'cheap' | 'standard';
   contextFields?: string[];
   ragFilter?: { query?: string; docIds?: string[]; authorIds?: string[]; sample?: string };
   ragTopK?: number;

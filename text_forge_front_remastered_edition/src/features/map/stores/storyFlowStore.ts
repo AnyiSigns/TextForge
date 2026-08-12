@@ -377,7 +377,13 @@ export const useStoryFlowStore = create<StoryFlowState>((set, get) => ({
   advance: async (optionText) => {
     const { flowId, streaming } = get();
     if (!flowId || streaming) return;
-    const current = get().nodes[get().currentSceneId];
+    // 防御：回看历史节点时禁止推进（UI 已禁用，store 层双保险）
+    const { nodes, currentSceneId } = get();
+    if (currentSceneId < nodes.length - 1) {
+      toast.error('正在回看历史节点，请先返回最新场景');
+      return;
+    }
+    const current = nodes[currentSceneId];
     const alreadyDecided = Boolean(current?.chosenOption);
     // 决策链乐观追加 + 把选择写回当前节点：scene_done 后 buildDecisionChain 重建时
     // 依赖节点上的 chosenOption，不写回的话旧节点永远是 null，决策链每轮都被清空。
@@ -421,7 +427,7 @@ export const useStoryFlowStore = create<StoryFlowState>((set, get) => ({
           toast.error(msg);
           set({ streaming: false, abortController: null });
         },
-      }, controller.signal);
+      }, controller.signal, current?.seq ?? 0);
     } catch (e) {
       clearStreamBuffer();
       if (e instanceof StoryFlowConfigError) {

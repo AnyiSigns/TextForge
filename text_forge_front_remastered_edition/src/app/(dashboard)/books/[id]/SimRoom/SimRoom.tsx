@@ -51,9 +51,26 @@ export function SimRoom({ bookId, bookTitle, onClose }: SimRoomProps) {
     autoAdvance,
     end,
     createBranch,
+    lastEvent,
   } = useSimRoomSocket(activeRoom);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  // 记录已处理的 lastEvent，避免对同一协议事件重复 toast
+  const lastEventRef = useRef<typeof lastEvent>(null);
+
+  // 消费 WS 协议级事件（结束摘要 / 自动结束原因 / 支线创建提示）；
+  // error 已由 hook 内部消息气泡展示，此处不再重复 toast。
+  useEffect(() => {
+    if (!lastEvent || lastEvent === lastEventRef.current) return;
+    lastEventRef.current = lastEvent;
+    if (lastEvent.type === 'auto_end') {
+      toast.info(`对话自动结束：${lastEvent.reason || ''}（共${lastEvent.roundCount || 0}轮）`);
+    } else if (lastEvent.type === 'end') {
+      toast.info(lastEvent.summary || '对话已结束');
+    } else if (lastEvent.type === 'branch_created') {
+      toast.success(`支线已沉淀：${lastEvent.branchTitle || ''}`);
+    }
+  }, [lastEvent]);
 
   // 书籍切换时重新进入加载态（渲染期间调整，React 会立即重渲染）
   const [prevBookId, setPrevBookId] = useState(bookId);
@@ -138,6 +155,15 @@ export function SimRoom({ bookId, bookTitle, onClose }: SimRoomProps) {
     toast.info('对话已结束，正在生成摘要');
   };
 
+  // 用户发言：根据房间参与者推断发言身份——若当前用户有扮演角色（entity_type=user）
+  // 则以该角色发言（character:<id>），否则以导演身份发言。后端约定 speakAs 为
+  // "director" 或 "character:<id>"。
+  const handleSend = (content: string) => {
+    const userParticipant = activeRoom?.participants.find((p) => p.entityType === 'user');
+    const speakAs = userParticipant ? `character:${userParticipant.entityId}` : 'director';
+    send(content, speakAs);
+  };
+
   const handleDeleteRoom = async (roomId: number, roomName: string) => {
     if (!window.confirm(`确定删除房间「${roomName}」？其对话记录与支线将一并删除。`)) return;
     const ok = await deleteSimRoom(roomId);
@@ -195,7 +221,7 @@ export function SimRoom({ bookId, bookTitle, onClose }: SimRoomProps) {
           messagesEndRef={messagesEndRef}
           onEnd={handleEnd}
           onClose={onClose}
-          onSend={send}
+          onSend={handleSend}
           onAutoAdvance={autoAdvance}
           onBranchType={createBranch}
         />

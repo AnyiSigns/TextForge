@@ -41,6 +41,9 @@ class AdvanceStoryFlowRequest(BaseModel):
 
     chosen_option: str = Field(alias="chosenOption")
     model_config_data: dict | None = Field(default=None, alias="modelConfig")
+    # 前端提交时携带的「最新节点 seq」乐观锁：与后端实际最新 seq 不一致时
+    # 拒绝提交（回看历史节点误提交/并发推进），防止把选项写到错误节点。
+    node_seq: int | None = Field(default=None, alias="nodeSeq")
 
 
 class CompleteStoryFlowRequest(BaseModel):
@@ -209,6 +212,14 @@ async def advance_story_flow(
     flow = await _load_own_flow(session, flow_id, user_id)
     if flow.status == "completed":
         raise HTTPException(status_code=400, detail="推演已完成")
+
+    # 乐观锁：前端提交基于的节点 seq 与后端最新节点不一致（回看历史节点误提交、
+    # 或多端并发推进）时直接拒绝，避免把历史选项文本写到最新节点污染决策链。
+    if body.node_seq is not None:
+        last_node = await repo.get_last_node(session, flow.id)
+        last_seq = last_node.seq if last_node else 0
+        if last_seq != body.node_seq:
+            raise HTTPException(status_code=409, detail="场景已推进，请刷新后重试")
 
     async def event_gen():
         try:

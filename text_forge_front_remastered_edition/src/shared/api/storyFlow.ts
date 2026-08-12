@@ -148,11 +148,17 @@ export async function advanceStoryFlow(
   modelConfigData: StoryFlowModelConfig | null,
   callbacks: StoryFlowStreamCallbacks,
   abortSignal?: AbortSignal,
+  nodeSeq?: number,
 ): Promise<void> {
   assertStoryFlowModelConfig(modelConfigData);
   await streamStoryFlow(
     `/story-flows/${flowId}/advance`,
-    { chosenOption, modelConfig: modelConfigData },
+    {
+      chosenOption,
+      modelConfig: modelConfigData,
+      // 乐观锁：后端以此校验提交时最新节点 seq，防止回看历史节点时把选项写到错误节点
+      nodeSeq: nodeSeq ?? null,
+    },
     callbacks,
     abortSignal,
   );

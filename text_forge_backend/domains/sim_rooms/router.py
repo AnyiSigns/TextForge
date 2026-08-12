@@ -36,6 +36,9 @@ from .orchestration import (
 
 logger = get_logger(__name__)
 
+# WS 收消息循环保活间隔：空闲超过该时长则发心跳帧，避免前端/代理 60s idle 断流误杀慢模型。
+HEARTBEAT_INTERVAL = 25.0
+
 router = APIRouter(prefix="/sim-rooms", tags=["角色模拟"])
 
 
@@ -307,7 +310,13 @@ async def room_websocket(websocket: WebSocket, room_id: int):
             if buffered_first:
                 data = buffered_first.pop(0)
             else:
-                data = await websocket.receive_text()
+                # 空闲收消息时发心跳保活：等待消息最长 HEARTBEAT_INTERVAL 秒，
+                # 超时即发心跳帧并继续等待，消息到达则立即处理，互不干扰。
+                try:
+                    data = await asyncio.wait_for(websocket.receive_text(), timeout=HEARTBEAT_INTERVAL)
+                except asyncio.TimeoutError:
+                    await websocket.send_text(json.dumps({"type": "heartbeat"}, ensure_ascii=False))
+                    continue
             msg = json.loads(data)
             msg_type = msg.get("type", "chat")
 

@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import type { WritingSession, WritingStatsSummary, WritingTrendPoint, CharacterFrequency, PlotProgress } from './types';
+import type { WritingSession, WritingStatsSummary } from './types';
 
 export async function createWritingSession(body: { book_id: number; chapter_id?: number; character_ids?: number[] }): Promise<WritingSession> {
   const { data } = await apiClient.post<WritingSession>('/writing-sessions/', body);
@@ -41,29 +41,5 @@ export async function fetchWritingSummary(bookId: number, chapterId?: number): P
     totalSessions: data.session_count ?? 0,
     totalDurationSeconds: data.total_duration_seconds ?? 0,
     activeDays: data.active_days ?? 0,
-  };
-}
-
-export async function fetchWritingTrend(bookId: number, days = 7): Promise<WritingTrendPoint[]> {
-  const { data } = await apiClient.get<{ trend: WritingTrendPoint[] }>(`/writing-sessions/statistics/writing-trend?book_id=${bookId}&days=${days}`);
-  return data.trend ?? [];
-}
-
-export async function fetchCharacterFrequency(bookId: number): Promise<CharacterFrequency[]> {
-  const { data } = await apiClient.get<{ frequency: Array<{ character_id: number; session_count: number; total_words: number }> }>(`/writing-sessions/statistics/character-frequency?book_id=${bookId}`);
-  return (data.frequency ?? []).map((item) => ({
-    characterId: item.character_id,
-    characterName: '',
-    count: item.total_words,
-  }));
-}
-
-export async function fetchPlotProgress(bookId: number): Promise<PlotProgress> {
-  const { data } = await apiClient.get<{ progress: PlotProgress }>(`/writing-sessions/statistics/plot-progress?book_id=${bookId}`);
-  return data.progress ?? {
-    total_chapters: 0,
-    chapters_with_content: 0,
-    completion_rate: 0,
-    chapter_details: [],
   };
 }

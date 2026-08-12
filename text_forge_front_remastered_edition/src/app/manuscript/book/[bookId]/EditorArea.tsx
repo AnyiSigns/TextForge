@@ -1,7 +1,10 @@
 'use client';
 
 import { useRef, useCallback, useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import { cn } from '@/shared/lib/cn';
+import { apiClient } from '@/shared/api/client';
+import { downloadBlob } from '@/lib/utils/download';
 import { useManuscriptStore } from './store';
 import { EditorToolbar } from './EditorToolbar';
 import { SuggestHint } from './SuggestHint';
@@ -42,16 +45,6 @@ function parseBookText(text: string): { title: string; content: string }[] {
   }));
 }
 
-function downloadText(filename: string, text: string) {
-  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 export function EditorArea() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -68,7 +61,7 @@ export function EditorArea() {
     showVersions, diffState, versions,
     setContent, save, toggleVersions, clearDiff, showDiff,
     characters, creativeSetting, suggestionFrequency,
-    volumes, bookTitle,
+    bookTitle, bookId,
   } = useManuscriptStore();
 
   const charSuggestions = buildCharSuggestions(characters);
@@ -263,23 +256,19 @@ export function EditorArea() {
     reader.readAsText(file);
   };
 
-  const handleExport = async (format: 'txt' | 'markdown') => {
-    const lines: string[] = [];
-    for (const vol of volumes) {
-      for (const ch of vol.chapters) {
-        let body = '';
-        try {
-          body = (await contentsApi.fetchLatestContent(ch.id)).content || '';
-        } catch { /* ignore */ }
-        if (format === 'markdown') {
-          lines.push(`# ${ch.title}`, '', body, '');
-        } else {
-          lines.push(ch.title, '', body, '');
-        }
-      }
+  const handleExport = async (format: 'txt' | 'md' | 'epub' | 'pdf') => {
+    if (!bookId) return;
+    // 统一走后端 /books/{id}/export：服务端逐章拼装（含格式转换/文件名清洗/限流），
+    // 避免客户端逐章拉取（N 次请求）且补齐 epub/pdf 能力。
+    try {
+      const { data } = await apiClient.get<Blob>(`/books/${bookId}/export`, {
+        params: { fmt: format, include_outline: false, include_characters: false },
+        responseType: 'blob',
+      });
+      downloadBlob(data, `${bookTitle || '手稿'}.${format === 'md' ? 'md' : format}`);
+    } catch {
+      toast.error('导出失败，请重试');
     }
-    const ext = format === 'markdown' ? 'md' : 'txt';
-    downloadText(`${bookTitle || '手稿'}.${ext}`, lines.join('\n'));
     setExportOpen(false);
   };
 

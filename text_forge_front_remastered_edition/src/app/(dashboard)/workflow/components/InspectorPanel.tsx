@@ -1,7 +1,41 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { HelpCircle, X } from 'lucide-react';
 import type { WorkflowNode } from '@/shared/api/workflows';
+import { apiClient } from '@/shared/api/client';
+
+interface PublicDoc {
+  id: string;
+  name: string;
+  uploaderName?: string | null;
+}
+
+// 模块级缓存（60s TTL）：编辑页多次打开/切换节点避免重复拉取公共库文档
+let docsCache: PublicDoc[] | null = null;
+let docsCacheAt = 0;
+const DOCS_CACHE_TTL = 60_000;
+
+// 拉取公共库全量文档（/knowledge/public 默认仅 20/页，翻页拉全供 docIds 多选）。
+async function loadPublicDocs(): Promise<PublicDoc[]> {
+  if (docsCache && Date.now() - docsCacheAt < DOCS_CACHE_TTL) return docsCache;
+  const docs: PublicDoc[] = [];
+  for (let page = 1; page <= 10; page++) {
+    try {
+      const { data } = await apiClient.get<{ documents: PublicDoc[] }>('/knowledge/public', {
+        params: { page, page_size: 100 },
+      });
+      const items = Array.isArray(data?.documents) ? data.documents : [];
+      docs.push(...items);
+      if (items.length < 100) break;
+    } catch {
+      break;
+    }
+  }
+  docsCache = docs;
+  docsCacheAt = Date.now();
+  return docs;
+}
 
 interface ContextFieldOption {
   key: string;
@@ -48,6 +82,21 @@ interface InspectorPanelProps {
 }
 
 export function InspectorPanel({ node, onChange, onClose }: InspectorPanelProps) {
+  const [publicDocs, setPublicDocs] = useState<PublicDoc[]>([]);
+  // 懒加载：仅当节点已启用知识库检索时才拉取公共库文档列表
+  const ragEnabled = !!node?.ragFilter;
+
+  useEffect(() => {
+    if (!ragEnabled) return;
+    let alive = true;
+    loadPublicDocs().then((docs) => {
+      if (alive) setPublicDocs(docs);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [ragEnabled]);
+
   if (!node) {
     return (
       <div className="w-[280px] shrink-0 border-l border-border bg-background p-6 flex items-center justify-center">
@@ -63,6 +112,15 @@ export function InspectorPanel({ node, onChange, onClose }: InspectorPanelProps)
       : [...contextFields, field];
     onChange({ contextFields: next });
   };
+
+  // 作者集合：从已加载公共库文档按 uploaderName 去重推导（存量 NULL/空不计入）。
+  const publicAuthors = Array.from(
+    new Set(
+      publicDocs
+        .map((d) => d.uploaderName)
+        .filter((n): n is string => typeof n === 'string' && n.length > 0),
+    ),
+  ).sort();
 
   return (
     <div className="w-[280px] shrink-0 border-l border-border bg-background overflow-y-auto">
@@ -156,6 +214,133 @@ export function InspectorPanel({ node, onChange, onClose }: InspectorPanelProps)
           >
             自动匹配
           </button>
+        </div>
+
+        <div className="border-t border-border pt-4">
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-[11px] text-foreground/50 block font-medium">
+              节点知识库检索（公共库）
+            </label>
+            <input
+              type="checkbox"
+              checked={!!node.ragFilter}
+              onChange={(e) => {
+                if (e.target.checked) {
+                  onChange({ ragFilter: { query: '' }, ragTopK: node.ragTopK ?? 3 });
+                } else {
+                  onChange({ ragFilter: undefined, ragTopK: undefined });
+                }
+              }}
+              className="w-3 h-3 rounded border-border"
+            />
+          </div>
+          <p className="text-[10px] text-foreground/30 mb-3">
+            启用后，执行该节点时按条件检索公开知识库，结果以外部文档块注入节点上下文
+          </p>
+
+          {node.ragFilter && (
+            <div className="space-y-3">
+              <div>
+                <label className="text-[10px] text-foreground/40 block mb-1">检索关键词</label>
+                <input
+                  value={node.ragFilter.query ?? ''}
+                  onChange={(e) => onChange({ ragFilter: { ...node.ragFilter, query: e.target.value } })}
+                  placeholder="留空自动使用系统提示词（前200字）"
+                  className="w-full h-8 px-2 rounded-md text-xs bg-card border border-border focus:outline-none focus:border-foreground/20"
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="text-[10px] text-foreground/40 block mb-1">返回条数</label>
+                  <select
+                    value={node.ragTopK ?? 3}
+                    onChange={(e) => onChange({ ragTopK: Number(e.target.value) })}
+                    className="w-full h-8 px-2 rounded-md text-xs bg-card border border-border focus:outline-none"
+                  >
+                    {[1, 2, 3, 5, 8, 10].map((k) => (
+                      <option key={k} value={k}>{k}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex-1">
+                  <label className="text-[10px] text-foreground/40 block mb-1">文件名包含</label>
+                  <input
+                    value={node.ragFilter.sample ?? ''}
+                    onChange={(e) => onChange({ ragFilter: { ...node.ragFilter, sample: e.target.value } })}
+                    placeholder="可选"
+                    className="w-full h-8 px-2 rounded-md text-xs bg-card border border-border focus:outline-none focus:border-foreground/20"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] text-foreground/40 block mb-1">
+                  限定文档（{node.ragFilter.docIds?.length ?? 0}/{publicDocs.length}，空 = 全部）
+                </label>
+                <div className="max-h-[160px] overflow-y-auto border border-border rounded-md p-1 space-y-0.5">
+                  {publicDocs.length === 0 ? (
+                    <span className="text-[10px] text-foreground/30 px-1">公共库暂无文档</span>
+                  ) : (
+                    publicDocs.map((doc) => {
+                      const checked = node.ragFilter?.docIds?.includes(doc.id) ?? false;
+                      return (
+                        <label
+                          key={doc.id}
+                          className="flex items-center gap-2 px-1 py-0.5 rounded cursor-pointer hover:bg-foreground/[0.02]"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => {
+                              const cur = node.ragFilter?.docIds ?? [];
+                              const next = checked ? cur.filter((x) => x !== doc.id) : [...cur, doc.id];
+                              onChange({ ragFilter: { ...node.ragFilter, docIds: next } });
+                            }}
+                            className="w-3 h-3 rounded border-border"
+                          />
+                          <span className="text-[11px] text-foreground/60 truncate">{doc.name}</span>
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] text-foreground/40 block mb-1">
+                  限定作者（{node.ragFilter.authorIds?.length ?? 0}，空 = 不限）
+                </label>
+                {publicAuthors.length === 0 ? (
+                  <span className="text-[10px] text-foreground/30 px-1">暂无作者数据</span>
+                ) : (
+                  <div className="max-h-[160px] overflow-y-auto border border-border rounded-md p-1 space-y-0.5">
+                    {publicAuthors.map((author) => {
+                      const checked = node.ragFilter?.authorIds?.includes(author) ?? false;
+                      return (
+                        <label
+                          key={author}
+                          className="flex items-center gap-2 px-1 py-0.5 rounded cursor-pointer hover:bg-foreground/[0.02]"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => {
+                              const cur = node.ragFilter?.authorIds ?? [];
+                              const next = checked ? cur.filter((x) => x !== author) : [...cur, author];
+                              onChange({ ragFilter: { ...node.ragFilter, authorIds: next } });
+                            }}
+                            className="w-3 h-3 rounded border-border"
+                          />
+                          <span className="text-[11px] text-foreground/60 truncate">{author}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

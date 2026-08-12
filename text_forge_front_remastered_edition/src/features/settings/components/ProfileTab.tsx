@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Eye, EyeOff, Mail, User, KeyRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card } from '@/shared/ui/card';
@@ -26,13 +26,34 @@ export function ProfileTab() {
   const [sendingPwdCode, setSendingPwdCode] = useState(false);
   const [changingPwdByEmail, setChangingPwdByEmail] = useState(false);
 
+  const [avatar, setAvatar] = useState<string | null>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     userApi.fetchProfile().then((p) => {
       setUserName(p.username || '');
       setEmail(p.email || '');
       setOriginalEmail(p.email || '');
+      setAvatar(p.avatar);
     }).catch(() => {});
   }, []);
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingAvatar(true);
+    try {
+      const { avatar_url } = await userApi.uploadAvatar(file);
+      setAvatar(avatar_url);
+      toast.success('头像已更新');
+    } catch {
+      toast.error('头像上传失败');
+    } finally {
+      setUploadingAvatar(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   const handleSaveUsername = async () => {
     if (!userName.trim()) { toast.error('用户名不能为空'); return; }
@@ -89,13 +110,32 @@ export function ProfileTab() {
 
   return (
     <div className="space-y-4">
-      <Card className="p-5 flex items-center gap-4">
-        <div className="w-10 h-10 rounded-full bg-muted grid place-items-center text-base font-semibold text-foreground shrink-0">
-          {userName ? userName.charAt(0).toUpperCase() : 'U'}
+      <Card className="p-5 space-y-4">
+        <div className="flex items-center gap-4">
+          <div className="w-14 h-14 rounded-full bg-muted grid place-items-center text-base font-semibold text-foreground shrink-0 overflow-hidden">
+            {avatar ? (
+              <img src={avatar} alt="头像" className="w-full h-full object-cover" />
+            ) : (
+              (userName ? userName.charAt(0).toUpperCase() : 'U')
+            )}
+          </div>
+          <div className="min-w-0">
+            <div className="text-sm font-semibold truncate">{userName || '未登录'}</div>
+            <div className="text-xs text-muted-foreground truncate">{email || '未绑定邮箱'}</div>
+          </div>
         </div>
-        <div className="min-w-0">
-          <div className="text-sm font-semibold truncate">{userName || '未登录'}</div>
-          <div className="text-xs text-muted-foreground truncate">{email || '未绑定邮箱'}</div>
+        <div className="flex items-center gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleAvatarChange}
+          />
+          <Button size="sm" variant="secondary" disabled={uploadingAvatar}
+            onClick={() => fileInputRef.current?.click()}>
+            {uploadingAvatar ? '上传中...' : '上传头像'}
+          </Button>
         </div>
       </Card>
 

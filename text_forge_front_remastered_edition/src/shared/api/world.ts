@@ -8,8 +8,8 @@ interface PageResult<T> {
 
 /**
  * 翻页拉全列表（后端 PageParams.page_size 上限 100）。
- * 初始化器落库去重依赖完整实体清单：只取第一页（原 page_size=100 单次拉取）
- * 在实体数 >100 时去重集不完整，会把已存在实体重复落库。
+ * 逐页拉取直至取完 total 或全部条目，确保落库去重的实体清单完整，
+ * 避免实体数 >100 时只取第一页导致已存在实体被重复落库。
  */
 async function fetchAllPages<T>(path: string, baseParams: Record<string, string | number>): Promise<T[]> {
   const items: T[] = [];

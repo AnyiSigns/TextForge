@@ -1,5 +1,6 @@
 // 角色模拟房间的 WebSocket 连接 hook，复用后端 /api/sim-rooms/{id}/ws 的流式协议。
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { useAuthStore } from '@/shared/stores/authStore';
 import { getModelConfigData } from '@/shared/api/agent';
 import type { SimBranch, SimRoomDetail, SimRoomMessage, SimRoomParticipant } from './simRooms';
@@ -42,6 +43,13 @@ export interface SimRoomEvent {
   roundCount?: number;
   branchTitle?: string;
   error?: string;
+}
+
+// 归一发言身份：后端约定为 "director" 或 "character:<id>"。
+// 缺省 / "director" 归一为 "director"；形如 "character:<id>" 原样透传。
+function normalizeSpeakAs(speakAs: string | undefined): string {
+  if (!speakAs || speakAs === 'director') return 'director';
+  return speakAs;
 }
 
 // 管理指定房间的 WebSocket 连接，处理流式 token、用户消息与轮次状态。
@@ -90,10 +98,11 @@ export function useSimRoomSocket(room: SimRoomDetail | null): UseSimRoomResult {
       setParticipants(room?.participants ?? []);
       setBranches(room?.branches ?? []);
       setSuggestions([]);
-      setRoundCount(0);
-      setStreaming(false);
-      setBranching(false);
-      setMyRole('用户');
+      setConnected(false);
+        setRoundCount(room?.roundCount ?? 0);
+        setStreaming(false);
+        setBranching(false);
+        setMyRole('用户');
     }
   }
 
@@ -110,6 +119,20 @@ export function useSimRoomSocket(room: SimRoomDetail | null): UseSimRoomResult {
     streamingSpeakerRef.current = null;
 
     let cancelled = false;
+    // 指数退避重连：1s/2s/4s/8s… 上限 10s；仅在房间仍存在、组件未卸载时尝试
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let reconnectDelay = 1000;
+
+    const scheduleReconnect = () => {
+      if (cancelled || !roomId || reconnectTimer) return;
+      const delay = reconnectDelay;
+      reconnectDelay = Math.min(reconnectDelay * 2, 10000);
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        if (cancelled || !roomId) return;
+        void connect();
+      }, delay);
+    };
 
     const connect = async () => {
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -128,7 +151,10 @@ export function useSimRoomSocket(room: SimRoomDetail | null): UseSimRoomResult {
       if (cancelled) return;
       const ws = new WebSocket(wsUrl, token ? [token] : []);
       ws.onopen = () => {
+        if (cancelled) return;
         setConnected(true);
+        // 连接成功：重置退避，后续若再次断开从 1s 起算
+        reconnectDelay = 1000;
         if (modelConfig) {
           ws.send(JSON.stringify({ type: 'config', modelConfig }));
         }
@@ -232,19 +258,24 @@ export function useSimRoomSocket(room: SimRoomDetail | null): UseSimRoomResult {
       }
     };
     ws.onclose = () => {
+      if (cancelled) return;
       setConnected(false);
       // 连接中断时复位流式/生成状态，避免 UI 永久卡在"生成中…"或禁用态
       streamingRef.current = false;
       streamingSpeakerRef.current = null;
       setStreaming(false);
       setBranching(false);
+      // 断线后自动重连（指数退避）
+      scheduleReconnect();
     };
     ws.onerror = () => {
+      if (cancelled) return;
       setConnected(false);
       streamingRef.current = false;
       streamingSpeakerRef.current = null;
       setStreaming(false);
       setBranching(false);
+      // onerror 必随后触发 onclose，重连统一在 onclose 中调度，避免重复
     };
     wsRef.current = ws;
     };
@@ -252,35 +283,55 @@ export function useSimRoomSocket(room: SimRoomDetail | null): UseSimRoomResult {
 
     return () => {
       cancelled = true;
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
       wsRef.current?.close();
       wsRef.current = null;
     };
   }, [roomId]);
 
-  // 统一发送入口：OPEN(1) 直发，CONNECTING(0) 暂存待 onopen 刷出，CLOSING(2)/CLOSED(3) 直接丢弃，
-  // 避免断连后消息永久积压在 pendingSendsRef 里静默丢失。
-  const sendRaw = useCallback((raw: string) => {
+  // 统一发送入口：OPEN(1) 直发，CONNECTING(0) 暂存待 onopen 刷出，CLOSING(2)/CLOSED(3) 返回 false。
+  // 返回 true 表示已发送或已暂存；false 表示连接不可用（调用方据此回滚乐观消息）。
+  const sendRaw = useCallback((raw: string): boolean => {
     const ws = wsRef.current;
-    if (!ws) return;
+    if (!ws) return false;
     if (ws.readyState === 1) {
       ws.send(raw);
+      return true;
     } else if (ws.readyState === 0) {
       pendingSendsRef.current.push(raw);
+      return true;
     }
+    return false;
   }, []);
 
   const send = useCallback(
     (content: string, speakAs?: string) => {
       const ws = wsRef.current;
       if (!ws) return;
-      const label = speakAs || myRole || '用户';
+      const wire = normalizeSpeakAs(speakAs);
+      // 本地回显标签：导演/角色发言统一用「我的身份」名，避免把 "character:<id>" 透到 UI
+      const label =
+        !speakAs || speakAs === 'director' || speakAs.startsWith('character:')
+          ? myRole || '用户'
+          : speakAs;
+      const localId = nextMsgId();
       setMessages((prev) => [
         ...prev,
-        { id: nextMsgId(), senderType: 'user', senderLabel: label, content, messageType: 'dialogue' },
+        { id: localId, senderType: 'user', senderLabel: label, content, messageType: 'dialogue' },
       ]);
       // 新一轮开始，旧推荐建议失效
       setSuggestions([]);
-      sendRaw(JSON.stringify({ type: 'chat', content, speakAs: label }));
+      const ok = sendRaw(JSON.stringify({ type: 'chat', content, speakAs: wire }));
+      if (!ok) {
+        // 连接已断开：回滚刚插入的乐观消息并提示，避免 UI 卡在"生成中"且无反馈
+        setMessages((prev) => prev.filter((m) => m.id !== localId));
+        setStreaming(false);
+        toast.error('连接已断开，消息未发送');
+        return;
+      }
       streamingRef.current = true;
       setStreaming(true);
     },

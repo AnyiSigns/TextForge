@@ -247,11 +247,8 @@ async def agent_call(
         # 转为可见的 AIMessage 错误回复；同时清空一次性状态避免后续回合卡在守卫里。
         logger.error(f"[agent_call] 模型调用失败: {exc}", exc_info=True)
         _emit("agent_think_end")
-        # 异常文本先脱敏再回显，避免 base_url/api_key 泄漏
-        from shared.utils import redact_sensitive
-
         result = AIMessage(
-            content=f"抱歉，模型调用失败，请稍后重试或检查模型配置。（{redact_sensitive(str(exc))}）"
+            content="抱歉，模型调用失败，请稍后重试或检查模型配置。"
         )
         _update: dict[str, Any] = {"messages": [result]}
         if state.get("workflow_result"):
@@ -480,9 +477,7 @@ async def chat_node(state: UserAgentState) -> dict[str, Any]:
         reply = result.content if hasattr(result, "content") else str(result)
     except Exception as exc:
         logger.error(f"[chat_node] 模型调用失败: {exc}", exc_info=True)
-        from shared.utils import redact_sensitive
-
-        reply = f"抱歉，模型调用失败，请稍后重试或检查模型配置。（{redact_sensitive(str(exc))}）"
+        reply = "抱歉，模型调用失败，请稍后重试或检查模型配置。"
     return {
         "messages": [AIMessage(content=reply)],
         # 指标层：chat 快路径计一次 LLM 调用。

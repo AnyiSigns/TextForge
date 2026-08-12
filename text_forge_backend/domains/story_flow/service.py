@@ -41,6 +41,10 @@ from .scene_context import (
 
 logger = get_logger(__name__)
 
+# 自由推演幕数上限兜底：与 sim_rooms MAX_ROUNDS=30 对齐，防止无限 advance。
+# 达到上限后下一次推进直接收束（标记 completed），与事件模式收尾语义一致。
+MAX_SCENES_PER_FLOW = 30
+
 __all__ = [
     "DEFAULT_OPTIONS",
     "HISTORY_WINDOW",
@@ -452,6 +456,18 @@ async def stream_advance_flow(
             }
             yield {"type": "done"}
             return
+        # 并发兜底：生成期间被 complete 结束则不再追加收尾幕
+        if flow.status == "completed":
+            yield {
+                "type": "scene_done",
+                "node": None,
+                "completed": True,
+                "flow_id": flow.id,
+                "anchor_event_ids": anchor_ids,
+                "current_event_index": flow.current_event_index,
+            }
+            yield {"type": "done"}
+            return
         async for event in _generate_scene_node(
             session=session,
             flow=flow,
@@ -468,6 +484,40 @@ async def stream_advance_flow(
 
     # ④ 生成下一幕：事件模式停留在当前事件（AI 以 ###MORE### 决定是否续幕，
     #    幕数上限兜底强制收束），实时模式 index=-1
+    #    并发兜底：流式生成期间被 complete_flow 结束（流式时结束按钮已前端禁用，
+    #    多端/直调仍可能发生）→ 不再追加节点，避免 completed 流出现新节点。
+    if flow.status == "completed":
+        yield {
+            "type": "scene_done",
+            "node": None,
+            "completed": True,
+            "flow_id": flow.id,
+            "anchor_event_ids": anchor_ids,
+            "current_event_index": flow.current_event_index,
+        }
+        yield {"type": "done"}
+        return
+
+    # 自由推演幕数上限：已达 MAX_SCENES_PER_FLOW → 收束完成，不再生成
+    if not anchor_ids and last_node and last_node.seq >= MAX_SCENES_PER_FLOW:
+        flow.status = "completed"
+        try:
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            yield {"type": "error", "message": "保存状态失败，请重试"}
+            return
+        yield {
+            "type": "scene_done",
+            "node": None,
+            "completed": True,
+            "flow_id": flow.id,
+            "anchor_event_ids": anchor_ids,
+            "current_event_index": flow.current_event_index,
+        }
+        yield {"type": "done"}
+        return
+
     async for event in _generate_scene_node(
         session=session,
         flow=flow,

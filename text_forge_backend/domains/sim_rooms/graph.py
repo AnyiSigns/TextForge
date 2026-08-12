@@ -294,7 +294,6 @@ async def compress_memories_node(state: SimRoomState, bridge: dict[str, Any]) ->
                             source=source,
                             content=compressed[:300],
                             priority=5,
-                            is_compressed=True,
                         )
                     )
             except Exception as exc:

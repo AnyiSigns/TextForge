@@ -48,6 +48,7 @@ async def create_memory(
         priority=request.priority,
         source=request.source,
         meta=request.meta,
+        model_config=request.model_config_data,
     )
     return AgentMemoryResponse(**service._to_dict(memory))
 

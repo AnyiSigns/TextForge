@@ -21,10 +21,10 @@ export async function sendCode(): Promise<void> {
   await apiClient.post('/user/send-code', {});
 }
 
-export async function uploadAvatar(file: File): Promise<{ avatar: string }> {
+export async function uploadAvatar(file: File): Promise<{ avatar_url: string }> {
   const form = new FormData();
   form.append('file', file);
-  const { data } = await apiClient.post<{ avatar: string }>('/user/avatar', form, {
+  const { data } = await apiClient.post<{ avatar_url: string }>('/user/avatar', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
   return data;

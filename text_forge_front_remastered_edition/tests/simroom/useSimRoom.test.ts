@@ -32,6 +32,9 @@ vi.mock('@/shared/stores/authStore', () => ({ useAuthStore: { getState: () => ({
 vi.mock('@/shared/api/agent', () => ({
   getModelConfigData: () => Promise.resolve(null),
 }));
+vi.mock('sonner', () => ({
+  toast: { error: vi.fn(), info: vi.fn(), success: vi.fn(), warning: vi.fn() },
+}));
 
 // connect 是异步（先取模型配置再建连），等待 WebSocket 实例出现。
 async function waitForSocket(count = 1) {
@@ -113,7 +116,7 @@ describe('useSimRoomSocket 协议处理', () => {
     expect(char?.content).toBe('我也担心');
   });
 
-  it('send 缺省 speakAs 时用 myRole', async () => {
+  it('send 缺省 speakAs 时归一为 director，本地回显用 myRole', async () => {
     const { result } = renderHook(() => useSimRoomSocket(room));
     await waitForSocket();
     const ws = MockWebSocket.instances[0];
@@ -121,7 +124,7 @@ describe('useSimRoomSocket 协议处理', () => {
       ws.emit('connected', { roomId: 9, userRoleLabel: '苏月' });
     });
     await act(async () => { result.current.send('你们在聊什么？'); });
-    expect(ws.sent.at(-1)).toEqual(JSON.stringify({ type: 'chat', content: '你们在聊什么？', speakAs: '苏月' }));
+    expect(ws.sent.at(-1)).toEqual(JSON.stringify({ type: 'chat', content: '你们在聊什么？', speakAs: 'director' }));
     expect(result.current.messages.some((m) => m.senderType === 'user' && m.senderLabel === '苏月')).toBe(true);
   });
 
@@ -266,18 +269,6 @@ describe('useSimRoomSocket 协议处理', () => {
     expect(streamed!.id < 0).toBe(true);
   });
 
-  it('user_msg 回显不再重复追加用户消息', async () => {
-    const { result } = renderHook(() => useSimRoomSocket(room));
-    await waitForSocket();
-    const ws = MockWebSocket.instances[0];
-    await act(async () => { result.current.send('你们在聊什么？', 'director'); });
-    await act(async () => {
-      ws.emit('user_msg', { senderLabel: 'director', content: '你们在聊什么？' });
-    });
-    const userMsgs = result.current.messages.filter((m) => m.senderType === 'user');
-    expect(userMsgs).toHaveLength(1);
-  });
-
   it('连接断开时复位流式与支线生成状态', async () => {
     const { result } = renderHook(() => useSimRoomSocket(room));
     await waitForSocket();
@@ -304,13 +295,17 @@ describe('useSimRoomSocket 协议处理', () => {
     expect(result.current.streaming).toBe(false);
   });
 
-  it('CLOSED 状态下发送不再积压到 pendingSends', async () => {
+  it('CLOSED 状态下发送回滚乐观消息并提示，streaming 不挂死', async () => {
     const { result } = renderHook(() => useSimRoomSocket(room));
     await waitForSocket();
     const ws = MockWebSocket.instances[0];
     ws.readyState = 3; // WebSocket.CLOSED
     await act(async () => { result.current.send('不会发出的消息', 'director'); });
     expect(ws.sent).toEqual([]);
+    expect(result.current.streaming).toBe(false);
+    expect(
+      result.current.messages.some((m) => m.senderType === 'user' && m.content === '不会发出的消息'),
+    ).toBe(false);
   });
 
   it('CONNECTING 状态下消息暂存，onopen 后统一刷出', async () => {

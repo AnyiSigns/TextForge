@@ -96,6 +96,10 @@ export const useEntityStore = create<EntityState>((set, get) => {
         ...e,
         locationId: e.locationId === id ? null : e.locationId,
       })),
+      locations: state.locations.map((l: any) => ({ // eslint-disable-line @typescript-eslint/no-explicit-any
+        ...l,
+        alternateOfId: l.alternateOfId === id ? null : l.alternateOfId,
+      })),
     }),
   });
 
@@ -115,6 +119,14 @@ export const useEntityStore = create<EntityState>((set, get) => {
         ...e,
         characterIds: e.characterIds.filter((cid: number) => cid !== id),
       })),
+      foreshadowings: state.foreshadowings.map((f: any) => ({ // eslint-disable-line @typescript-eslint/no-explicit-any
+        ...f,
+        relatedCharacterIds: (f.relatedCharacterIds ?? []).filter((cid: number) => cid !== id),
+      })),
+      plotThreads: state.plotThreads.map((p: any) => ({ // eslint-disable-line @typescript-eslint/no-explicit-any
+        ...p,
+        relatedCharacterIds: (p.relatedCharacterIds ?? []).filter((cid: number) => cid !== id),
+      })),
     }),
     onAfter: () => useMapStore.getState().selectCharacter(null),
   });
@@ -130,6 +142,13 @@ export const useEntityStore = create<EntityState>((set, get) => {
     removeError: '删除失败',
     withBookId: true,
     deleteBookId: true,
+    cascade: (state, id) => ({
+      // 伏笔的「埋下场景」指向被删事件 → 置空（后端 FK SET NULL 同步行为）
+      foreshadowings: state.foreshadowings.map((f: any) => ({ // eslint-disable-line @typescript-eslint/no-explicit-any
+        ...f,
+        relatedEventId: f.relatedEventId === id ? null : f.relatedEventId,
+      })),
+    }),
   });
 
   const foreshadowings = makeCrudSlice<Foreshadowing>(set, get, {
@@ -143,6 +162,12 @@ export const useEntityStore = create<EntityState>((set, get) => {
     removeError: '删除失败',
     withBookId: true,
     deleteBookId: true,
+    cascade: (state, id) => ({
+      sceneEvents: state.sceneEvents.map((e: any) => ({ // eslint-disable-line @typescript-eslint/no-explicit-any
+        ...e,
+        resolvedForeshadowingIds: (e.resolvedForeshadowingIds ?? []).filter((fid: number) => fid !== id),
+      })),
+    }),
   });
 
   const plotThreads = makeCrudSlice<PlotThread>(set, get, {
@@ -156,6 +181,13 @@ export const useEntityStore = create<EntityState>((set, get) => {
     removeError: '删除失败',
     withBookId: true,
     deleteBookId: true,
+    cascade: (state, id) => ({
+      sceneEvents: state.sceneEvents.map((e: any) => ({ // eslint-disable-line @typescript-eslint/no-explicit-any
+        ...e,
+        plotThreadIds: (e.plotThreadIds ?? []).filter((tid: number) => tid !== id),
+        completedPlotThreadIds: (e.completedPlotThreadIds ?? []).filter((tid: number) => tid !== id),
+      })),
+    }),
   });
 
   const volumes = makeCrudSlice<Volume>(set, get, {
@@ -174,9 +206,17 @@ export const useEntityStore = create<EntityState>((set, get) => {
       const removedChapterIds = new Set(
         state.chapters.filter((ch: any) => ch.volumeId === id).map((ch: any) => ch.id), // eslint-disable-line @typescript-eslint/no-explicit-any
       );
+      const removedEventIds = new Set(
+        state.sceneEvents.filter((e: any) => removedChapterIds.has(e.chapterId ?? 0)).map((e: any) => e.id), // eslint-disable-line @typescript-eslint/no-explicit-any
+      );
       return {
         chapters: state.chapters.filter((ch: any) => ch.volumeId !== id), // eslint-disable-line @typescript-eslint/no-explicit-any
         sceneEvents: state.sceneEvents.filter((e: any) => !removedChapterIds.has(e.chapterId ?? 0)), // eslint-disable-line @typescript-eslint/no-explicit-any
+        foreshadowings: state.foreshadowings.map((f: any) => // eslint-disable-line @typescript-eslint/no-explicit-any
+          removedEventIds.has(f.relatedEventId ?? -1)
+            ? { ...f, relatedEventId: null }
+            : f,
+        ),
       };
     },
   });
@@ -193,9 +233,19 @@ export const useEntityStore = create<EntityState>((set, get) => {
     withBookId: false,
     deleteBookId: false,
     payload: (ch) => [ch.volumeId, { title: ch.title, summary: ch.summary ?? undefined, locked: ch.locked || false }],
-    cascade: (state, id) => ({
-      sceneEvents: state.sceneEvents.filter((e: any) => e.chapterId !== id), // eslint-disable-line @typescript-eslint/no-explicit-any
-    }),
+    cascade: (state, id) => {
+      const removedEventIds = new Set(
+        state.sceneEvents.filter((e: any) => e.chapterId === id).map((e: any) => e.id), // eslint-disable-line @typescript-eslint/no-explicit-any
+      );
+      return {
+        sceneEvents: state.sceneEvents.filter((e: any) => e.chapterId !== id), // eslint-disable-line @typescript-eslint/no-explicit-any
+        foreshadowings: state.foreshadowings.map((f: any) => // eslint-disable-line @typescript-eslint/no-explicit-any
+          removedEventIds.has(f.relatedEventId ?? -1)
+            ? { ...f, relatedEventId: null }
+            : f,
+        ),
+      };
+    },
   });
 
   return {

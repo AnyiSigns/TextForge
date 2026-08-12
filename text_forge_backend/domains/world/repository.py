@@ -250,6 +250,21 @@ class WorldRepository:
             item_id: 伏笔 ID。
             book_id: 书籍 ID。
         """
+        # 清理引用它的场景事件的 resolved_foreshadowing_ids（JSONB），
+        # 避免揭示记录残留陈旧伏笔 ID。必须限定 book_id：item_id 为全局自增，
+        # 不带书边界会误清其他书籍中引用相同整数 ID 的场景事件。
+        rows = (
+            await self.session.execute(
+                select(SceneEvent).where(
+                    SceneEvent.book_id == book_id,
+                    SceneEvent.resolved_foreshadowing_ids.contains([item_id]),
+                )
+            )
+        ).scalars().all()
+        for row in rows:
+            row.resolved_foreshadowing_ids = [
+                x for x in (row.resolved_foreshadowing_ids or []) if x != item_id
+            ]
         stmt = sqla_delete(Foreshadowing).where(Foreshadowing.id == item_id, Foreshadowing.book_id == book_id)
         await self.session.execute(stmt)
         await self.session.commit()
@@ -333,6 +348,24 @@ class WorldRepository:
             item_id: 情节脉络 ID。
             book_id: 书籍 ID。
         """
+        # 清理引用它的场景事件的 plot_thread_ids / completed_plot_thread_ids（JSONB）。
+        # 必须限定 book_id：item_id 为全局自增，不带书边界会误清其他书籍的引用。
+        rows = (
+            await self.session.execute(
+                select(SceneEvent).where(
+                    SceneEvent.book_id == book_id,
+                    SceneEvent.plot_thread_ids.contains([item_id])
+                    | SceneEvent.completed_plot_thread_ids.contains([item_id]),
+                )
+            )
+        ).scalars().all()
+        for row in rows:
+            row.plot_thread_ids = [
+                x for x in (row.plot_thread_ids or []) if x != item_id
+            ]
+            row.completed_plot_thread_ids = [
+                x for x in (row.completed_plot_thread_ids or []) if x != item_id
+            ]
         stmt = sqla_delete(PlotThread).where(PlotThread.id == item_id, PlotThread.book_id == book_id)
         await self.session.execute(stmt)
         await self.session.commit()

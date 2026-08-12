@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
-  X, ArrowLeft, Eye, GitBranch, Send, ChevronRight,
+  X, ArrowLeft, Eye, GitBranch, Send, ChevronRight, History,
   RefreshCw, Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -14,6 +14,7 @@ import { CharacterPicker } from './CharacterPicker';
 import { EndConfirmModal } from './EndConfirmModal';
 import { AgentSubmitView } from './AgentSubmitView';
 import { DecisionSidebar } from './DecisionSidebar';
+import { StoryFlowHistoryModal } from './StoryFlowHistoryModal';
 
 function escapeRegExp(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -36,6 +37,7 @@ export function StoryFlow() {
   const [customInput, setCustomInput] = useState('');
   const [endConfirmOpen, setEndConfirmOpen] = useState(false);
   const [endAction, setEndAction] = useState<'finish' | 'submit'>('finish');
+  const [historyOpen, setHistoryOpen] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
   const {
@@ -78,7 +80,10 @@ export function StoryFlow() {
     : null;
 
   const isEnded = status === 'completed';
-  const currentNodeHasOptions = currentNode && currentNode.options.length > 0 && !isEnded;
+  // 回看态：currentSceneId 指向历史节点（< 最新下标）时禁用选项与自定义输入，
+  // 防止把历史选项文本提交到最新节点污染决策链（后端另有 nodeSeq 乐观锁兜底）。
+  const isViewingHistory = nodes.length > 0 && currentSceneId < nodes.length - 1;
+  const currentNodeHasOptions = currentNode && currentNode.options.length > 0 && !isEnded && !isViewingHistory;
   const pendingRetryVisible = pendingChosenOption !== null && !streaming;
 
   // 决策链 → 节点下标映射（点击历史条目回看）
@@ -139,6 +144,13 @@ export function StoryFlow() {
   const openEndConfirm = (action: 'finish' | 'submit') => {
     setEndAction(action);
     setEndConfirmOpen(true);
+  };
+
+  // 历史推演恢复：中止当前生成后直接 restore 覆盖（restore 全量 set 状态，无需先 close）
+  const openHistoryFlow = (flowId: number) => {
+    useStoryFlowStore.getState().abortController?.abort();
+    setHistoryOpen(false);
+    void useStoryFlowStore.getState().restore(flowId);
   };
 
   const confirmEnd = async () => {
@@ -236,11 +248,12 @@ export function StoryFlow() {
             </div>
           )}
 
-          {/* 结束推演（active 显示，completed 隐藏） */}
+          {/* 结束推演（active 显示，completed 隐藏；流式/生成中禁用，防与生成并发写） */}
           {!isEnded && (
             <button
               onClick={() => openEndConfirm('finish')}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] bg-transparent border border-border/40 text-muted-foreground/60 hover:text-foreground/70 cursor-pointer"
+              disabled={streaming || loading}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] bg-transparent border border-border/40 text-muted-foreground/60 hover:text-foreground/70 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
             >
               结束推演
             </button>
@@ -258,6 +271,15 @@ export function StoryFlow() {
           >
             <GitBranch size={11} />
             决策记录 ({decisionChain.length})
+          </button>
+
+          {/* 历史推演入口 */}
+          <button
+            onClick={() => setHistoryOpen(true)}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] bg-transparent border border-border/40 text-muted-foreground/60 hover:text-foreground/60 cursor-pointer"
+          >
+            <History size={11} />
+            历史推演
           </button>
 
           <button
@@ -421,6 +443,24 @@ export function StoryFlow() {
               </div>
             </div>
           )}
+
+          {/* 回看历史节点提示（选项已禁用，防止误提交） */}
+          {isViewingHistory && (
+            <div className="px-8 py-4 border-t border-border/30 bg-card/50 flex-shrink-0">
+              <div className="max-w-2xl mx-auto flex items-center justify-between gap-3">
+                <p className="text-[11px] text-muted-foreground/60">
+                  正在回看历史节点，选项已锁定
+                </p>
+                <button
+                  onClick={() => goToNode(nodes.length - 1)}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] bg-foreground text-background border-none cursor-pointer hover:opacity-90"
+                >
+                  <ArrowLeft size={11} className="rotate-180" />
+                  返回最新场景
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 决策链侧栏 */}
@@ -448,6 +488,12 @@ export function StoryFlow() {
         remainingEvents={remainingEvents}
         onConfirm={() => void confirmEnd()}
         onCancel={() => setEndConfirmOpen(false)}
+      />
+      <StoryFlowHistoryModal
+        open={historyOpen}
+        bookId={useEntityStore.getState().book?.id ?? 0}
+        onClose={() => setHistoryOpen(false)}
+        onOpenFlow={openHistoryFlow}
       />
 
       <style jsx global>{`

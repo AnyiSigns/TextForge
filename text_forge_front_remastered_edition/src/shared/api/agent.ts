@@ -231,13 +231,15 @@ export async function searchAgentMemories(bookId: number, query: string): Promis
     // 语义检索依赖 embedding 模型配置：已配置时走 mode=semantic（pgvector 向量检索），
     // 未配置/为空时降级 mode=fulltext（后端缺省），保证搜索始终可用。
     const body: Record<string, unknown> = { q: query, book_id: bookId };
+    // 与 streamAgent 统一走 getModelConfigData 全量下发（含 main_config/embedding_config），
+    // 避免只下发 embedding_config 触发后端 ModelFactory 强依赖 main_config 的历史缺陷；
+    // main 未配置（返回 null）时回退仅发 embedding_config（后端已容错 embedding-only）。
     const cfg = await fetchModelConfig();
     const emb = cfg.embeddingModel;
-    // adapter+model_id 齐全且 api_key 非空才走语义检索；embedding 服务商端点固定
-    // （SDK 直连，base_url 可为空），故只校验 api_key。缺任一条件降级 fulltext。
     if (emb && emb.adapter && emb.model_id && emb.api_key) {
       body.mode = 'semantic';
-      body.model_config_data = {
+      const full = await getModelConfigData();
+      body.model_config_data = full ?? {
         embedding_config: {
           adapter: emb.adapter,
           base_url: emb.base_url,

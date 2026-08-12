@@ -78,6 +78,21 @@ class ChapterContentDiffResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
+class RelationshipLink(BaseModel):
+    """角色关系链条目（单一键约定：targetId/targetName + type + description）。
+
+    前端全应用写入 {targetId, type, description}；targetName 保留作容错
+    （手写库数据可能只存角色名），不输出旧键。
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    target_id: int | None = Field(default=None, alias="targetId")
+    target_name: str | None = Field(default=None, alias="targetName")
+    type: str | None = None
+    description: str | None = None
+
+
 class CharacterResponse(BaseModel):
     id: int
     name: str
@@ -87,7 +102,7 @@ class CharacterResponse(BaseModel):
     aliases: list[str] | None = None
     role_type: str | None = Field(default=None, alias="roleType")
     status: str | None = None
-    relationship_chain: list[dict[str, Any]] | None = Field(default=None, alias="relationshipChain")
+    relationship_chain: list[RelationshipLink] | None = Field(default=None, alias="relationshipChain")
     locked: bool = Field(default=False)
     custom_fields: dict[str, Any] = Field(default={}, alias="customFields")
     spawn_location_id: int | None = Field(default=None, alias="spawnLocationId")

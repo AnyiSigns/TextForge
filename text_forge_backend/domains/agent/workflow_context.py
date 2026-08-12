@@ -339,8 +339,14 @@ def _format_chapter_scene_event(records: list) -> str:
                 if chain:
                     rel_texts = []
                     for rel in chain:
-                        tgt = rel.get("target", "") if isinstance(rel, dict) else getattr(rel, "target", "")
-                        reln = rel.get("relation", "") if isinstance(rel, dict) else getattr(rel, "relation", "")
+                        # 键约定与 structured_repository._chain_rel 对齐：
+                        # {targetId/targetName, type}，无存量旧键兼容。
+                        if isinstance(rel, dict):
+                            tgt = rel.get("targetId") or rel.get("targetName") or ""
+                            reln = rel.get("type") or ""
+                        else:
+                            tgt = getattr(rel, "target_id", None) or getattr(rel, "target_name", None) or ""
+                            reln = getattr(rel, "type", None) or ""
                         if tgt and reln:
                             rel_texts.append(f"{tgt}（{reln}）")
                         elif tgt:

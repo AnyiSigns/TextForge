@@ -47,7 +47,14 @@ export function CreateRoomForm(props: CreateRoomFormProps) {
   const [selPlotThreads, setSelPlotThreads] = useState<number[]>([]);
 
   const handleCreate = () => {
-    if (!newName.trim()) return;
+    if (!newName.trim()) {
+      toast.error('请输入房间名称');
+      return;
+    }
+    if (aiCharacterIds.length === 0) {
+      toast.error('请至少选择 1 个 AI 扮演角色');
+      return;
+    }
     if (myCharacterId === null) {
       toast.error('请选择你扮演的角色');
       return;

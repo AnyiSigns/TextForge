@@ -153,16 +153,6 @@ export interface CreativeSetting {
   customDimensions: Record<string, unknown>;
 }
 
-export interface WritingStats {
-  summary?: {
-    totalWords: number;
-    totalSessions: number;
-    totalDurationSeconds: number;
-    activeDays: number;
-  };
-  trend?: { date: string; words: number }[];
-}
-
 export interface WritingSession {
   id: number;
   userId: number;
@@ -182,32 +172,6 @@ export interface WritingStatsSummary {
   totalSessions: number;
   totalDurationSeconds: number;
   activeDays: number;
-}
-
-export interface WritingTrendPoint {
-  date: string;
-  words: number;
-}
-
-export interface CharacterFrequency {
-  characterId: number;
-  characterName: string;
-  count: number;
-}
-
-export interface ChapterProgressDetail {
-  chapter_id: number;
-  title: string;
-  has_summary: boolean;
-  session_count: number;
-  total_words: number;
-}
-
-export interface PlotProgress {
-  total_chapters: number;
-  chapters_with_content: number;
-  completion_rate: number;
-  chapter_details: ChapterProgressDetail[];
 }
 
 export interface AgentConversation {
