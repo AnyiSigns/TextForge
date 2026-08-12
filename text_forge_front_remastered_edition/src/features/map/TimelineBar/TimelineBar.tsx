@@ -230,7 +230,7 @@ export function TimelineBar() {
 
   if (sceneEvents.length === 0) {
     return (
-      <div className="h-20 border-t border-border flex items-center justify-center text-xs text-muted-foreground/50">
+      <div className="h-20 border-t border-border flex items-center justify-center text-xs text-muted-foreground/50 bg-background">
         创建第一卷以开启时间线
       </div>
     );

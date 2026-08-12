@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { X, ChevronLeft, ChevronRight, Check, RefreshCw, Plus, Sparkles, Layers, BookOpen, ClipboardCheck, Trash2 } from 'lucide-react';
 import { cn } from '@/shared/lib/cn';
 import { useInitializerStore, STEP_LABELS } from '@/features/map/stores/initializerStore';
@@ -94,7 +94,7 @@ function WarningsBanner() {
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
-    <label className="text-[10px] font-semibold text-foreground/40 uppercase tracking-wider block mb-1.5">{children}</label>
+    <label className="text-[10px] font-semibold text-foreground/60 uppercase tracking-wider block mb-1.5">{children}</label>
   );
 }
 
@@ -112,25 +112,21 @@ function StepCreativeSetting() {
       <div className="rounded-xl border border-border bg-card p-3.5 space-y-3.5 shadow-sm">
         <div>
           <FieldLabel>方案名称</FieldLabel>
-          <input value={creativeForm.name} onChange={(e) => setCreativeForm({ name: e.target.value })} placeholder="星辰纪元"
-            className="w-full h-8 px-3 rounded-lg text-xs bg-background border border-border focus:outline-none focus:border-foreground/25 focus:ring-2 focus:ring-foreground/[0.06] transition-all" />
+          <EditableField value={creativeForm.name} onChange={(v) => setCreativeForm({ name: v })} placeholder="星辰纪元" />
         </div>
         <div>
           <FieldLabel>文风基调</FieldLabel>
-          <input value={creativeForm.tone} onChange={(e) => setCreativeForm({ tone: e.target.value })} placeholder="史诗奇幻、轻松幽默、黑暗残酷..."
-            className="w-full h-8 px-3 rounded-lg text-xs bg-background border border-border focus:outline-none focus:border-foreground/25 focus:ring-2 focus:ring-foreground/[0.06] transition-all" />
+          <EditableField value={creativeForm.tone} onChange={(v) => setCreativeForm({ tone: v })} placeholder="史诗奇幻、轻松幽默、黑暗残酷..." />
         </div>
         <div>
           <FieldLabel>世界观</FieldLabel>
-          <textarea value={creativeForm.worldview} onChange={(e) => setCreativeForm({ worldview: e.target.value })} rows={5}
-            placeholder="一个由星辰之力驱动的奇幻世界..."
-            className="w-full px-3 py-2 rounded-lg text-xs bg-background border border-border focus:outline-none focus:border-foreground/25 focus:ring-2 focus:ring-foreground/[0.06] transition-all resize-none" />
+          <EditableField value={creativeForm.worldview} onChange={(v) => setCreativeForm({ worldview: v })} multiline
+            placeholder="一个由星辰之力驱动的奇幻世界..." />
         </div>
         <div>
           <FieldLabel>写作禁忌</FieldLabel>
-          <textarea value={creativeForm.taboos} onChange={(e) => setCreativeForm({ taboos: e.target.value })} rows={3}
-            placeholder="禁止现代科技；禁止降智反派..."
-            className="w-full px-3 py-2 rounded-lg text-xs bg-background border border-border focus:outline-none focus:border-foreground/25 focus:ring-2 focus:ring-foreground/[0.06] transition-all resize-none" />
+          <EditableField value={creativeForm.taboos} onChange={(v) => setCreativeForm({ taboos: v })} multiline
+            placeholder="禁止现代科技；禁止降智反派..." />
         </div>
       </div>
 
@@ -147,19 +143,24 @@ function StepCreativeSetting() {
           <p className="text-[10px] text-foreground/30">暂无自定义字段，可添加如战力体系、势力等</p>
         )}
         {creativeForm.customFields.map((f, i) => (
-          <div key={f._uid ?? i} className="flex gap-1.5 mb-1.5 last:mb-0">
+          <div key={f._uid ?? i} className="flex gap-1.5 mb-1.5 last:mb-0 items-start">
             <input value={f.key}
               onChange={(e) => {
                 const updated = creativeForm.customFields.map((x, j) => j === i ? { ...x, key: e.target.value } : x);
                 setCreativeForm({ customFields: updated });
               }}
               placeholder="键" className="flex-1 h-7 px-2 rounded-lg text-[11px] bg-background border border-border focus:outline-none" />
-            <input value={f.value}
-              onChange={(e) => {
-                const updated = creativeForm.customFields.map((x, j) => j === i ? { ...x, value: e.target.value } : x);
-                setCreativeForm({ customFields: updated });
-              }}
-              placeholder="值" className="flex-[2] h-7 px-2 rounded-lg text-[11px] bg-background border border-border focus:outline-none" />
+            <div className="flex-[2] min-w-0">
+              <EditableField
+                value={f.value}
+                onChange={(v) => {
+                  const updated = creativeForm.customFields.map((x, j) => j === i ? { ...x, value: v } : x);
+                  setCreativeForm({ customFields: updated });
+                }}
+                placeholder="值"
+                compact
+              />
+            </div>
             <button onClick={() => setCreativeForm({ customFields: creativeForm.customFields.filter((_, j) => j !== i) })}
               className="w-5 h-7 flex items-center justify-center rounded bg-transparent border-none cursor-pointer text-foreground/15 hover:text-red-500/60 transition-colors">
               <X size={10} />
@@ -192,22 +193,101 @@ function inputCls(compact = false) {
   );
 }
 
+/**
+ * 值全量平铺展示 + 点击编辑（字段名/label 只读，只允许修改 value）：
+ * - 非编辑态：无边框、无滚动条，完整展示值（多行自动换行），hover 提示可编辑；
+ * - 点击后进入编辑态（单行 input / 多行 textarea 按内容自适应高度），
+ *   失焦或 Esc 保存退出，值变更才回写。
+ */
+function EditableField({
+  value, onChange, placeholder, multiline, listId, compact, className,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  multiline?: boolean;
+  listId?: string;
+  compact?: boolean;
+  className?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (!editing || !inputRef.current) return;
+    const el = inputRef.current;
+    el.focus();
+    const len = el.value.length;
+    try {
+      el.setSelectionRange(len, len);
+    } catch {
+      /* 非文本控件忽略 */
+    }
+  }, [editing]);
+
+  if (!editing) {
+    const hasValue = value.trim() !== '';
+    return (
+      <div
+        onClick={() => { setDraft(value); setEditing(true); }}
+        title={hasValue ? '点击修改' : (placeholder ?? '点击填写')}
+        className={cn(
+          'group cursor-text rounded-lg border border-transparent transition-all',
+          hasValue
+            ? 'text-foreground/85 whitespace-pre-wrap break-words leading-relaxed hover:border-foreground/[0.15] hover:bg-foreground/[0.04]'
+            : 'text-foreground/35 italic hover:border-foreground/[0.12] hover:bg-foreground/[0.03]',
+          compact ? 'px-2 py-1 text-[11px]' : 'px-2.5 py-1.5 text-[11px]',
+          className,
+        )}
+      >
+        {hasValue ? value : (placeholder ?? '点击填写')}
+      </div>
+    );
+  }
+
+  if (multiline) {
+    return (
+      <textarea
+        ref={inputRef as React.RefObject<HTMLTextAreaElement>}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => { if (draft !== value) onChange(draft); setEditing(false); }}
+        onKeyDown={(e) => { if (e.key === 'Escape') { setDraft(value); setEditing(false); } }}
+        rows={Math.max(2, Math.min(14, draft.split('\n').length + 1))}
+        placeholder={placeholder}
+        className="w-full rounded-lg text-[11px] leading-relaxed bg-background border border-foreground/30 focus:outline-none focus:border-foreground/50 focus:ring-2 focus:ring-foreground/[0.08] py-2 px-2.5 resize-none transition-all"
+      />
+    );
+  }
+
+  return (
+    <input
+      ref={inputRef as React.RefObject<HTMLInputElement>}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => { if (draft !== value) onChange(draft); setEditing(false); }}
+      onKeyDown={(e) => { if (e.key === 'Escape') { setDraft(value); setEditing(false); } }}
+      placeholder={placeholder}
+      list={listId}
+      className="w-full rounded-lg text-[11px] bg-background border border-foreground/30 focus:outline-none focus:border-foreground/50 focus:ring-2 focus:ring-foreground/[0.08] px-2.5 h-7 transition-all"
+    />
+  );
+}
+
 /** 通用字段输入：text/textarea/datalist（可手填）/tags（顿号分隔）/customFields（键：值多行） */
 function FieldInput({ field, value, onChange }: { field: FieldDef; value: unknown; onChange: (v: unknown) => void }) {
   if (field.type === 'textarea') {
     return (
-      <textarea value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} rows={3}
-        placeholder={field.placeholder}
-        className={cn(inputCls(), 'py-2 resize-none')} />
+      <EditableField value={String(value ?? '')} onChange={(v) => onChange(v)} multiline placeholder={field.placeholder} />
     );
   }
   if (field.type === 'datalist') {
     const listId = `dl-${field.key}`;
     return (
       <>
-        <input value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} list={listId}
-          placeholder={field.placeholder ?? '从列表选择或手填'}
-          className={inputCls()} />
+        <EditableField value={String(value ?? '')} onChange={(v) => onChange(v)} listId={listId}
+          placeholder={field.placeholder ?? '从列表选择或手填'} />
         <datalist id={listId}>
           {(field.options ?? []).map((o) => <option key={o} value={o} />)}
         </datalist>
@@ -217,27 +297,28 @@ function FieldInput({ field, value, onChange }: { field: FieldDef; value: unknow
   if (field.type === 'tags') {
     const names = Array.isArray(value) ? (value as string[]) : [];
     return (
-      <input value={names.join('、')}
-        onChange={(e) => onChange(e.target.value.split(/[、,，]/).map((s) => s.trim()).filter(Boolean))}
-        placeholder={field.placeholder ?? '用顿号分隔'}
-        className={inputCls()} />
+      <EditableField value={names.join('、')}
+        onChange={(v) => onChange(v.split(/[、,，]/).map((s) => s.trim()).filter(Boolean))}
+        placeholder={field.placeholder ?? '用顿号分隔'} />
     );
   }
   if (field.type === 'customFields') {
     const map = (value && typeof value === 'object' ? value : {}) as Record<string, string>;
     const text = Object.entries(map).map(([k, v]) => `${k}：${v}`).join('\n');
     return (
-      <textarea value={text}
-        onChange={(e) => {
+      <EditableField
+        value={text}
+        multiline
+        onChange={(v) => {
           const next: Record<string, string> = {};
-          for (const line of e.target.value.split('\n')) {
+          for (const line of v.split('\n')) {
             const m = line.match(/^(.+?)[:：]\s*(.*)$/);
             if (m && m[1].trim()) next[m[1].trim()] = m[2].trim();
           }
           onChange(next);
         }}
-        rows={3} placeholder={'键：值（每行一条）'}
-        className={cn(inputCls(), 'py-2 resize-none')} />
+        placeholder={'键：值（每行一条）'}
+      />
     );
   }
   if (field.type === 'relations') {
@@ -247,7 +328,7 @@ function FieldInput({ field, value, onChange }: { field: FieldDef; value: unknow
     };
     return (
       <div className="space-y-1.5">
-        {relations.length === 0 && <p className="text-[9px] text-foreground/30">暂无关系，可点击下方添加</p>}
+        {relations.length === 0 && <p className="text-[9px] text-foreground/40">暂无关系，可点击下方添加</p>}
         {relations.map((r, i) => (
           <div key={i} className="rounded-md border border-border/60 bg-background/40 p-1.5 space-y-1">
             <div className="flex gap-1">
@@ -276,11 +357,11 @@ function FieldInput({ field, value, onChange }: { field: FieldDef; value: unknow
                 <X size={10} />
               </button>
             </div>
-            <input
+            <EditableField
               value={String(r.description ?? '')}
-              onChange={(e) => updateRelation(i, { description: e.target.value })}
+              onChange={(v) => updateRelation(i, { description: v })}
+              multiline
               placeholder="关系描述（30-60字，可续行）"
-              className={cn(inputCls(true), 'w-full')}
             />
           </div>
         ))}
@@ -295,8 +376,7 @@ function FieldInput({ field, value, onChange }: { field: FieldDef; value: unknow
     );
   }
   return (
-    <input value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} placeholder={field.placeholder}
-      className={inputCls()} />
+    <EditableField value={String(value ?? '')} onChange={(v) => onChange(v)} placeholder={field.placeholder} />
   );
 }
 
@@ -318,7 +398,7 @@ function ItemCard({
         <span className={cn('w-4 h-4 rounded flex-shrink-0 flex items-center justify-center text-[8px] font-bold text-background', accent ?? 'bg-foreground/50')}>
           {index + 1}
         </span>
-        <span className={cn('flex-1 text-[11px] font-semibold truncate', preview ? 'text-foreground/70' : 'text-foreground/25 italic')}>
+        <span className={cn('flex-1 text-[11px] font-semibold truncate', preview ? 'text-foreground/80' : 'text-foreground/40 italic')}>
           {preview || '未命名条目'}
         </span>
         <button onClick={onRemove}
@@ -330,7 +410,7 @@ function ItemCard({
       <div className="space-y-1.5">
         {fields.map((f) => (
           <div key={f.key}>
-            <label className="text-[9px] text-foreground/35 block mb-0.5">{f.label}</label>
+            <label className="text-[9px] text-foreground/55 block mb-0.5">{f.label}</label>
             <FieldInput field={f} value={item[f.key]} onChange={(v) => onUpdate({ [f.key]: v })} />
           </div>
         ))}
@@ -462,7 +542,7 @@ function OutlineReviewForm() {
           <div key={String((vol as Record<string, unknown>)._uid ?? vi)} className="rounded-xl border border-border bg-card p-3 shadow-sm">
             <div className="flex items-center gap-1.5 mb-2">
               <span className="w-4 h-4 rounded flex-shrink-0 flex items-center justify-center text-[8px] font-bold text-background bg-foreground/50">{vi + 1}</span>
-              <span className={cn('flex-1 text-[11px] font-semibold truncate', String(vol.title ?? '') ? 'text-foreground/70' : 'text-foreground/25 italic')}>
+              <span className={cn('flex-1 text-[11px] font-semibold truncate', String(vol.title ?? '') ? 'text-foreground/80' : 'text-foreground/40 italic')}>
                 {String(vol.title ?? '') || '未命名卷'}
               </span>
               <button onClick={() => removeNestedItem(vi, null, null)}
@@ -472,14 +552,13 @@ function OutlineReviewForm() {
             </div>
             <div className="space-y-1.5 mb-2">
               <div>
-                <label className="text-[9px] text-foreground/35 block mb-0.5">卷标题</label>
-                <input value={String(vol.title ?? '')} onChange={(e) => updateNestedItem(vi, null, null, { title: e.target.value })}
-                  className={inputCls()} placeholder="卷标题" />
+                <label className="text-[9px] text-foreground/55 block mb-0.5">卷标题</label>
+                <EditableField value={String(vol.title ?? '')} onChange={(v) => updateNestedItem(vi, null, null, { title: v })} placeholder="卷标题" />
               </div>
               <div>
-                <label className="text-[9px] text-foreground/35 block mb-0.5">卷摘要</label>
-                <textarea value={String(vol.summary ?? '')} onChange={(e) => updateNestedItem(vi, null, null, { summary: e.target.value })}
-                  rows={2} className={cn(inputCls(), 'py-2 resize-none')} placeholder="本卷阶段性目标" />
+                <label className="text-[9px] text-foreground/55 block mb-0.5">卷摘要</label>
+                <EditableField value={String(vol.summary ?? '')} onChange={(v) => updateNestedItem(vi, null, null, { summary: v })}
+                  multiline placeholder="本卷阶段性目标" />
               </div>
             </div>
             <div className="space-y-2 pl-3 border-l border-foreground/[0.06]">
@@ -489,7 +568,7 @@ function OutlineReviewForm() {
                   <div key={ci} className="rounded-lg border border-border/80 bg-background/50 p-2.5">
                     <div className="flex items-center gap-1.5 mb-1.5">
                       <span className="w-3.5 h-3.5 rounded flex-shrink-0 flex items-center justify-center text-[7px] font-bold text-background bg-foreground/35">{ci + 1}</span>
-                      <span className={cn('flex-1 text-[10px] font-medium truncate', String(ch.title ?? '') ? 'text-foreground/60' : 'text-foreground/25 italic')}>
+                      <span className={cn('flex-1 text-[10px] font-medium truncate', String(ch.title ?? '') ? 'text-foreground/75' : 'text-foreground/40 italic')}>
                         {String(ch.title ?? '') || '未命名章'}
                       </span>
                       <button onClick={() => removeNestedItem(vi, ci, null)}
@@ -499,10 +578,14 @@ function OutlineReviewForm() {
                     </div>
                     <div className="space-y-1 mb-1.5">
                       <div className="flex gap-1.5">
-                        <input value={String(ch.title ?? '')} onChange={(e) => updateNestedItem(vi, ci, null, { title: e.target.value })}
-                          className={cn(inputCls(true), 'flex-1')} placeholder="章标题" />
-                        <input value={String(ch.summary ?? '')} onChange={(e) => updateNestedItem(vi, ci, null, { summary: e.target.value })}
-                          className={cn(inputCls(true), 'flex-[2]')} placeholder="章摘要" />
+                        <div className="flex-1 min-w-0">
+                          <EditableField value={String(ch.title ?? '')} onChange={(v) => updateNestedItem(vi, ci, null, { title: v })}
+                            compact placeholder="章标题" />
+                        </div>
+                        <div className="flex-[2] min-w-0">
+                          <EditableField value={String(ch.summary ?? '')} onChange={(v) => updateNestedItem(vi, ci, null, { summary: v })}
+                            compact placeholder="章摘要" />
+                        </div>
                       </div>
                     </div>
                     <div className="space-y-1.5">
@@ -510,7 +593,7 @@ function OutlineReviewForm() {
                         <div key={si} className="rounded-md border border-border/60 bg-card/60 p-2">
                           <div className="flex items-center gap-1.5 mb-1">
                             <span className="w-3 h-3 rounded flex-shrink-0 flex items-center justify-center text-[7px] font-bold text-background bg-foreground/25">{si + 1}</span>
-                            <span className={cn('flex-1 text-[9px] truncate', String(sc.title ?? '') ? 'text-foreground/50' : 'text-foreground/20 italic')}>
+                            <span className={cn('flex-1 text-[9px] truncate', String(sc.title ?? '') ? 'text-foreground/60' : 'text-foreground/35 italic')}>
                               {String(sc.title ?? '') || '未命名场景'}
                             </span>
                             <button onClick={() => removeNestedItem(vi, ci, si)}
@@ -520,24 +603,32 @@ function OutlineReviewForm() {
                           </div>
                           <div className="space-y-1">
                             <div className="flex gap-1.5">
-                              <input value={String(sc.title ?? '')} onChange={(e) => updateNestedItem(vi, ci, si, { title: e.target.value })}
-                                className={cn(inputCls(true), 'flex-1')} placeholder="场景标题" />
-                              <input value={String(sc.timeLabel ?? '')} onChange={(e) => updateNestedItem(vi, ci, si, { timeLabel: e.target.value })}
-                                className={cn(inputCls(true), 'flex-1')} placeholder="时间标签" />
+                              <div className="flex-1 min-w-0">
+                                <EditableField value={String(sc.title ?? '')} onChange={(v) => updateNestedItem(vi, ci, si, { title: v })}
+                                  compact placeholder="场景标题" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <EditableField value={String(sc.timeLabel ?? '')} onChange={(v) => updateNestedItem(vi, ci, si, { timeLabel: v })}
+                                  compact placeholder="时间标签" />
+                              </div>
                             </div>
-                            <input list={`sc-loc-${vi}-${ci}-${si}`} value={String(sc.location ?? '')}
-                              onChange={(e) => updateNestedItem(vi, ci, si, { location: e.target.value })}
-                              className={cn(inputCls(true), 'w-full')} placeholder="地点（从列表选择或手填）" />
+                            <EditableField value={String(sc.location ?? '')}
+                              onChange={(v) => updateNestedItem(vi, ci, si, { location: v })}
+                              listId={`sc-loc-${vi}-${ci}-${si}`} compact placeholder="地点（从列表选择或手填）" />
                             <datalist id={`sc-loc-${vi}-${ci}-${si}`}>
                               {opts.locationNames.map((o) => <option key={o} value={o} />)}
                             </datalist>
                             <div className="flex gap-1.5">
-                              <input value={Array.isArray(sc.characters) ? (sc.characters as string[]).join('、') : ''}
-                                onChange={(e) => updateNestedItem(vi, ci, si, { characters: e.target.value.split(/[、,，]/).map((s) => s.trim()).filter(Boolean) })}
-                                className={cn(inputCls(true), 'flex-1')} placeholder="角色（顿号分隔）" />
-                              <input value={Array.isArray(sc.plotThreads) ? (sc.plotThreads as string[]).join('、') : ''}
-                                onChange={(e) => updateNestedItem(vi, ci, si, { plotThreads: e.target.value.split(/[、,，]/).map((s) => s.trim()).filter(Boolean) })}
-                                className={cn(inputCls(true), 'flex-1')} placeholder="情节线（顿号分隔）" />
+                              <div className="flex-1 min-w-0">
+                                <EditableField value={Array.isArray(sc.characters) ? (sc.characters as string[]).join('、') : ''}
+                                  onChange={(v) => updateNestedItem(vi, ci, si, { characters: v.split(/[、,，]/).map((s) => s.trim()).filter(Boolean) })}
+                                  compact placeholder="角色（顿号分隔）" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <EditableField value={Array.isArray(sc.plotThreads) ? (sc.plotThreads as string[]).join('、') : ''}
+                                  onChange={(v) => updateNestedItem(vi, ci, si, { plotThreads: v.split(/[、,，]/).map((s) => s.trim()).filter(Boolean) })}
+                                  compact placeholder="情节线（顿号分隔）" />
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -572,9 +663,9 @@ function OutlineReviewForm() {
 function MarkdownPreview({ text }: { text: string }) {
   const parts = text.split(/(```json[\s\S]*?```)/g);
   return (
-    <pre className="whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-foreground/60 bg-card border border-border rounded-xl p-3.5 shadow-sm">
+    <pre className="whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-foreground/85 bg-card border border-border rounded-xl p-3.5 shadow-sm">
       {parts.map((p, i) => (
-        <span key={i} className={p.startsWith('```json') ? 'opacity-25 text-foreground/30' : ''}>{p}</span>
+        <span key={i} className={p.startsWith('```json') ? 'opacity-60 text-foreground/60' : ''}>{p}</span>
       ))}
     </pre>
   );
@@ -596,10 +687,10 @@ function StepFlow({ step, title }: { step: number; title: string }) {
       {!hasText && !streaming ? (
         <div className="flex flex-col items-center justify-center py-14 text-center">
           <div className="w-12 h-12 rounded-full bg-gradient-to-br from-foreground/[0.08] to-foreground/[0.02] border border-foreground/[0.06] flex items-center justify-center mb-3.5 shadow-inner">
-            <Sparkles size={16} className="text-foreground/30" />
+            <Sparkles size={16} className="text-foreground/40" />
           </div>
-          <p className="text-[12px] font-semibold text-foreground/60 mb-1">还没有{title}方案</p>
-          <p className="text-[10px] text-foreground/30 max-w-[260px] leading-relaxed mb-4">
+          <p className="text-[12px] font-semibold text-foreground/75 mb-1">还没有{title}方案</p>
+          <p className="text-[10px] text-foreground/50 max-w-[260px] leading-relaxed mb-4">
             {mode === 'append'
               ? `AI 将基于已有设定为书籍补充${title}素材，不会覆盖已有内容`
               : `点击下方按钮，AI 将根据前序设定生成一份完整的${title}方案`}
@@ -620,7 +711,7 @@ function StepFlow({ step, title }: { step: number; title: string }) {
       ) : (
         <>
           <div className="mb-2 flex items-center justify-between px-0.5">
-            <span className="text-[10px] text-foreground/30 flex items-center gap-1.5">
+            <span className="text-[10px] text-foreground/45 flex items-center gap-1.5">
               {streaming && (
                 <span className="flex gap-0.5">
                   <span className="w-1 h-1 rounded-full bg-foreground/40 animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -670,18 +761,18 @@ function Step4Flow() {
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-foreground/[0.08] to-foreground/[0.02] border border-foreground/[0.06] flex items-center justify-center">
               <Layers size={15} className="text-foreground/30" />
             </div>
-            <span className="text-[11px] font-semibold text-foreground/55">设定大纲参数</span>
-            <span className="text-[10px] text-foreground/30 max-w-[240px] leading-relaxed">按指定卷章数流式生成单份大纲，含卷摘要、章摘要、场景节点（时间/地点/角色/情节线）</span>
+            <span className="text-[11px] font-semibold text-foreground/70">设定大纲参数</span>
+            <span className="text-[10px] text-foreground/45 max-w-[240px] leading-relaxed">按指定卷章数流式生成单份大纲，含卷摘要、章摘要、场景节点（时间/地点/角色/情节线）</span>
           </div>
           <div className="rounded-xl border border-border bg-card p-3.5 space-y-3 shadow-sm">
             <div>
-              <label className="text-[10px] text-foreground/35 block mb-1">卷数 (1-10)</label>
+              <label className="text-[10px] text-foreground/55 block mb-1">卷数 (1-10)</label>
               <input type="number" min={1} max={10} value={volCount}
                 onChange={(e) => setVolCount(Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
                 className="w-full h-8 px-3 rounded-lg text-xs bg-background border border-border focus:outline-none focus:border-foreground/25" />
             </div>
             <div>
-              <label className="text-[10px] text-foreground/35 block mb-1">每卷章数（逗号分隔）</label>
+              <label className="text-[10px] text-foreground/55 block mb-1">每卷章数（逗号分隔）</label>
               <input value={chPerVol} onChange={(e) => setChPerVol(e.target.value)}
                 placeholder="5,5" className="w-full h-8 px-3 rounded-lg text-xs bg-background border border-border focus:outline-none focus:border-foreground/25" />
             </div>
@@ -698,7 +789,7 @@ function Step4Flow() {
   return (
     <div className="flex-1 overflow-y-auto px-4 py-3">
       <div className="mb-2 flex items-center justify-between px-0.5">
-        <span className="text-[10px] text-foreground/30">
+        <span className="text-[10px] text-foreground/45">
           {streaming ? '正在按卷生成大纲...' : '生成完成，点击"确认方案"进入表单微调'}
         </span>
         {!streaming && hasText && (
@@ -735,13 +826,13 @@ function Step4Flow() {
       {/* 已保存卷/章预览 */}
       {volumes.length > 0 && (
         <div className="mt-3 pt-3 border-t border-border">
-          <div className="text-[10px] font-semibold text-foreground/35 uppercase tracking-wider mb-2">已生成大纲</div>
+          <div className="text-[10px] font-semibold text-foreground/55 uppercase tracking-wider mb-2">已生成大纲</div>
           {volumes.map((vol) => {
             const volChapters = chapters.filter((ch) => ch.volumeId === vol.id).sort((a, b) => a.sortOrder - b.sortOrder);
             return (
               <div key={vol.id} className="mb-3 rounded-xl border border-border bg-card p-3">
-                <div className="text-[13px] font-bold text-foreground/80">{vol.title}</div>
-                {vol.summary && <div className="text-[10px] text-foreground/35 mb-1.5">{vol.summary}</div>}
+                <div className="text-[13px] font-bold text-foreground/85">{vol.title}</div>
+                {vol.summary && <div className="text-[10px] text-foreground/50 mb-1.5">{vol.summary}</div>}
                 <div className="pt-1.5 space-y-1">
                   {volChapters.map((ch) => (
                     <div key={ch.id} className="flex items-start gap-2 pl-1.5">

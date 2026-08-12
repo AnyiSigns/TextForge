@@ -1,6 +1,6 @@
 'use client';
 
-import { Trash2, Upload } from 'lucide-react';
+import { Trash2, Upload, SunMoon, Image as ImageIcon, Droplets } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Card } from '@/shared/ui/card';
 import { cn } from '@/shared/lib/cn';
@@ -31,9 +31,15 @@ export function AppearanceTab({ mounted }: { mounted: boolean }) {
 
   return (
     <div className="space-y-5">
-      <Card className="p-5 space-y-5">
+      <Card className="p-5 space-y-4">
+        <div className="flex items-center gap-2">
+          <SunMoon size={14} strokeWidth={1.8} className="text-muted-foreground" />
+          <div>
+            <div className="text-xs font-medium">主题模式</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">切换应用的浅色 / 深色外观</div>
+          </div>
+        </div>
         <div className="space-y-2">
-          <label className="text-[11px] text-muted-foreground block">主题模式</label>
           <div className="flex gap-2">
             {mounted ? (
               ['light', 'dark', 'system'].map((t) => (
@@ -58,9 +64,12 @@ export function AppearanceTab({ mounted }: { mounted: boolean }) {
       </Card>
 
       <Card className="p-5 space-y-4">
-        <div>
-          <div className="text-xs font-medium">自定义主题背景</div>
-          <div className="text-[11px] text-muted-foreground mt-0.5">上传一张图片铺在应用底层，可调整透明度和模糊度</div>
+        <div className="flex items-center gap-2">
+          <ImageIcon size={14} strokeWidth={1.8} className="text-muted-foreground" />
+          <div>
+            <div className="text-xs font-medium">自定义主题背景</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">上传一张图片铺在应用底层，可调整透明度和模糊度</div>
+          </div>
         </div>
 
         <div className="flex items-center gap-3">
@@ -127,9 +136,12 @@ export function AppearanceTab({ mounted }: { mounted: boolean }) {
       </Card>
 
       <Card className="p-5 space-y-4">
-        <div>
-          <div className="text-xs font-medium">液态玻璃</div>
-          <div className="text-[11px] text-muted-foreground mt-0.5">为全局卡片和面板添加淡淡的毛玻璃效果（仅模糊 + 半透明，无高光反光）</div>
+        <div className="flex items-center gap-2">
+          <Droplets size={14} strokeWidth={1.8} className="text-muted-foreground" />
+          <div>
+            <div className="text-xs font-medium">液态玻璃</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">为全局卡片和面板添加淡淡的毛玻璃效果（仅模糊 + 半透明，无高光反光）</div>
+          </div>
         </div>
 
         <div className="flex items-center justify-between">

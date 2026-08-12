@@ -3,13 +3,15 @@
 import { useState, useEffect, useMemo } from 'react';
 import { cn } from '@/shared/lib/cn';
 import Link from 'next/link';
-import { BookOpen, Plus, Search, Pin, PinOff, Trash2, ChevronRight, Pencil } from 'lucide-react';
+import { BookOpen, Plus, Search, Pin, PinOff, Trash2, ChevronRight, Pencil, Target, LayoutGrid, List } from 'lucide-react';
 import { toast } from 'sonner';
 import * as booksApi from '@/shared/api/books';
 import type { Book } from '@/shared/api/types';
 import { PageContainer } from '@/shared/ui/PageContainer';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { ListRow } from '@/shared/ui/ListRow';
+import { StatCard } from '@/shared/ui/StatCard';
+import { Button } from '@/shared/ui/Button';
 
 export default function BooksListPage() {
   const [books, setBooks] = useState<Book[]>([]);
@@ -18,6 +20,7 @@ export default function BooksListPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [hoveredId, setHoveredId] = useState<number | null>(null);
+  const [view, setView] = useState<'grid' | 'list'>('list');
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -117,29 +120,48 @@ export default function BooksListPage() {
     return !term || b.title.toLowerCase().includes(term) || (b.description ?? '').toLowerCase().includes(term);
   }), [sorted, searchTerm]);
 
+  const totalWords = books.reduce((s, b) => s + (b.currentWordCount ?? 0), 0);
+  const pinnedCount = books.filter(b => b.pinned).length;
+  const completedCount = books.filter(b => b.totalWordGoal && (b.currentWordCount ?? 0) >= b.totalWordGoal).length;
+
   const formatWords = (n: number) => n >= 10000 ? `${(n / 10000).toFixed(1)} 万字` : `${n.toLocaleString()} 字`;
+
+  const toggleSelected = (id: number, checked: boolean) => {
+    const s = new Set(selectedIds);
+    if (checked) s.add(id);
+    else s.delete(id);
+    setSelectedIds(s);
+  };
 
   return (
     <PageContainer>
       <PageHeader
         icon={BookOpen}
         title="书籍管理"
-        description={`${books.length} 本书 · ${books.reduce((s, b) => s + (b.currentWordCount ?? 0), 0) >= 10000 ? formatWords(books.reduce((s, b) => s + (b.currentWordCount ?? 0), 0)) : '--'}`}
+        description={`${books.length} 本书 · 总字数 ${totalWords >= 10000 ? formatWords(totalWords) : (totalWords || '--')}`}
         actions={
           <>
             {selectedIds.size > 0 && (
               <>
-                <button onClick={handleBatchDelete} className="flex items-center gap-1.5 h-8 px-3 rounded-md text-xs font-medium bg-destructive text-destructive-foreground hover:opacity-90 transition-opacity border-none cursor-pointer">
+                <Button variant="danger" size="sm" onClick={handleBatchDelete} className="flex items-center gap-1.5">
                   <Trash2 size={13} /> 删除 ({selectedIds.size})
-                </button>
-                <button onClick={() => setSelectedIds(new Set())} className="h-8 px-2.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-hover)] transition-colors bg-transparent border-none cursor-pointer">
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
                   取消
-                </button>
+                </Button>
               </>
             )}
-            <button onClick={openNew} className="flex items-center gap-1.5 h-8 px-3.5 rounded-md bg-foreground text-background text-xs font-medium hover:opacity-90 transition-opacity border-none cursor-pointer">
+            <div className="flex rounded-md border border-border overflow-hidden">
+              {([['grid', LayoutGrid], ['list', List]] as const).map(([v, Icon]) => (
+                <button key={v} onClick={() => setView(v)}
+                  className={cn('px-2.5 py-1 text-xs bg-transparent border-none cursor-pointer', view === v ? 'bg-muted font-medium' : 'hover:bg-muted')}>
+                  <Icon size={13} strokeWidth={1.8} />
+                </button>
+              ))}
+            </div>
+            <Button size="sm" onClick={openNew} className="flex items-center gap-1.5">
               <Plus size={14} /> 新建
-            </button>
+            </Button>
           </>
         }
         search={
@@ -155,82 +177,157 @@ export default function BooksListPage() {
         }
       />
 
-      <div className="px-6 py-5">
+      <div className="px-6 py-5 space-y-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <StatCard icon={BookOpen} label="书籍总数" value={books.length} sub={pinnedCount > 0 ? `${pinnedCount} 本置顶` : '暂无置顶'} />
+          <StatCard icon={Pencil} label="总字数" value={totalWords >= 10000 ? formatWords(totalWords) : (totalWords ? `${totalWords} 字` : '--')} sub={books.length ? '累计创作' : '尚未开始创作'} />
+          <StatCard icon={Pin} label="置顶" value={pinnedCount} sub="优先展示" />
+          <StatCard icon={Target} label="达成目标" value={completedCount} sub={completedCount ? '目标完成' : '继续加油'} />
+        </div>
+
         {loading && <div className="flex items-center justify-center py-20 text-center text-sm text-muted-foreground">加载中...</div>}
         {!loading && filtered.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20 text-center">
-            <BookOpen size={36} strokeWidth={1.2} className="text-muted-foreground/25 mb-4" />
+            <BookOpen size={40} strokeWidth={1.2} className="text-muted-foreground/25 mb-4" />
             <h3 className="text-sm font-medium text-muted-foreground">没有匹配的书籍</h3>
             <p className="text-xs text-muted-foreground/60 mt-1">试试别的关键词</p>
           </div>
         )}
 
-        <div className="space-y-2">
-          {filtered.map(book => {
-            const progress = book.totalWordGoal ? Math.min(100, Math.round((book.currentWordCount ?? 0) / book.totalWordGoal * 100)) : 0;
-            const isHovered = hoveredId === book.id;
-            return (
-              <ListRow
-                key={book.id}
-                onMouseEnter={() => setHoveredId(book.id)}
-                onMouseLeave={() => setHoveredId(null)}
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedIds.has(book.id)}
-                  onChange={(e) => {
-                    const s = new Set(selectedIds);
-                    if (e.target.checked) s.add(book.id);
-                    else s.delete(book.id);
-                    setSelectedIds(s);
-                  }}
-                  className="w-3.5 h-3.5 rounded border-border accent-accent cursor-pointer shrink-0"
-                />
-                <button
-                  type="button"
-                  onClick={() => togglePin(book.id)}
-                  className={cn('shrink-0 p-0.5 rounded transition-colors bg-transparent border-none cursor-pointer', book.pinned ? 'text-foreground' : 'text-muted-foreground/30 hover:text-muted-foreground')}
+        {!loading && filtered.length > 0 && view === 'grid' && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
+            {filtered.map(book => {
+              const progress = book.totalWordGoal ? Math.min(100, Math.round((book.currentWordCount ?? 0) / book.totalWordGoal * 100)) : 0;
+              return (
+                <div
+                  key={book.id}
+                  onMouseEnter={() => setHoveredId(book.id)}
+                  onMouseLeave={() => setHoveredId(null)}
+                  className={cn('rounded-lg border bg-card transition-all group relative overflow-hidden', hoveredId === book.id ? 'border-foreground/15 shadow-card' : 'border-border/40')}
                 >
-                  {book.pinned ? <PinOff size={14} /> : <Pin size={14} />}
-                </button>
-                <Link href={`/books/${book.id}`} className="flex-1 min-w-0 flex items-center gap-4 no-underline text-inherit group">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-sm truncate group-hover:text-foreground/70 transition-colors">{book.title}</span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">{book.genre || '未分类'}</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-0.5 truncate">{book.description || '暂无简介'}</p>
-                  </div>
-                  <div className="shrink-0 flex items-center gap-4 text-xs text-muted-foreground">
-                    <span>{formatWords(book.currentWordCount ?? 0)}</span>
-                    {book.totalWordGoal ? (
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-16 h-1 bg-border/40 rounded-full overflow-hidden">
-                          <div className="h-full bg-foreground rounded-full transition-all" style={{ width: `${progress}%` }} />
-                        </div>
-                        <span className="w-8 text-right tabular-nums">{progress}%</span>
+                  <Link href={`/books/${book.id}`} className="block no-underline text-inherit">
+                    <div className="p-3 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(book.id)}
+                          onChange={(e) => toggleSelected(book.id, e.target.checked)}
+                          onClick={(e) => e.stopPropagation()}
+                          aria-label={`选择 ${book.title}`}
+                          className="w-3.5 h-3.5 rounded border-border accent-accent cursor-pointer shrink-0"
+                        />
+                        <span className="font-medium text-sm truncate flex-1 min-w-0">{book.title}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">{book.genre || '未分类'}</span>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); togglePin(book.id); }}
+                          aria-label={book.pinned ? '取消置顶' : '置顶'}
+                          className={cn('p-0.5 rounded transition-colors bg-transparent border-none cursor-pointer shrink-0', book.pinned ? 'text-foreground' : 'text-muted-foreground/30 hover:text-muted-foreground')}
+                        >
+                          {book.pinned ? <PinOff size={14} /> : <Pin size={14} />}
+                        </button>
                       </div>
-                    ) : null}
-                    <ChevronRight size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </div>
-                </Link>
+                      <p className="text-xs text-muted-foreground line-clamp-2 min-h-8">{book.description || '暂无简介'}</p>
+                      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                        <span className="tabular-nums shrink-0">{formatWords(book.currentWordCount ?? 0)}</span>
+                        {book.totalWordGoal ? (
+                          <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                            <div className="flex-1 h-1 bg-border/40 rounded-full overflow-hidden">
+                              <div className="h-full bg-foreground rounded-full transition-all" style={{ width: `${progress}%` }} />
+                            </div>
+                            <span className="tabular-nums shrink-0">{progress}%</span>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground/50">未设目标</span>
+                        )}
+                        <div className="ml-auto flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); openEdit(book); }}
+                            aria-label="编辑"
+                            className="h-6 w-6 grid place-items-center rounded text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-hover)] bg-transparent border-none cursor-pointer transition-colors"
+                          >
+                            <Pencil size={11} />
+                          </button>
+                          <button
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDelete(book.id); }}
+                            aria-label="删除"
+                            className="h-6 w-6 grid place-items-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 bg-transparent border-none cursor-pointer transition-colors"
+                          >
+                            <Trash2 size={11} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </Link>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
-                <button
-                  onClick={() => openEdit(book)}
-                  className={cn('h-7 w-7 grid place-items-center rounded text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-hover)] transition-colors bg-transparent border-none cursor-pointer shrink-0', isHovered ? 'opacity-100' : 'opacity-0')}
+        {!loading && filtered.length > 0 && view === 'list' && (
+          <div className="space-y-2">
+            {filtered.map(book => {
+              const progress = book.totalWordGoal ? Math.min(100, Math.round((book.currentWordCount ?? 0) / book.totalWordGoal * 100)) : 0;
+              const isHovered = hoveredId === book.id;
+              return (
+                <ListRow
+                  key={book.id}
+                  onMouseEnter={() => setHoveredId(book.id)}
+                  onMouseLeave={() => setHoveredId(null)}
                 >
-                  <Pencil size={13} />
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleDelete(book.id); }}
-                  className={cn('h-7 w-7 grid place-items-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors bg-transparent border-none cursor-pointer shrink-0', isHovered ? 'opacity-100' : 'opacity-0')}
-                >
-                  <Trash2 size={13} />
-                </button>
-              </ListRow>
-            );
-          })}
-        </div>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(book.id)}
+                    onChange={(e) => toggleSelected(book.id, e.target.checked)}
+                    className="w-3.5 h-3.5 rounded border-border accent-accent cursor-pointer shrink-0"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => togglePin(book.id)}
+                    className={cn('shrink-0 p-0.5 rounded transition-colors bg-transparent border-none cursor-pointer', book.pinned ? 'text-foreground' : 'text-muted-foreground/30 hover:text-muted-foreground')}
+                  >
+                    {book.pinned ? <PinOff size={14} /> : <Pin size={14} />}
+                  </button>
+                  <Link href={`/books/${book.id}`} className="flex-1 min-w-0 flex items-center gap-4 no-underline text-inherit group">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-sm truncate group-hover:text-foreground/70 transition-colors">{book.title}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">{book.genre || '未分类'}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5 truncate">{book.description || '暂无简介'}</p>
+                    </div>
+                    <div className="shrink-0 flex items-center gap-4 text-xs text-muted-foreground">
+                      <span className="tabular-nums">{formatWords(book.currentWordCount ?? 0)}</span>
+                      {book.totalWordGoal ? (
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-16 h-1 bg-border/40 rounded-full overflow-hidden">
+                            <div className="h-full bg-foreground rounded-full transition-all" style={{ width: `${progress}%` }} />
+                          </div>
+                          <span className="w-8 text-right tabular-nums">{progress}%</span>
+                        </div>
+                      ) : null}
+                      <ChevronRight size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                  </Link>
+
+                  <button
+                    onClick={() => openEdit(book)}
+                    className={cn('h-7 w-7 grid place-items-center rounded text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-hover)] transition-colors bg-transparent border-none cursor-pointer shrink-0', isHovered ? 'opacity-100' : 'opacity-0')}
+                  >
+                    <Pencil size={13} />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDelete(book.id); }}
+                    className={cn('h-7 w-7 grid place-items-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors bg-transparent border-none cursor-pointer shrink-0', isHovered ? 'opacity-100' : 'opacity-0')}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </ListRow>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {modalOpen && (
@@ -305,12 +402,10 @@ export default function BooksListPage() {
               </div>
             </div>
             <div className="flex justify-end gap-2 px-5 h-14 border-t border-border/50">
-              <button onClick={() => setModalOpen(false)} className="h-7 px-4 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-hover)] transition-colors bg-transparent border-none cursor-pointer">
-                取消
-              </button>
-              <button onClick={handleSave} disabled={saving || !formTitle.trim()} className="h-7 px-4 rounded-md text-xs font-medium bg-foreground text-background hover:opacity-90 transition-opacity border-none cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed">
+              <Button variant="ghost" size="sm" onClick={() => setModalOpen(false)}>取消</Button>
+              <Button size="sm" onClick={handleSave} disabled={saving || !formTitle.trim()}>
                 {saving ? '保存中...' : '保存'}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

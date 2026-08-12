@@ -37,8 +37,8 @@ export default function SettingsPage() {
         description="管理你的个人资料、界面外观与模型配置"
       />
 
-      <div className="px-6 pb-5">
-        <div className="flex gap-1 mb-6">
+      <div className="px-6 py-5 flex gap-5 items-start">
+        <nav className="w-40 shrink-0 flex flex-col gap-0.5" aria-label="设置分区">
           {TABS.map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.value;
@@ -47,37 +47,38 @@ export default function SettingsPage() {
                 key={tab.value}
                 onClick={() => setActiveTab(tab.value)}
                 className={cn(
-                  'relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 whitespace-nowrap',
-                  active ? 'text-foreground bg-foreground/5' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                  'flex items-center gap-2 px-3 h-9 rounded-lg text-[13px] font-medium transition-all duration-150 whitespace-nowrap cursor-pointer',
+                  active
+                    ? 'bg-foreground/5 text-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                 )}
               >
-                {active && (
-                  <span className="absolute inset-x-0 bottom-0 h-0.5 bg-foreground/60 rounded-full" />
-                )}
-                <Icon size={13} strokeWidth={1.8} />
+                <Icon size={15} strokeWidth={1.8} />
                 <span>{tab.label}</span>
               </button>
             );
           })}
-        </div>
+        </nav>
 
-        {/* Tab 面板全部常驻挂载（CSS 隐藏而非卸载），保留未保存编辑态与加载数据，
-            与原实现「state 提升到 SettingsPage 顶层」的保活行为一致 */}
-        <div className={activeTab === 'profile' ? '' : 'hidden'}>
-          <ProfileTab />
-        </div>
+        <div className="flex-1 min-w-0 space-y-5">
+          {/* Tab 面板全部常驻挂载（CSS 隐藏而非卸载），保留未保存编辑态与加载数据，
+              与原实现「state 提升到 SettingsPage 顶层」的保活行为一致 */}
+          <div className={activeTab === 'profile' ? '' : 'hidden'}>
+            <ProfileTab />
+          </div>
 
-        <div className={activeTab === 'appearance' ? '' : 'hidden'}>
-          <AppearanceTab mounted={mounted} />
-        </div>
+          <div className={activeTab === 'appearance' ? '' : 'hidden'}>
+            <AppearanceTab mounted={mounted} />
+          </div>
 
-        <div className={activeTab === 'model' ? '' : 'hidden'}>
-          <ModelTab />
-        </div>
+          <div className={activeTab === 'model' ? '' : 'hidden'}>
+            <ModelTab />
+          </div>
 
-        {/* 2.4：Agent 运行洞察（写操作审计 / 回合指标读取端点接入）
-            面板自身有数据加载副作用且无编辑态，保持条件渲染（切到 Agent tab 才加载） */}
-        {activeTab === 'agent' && <AgentInsightsPanel />}
+          {/* 2.4：Agent 运行洞察（写操作审计 / 回合指标读取端点接入）
+              面板自身有数据加载副作用且无编辑态，保持条件渲染（切到 Agent tab 才加载） */}
+          {activeTab === 'agent' && <AgentInsightsPanel />}
+        </div>
       </div>
     </PageContainer>
   );

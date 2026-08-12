@@ -1,6 +1,6 @@
 'use client';
 
-import { Cpu, Wifi } from 'lucide-react';
+import { Cpu, Wifi, MessageSquareText, Search, Database, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card } from '@/shared/ui/card';
 import { TextInput } from '@/shared/ui/TextInput';
@@ -58,9 +58,12 @@ export function ModelTab() {
   return (
     <div className="space-y-5">
       <Card className="p-5 space-y-4">
-        <div>
-          <div className="text-xs font-medium">文本模型</div>
-          <div className="text-[11px] text-muted-foreground mt-0.5">各角色使用的 LLM 配置，生成前按角色取用，编辑保存后自动持久到本地</div>
+        <div className="flex items-center gap-2">
+          <MessageSquareText size={14} strokeWidth={1.8} className="text-muted-foreground" />
+          <div>
+            <div className="text-xs font-medium">文本模型</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">各角色使用的 LLM 配置，生成前按角色取用，编辑保存后自动持久到本地</div>
+          </div>
         </div>
         <div className="space-y-2">
           {TEXT_ROLES.map((role) => {
@@ -107,8 +110,13 @@ export function ModelTab() {
       </Card>
 
       <Card className="p-5 space-y-4">
-        <div className="text-xs font-medium">搜索配置</div>
-        <div className="text-[11px] text-muted-foreground">用于 Agent 的实时网页搜索（检索外部资料辅助创作）</div>
+        <div className="flex items-center gap-2">
+          <Search size={14} strokeWidth={1.8} className="text-muted-foreground" />
+          <div>
+            <div className="text-xs font-medium">搜索配置</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">用于 Agent 的实时网页搜索（检索外部资料辅助创作）</div>
+          </div>
+        </div>
         <div className="rounded-lg border border-border/60 p-3 space-y-2">
           <div className="flex items-center justify-between">
             <div>
@@ -136,8 +144,13 @@ export function ModelTab() {
       </Card>
 
       <Card className="p-5 space-y-4">
-        <div className="text-xs font-medium">Embedding 模型</div>
-        <div className="text-[11px] text-muted-foreground">用于个人文档向量检索，生成时自动调用</div>
+        <div className="flex items-center gap-2">
+          <Database size={14} strokeWidth={1.8} className="text-muted-foreground" />
+          <div>
+            <div className="text-xs font-medium">Embedding 模型</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">用于个人文档向量检索，生成时自动调用</div>
+          </div>
+        </div>
         <div className="rounded-lg border border-border/60 p-3 space-y-2">
           <div className="flex items-center justify-between">
             <div>
@@ -225,8 +238,13 @@ export function ModelTab() {
       </Card>
 
       <Card className="p-5 space-y-4">
-        <div className="text-xs font-medium">图像生成模型</div>
-        <div className="text-[11px] text-muted-foreground">用于 AI 绘画，选择支持的图像生成服务</div>
+        <div className="flex items-center gap-2">
+          <Sparkles size={14} strokeWidth={1.8} className="text-muted-foreground" />
+          <div>
+            <div className="text-xs font-medium">图像生成模型</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">用于 AI 绘画，选择支持的图像生成服务</div>
+          </div>
+        </div>
         <div className="rounded-lg border border-border/60 p-3 space-y-2">
           <div className="flex items-center justify-between">
             <div>
