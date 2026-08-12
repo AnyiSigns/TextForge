@@ -36,20 +36,6 @@ class ChapterRepository(BaseRepository[Chapter]):
         result = await self.session.execute(stmt)
         return result.scalars().all()
 
-    async def get_chapter(self, volume_id: int, chapter_id: int):
-        """查询单个章节。
-
-        Args:
-            volume_id: 卷 ID。
-            chapter_id: 章节 ID。
-
-        Returns:
-            章节实例，不存在返回 None。
-        """
-        stmt = select(Chapter).where(Chapter.volume_id == volume_id, Chapter.id == chapter_id)
-        result = await self.session.execute(stmt)
-        return result.scalar_one_or_none()
-
     async def get_by_id(self, chapter_id: int):
         """根据主键查询章节。
 

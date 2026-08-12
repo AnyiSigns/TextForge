@@ -6,6 +6,7 @@ from core.model_factory import ModelFactory
 from fastapi import WebSocket
 from models.sim_room import SimBranch, SimMessage, SimRoom
 from shared.database import db_manager
+from shared.utils import redact_sensitive
 
 from domains.sim_rooms.graph import MAX_ROUNDS, stream_sim_round
 
@@ -104,7 +105,7 @@ async def _execute_round(
         result = await stream_sim_round(state, bridge, _on_token)
     except Exception as exc:
         logger.exception(f"生成失败: {exc}")
-        await websocket.send_text(json.dumps({"type": "error", "message": f"生成失败：{exc}"}, ensure_ascii=False))
+        await websocket.send_text(json.dumps({"type": "error", "message": f"生成失败：{redact_sensitive(str(exc))}"}, ensure_ascii=False))
         return round_count, False, ""
 
     round_count += 1
@@ -121,9 +122,21 @@ async def _execute_round(
         scene_out = result.get("scene_output")
         if scene_out:
             ss.add(SimMessage(room_id=room_id, sender_type="system", sender_label="场景", content=scene_out.strip(), message_type="scene"))
+        # 角色消息补齐 sender_id（对应角色 entity_id），与参与者实体对齐
+        label_to_entity = {
+            c.get("role_label"): c.get("entity_id")
+            for c in char_details if c.get("role_label")
+        }
         for label, text in (result.get("character_outputs") or {}).items():
             if text.strip():
-                ss.add(SimMessage(room_id=room_id, sender_type="system", sender_label=label, content=text.strip(), message_type="dialogue"))
+                ss.add(SimMessage(
+                    room_id=room_id,
+                    sender_type="system",
+                    sender_label=label,
+                    sender_id=label_to_entity.get(label),
+                    content=text.strip(),
+                    message_type="dialogue",
+                ))
         # 轮数写回房间，刷新 updated_at，保证刷新/重连后轮数与列表排序不丢失
         r = await ss.get(SimRoom, room_id)
         if r:

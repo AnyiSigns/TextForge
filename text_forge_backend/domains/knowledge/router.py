@@ -1,11 +1,13 @@
 from typing import Annotated
 
+import json
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.logging import get_logger
 from core.auth import get_current
 from core.errors import classify_upload_error
+from shared.utils import redact_sensitive
 
 logger = get_logger(__name__)
 from schema.request.knowledge import KnowledgeSearchRequest
@@ -35,15 +37,17 @@ async def search_public_knowledge(
     try:
         items = await service.search_public(query=body.query, top_k=body.top_k or 3, model_config=model_config)
     except ValueError as exc:
-        # embedding 未配置/生成失败等可控原因 → 400 携带具体原因，不静默返回空结果
-        raise HTTPException(status_code=400, detail=str(exc))
+        # embedding 未配置/生成失败等可控原因 → 400 携带具体原因（脱敏），不静默返回空结果
+        raise HTTPException(status_code=400, detail=redact_sensitive(str(exc)))
 
     chunks = [
         KnowledgeChunk(
             doc_id=int(item.get("doc_id", 0) or 0),
             doc_name=item.get("doc_title", "") or "",
             text=item.get("content", "") or "",
-            score=float(item.get("distance", 0) or 0),
+            # 向量检索用 distance 表示相关度（越小越相关）；
+            # 全文检索回退路径无 distance（None），此时使用其 score 字段
+            score=float(item.get("score") or (item.get("distance", 0) or 0)),
             uploader_name=item.get("doc_author"),
         )
         for item in items
@@ -58,7 +62,6 @@ async def upload_public_document(
     model_config_json: Annotated[str | None, Form()] = None,
     session: AsyncSession = Depends(db_manager.get_db),
 ):
-    import json
     if not file.filename:
         raise HTTPException(status_code=400, detail="文件名不能为空")
 

@@ -5,12 +5,24 @@ from langchain_core.language_models import BaseChatModel
 from config.model_wrapper import ModelWrapper
 
 # 进程级缓存：避免每个请求都重建 LLM 客户端 / HTTP 连接池（单 worker 下尤其省内存与延迟）。
+# 缓存键必须包含 api_key 摘要：不同用户配置同一 (adapter, model_id, base_url) 但不同密钥时，
+# 若共享同一客户端实例会造成跨用户凭据串用（B 复用 A 的带 key 客户端）。
 _MODEL_CACHE: dict[str, BaseChatModel] = {}
 _EMBEDDING_CACHE: dict[str, Any] = {}
 
 
+def _cred_key(config: dict) -> str:
+    """生成凭据摘要，参与缓存键以隔离不同用户/密钥的客户端实例。"""
+    api_key = config.get("api_key") or ""
+    if api_key:
+        import hashlib
+
+        return hashlib.sha256(api_key.encode()).hexdigest()[:16]
+    return "nokey"
+
+
 def _embedding_key(cfg: dict) -> str:
-    return f"{cfg.get('adapter')}:{cfg.get('model_id')}:{cfg.get('base_url')}"
+    return f"{cfg.get('adapter')}:{cfg.get('model_id')}:{cfg.get('base_url')}:{_cred_key(cfg)}"
 
 
 class ModelFactory:
@@ -66,7 +78,7 @@ class ModelFactory:
             BaseChatModel 实例。
         """
         cache_key = (
-            f"{config.get("adapter")}:{config.get("model_id")}:{config.get("base_url")}"
+            f"{config.get("adapter")}:{config.get("model_id")}:{config.get("base_url")}:{_cred_key(config)}"
         )
         if cache_key not in self._cache:
             self._cache[cache_key] = ModelWrapper.get_model(config)

@@ -25,14 +25,20 @@ async def create_session(
     user_id=Depends(get_current),
     request: WritingSessionCreateRequest = ...,
     service: WritingSessionService = Depends(writing_session_db),
+    session: AsyncSession = Depends(db_manager.get_db),
 ):
-    session = await service.create_session(
+    # 校验书籍归属：request.book_id 来自请求体，不校验时任何登录用户都可将
+    # 写作会话挂到他人书籍（与 world/story_flow 等域的归属校验保持一致）。
+    from domains.book._owner_check import assert_book_owner
+
+    await assert_book_owner(request.book_id, user_id, session)
+    ws = await service.create_session(
         user_id=user_id,
         book_id=request.book_id,
         chapter_id=request.chapter_id,
         character_ids=request.character_ids,
     )
-    return WritingSessionResponse(**session)
+    return WritingSessionResponse(**ws)
 
 
 @router.put("/{session_id}/end", response_model=WritingSessionResponse)

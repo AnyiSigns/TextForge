@@ -21,6 +21,9 @@ _SENSITIVE_KEYS = (
     "password",
     "token",
     "secret",
+    "base_url",
+    "baseurl",
+    "endpoint",
 )
 
 
@@ -39,9 +42,10 @@ def redact_sensitive(text: str) -> str:
     result = text
     # 键值对形态：key=value / key: value / "key": "value" / key = value
     # 值允许引号包裹、Bearer 前缀、URL 安全字符与常见 token 标点。
+    # (?<![\w]) 词边界：避免 databaseurl/callbackurl 等长键命中的 "baseurl" 子串被误伤。
     for key in _SENSITIVE_KEYS:
         result = re.sub(
-            rf"({re.escape(key)}\s*[=:]\s*[\"']?)(?:Bearer\s+)?[A-Za-z0-9_\-./:+=?&%#@~$]+",
+            rf"(?<![\w])({re.escape(key)}\s*[=:]\s*[\"']?)(?:Bearer\s+)?[A-Za-z0-9_\-./:+=?&%#@~$]+",
             r"\1***",
             result,
             flags=re.IGNORECASE,

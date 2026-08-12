@@ -22,18 +22,6 @@ class VolumeService:
             logger.error("获取卷列表失败", exc_info=True)
             raise AppException(status_code=500, detail="获取卷列表失败", error_code="LIST_VOLUMES_FAILED")
 
-    async def get_volume(self, book_id: int, volume_id: int):
-        try:
-            result = await self.volume_repo.get_volume(book_id, volume_id)
-            if not result:
-                raise AppException(status_code=404, detail="卷不存在", error_code="VOLUME_NOT_FOUND")
-            return result
-        except AppException:
-            raise
-        except Exception:
-            logger.error("获取卷失败", exc_info=True)
-            raise AppException(status_code=500, detail="获取卷失败", error_code="GET_VOLUME_FAILED")
-
     async def create_volume(self, book_id: int, **data):
         try:
             return await self.volume_repo.create_volume(book_id, **data)

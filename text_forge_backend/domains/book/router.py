@@ -22,6 +22,7 @@ from schema.response.book import (
     VolumeResponse,
 )
 from shared.database import db_manager
+from shared.utils import redact_sensitive
 
 from .chapter_service import ChapterService, chapter_db
 from .context_config_repository import BookContextConfigRepository
@@ -59,7 +60,7 @@ async def create_book(
             epoch_label=request.epoch_label,
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=redact_sensitive(str(e)))
     if not result:
         raise HTTPException(status_code=500, detail="创建新书籍失败")
     return BookResponse.model_validate(result)
@@ -142,7 +143,7 @@ async def book_characters(
         return ListCharactersResponse(characters=result)
     except Exception as e:
         logger.error(f"Pydantic 序列化 CharacterResponse 失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"角色数据序列化失败: {str(e)[:200]}")
+        raise HTTPException(status_code=500, detail=f"角色数据序列化失败: {redact_sensitive(str(e)[:200])}")
 
 
 @router.get("/{id}/volumes", response_model=dict)

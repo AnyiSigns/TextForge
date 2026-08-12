@@ -30,20 +30,6 @@ class VolumeRepository(BaseRepository[Volume]):
         result = await self.session.execute(stmt)
         return result.scalars().all()
 
-    async def get_volume(self, book_id: int, volume_id: int):
-        """查询单个卷。
-
-        Args:
-            book_id: 书籍 ID。
-            volume_id: 卷 ID。
-
-        Returns:
-            卷实例，不存在返回 None。
-        """
-        stmt = select(Volume).where(Volume.book_id == book_id, Volume.id == volume_id)
-        result = await self.session.execute(stmt)
-        return result.scalar_one_or_none()
-
     async def get_by_id(self, volume_id: int):
         """根据主键查询卷。
 

@@ -1,4 +1,5 @@
 """角色模拟房间后端路由"""
+import asyncio
 import json
 
 from config.logging import get_logger
@@ -18,6 +19,7 @@ from models.sim_room import SimBranch, SimMessage, SimParticipant, SimRoom
 from pydantic import BaseModel, Field
 from shared.database import db_manager
 from shared.pagination import PageParams, PageResult
+from shared.utils import redact_sensitive
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -215,15 +217,14 @@ async def delete_room(
 
 
 @router.websocket("/{room_id}/ws")
-async def room_websocket(websocket: WebSocket, room_id: int, model_config: str | None = Query(default=None, alias="modelConfig")):
-    """房间实时模拟 WebSocket：鉴权 → 上下文装载 → 回合循环（薄传输层）。"""
+async def room_websocket(websocket: WebSocket, room_id: int):
+    """房间实时模拟 WebSocket：鉴权 → 首帧模型配置 → 上下文装载 → 回合循环（薄传输层）。
+
+    模型配置（含 api_key）不再经 query 传入（会进访问日志/浏览器历史），
+    改为连接后首帧 JSON 消息 {"type": "config", "modelConfig": {...}} 传递。
+    """
     parsed_model_config: dict = {}
-    if model_config:
-        try:
-            import json as _json
-            parsed_model_config = _json.loads(model_config) or {}
-        except Exception:
-            parsed_model_config = {}
+    buffered_first: list[str] = []
     async with db_manager.session_factory() as db_session:
         room = await db_session.get(SimRoom, room_id)
         if not room:
@@ -235,6 +236,21 @@ async def room_websocket(websocket: WebSocket, room_id: int, model_config: str |
         return
 
     await websocket.accept()
+
+    # 首帧接收模型配置；缺失/超时（10s）时降级为空配置，由后续 LLM 调用报错提示。
+    # 若首帧不是 config（如用户未配置模型时直接发出的首条聊天消息），
+    # 缓冲入队而非丢弃，主循环优先消费，避免用户首条消息丢失。
+    try:
+        first = await asyncio.wait_for(websocket.receive_text(), timeout=10)
+        parsed_first = json.loads(first)
+        if parsed_first.get("type") == "config" and isinstance(
+            parsed_first.get("modelConfig"), dict
+        ):
+            parsed_model_config = parsed_first["modelConfig"]
+        else:
+            buffered_first.append(first)
+    except Exception:
+        parsed_model_config = {}
 
     ctx = await load_room_context(room_id, room, parsed_model_config)
     char_details = ctx["char_details"]
@@ -287,7 +303,11 @@ async def room_websocket(websocket: WebSocket, room_id: int, model_config: str |
 
     try:
         while True:
-            data = await websocket.receive_text()
+            # 优先消费首帧缓冲（可能包含用户未配置模型时的首条聊天消息）
+            if buffered_first:
+                data = buffered_first.pop(0)
+            else:
+                data = await websocket.receive_text()
             msg = json.loads(data)
             msg_type = msg.get("type", "chat")
 
@@ -336,7 +356,7 @@ async def room_websocket(websocket: WebSocket, room_id: int, model_config: str |
                     await websocket.send_text(json.dumps({"type": "branch_created", "branch": branch}, ensure_ascii=False))
                 except Exception as exc:
                     logger.exception(f"支线生成失败: {exc}")
-                    await websocket.send_text(json.dumps({"type": "error", "message": f"支线生成失败：{exc}"}, ensure_ascii=False))
+                    await websocket.send_text(json.dumps({"type": "error", "message": f"支线生成失败：{redact_sensitive(str(exc))}"}, ensure_ascii=False))
                 continue
 
             if msg_type == "auto_advance":

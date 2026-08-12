@@ -71,14 +71,62 @@ async def test_search_public_embedding_failure_raises_specific_error(monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_search_public_without_model_config_raises(monkeypatch):
-    """未提供模型配置（无 embedding）时应抛出明确错误而非静默空列表。"""
+async def test_search_public_without_model_config_falls_back_to_fulltext(monkeypatch):
+    """未提供模型配置（无 embedding）时应回退全文检索而非抛错。"""
     from domains.knowledge.service import KnowledgeService
 
-    service = KnowledgeService(object())
-    with pytest.raises(ValueError) as exc_info:
-        await service.search_public("测试查询", top_k=3, model_config=None)
-    assert "embedding" in str(exc_info.value)
+    seen_stmt = {}
+
+    class FakeRows:
+        def all(self):
+            return []
+
+    class FakeSession:
+        async def execute(self, stmt):
+            seen_stmt["stmt"] = stmt
+            return FakeRows()
+
+    service = KnowledgeService(FakeSession())
+    result = await service.search_public("测试查询", top_k=3, model_config=None)
+    assert result == []
+    sql = str(seen_stmt["stmt"])
+    assert "LIKE" in sql.upper()
+    assert "length" in sql.lower()
+
+
+@pytest.mark.asyncio
+async def test_search_public_empty_embedding_falls_back_to_fulltext(monkeypatch):
+    """embedding 生成空向量时同样回退全文检索。"""
+    from domains.knowledge.service import KnowledgeService
+
+    seen_stmt = {}
+
+    class FakeRows:
+        def all(self):
+            return []
+
+    class FakeSession:
+        async def execute(self, stmt):
+            seen_stmt["stmt"] = stmt
+            return FakeRows()
+
+    class EmptyEmbedding:
+        async def aembed_query(self, query):
+            return []
+
+    class EmptyFactory:
+        def __init__(self, config):
+            self.embedding = EmptyEmbedding()
+
+    monkeypatch.setattr(
+        "domains.knowledge.service.ModelFactory", EmptyFactory
+    )
+    service = KnowledgeService(FakeSession())
+    result = await service.search_public("测试查询", top_k=3, model_config={"x": 1})
+    assert result == []
+    sql = str(seen_stmt["stmt"])
+    assert "LIKE" in sql.upper()
+    assert "length" in sql.lower()
 
 
 @pytest.mark.asyncio

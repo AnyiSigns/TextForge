@@ -14,6 +14,7 @@ from schema.request.common import PersonalRagHit
 from schema.response.workflow import ListWorkflowsResponse, WorkflowDetailResponse
 from schema.workflow import Workflow
 from shared.database import db_manager
+from shared.utils import redact_sensitive
 
 from .service import WorkflowService, workflow_db
 
@@ -182,7 +183,7 @@ async def run_workflow_endpoint(
             except Exception as exc:
                 # 任务异常兜底：异常穿透 task.result() 会打断 SSE 流，
                 # 统一转为 done+error 事件，前端可正常收尾展示。
-                result = {"status": "error", "message": f"工作流执行异常: {exc}"}
+                result = {"status": "error", "message": f"工作流执行异常: {redact_sensitive(str(exc))}"}
             # 统一 SSE 事件命名：scheduler 事件用 event 键（node_start 等），
             # 与 agent 流的 type 键不一致；补发 type 字段，前端两种读取均兼容。
             yield f"data: {json.dumps({'type': 'done', 'result': result}, ensure_ascii=False)}\n\n"

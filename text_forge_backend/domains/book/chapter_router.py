@@ -70,6 +70,9 @@ async def update_chapter(
     if not item:
         raise HTTPException(status_code=404, detail="章节不存在")
     await _assert_volume_owner(item.volume_id, user_id, session)
+    # 锁定期禁止任何写入通道：章节元数据更新与正文写入一致受锁约束
+    if item.locked and not request.locked:
+        raise HTTPException(status_code=409, detail="章节已锁定，禁止修改")
     data = request.model_dump(by_alias=False, exclude_unset=True)
     item = await chapter_service.update_chapter(chapter_id, **data)
     if not item:
@@ -88,5 +91,7 @@ async def delete_chapter(
     if not item:
         raise HTTPException(status_code=404, detail="章节不存在")
     await _assert_volume_owner(item.volume_id, user_id, session)
+    if item.locked:
+        raise HTTPException(status_code=409, detail="章节已锁定，禁止删除")
     ok = await chapter_service.delete_chapter(chapter_id)
     return {"ok": ok}

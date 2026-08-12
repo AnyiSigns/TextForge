@@ -72,7 +72,9 @@ async def delete_memory(
     memory_id: int = ...,
     service: AgentMemoryService = Depends(agent_memory_db),
 ):
-    await service.delete_memory(user_id=user_id, memory_id=memory_id)
+    ok = await service.delete_memory(user_id=user_id, memory_id=memory_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="记忆不存在")
     return {"ok": True}
 
 

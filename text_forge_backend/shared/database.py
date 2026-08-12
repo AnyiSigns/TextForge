@@ -159,6 +159,28 @@ def _sync_missing_columns(sync_conn):
                 logger.info("已为 messages 表补充 (conversation_id, create_at) 复合索引")
         except Exception as e:
             logger.warning(f"messages 复合索引补充跳过: {e}")
+    # story_flows 同一 (book, chapter, user) 仅允许一条 active 流：
+    # 并发「创建剧情流」请求可能同时读到无 active 流而插入两条，部分唯一索引兜底。
+    if "story_flows" in tables:
+        try:
+            exists = sync_conn.exec_driver_sql(
+                "SELECT 1 FROM pg_indexes WHERE indexname = 'uq_story_flows_active'"
+            ).fetchone()
+            if exists is None:
+                # 先清理历史重复 active 流（保留 id 最大的一条），否则建索引失败
+                sync_conn.exec_driver_sql(
+                    "DELETE FROM story_flows a USING story_flows b "
+                    "WHERE a.status = 'active' AND b.status = 'active' "
+                    "AND a.book_id = b.book_id AND a.chapter_id = b.chapter_id "
+                    "AND a.user_id = b.user_id AND a.id < b.id"
+                )
+                sync_conn.exec_driver_sql(
+                    "CREATE UNIQUE INDEX uq_story_flows_active "
+                    "ON story_flows (book_id, chapter_id, user_id) WHERE status = 'active'"
+                )
+                logger.info("已为 story_flows 补充 active 部分唯一索引")
+        except Exception as e:
+            logger.warning(f"story_flows 唯一索引补充跳过: {e}")
 
 
 class DBManager:

@@ -1,6 +1,6 @@
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.logging import get_logger
@@ -109,4 +109,62 @@ class VectorRepository:
             except Exception as exc:
                 logger.warning(f"vector_repo 缓存写入失败: {exc}")
 
+        return items
+
+    async def search_external_books_fulltext(
+        self,
+        query: str,
+        rag_filter: dict[str, Any],
+        top_k: int = 3,
+    ) -> list[dict[str, Any]]:
+        """全文检索公开知识库（无 embedding 配置时的回退路径）。
+
+        结构上与 search_external_books 保持一致（doc_id/doc_title/doc_author/content/score），
+        distance 为 None、score 固定 0.5（全文匹配无距离概念），供 _format_external_documents
+        等消费方直接使用。匹配按内容长度升序，优先返回信息密度高的短片段。
+
+        Args:
+            query: 检索查询文本。
+            rag_filter: 过滤条件，支持 doc_ids、author_ids、sample。
+            top_k: 返回结果数。
+
+        Returns:
+            检索结果列表，字段与向量检索一致。
+        """
+        stmt = (
+            select(
+                Chunk,
+                Document.file_name.label("doc_title"),
+                Document.author.label("doc_author"),
+                Chunk.content.label("content"),
+            )
+            .join(Document, Chunk.doc_id == Document.id)
+            .where(Document.scope == "public", Chunk.content.ilike(f"%{query}%"))
+        )
+
+        if rag_filter.get("doc_ids"):
+            stmt = stmt.where(
+                Document.id.in_(
+                    [int(d) for d in rag_filter["doc_ids"] if str(d).isdigit()]
+                )
+            )
+        if rag_filter.get("author_ids"):
+            stmt = stmt.where(Document.author.in_(rag_filter["author_ids"]))
+        if rag_filter.get("sample"):
+            stmt = stmt.where(Document.file_name.ilike(f"%{rag_filter['sample']}%"))
+
+        stmt = stmt.order_by(func.length(Chunk.content)).limit(top_k)
+        result = await self.session.execute(stmt)
+        items = []
+        for row in result.all():
+            items.append(
+                {
+                    "doc_id": row.Chunk.doc_id,
+                    "doc_title": row.doc_title,
+                    "doc_author": row.doc_author,
+                    "content": row.content,
+                    "distance": None,
+                    "score": 0.5,
+                }
+            )
         return items

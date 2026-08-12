@@ -14,6 +14,7 @@ from schema.request.user import (
 )
 from schema.response.user import ProfileResponse
 
+from .email import email_service
 from .service import UserAuthService, user_db_serve
 from .verification import verification
 
@@ -47,7 +48,9 @@ async def user_profile(
     if is_email_changed:
         if not request.code:
             raise HTTPException(status_code=400, detail="改邮箱需提供验证码")
-        verified = await verification.verify_code(user.email, request.code)
+        # 校验针对新邮箱（target_email）签发的 change_email 验证码：
+        # /send-code 是按 body.email（新邮箱）存储验证码，不能用旧邮箱校验。
+        verified = await verification.verify_code(request.email, request.code, "change_email")
         if not verified:
             raise HTTPException(status_code=400, detail="验证码无效或已过期")
 
@@ -117,10 +120,15 @@ async def send_verification_code(
         raise HTTPException(status_code=404, detail="用户不存在")
 
     target_email = body.email if body.email else user.email
+    # 目标邮箱已被其他账号占用时拒绝签发（防止把验证码发到已注册邮箱造成混淆）
+    if target_email != user.email:
+        existing = await user_serve.user_repo.query_user_email(target_email)
+        if existing:
+            raise HTTPException(status_code=400, detail="该邮箱已被其他账号使用")
+    if await verification.is_rate_limited(target_email):
+        raise HTTPException(status_code=429, detail="验证码发送过于频繁，请稍后再试")
     code = verification.generate_code()
-    await verification.save_code(target_email, code)
-
-    from .email import email_service
+    await verification.save_code(target_email, code, "change_email")
 
     ok = await email_service.send_verification_email(target_email, code)
     if ok:

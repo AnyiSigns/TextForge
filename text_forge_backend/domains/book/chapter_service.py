@@ -25,18 +25,6 @@ class ChapterService:
             logger.error("获取章列表失败", exc_info=True)
             raise AppException(status_code=500, detail="获取章列表失败", error_code="LIST_CHAPTERS_FAILED")
 
-    async def get_chapter(self, volume_id: int, chapter_id: int):
-        try:
-            result = await self.chapter_repo.get_chapter(volume_id, chapter_id)
-            if not result:
-                raise AppException(status_code=404, detail="章节不存在", error_code="CHAPTER_NOT_FOUND")
-            return result
-        except AppException:
-            raise
-        except Exception:
-            logger.error("获取章失败", exc_info=True)
-            raise AppException(status_code=500, detail="获取章失败", error_code="GET_CHAPTER_FAILED")
-
     async def create_chapter(self, volume_id: int, **data):
         try:
             return await self.chapter_repo.create_chapter(volume_id, **data)

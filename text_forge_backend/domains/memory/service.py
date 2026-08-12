@@ -65,11 +65,12 @@ class AgentMemoryService:
             return None
         return await self.repo.update(memory_id, data)
 
-    async def delete_memory(self, user_id: int, memory_id: int):
+    async def delete_memory(self, user_id: int, memory_id: int) -> bool:
         memory = await self.repo.get(memory_id)
         if not memory or memory.user_id != user_id:
-            return
+            return False
         await self.repo.delete(memory_id)
+        return True
 
     async def search_memories(self, user_id: int, mode: str, query: str, book_id: int | None = None, memory_type: str | None = None, top_k: int = 5, model_config: dict | None = None, source: str | None = None):
         if mode == "fulltext":

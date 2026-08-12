@@ -119,7 +119,9 @@ class UserAuthService:
             )
             await self.session.commit()
             await redis_client.sadd(f"refresh_token_{user.id}", refresh_token)
-            await redis_client.expire(f"refresh_token_{user.id}", 604800)
+            await redis_client.expire(
+                f"refresh_token_{user.id}", int(settings.JWT_EXPIRE_TIME.total_seconds())
+            )
 
             logger.info("用户登录成功")
             return user, access_token, refresh_token, None
@@ -158,7 +160,7 @@ class UserAuthService:
         Raises:
             HTTPException: 验证码无效或用户不存在时抛出。
         """
-        verified = await verification.verify_code(email, code)
+        verified = await verification.verify_code(email, code, "change_email")
         if not verified:
             raise HTTPException(status_code=400, detail="验证码无效或已过期")
         user = await self.user_repo.query_user_email(email)

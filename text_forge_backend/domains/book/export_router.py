@@ -51,8 +51,21 @@ async def export_book(
         media_type = "application/octet-stream"
 
     from fastapi.responses import Response
+    from urllib.parse import quote
+
+    # 文件名清洗：剥离引号/换行/路径分隔符，防 Content-Disposition 头注入
+    safe_name = (
+        data["file_name"]
+        .replace('"', "")
+        .replace("\r", "")
+        .replace("\n", "")
+        .replace("/", "-")
+        .replace("\\", "-")
+    )
     return Response(
         content=content,
         media_type=media_type,
-        headers={"Content-Disposition": f"attachment; filename=\"{data['file_name']}\""},
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(safe_name)}"
+        },
     )

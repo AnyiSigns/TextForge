@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import get_current
@@ -26,7 +26,10 @@ async def sync_data(
     service: SyncService = Depends(get_sync_service),
 ) -> dict[str, Any]:
     if since:
-        since_dt = datetime.fromisoformat(since)
+        try:
+            since_dt = datetime.fromisoformat(since)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="since 时间戳格式无效，请使用 ISO 8601 格式")
         if since_dt.tzinfo is not None:
             since_dt = since_dt.replace(tzinfo=None)
     else:
@@ -67,6 +70,9 @@ async def sync_data(
     else:
         return {"updates": [], "version": datetime.now().isoformat(), "error": f"未知的 store: {store}"}
 
-    updates = [model_to_dict(r) for r in records]
+    # world 分支已预先转换为 dict（带 _type 标记），其余分支为 ORM 对象，统一在此转换
+    updates = [
+        r if isinstance(r, dict) else model_to_dict(r) for r in records
+    ]
     version = datetime.now().isoformat()
     return {"updates": updates, "version": version}

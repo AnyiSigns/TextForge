@@ -163,12 +163,12 @@ async def _strip_api_key_from_checkpoint(graph: Any | None, config: dict | None)
         snap = await graph.aget_state(config)
         cfg = (snap.values if snap else {}).get("model_config") or {}
         stripped = {**cfg}
-        # main_config / search_config 各自独立判断存在性后剥离 api_key：
-        # 两个配置段都可能含密钥，任一缺失都不应影响另一段的剥离。
-        if cfg.get("main_config"):
-            stripped["main_config"] = {**cfg["main_config"], "api_key": ""}
-        if cfg.get("search_config"):
-            stripped["search_config"] = {**cfg["search_config"], "api_key": ""}
+        # 所有配置段都可能含 api_key（main/audit/router/tool/search/embedding/vision），
+        # 逐一剥离；任一配置段缺失都不应影响其它段的剥离。
+        for _seg in ("main_config", "audit_config", "router_config", "tool_config",
+                     "search_config", "embedding_config", "vision_config"):
+            if cfg.get(_seg):
+                stripped[_seg] = {**cfg[_seg], "api_key": ""}
         if stripped != cfg:
             await graph.aupdate_state(config, {"model_config": stripped})
     except Exception as exc:

@@ -147,7 +147,7 @@ def test_build_subgraph_compiles_with_internal_loop():
 
     sub = build_subgraph("drafting", db_manager.with_db, model_config={"base_url": "x", "model_id": "y"})
     nodes = set(sub.get_graph().nodes.keys())
-    assert {"drafting", "tool_calls", "quality_gate", "workflow_runner", "compress", "final"} <= nodes
+    assert {"drafting", "tool_calls", "workflow_runner", "compress", "final"} <= nodes
 
 
 # ---------------------------------------------------------------------------

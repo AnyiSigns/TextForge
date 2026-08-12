@@ -2,6 +2,7 @@ import time
 from typing import Any
 
 from config.logging import get_logger
+from shared.utils import redact_sensitive
 
 from .workflow_scheduler import run_workflow as scheduler_run_workflow
 
@@ -148,7 +149,7 @@ async def _finish_with_candidate(
                 content_nodes = []  # 自动沿用失败时不再展示候选，直接告知用户
             except Exception as exc:
                 logger.exception(f"[workflow_runner] 自动沿用落库失败: {exc}")
-                reply = f"自动沿用落库失败（{exc}），请重新选择候选节点。"
+                reply = f"自动沿用落库失败（{redact_sensitive(str(exc))}），请重新选择候选节点。"
 
     if result.get("status") == "error":
         reply = f"工作流执行失败：{result.get('message', '未知错误')}"
@@ -341,7 +342,7 @@ async def workflow_runner_node(state: dict[str, Any]) -> dict[str, Any]:
                                 "needs_review": False,
                                 "quality_check": {
                                     "passed": False,
-                                    "reason": f"节点执行异常: {exc}",
+                                    "reason": f"节点执行异常: {redact_sensitive(str(exc))}",
                                 },
                             }
                     _node_elapsed_ms = round(
@@ -400,7 +401,7 @@ async def workflow_runner_node(state: dict[str, Any]) -> dict[str, Any]:
         logger.exception(f"[workflow_runner] 工作流执行未捕获异常: {exc}")
         result = {
             "status": "error",
-            "message": f"工作流执行异常: {exc}",
+            "message": f"工作流执行异常: {redact_sensitive(str(exc))}",
             "content_nodes": [],
         }
     return await _finish_with_candidate(

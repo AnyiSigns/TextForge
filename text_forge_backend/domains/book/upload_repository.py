@@ -104,8 +104,15 @@ async def create_chunks(session: AsyncSession, doc_id: int, chunks: list[str], e
     return records
 
 
+# 公共知识库文档上传限制：与 knowledge 域路由的常量保持一致
+UPLOAD_MAX_BYTES = 10 * 1024 * 1024
+UPLOAD_ALLOWED_EXT = ("txt", "md", "markdown", "json", "csv")
+
+
 async def process_upload(session: AsyncSession, file: UploadFile, emb_config: dict | None = None):
     """处理文档上传全流程。
+
+    先校验体积与扩展名（拒绝超大/二进制文件），再读取解析。
 
     Args:
         session: SQLAlchemy 异步会话。
@@ -114,7 +121,24 @@ async def process_upload(session: AsyncSession, file: UploadFile, emb_config: di
 
     Returns:
         上传结果字典，包含 document_id、file_name、status、chunks。
+
+    Raises:
+        ValueError: 文件为空、超限、类型不支持或编码不支持时抛出。
     """
+    # 体积探测：先 seek 到末尾读大小，避免把超大文件整个读进内存
+    try:
+        await file.seek(0, 2)
+        size = await file.tell()
+        await file.seek(0)
+    except Exception:
+        size = None
+    if size is not None and size > UPLOAD_MAX_BYTES:
+        raise ValueError(f"文件体积过大，最大支持 {UPLOAD_MAX_BYTES // (1024 * 1024)}MB")
+
+    ext = os.path.splitext(file.filename or "")[1].lower().lstrip(".")
+    if ext not in UPLOAD_ALLOWED_EXT:
+        raise ValueError("仅支持 TXT / Markdown / JSON / CSV 文档")
+
     content = await file.read()
     if not content:
         raise ValueError("文件内容为空")

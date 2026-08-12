@@ -1,5 +1,6 @@
 import json
 import re
+from collections import Counter
 from typing import Any
 
 from config.logging import get_logger
@@ -676,20 +677,6 @@ def _is_tool_error(msg: ToolMessage) -> bool:
     return False
 
 
-async def quality_gate_node(state: UserAgentState) -> dict[str, Any]:
-    """工具执行后质量门：检查 execute_workflow_node 输出是否需要用户审核。
-
-    注意：execute_workflow / execute_workflow_node 已桥接化（workflow_bridge_tools
-    只返回 {"status": "queued", "pending_workflow": ...}），其 ToolMessage 中不会再
-    出现 needs_review / status="completed"，因此本节点的数据驱动分支（按 tool_content
-    构造 pending_review / workflow_node_outputs）均为死代码——这两类状态现统一由
-    workflow_runner_node 消费 scheduler 返回后写入 state（pending_review /
-    workflow_node_outputs），本节点保留为纯透传（返回 {}），维持
-    tool_calls → quality_gate → quality_gate_router 的图拓扑不变。
-    """
-    return {}
-
-
 # 写操作门控逻辑已抽到公共服务 domains.common.gating_service（注册表 / 预览 / 执行 / 暂存）。
 # Agent 图只负责"拦截→弹卡→resume 执行"的状态编排，审批策略由 GatingService 统一维护。
 
@@ -817,6 +804,8 @@ async def gated_tool_node(
             break
     tool_calls = getattr(last_ai, "tool_calls", None) or [] if last_ai else []
     if not tool_calls:
+        # 无工具调用回合：workflow_result 清空由 agent_call（:301）负责，
+        # 候选确认回合（candidate_reply_ready）经子图入口直接退出，不会到达本节点。
         return {}
 
     from .tools_domain import build_tools
@@ -825,39 +814,41 @@ async def gated_tool_node(
     # 避免跨回合累计误杀合法的多章生成/多章读取），若某工具（非工作流）已被重复
     # 调用 ≥3 次，返回终止信号强制结束，防止模型「回复+工具」交替无限循环
     # （如反复 get_book_context）。
-    try:
-        from collections import Counter
-
-        from langchain_core.messages import HumanMessage as _HumanMessage
-
-        _tool_hist: Counter = Counter()
-        _turn_start = 0
-        for _i, _m in enumerate(messages):
-            if isinstance(_m, _HumanMessage):
-                _turn_start = _i
-        for _m in messages[_turn_start:]:
-            if isinstance(_m, ToolMessage):
-                _tool_hist[_m.name] += 1
-        _dup = [
-            tc.get("name")
-            for tc in tool_calls
-            if tc.get("name") not in ("execute_workflow", "execute_workflow_node")
-            and _tool_hist[tc.get("name")] >= 3
-        ]
-        if _dup:
-            blocked = ToolMessage(
-                content=_tool_content(
-                    {
-                        "error": f"检测到工具「{_dup[0]}」已被重复调用多次且未取得进展，请停止调用工具，"
-                        f"直接基于已有信息向用户总结并结束本轮对话。",
-                    }
-                ),
-                name=tool_calls[0].get("name", ""),
-                tool_call_id=tool_calls[0].get("id", ""),
-            )
-            return {"messages": [blocked]}
-    except Exception:
-        pass
+    _tool_hist: Counter = Counter()
+    _turn_start = 0
+    for _i, _m in enumerate(messages):
+        if isinstance(_m, HumanMessage):
+            _turn_start = _i
+    for _m in messages[_turn_start:]:
+        if isinstance(_m, ToolMessage):
+            _tool_hist[_m.name] += 1
+    _dup = [
+        tc.get("name")
+        for tc in tool_calls
+        if tc.get("name") not in ("execute_workflow", "execute_workflow_node")
+        and _tool_hist[tc.get("name")] >= 3
+    ]
+    if _dup:
+        # 守卫判定与 blocked 构造分离：ToolMessage 构造可能因 tool_call_id 为
+        # None 抛 ValidationError，若仍在 try 内会被统计守卫吞掉并放行；
+        # 移到 try 外构造可保证异常不会被守卫掩盖（pydantic 校验异常向上传播）。
+        try:
+            _dup_name = str(_dup[0])
+            _call_id = str(tool_calls[0].get("id") or "")
+        except (KeyError, AttributeError, TypeError):
+            _dup_name = ""
+            _call_id = ""
+        blocked = ToolMessage(
+            content=_tool_content(
+                {
+                    "error": f"检测到工具「{_dup_name}」已被重复调用多次且未取得进展，请停止调用工具，"
+                    f"直接基于已有信息向用户总结并结束本轮对话。",
+                }
+            ),
+            name=_dup_name,
+            tool_call_id=_call_id,
+        )
+        return {"messages": [blocked]}
 
     # 工作流完成后进入「候选正文确认」回合：禁止调用任何工具，
     # 强制 Agent 直接向用户展示候选正文并询问选择（防止模型又去 read 验证导致空转）。

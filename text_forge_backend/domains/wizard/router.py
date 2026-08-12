@@ -26,6 +26,7 @@ from config.logging import get_logger
 from core.auth import get_current
 from core.model_factory import ModelFactory
 from models.book import Book, Chapter, CreativeSetting, Volume
+from shared.utils import redact_sensitive
 from shared.database import db_manager
 
 from .prompts import STEP_PROMPTS
@@ -417,7 +418,7 @@ async def stream_generate_wizard(
             yield _sse({"type": "done", "step": step, "full_text": full_text})
         except Exception as e:
             logger.exception(f"[wizard] 流式生成失败 step={step}")
-            yield _sse({"type": "error", "message": f"AI 生成失败: {str(e)[:200]}"})
+            yield _sse({"type": "error", "message": f"AI 生成失败: {redact_sensitive(str(e)[:200])}"})
 
     from fastapi.responses import StreamingResponse
 

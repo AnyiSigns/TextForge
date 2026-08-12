@@ -12,7 +12,6 @@ from shared.database import db_manager
 from .repository import (
     BookRepository,
     CharacterRepository,
-    CreativeSettingRepository,
 )
 
 logger = get_logger(__name__)
@@ -33,7 +32,6 @@ class BookService:
         self.session = session
         self.book_repo = BookRepository(session)
         self.character_repo = CharacterRepository(session)
-        self.creative_setting_repo = CreativeSettingRepository(session)
 
     async def query_user_books(self, user_id: int, **kwargs):
         """查询用户书籍列表。
@@ -118,14 +116,13 @@ class BookService:
             book_id: 书籍 ID。
 
         Returns:
-            (书籍实例, None) 或 (None, 错误信息)。
+            书籍实例，失败返回 None。
         """
         try:
-            result = await self.book_repo.by_user_book(user_id, book_id)
-            return result, None
+            return await self.book_repo.by_user_book(user_id, book_id)
         except Exception:
             logger.error("获取书籍失败", exc_info=True)
-            return None, "获取书籍失败"
+            return None
 
     async def book_detail(self, user_id: int, book_id: int):
         """获取书籍详情，包含基础信息与角色列表。
@@ -135,10 +132,10 @@ class BookService:
             book_id: 书籍 ID。
 
         Returns:
-            包含 book 与 characters 的字典，失败返回空字典。
+            包含 book 与 characters 的字典，失败返回 None。
         """
         try:
-            book_data, _ = await self.book_info(user_id, book_id)
+            book_data = await self.book_info(user_id, book_id)
             if not book_data:
                 return None
             character_data, _ = await self.book_characters(user_id, book_id)
@@ -225,30 +222,6 @@ class BookService:
             logger.error("书籍删除失败", exc_info=True)
             raise AppException(
                 status_code=500, detail="删除书籍失败", error_code="DELETE_BOOK_FAILED"
-            )
-
-    async def save_creative_setting(self, book_id: int, _user_id: int, setting):
-        """保存或更新书籍创意设定。
-
-        Args:
-            book_id: 书籍 ID。
-            _user_id: 用户 ID（当前未使用，预留）。
-            setting: 设定字典。
-
-        Returns:
-            保存成功返回 True，否则返回 False。
-        """
-        try:
-            instance = await self.creative_setting_repo.save_setting(book_id, setting)
-            if instance.book_id != book_id:
-                return False
-            return True
-        except Exception:
-            logger.error("设定保存失败", exc_info=True)
-            raise AppException(
-                status_code=500,
-                detail="保存创意设定失败",
-                error_code="SAVE_CREATIVE_SETTING_FAILED",
             )
 
 

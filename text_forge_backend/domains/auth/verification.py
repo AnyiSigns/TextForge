@@ -39,28 +39,30 @@ class VerificationService:
         return count > RATE_LIMIT_MAX
 
     @staticmethod
-    async def save_code(email: str, code: str):
-        """存储验证码到 Redis。
+    async def save_code(email: str, code: str, purpose: str = "verify_email"):
+        """存储验证码到 Redis（键按用途隔离，防止注册/改密/换邮箱验证码互相覆盖）。
 
         Args:
             email: 邮箱地址。
             code: 验证码。
+            purpose: 用途标识（verify_email / change_email）。
         """
-        key = f"verification:{email}"
+        key = f"verification:{purpose}:{email}"
         await redis_client.setex(key, settings.CAPTCHA_TIME, code)
 
     @staticmethod
-    async def verify_code(email, code: str):
+    async def verify_code(email, code: str, purpose: str = "verify_email"):
         """校验验证码，成功后自动删除。
 
         Args:
             email: 邮箱地址。
             code: 待校验验证码。
+            purpose: 用途标识，须与 save_code 一致。
 
         Returns:
             校验成功返回 True，否则返回 False。
         """
-        key = f"verification:{email}"
+        key = f"verification:{purpose}:{email}"
         status_code = await redis_client.get(key)
         if status_code and status_code == code:
             await redis_client.delete(key)

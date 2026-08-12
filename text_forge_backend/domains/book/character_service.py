@@ -7,7 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.logging import get_logger
 from core.exceptions import AppException
-from models.book import Character
+from models.book import Character, Foreshadowing, PlotThread, SceneEvent
+from models.context_config import BookContextConfig
 from shared.database import db_manager
 
 from .repository import CharacterRepository
@@ -129,6 +130,9 @@ class CharacterService:
     async def delete_character(self, user_id: int, character_id: int):
         """删除角色，校验所有权。
 
+        删除前清理 JSONB 数组中的角色引用（场景事件/伏笔/情节线/书籍设定配置）
+        并删除磁盘头像文件，避免残留陈旧 ID 与孤儿文件。
+
         Args:
             user_id: 用户 ID。
             character_id: 角色 ID。
@@ -140,8 +144,41 @@ class CharacterService:
             instance = await self.character_repo.get(character_id)
             if not instance or instance.user_id != user_id:
                 return False
+            cid = character_id
+            for model, field in (
+                (SceneEvent, "character_ids"),
+                (Foreshadowing, "related_character_ids"),
+                (PlotThread, "related_character_ids"),
+                (BookContextConfig, "character_ids"),
+            ):
+                rows = (
+                    await self.session.execute(
+                        select(model).where(getattr(model, field).contains([cid]))
+                    )
+                ).scalars().all()
+                for row in rows:
+                    setattr(
+                        row,
+                        field,
+                        [x for x in (getattr(row, field) or []) if x != cid],
+                    )
+            old_avatar = instance.avatar_url
             await self.session.delete(instance)
             await self.session.commit()
+            if old_avatar and old_avatar.startswith("/static/"):
+                try:
+                    # 头像文件实际位于 <root>/static/avatars/<filename>，
+                    # 直接基于 URL 相对路径定位，避免目录层级拼错
+                    save_path = os.path.join(
+                        os.path.dirname(
+                            os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+                        ),
+                        old_avatar.lstrip("/"),
+                    )
+                    if os.path.exists(save_path):
+                        os.remove(save_path)
+                except OSError as exc:
+                    logger.warning(f"删除角色头像文件失败: {exc}")
             return True
         except Exception:
             logger.error("删除角色失败", exc_info=True)

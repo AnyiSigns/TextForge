@@ -148,6 +148,8 @@ def classify_upload_error(exc: Exception) -> AppException:
         return AppException(400, "文件内容为空。", ErrCode.FILE_EMPTY)
     if "文件编码" in msg or "encoding" in msg.lower():
         return AppException(400, "暂不支持该文件编码。", ErrCode.FILE_ENCODING)
+    if "文件体积过大" in msg or "too large" in msg.lower():
+        return AppException(413, "文件体积过大，请压缩或拆分为更小的文件后重试。", ErrCode.FILE_TOO_LARGE)
     return AppException(400, "文件处理失败，请检查文件后重试。", ErrCode.FILE_TYPE)
 
 

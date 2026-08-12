@@ -265,14 +265,14 @@ def test_graph_compiles_with_supervisor_topology():
 
     graph = build_user_agent_graph(db_manager.with_db, model_config={"base_url": "x", "model_id": "y"})
     nodes = set(graph.get_graph().nodes.keys())
-    # 嵌套子图版：父图只保留 调度/护栏/supervisor/chat/4 子图/sync；
-    # tool_calls/quality_gate/workflow_runner/compress 已收进各子图内部
+    # 嵌套子图版：父图只保留 护栏/supervisor/chat/4 子图/sync；
+    # tool_calls/workflow_runner/compress 已收进各子图内部
     assert {"guardrail", "supervisor", "chat", "worldbuilding", "outlining", "drafting", "revising",
             "sync"} <= nodes
-    assert not ({"tool_calls", "quality_gate", "workflow_runner", "compress"} <= nodes)
+    assert not ({"tool_calls", "workflow_runner", "compress"} <= nodes)
     subgraphs = dict(graph.get_subgraphs())
     assert set(subgraphs) == {"worldbuilding", "outlining", "drafting", "revising"}
     for name, sub in subgraphs.items():
         sub_nodes = set(sub.get_graph().nodes.keys())
         assert {"final"} <= sub_nodes
-        assert {"tool_calls", "quality_gate", "workflow_runner", "compress"} <= sub_nodes
+        assert {"tool_calls", "workflow_runner", "compress"} <= sub_nodes

@@ -6,7 +6,6 @@ from typing import Annotated, Any, TypedDict
 from config.logging import get_logger
 from core.model_factory import ModelFactory
 from langchain_core.messages import HumanMessage, SystemMessage
-from langgraph.graph import END, StateGraph
 from shared.utils import merge_dicts as _merge_dicts
 from sqlalchemy import select, update
 
@@ -31,39 +30,6 @@ class SimRoomState(TypedDict):
     character_outputs: Annotated[dict[str, str], _merge_dicts]
     scene_output: str | None
     final_output: str
-
-
-def _build_bridge(
-    execute_sql, room_id: int, character_details: list[dict[str, Any]],
-    model_config: dict[str, Any] | None = None, user_id: int = 0, book_id: int = 0,
-) -> dict[str, Any]:
-    """桥接方法：提供数据库访问给图节点。execute_sql 是 async 函数，接收 SQLAlchemy statement。
-
-    Args:
-        execute_sql: 异步数据库执行函数。
-        room_id: 模拟房间 ID。
-        character_details: 房间角色详情列表。
-        model_config: 用户模型配置（来自前端 IndexedDB，经 WS 传入），用于初始化 LLM。
-        user_id: 房间所属用户 ID。
-        book_id: 房间所属书籍 ID。
-    """
-    return {
-        "execute_sql": execute_sql,
-        "room_id": room_id,
-        "character_details": character_details,
-        "model_config": model_config or {},
-        "user_id": user_id,
-        "book_id": book_id,
-    }
-
-
-def _get_factory(bridge: dict[str, Any]) -> ModelFactory:
-    """按房间用户模型配置创建模型工厂，配置缺失时降级为空配置（调用方需捕获异常）。
-
-    Returns:
-        ModelFactory 实例。
-    """
-    return ModelFactory(bridge.get("model_config") or {})
 
 
 def _build_scene_prompt(state: SimRoomState) -> str:
@@ -185,40 +151,6 @@ async def director_decide_node(state: SimRoomState) -> dict[str, Any]:
 
     should_end = decision.get("action") == "end"
     return {"director_decision": decision, "should_end": should_end}
-
-
-async def character_speak_node(state: SimRoomState) -> dict[str, Any]:
-    decision = state.get("director_decision") or {}
-    speakers = list(decision.get("speakers", []))
-    if not speakers:
-        return {}
-
-    char_outputs: dict[str, str] = {}
-    chars_map = {c["role_label"]: c for c in state["character_details"]}
-
-    for speaker_label in speakers:
-        char = chars_map.get(speaker_label)
-        if not char:
-            continue
-        messages = _build_character_messages(state, speaker_label, char)
-        llm = ModelFactory(state.get("model_config") or {})
-        result = await llm.main.ainvoke(messages)
-        content = result.content if hasattr(result, "content") else str(result)
-        char_outputs[speaker_label] = content
-
-    return {"character_outputs": char_outputs}
-
-
-async def scene_describe_node(state: SimRoomState) -> dict[str, Any]:
-    decision = state.get("director_decision") or {}
-    if decision.get("action") != "scene":
-        return {"scene_output": None}
-
-    llm = ModelFactory(state.get("model_config") or {})
-    prompt = _build_scene_prompt(state)
-    result = await llm.main.ainvoke(prompt)
-    content = result.content if hasattr(result, "content") else str(result)
-    return {"scene_output": content}
 
 
 async def stream_sim_round(
@@ -369,59 +301,3 @@ async def compress_memories_node(state: SimRoomState, bridge: dict[str, Any]) ->
                 logger.warning(f"保存角色记忆失败: {exc}")
 
     return {"character_memories": new_memories}
-
-
-def director_router(state: SimRoomState) -> str:
-    if state["should_end"]:
-        return END
-    decision = state.get("director_decision") or {}
-    if decision.get("action") == "scene":
-        return "scene_describe"
-    return "character_speak"
-
-
-def char_router(state: SimRoomState) -> str:
-    decision = state.get("director_decision") or {}
-    if decision.get("action") == "scene":
-        return "scene_describe"
-    return "compress_memories"
-
-
-def scene_router(state: SimRoomState) -> str:
-    return "compress_memories"
-
-
-def _wrap_compress(bridge: dict[str, Any]):
-    """用真正的 async 函数包装 compress_memories_node。
-
-    LangGraph 会检查节点函数是否为协程函数；直接传同步 lambda 返回 coroutine
-    会被当作同步函数调用，导致「Expected dict, got coroutine」错误。
-
-    Args:
-        bridge: 桥接上下文。
-
-    Returns:
-        绑定 bridge 的 async 节点函数。
-    """
-    async def _node(state: SimRoomState) -> dict[str, Any]:
-        return await compress_memories_node(state, bridge)
-
-    return _node
-
-
-def build_sim_director_graph(bridge: dict[str, Any]):
-    builder = StateGraph(SimRoomState)
-    builder.add_node("director_decide", director_decide_node)
-    builder.add_node("character_speak", character_speak_node)
-    builder.add_node("scene_describe", scene_describe_node)
-    builder.add_node("compress_memories", _wrap_compress(bridge))
-    builder.add_node("stitch_output", stitch_output_node)
-
-    builder.set_entry_point("director_decide")
-    builder.add_conditional_edges("director_decide", director_router)
-    builder.add_conditional_edges("character_speak", char_router)
-    builder.add_edge("scene_describe", "compress_memories")
-    builder.add_edge("compress_memories", "stitch_output")
-    builder.add_edge("stitch_output", END)
-
-    return builder.compile()

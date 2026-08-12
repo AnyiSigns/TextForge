@@ -11,7 +11,6 @@ from ..agent_nodes import (
     chat_node,
     gated_tool_node,
     guardrail_node,
-    quality_gate_node,
     quality_gate_router,
     supervisor_node,
     supervisor_router,
@@ -113,7 +112,7 @@ def build_subgraph(name: str, session_factory, model_config: dict | None = None)
     内部拓扑（工具/门控/压缩/工作流循环全部收进子图）：
     START → subgraph_entry_router → agent_call / tool_calls / workflow_runner
     agent_call → agent_router → tool_calls / final(退出)
-    tool_calls → quality_gate → quality_gate_router → tool_calls / workflow_runner / compress / agent_call / final
+    tool_calls → quality_gate_router → tool_calls / workflow_runner / compress / agent_call / final
     workflow_runner → subgraph_entry_router（候选确认/审核卡 → 退出）
     compress → agent_call
     final → END（输出 = SubgraphOutput 白名单）
@@ -125,15 +124,13 @@ def build_subgraph(name: str, session_factory, model_config: dict | None = None)
         partial(gated_tool_node, session_factory=session_factory, model_config=model_config),
     )
     b.add_node("workflow_runner", workflow_runner_node)
-    b.add_node("quality_gate", quality_gate_node)
     b.add_node("compress", partial(auto_compress_node, session_factory=session_factory))
     b.add_node("final", subgraph_final_node)
 
     b.add_conditional_edges(START, subgraph_entry_router, _entry_map(name))
     b.add_conditional_edges(name, agent_router, {"tool_calls": "tool_calls", END: "final"})
-    b.add_edge("tool_calls", "quality_gate")
     b.add_conditional_edges(
-        "quality_gate",
+        "tool_calls",
         quality_gate_router,
         {
             "tool_calls": "tool_calls",
@@ -174,7 +171,6 @@ def build_user_agent_graph(session_factory, model_config: dict | None = None, ch
             return _GRAPH_CACHE[key]
 
     builder = StateGraph(UserAgentState)
-    builder.add_node("dispatch", lambda state: {})
     builder.add_node("guardrail", guardrail_node)
     builder.add_node("supervisor", supervisor_node)
     builder.add_node("chat", chat_node)
@@ -183,8 +179,7 @@ def build_user_agent_graph(session_factory, model_config: dict | None = None, ch
         builder.add_node(name, build_subgraph(name, session_factory, model_config))
     builder.add_node("sync", sync_node)
 
-    builder.set_entry_point("dispatch")
-    builder.add_edge("dispatch", "guardrail")
+    builder.set_entry_point("guardrail")
     builder.add_edge("guardrail", "supervisor")
     builder.add_conditional_edges("supervisor", supervisor_router)
     # chat 快路径：1 步无工具循环

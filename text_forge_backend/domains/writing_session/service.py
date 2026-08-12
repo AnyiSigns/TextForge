@@ -43,7 +43,8 @@ class WritingSessionService:
             "character_ids": character_ids or [],
             "words_written": 0,
             "duration_seconds": 0,
-            "started_at": datetime.now(),
+            # 与模型默认 func.now()（UTC）保持一致，避免 naive 本地时间混用
+            "started_at": datetime.utcnow(),
             "ended_at": None,
         }
         instance = await self.repo.add(**payload)
@@ -71,7 +72,7 @@ class WritingSessionService:
             return self._to_dict(instance)
         instance.words_written = words_written
         instance.duration_seconds = duration_seconds
-        instance.ended_at = datetime.now()
+        instance.ended_at = datetime.utcnow()
         await self.repo.session.commit()
         await self.repo.session.refresh(instance)
         return self._to_dict(instance)

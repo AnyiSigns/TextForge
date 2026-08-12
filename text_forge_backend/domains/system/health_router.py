@@ -2,10 +2,12 @@ from fastapi import APIRouter, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
+from config.logging import get_logger
 from shared.database import db_manager
 from shared.graph_store import graph_pool_manager
 from shared.redis import redis_client
 
+logger = get_logger(__name__)
 router = APIRouter(tags=["Health"])
 
 
@@ -40,14 +42,16 @@ async def health_ready():
             await conn.execute(text("SELECT 1"))
         results["db"] = "ok"
     except Exception as exc:
-        results["db"] = f"error: {exc}"
+        logger.warning(f"健康检查 db 失败: {exc}")
+        results["db"] = "error"
 
     # Redis（书籍锁 / RAG 缓存）
     try:
         await redis_client.ping()
         results["redis"] = "ok"
     except Exception as exc:
-        results["redis"] = f"error: {exc}"
+        logger.warning(f"健康检查 redis 失败: {exc}")
+        results["redis"] = "error"
 
     # LangGraph 检查点连接池
     try:
@@ -56,7 +60,8 @@ async def health_ready():
         else:
             results["graph"] = "not_ready"
     except Exception as exc:
-        results["graph"] = f"error: {exc}"
+        logger.warning(f"健康检查 graph 失败: {exc}")
+        results["graph"] = "error"
 
     ok = all(v == "ok" for v in results.values())
     return JSONResponse(status_code=200 if ok else 503, content=results)

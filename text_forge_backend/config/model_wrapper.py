@@ -1,17 +1,6 @@
 from typing import Any
 
-from langchain_anthropic import ChatAnthropic
-from langchain_community.chat_models import (
-    ChatZhipuAI,
-    QianfanChatEndpoint,
-)
 from langchain_core.language_models import BaseChatModel
-from langchain_deepseek import ChatDeepSeek
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_moonshot import ChatMoonshot
-from langchain_ollama import ChatOllama
-from langchain_openai import ChatOpenAI
-from langchain_qwq import ChatQwQ
 
 from config.settings import settings
 
@@ -22,18 +11,24 @@ class _EmbeddingStub:
 
 
 class ModelWrapper:
-    """统一封装多Provider的 LLM/Embedding/Vision 实例创建工厂。"""
+    """统一封装多Provider的 LLM/Embedding/Vision 实例创建工厂。
 
-    PROVIDER_MAP: dict[str, type[BaseChatModel]] = {
-        "dashscope": ChatQwQ,
-        "deepseek": ChatDeepSeek,
-        "ollama": ChatOllama,
-        "openai": ChatOpenAI,
-        "gemini": ChatGoogleGenerativeAI,
-        "anthropic": ChatAnthropic,
-        "zhipu": ChatZhipuAI,
-        "moonshot": ChatMoonshot,
-        "qianfan": QianfanChatEndpoint,
+    Provider 模型类全部惰性导入（模块级不加载）：langchain 社区包处于日落迁移期，
+    任一 provider 包缺失/被移除不会拖垮整个应用启动，仅在用户实际选用该
+    provider 时才按 (module, class_name) 动态导入并给出可操作的报错提示。
+    """
+
+    # (导入模块, 类名)：统一经 _import_provider 惰性解析
+    PROVIDER_MAP: dict[str, tuple[str, str]] = {
+        "dashscope": ("langchain_qwq", "ChatQwQ"),
+        "deepseek": ("langchain_deepseek", "ChatDeepSeek"),
+        "ollama": ("langchain_ollama", "ChatOllama"),
+        "openai": ("langchain_openai", "ChatOpenAI"),
+        "gemini": ("langchain_google_genai", "ChatGoogleGenerativeAI"),
+        "anthropic": ("langchain_anthropic", "ChatAnthropic"),
+        "zhipu": ("langchain_community.chat_models", "ChatZhipuAI"),
+        "moonshot": ("langchain_moonshot", "ChatMoonshot"),
+        "qianfan": ("langchain_community.chat_models", "QianfanChatEndpoint"),
     }
 
     EMBEDDING_MAP: dict[str, Any] = {
@@ -51,13 +46,33 @@ class ModelWrapper:
     }
 
     @classmethod
+    def _import_provider(cls, provider: str):
+        """惰性导入 provider 的模型类，返回类对象。
+
+        Raises:
+            ValueError: provider 未知或对应依赖包缺失/类已迁移时抛出（含安装提示）。
+        """
+        entry = cls.PROVIDER_MAP.get(provider)
+        if not entry:
+            raise ValueError(f"不支持的提供商{provider}")
+        module_path, class_name = entry
+        try:
+            import importlib
+
+            module = importlib.import_module(module_path)
+            return getattr(module, class_name)
+        except (ImportError, AttributeError) as exc:
+            raise ValueError(
+                f"提供商 {provider} 的模型类 {class_name} 不可用："
+                f"请确认已安装对应依赖包（{module_path}）"
+            ) from exc
+
+    @classmethod
     def get_model(cls, config: dict[str, Any]) -> BaseChatModel:
         provider = config.get("adapter")
         if not provider:
             raise ValueError("没有配置提供商")
-        model_class = cls.PROVIDER_MAP.get(provider)
-        if not model_class:
-            raise ValueError(f"不支持的提供商{provider}")
+        model_class = cls._import_provider(provider)
         kwargs = cls._build_kwargs(provider, config)
         try:
             return model_class(**kwargs)

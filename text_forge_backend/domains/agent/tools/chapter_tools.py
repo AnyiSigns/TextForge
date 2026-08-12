@@ -5,6 +5,7 @@ from config.logging import get_logger
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
 from models.book import Chapter, ChapterContent, Volume
+from shared.utils import redact_sensitive
 from sqlalchemy import func, select
 
 logger = get_logger(__name__)
@@ -327,7 +328,7 @@ def _build_chapter_tools(session_factory):
             try:
                 new_text = _apply_unified_diff(current, unified_diff)
             except ValueError as exc:
-                return {"error": f"diff 应用失败: {exc}", "version": max_ver}
+                return {"error": f"diff 应用失败: {redact_sensitive(str(exc))}", "version": max_ver}
             if new_text == current:
                 return {"error": "diff 未产生任何改动，请检查 hunk 是否匹配当前正文", "version": max_ver}
             new_content = await _append_chapter_content_version(

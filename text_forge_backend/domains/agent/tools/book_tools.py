@@ -18,6 +18,7 @@ from models.book import (
     SceneEvent,
     Volume,
 )
+from shared.utils import redact_sensitive
 from sqlalchemy import func, select
 
 from domains.memory.service import AgentMemoryService
@@ -271,7 +272,7 @@ def _build_book_tools(session_factory, model_config: dict | None = None):
                     await session.flush()
                     created_ids["characters"].append(char.id)
                 except Exception as exc:
-                    errors.append({"kind": "character", "name": c.get("name"), "error": str(exc)})
+                    errors.append({"kind": "character", "name": c.get("name"), "error": redact_sensitive(str(exc))})
             for l in (locations or []):
                 if not isinstance(l, dict) or not l.get("name"):
                     continue
@@ -282,7 +283,7 @@ def _build_book_tools(session_factory, model_config: dict | None = None):
                     inst = await repo.create_location(book_id, data)
                     created_ids["locations"].append(inst.id)
                 except Exception as exc:
-                    errors.append({"kind": "location", "name": l.get("name"), "error": str(exc)})
+                    errors.append({"kind": "location", "name": l.get("name"), "error": redact_sensitive(str(exc))})
             for ev in (scene_events or []):
                 if not isinstance(ev, dict) or not ev.get("title"):
                     continue
@@ -302,7 +303,7 @@ def _build_book_tools(session_factory, model_config: dict | None = None):
                     inst = await repo.create_scene_event(book_id, data)
                     created_ids["scene_events"].append(inst.id)
                 except Exception as exc:
-                    errors.append({"kind": "scene_event", "title": ev.get("title"), "error": str(exc)})
+                    errors.append({"kind": "scene_event", "title": ev.get("title"), "error": redact_sensitive(str(exc))})
             for f in (foreshadowings or []):
                 if not isinstance(f, dict) or not f.get("description"):
                     continue
@@ -314,7 +315,7 @@ def _build_book_tools(session_factory, model_config: dict | None = None):
                     inst = await repo.create_foreshadowing(book_id, data)
                     created_ids["foreshadowings"].append(inst.id)
                 except Exception as exc:
-                    errors.append({"kind": "foreshadowing", "error": str(exc)})
+                    errors.append({"kind": "foreshadowing", "error": redact_sensitive(str(exc))})
             for p in (plot_threads or []):
                 if not isinstance(p, dict) or not p.get("name"):
                     continue
@@ -327,7 +328,7 @@ def _build_book_tools(session_factory, model_config: dict | None = None):
                     inst = await repo.create_plot_thread(book_id, data)
                     created_ids["plot_threads"].append(inst.id)
                 except Exception as exc:
-                    errors.append({"kind": "plot_thread", "name": p.get("name"), "error": str(exc)})
+                    errors.append({"kind": "plot_thread", "name": p.get("name"), "error": redact_sensitive(str(exc))})
             await session.commit()
             # Agent 直接创建场景事件/伏笔/情节线后，统一异步重算派生字段
             if created_ids["scene_events"] or created_ids["foreshadowings"] or created_ids["plot_threads"]:
@@ -633,7 +634,7 @@ def _build_book_tools(session_factory, model_config: dict | None = None):
             except Exception as exc:
                 await session.rollback()
                 logger.error(f"build_outline 事务失败，已回滚: {exc}", exc_info=True)
-                return {"error": f"大纲创建失败，已回滚，未写入任何数据: {exc}"}
+                return {"error": f"大纲创建失败，已回滚，未写入任何数据: {redact_sensitive(str(exc))}"}
             try:
                 await recompute_derived(session, book_id)
             except Exception as exc:

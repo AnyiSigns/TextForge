@@ -3,15 +3,14 @@
 设计要点：
 - 与执行解耦的"写操作"注册表：工具名/入参映射到写操作键（operation key）。
 - 无状态能力：判断某次调用是否需门控、生成审批卡预览、按用户决策真正执行。
-- 暂存（deferred mutation）归属各调用方：Agent 图用 LangGraph checkpoint（pending_tool），
-  REST 等无会话场景用 PendingChangeStore（Redis）。本服务自身不持有持久化，
-  因此 Agent、workflow、REST 三处可共用同一套审批逻辑与卡片契约。
+- 暂存（deferred mutation）归属各调用方：Agent 图用 LangGraph checkpoint（pending_tool）。
+  本服务自身不持有持久化，Agent、workflow、REST 三处可共用同一套审批逻辑与卡片契约。
 """
 import json
 import re
-import uuid
 
 from config.logging import get_logger
+from shared.utils import redact_sensitive
 
 logger = get_logger(__name__)
 
@@ -165,8 +164,8 @@ def _strip_review_prefix(text: str) -> str:
 class GatingService:
     """无状态门控服务：负责真正执行被审批的写操作。
 
-    暂存（deferred）由各调用方负责：Agent 图存在 checkpoint 的 pending_tool，
-    REST 等场景可用 PendingChangeStore。本服务只关心"按决策执行"。
+    暂存（deferred）由各调用方负责：Agent 图存在 checkpoint 的 pending_tool。
+    本服务只关心"按决策执行"。
     """
 
     def __init__(self, session_factory, model_config: dict | None = None):
@@ -215,7 +214,7 @@ class GatingService:
                     return {"error": hint}
             except ImportError:
                 pass
-            return {"error": f"工具执行失败: {exc}"}
+            return {"error": f"工具执行失败: {redact_sensitive(str(exc))}"}
 
     async def invoke(self, tool_name: str, args: dict) -> dict:
         """立即执行（非门控或已审批的）工具。供门控节点执行非写工具复用。"""
@@ -262,45 +261,3 @@ class GatingService:
                     f"忽略用户修改并保持原入参执行"
                 )
         return await self._invoke(tool_name, effective_args)
-
-
-class PendingChangeStore:
-    """为非 Agent（无 checkpoint）场景提供被拦截写操作的暂存（Redis 键：gating:<request_id>）。
-
-    Agent 图自带 checkpoint，无需此存储；本类让 REST 等接口也能复用 GatingService 的审批流。
-    """
-
-    def __init__(self, ttl: int = 3600):
-        self._ttl = ttl
-
-    async def save(self, tool_name: str, args: dict, user_id: int, book_id: int) -> str:
-        """暂存一次被拦截的写操作，返回 request_id。"""
-        from shared.redis import redis_client
-
-        request_id = uuid.uuid4().hex
-        payload = {"tool_name": tool_name, "args": args, "user_id": user_id, "book_id": book_id}
-        try:
-            await redis_client.setex(f"gating:{request_id}", self._ttl, json.dumps(payload, ensure_ascii=False))
-        except Exception as exc:
-            logger.warning(f"[PendingChangeStore] 写入失败: {exc}")
-        return request_id
-
-    async def load(self, request_id: str) -> dict | None:
-        """读取暂存的写操作；不存在或读取失败返回 None。"""
-        from shared.redis import redis_client
-
-        try:
-            raw = await redis_client.get(f"gating:{request_id}")
-        except Exception as exc:
-            logger.warning(f"[PendingChangeStore] 读取失败: {exc}")
-            return None
-        return json.loads(raw) if raw else None
-
-    async def delete(self, request_id: str) -> None:
-        """删除暂存的写操作。"""
-        from shared.redis import redis_client
-
-        try:
-            await redis_client.delete(f"gating:{request_id}")
-        except Exception as exc:
-            logger.warning(f"[PendingChangeStore] 删除失败: {exc}")

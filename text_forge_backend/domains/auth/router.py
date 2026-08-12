@@ -96,17 +96,25 @@ async def refresh_at(
         },
         expire=settings.JWT_ACCESS_TIME,
     )
-    user = UserResponse.model_validate(user)
-    return RefreshResponse(access_token=access_token, user=user)
+    user_resp = UserResponse.model_validate(user)
+    return RefreshResponse(access_token=access_token, user=user_resp)
 
 
 @router.post("/resend-verify")
-async def resend_verify(request: EmailRequest):
-    """发送邮件"""
+async def resend_verify(
+    request: EmailRequest,
+    user_serve: Annotated[UserAuthService, Depends(user_db_serve)],
+):
+    """重新发送验证邮件（仅限已注册未验证的邮箱，防止对任意邮箱轰炸）。"""
+    user = await user_serve.user_repo.query_user_email(request.email)
+    if not user:
+        raise HTTPException(status_code=400, detail="该邮箱尚未注册")
+    if user.is_verified:
+        raise HTTPException(status_code=400, detail="该邮箱已验证，无需重复验证")
     if await verification.is_rate_limited(request.email):
         raise HTTPException(status_code=429, detail="验证码发送过于频繁，请稍后再试")
     code = verification.generate_code()
-    await verification.save_code(request.email, code)
+    await verification.save_code(request.email, code, "verify_email")
     sent = await email_service.send_verification_email(request.email, code)
     if not sent:
         raise HTTPException(status_code=502, detail="验证邮件发送失败，请稍后再试")
@@ -119,6 +127,8 @@ async def register(
     user_serve: Annotated[UserAuthService, Depends(user_db_serve)],
 ):
     """注册新用户，成功后发送验证邮件。"""
+    if await verification.is_rate_limited(user.email):
+        raise HTTPException(status_code=429, detail="验证码发送过于频繁，请稍后再试")
     _, msg = await user_serve.user_register(
         user_name=user.user_name, pwd=user.password, email=user.email
     )
@@ -127,7 +137,7 @@ async def register(
             status_code=400, detail={"message": msg, "email": user.email}
         )
     code = verification.generate_code()
-    await verification.save_code(user.email, code)
+    await verification.save_code(user.email, code, "verify_email")
     sent = await email_service.send_verification_email(user.email, code)
     # 账号已创建但邮件发送失败时仍返回成功并标明 email_sent=false，
     # 前端据此提示用户进入验证页手动重发，避免用户被误导为「邮件已发出」。
@@ -145,7 +155,7 @@ async def verify_email(
 ):
     if await verification.is_rate_limited(request.email):
         raise HTTPException(status_code=429, detail="验证尝试过于频繁，请稍后再试")
-    verified = await verification.verify_code(request.email, request.code)
+    verified = await verification.verify_code(request.email, request.code, "verify_email")
     if verified:
         user = await user_serve.user_repo.query_user_email(request.email)
         if not user:
@@ -189,5 +199,5 @@ async def user_login(
         await redis_client.delete(fail_key)
     except Exception:
         pass
-    user = UserResponse.model_validate(user)
-    return TokenRes(access_token=access_token, refresh_token=refresh_token, user=user)  # type: ignore
+    user_resp = UserResponse.model_validate(user)
+    return TokenRes(access_token=access_token, refresh_token=refresh_token, user=user_resp)  # type: ignore

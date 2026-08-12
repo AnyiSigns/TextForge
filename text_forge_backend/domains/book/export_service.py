@@ -140,6 +140,7 @@ class ExportService:
 
     def _build_epub(self, book, chapters, characters, outline):
         from ebooklib import epub
+        import html
 
         epub_book = epub.EpubBook()
         epub_book.set_identifier(str(book.id))
@@ -154,9 +155,10 @@ class ExportService:
             outline_ch = epub.EpubHtml(title="大纲", file_name="outline.xhtml")
             outline_lines = ["<h1>大纲</h1>", "<ul>"]
             for item in outline:
-                outline_lines.append(f"<li>{item['title']}</li>")
+                # XHTML 内容一律转义，防止正文中的 < > & 破坏结构或被解析为标签
+                outline_lines.append(f"<li>{html.escape(str(item['title']))}</li>")
                 if item.get("content"):
-                    outline_lines.append(f"<li>{item['content']}</li>")
+                    outline_lines.append(f"<li>{html.escape(str(item['content']))}</li>")
             outline_lines.append("</ul>")
             outline_ch.content = "\n".join(outline_lines)
             epub_book.add_item(outline_ch)
@@ -167,11 +169,11 @@ class ExportService:
             char_ch = epub.EpubHtml(title="角色", file_name="characters.xhtml")
             char_lines = ["<h1>角色</h1>"]
             for c in characters:
-                char_lines.append(f"<h2>{c['name']}</h2>")
+                char_lines.append(f"<h2>{html.escape(str(c['name']))}</h2>")
                 if c.get("role_type"):
-                    char_lines.append(f"<p>类型: {c['role_type']}</p>")
+                    char_lines.append(f"<p>类型: {html.escape(str(c['role_type']))}</p>")
                 if c.get("description"):
-                    char_lines.append(f"<p>{c['description']}</p>")
+                    char_lines.append(f"<p>{html.escape(str(c['description']))}</p>")
             char_ch.content = "\n".join(char_lines)
             epub_book.add_item(char_ch)
             toc_items.append(char_ch)
@@ -183,15 +185,15 @@ class ExportService:
             if ch["volume_title"] != current_volume:
                 current_volume = ch["volume_title"]
                 volume_ch = epub.EpubHtml(title=current_volume, file_name=f"volume_{idx}.xhtml")
-                volume_lines = [f"<h1>{current_volume}</h1>"]
+                volume_lines = [f"<h1>{html.escape(str(current_volume))}</h1>"]
                 volume_ch.content = "\n".join(volume_lines)
                 epub_book.add_item(volume_ch)
                 toc_items.append(volume_ch)
                 spine.append(volume_ch)
             chapter_ch = epub.EpubHtml(title=ch["chapter_title"], file_name=f"chapter_{idx}.xhtml")
-            chapter_lines = [f"<h2>{ch['chapter_title']}</h2>"]
+            chapter_lines = [f"<h2>{html.escape(str(ch['chapter_title']))}</h2>"]
             if ch.get("content"):
-                chapter_lines.append(f"<p>{ch['content'].replace(chr(10), '</p><p>')}</p>")
+                chapter_lines.append(f"<p>{html.escape(str(ch['content'])).replace(chr(10), '</p><p>')}</p>")
             chapter_ch.content = "\n".join(chapter_lines)
             epub_book.add_item(chapter_ch)
             toc_items.append(chapter_ch)

@@ -11,6 +11,7 @@ from core.model_factory import ModelFactory
 from langchain_core.messages import HumanMessage, SystemMessage
 from models.book import Book, Chapter, Character
 from models.story_flow import StoryFlow
+from shared.utils import redact_sensitive
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -213,7 +214,7 @@ async def _generate_scene_node(
                 tail += piece
     except Exception as exc:
         logger.exception("[story_flow] 场景生成 LLM 调用失败")
-        yield {"type": "error", "message": f"场景生成失败: {str(exc)[:100]}"}
+        yield {"type": "error", "message": f"场景生成失败: {redact_sensitive(str(exc)[:100])}"}
         return
 
     if not seen_marker:
@@ -340,6 +341,17 @@ async def stream_create_flow(
         )
         try:
             await session.commit()
+        except IntegrityError:
+            # 并发创建竞态：另一请求已插入 active 流（部分唯一索引兜底），
+            # 回滚后复用已有流，避免出现两条 active 流
+            await session.rollback()
+            existing = await repo.get_active_flow(session, book.id, chapter.id, user_id)
+            if existing:
+                flow = existing
+            else:
+                logger.exception("[story_flow] 创建会话失败（并发兜底未命中）")
+                yield {"type": "error", "message": "创建剧情流失败，请重试"}
+                return
         except Exception:
             logger.exception("[story_flow] 创建会话失败")
             await session.rollback()

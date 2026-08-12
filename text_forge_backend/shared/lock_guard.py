@@ -1,5 +1,3 @@
-from typing import Any
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,20 +30,6 @@ async def is_locked(session: AsyncSession, entity_type: str, entity_id: int) -> 
     result = await session.execute(stmt)
     locked_val = result.scalar_one_or_none()
     return bool(locked_val)
-
-
-async def enforce_unlocked(
-    session: AsyncSession, entity_type: str, entity_id: int
-) -> dict[str, Any] | None:
-    """若实体被锁定则返回错误描述，否则返回 None。"""
-    if await is_locked(session, entity_type, entity_id):
-        return {
-            "error": "locked",
-            "entity_type": entity_type,
-            "entity_id": entity_id,
-            "message": f"{entity_type} #{entity_id} 已被锁定，禁止修改",
-        }
-    return None
 
 
 async def set_lock(session: AsyncSession, entity_type: str, entity_id: int, locked: bool) -> bool:

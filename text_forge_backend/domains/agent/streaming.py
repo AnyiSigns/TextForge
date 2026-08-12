@@ -596,11 +596,8 @@ async def stream_agent(
 
                                 _is_err = _is_tool_error(m)
                                 yield f"data: {json.dumps({'type': 'tool_end', 'tool': m.name, 'tool_call_id': _tc_id, 'success': not _is_err}, ensure_ascii=False)}\n\n"
-                        # quality_gate 节点：工作流审计若产生 pending_review，推送审核卡
-                        elif (
-                            node_name == "quality_gate"
-                            or node_name == "workflow_runner"
-                        ):
+                        # workflow_runner 节点：工作流审计若产生 pending_review，推送审核卡
+                        elif node_name == "workflow_runner":
                             if update.get("pending_review"):
                                 _card_payloads.append(update["pending_review"])
                                 yield _sse_review_card(update["pending_review"])

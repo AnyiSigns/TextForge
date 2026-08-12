@@ -10,6 +10,7 @@ from schema.request.book import CreativeSettingRequest
 from schema.response.book import CreativeSettingResponse
 from shared.database import db_manager
 
+from .repository import CreativeSettingRepository
 from .service import BookService, book_db
 
 router = APIRouter(prefix="/creative-settings", tags=["CreativeSetting"])
@@ -26,8 +27,6 @@ async def get_creative_setting(
     result = await session.execute(stmt)
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="书籍不存在或无权访问")
-    from .repository import CreativeSettingRepository
-
     repo = CreativeSettingRepository(session)
     setting = await repo.get_setting(book_id)
     if not setting:
@@ -48,8 +47,6 @@ async def update_creative_setting(
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="书籍不存在或无权访问")
     data = request.model_dump(by_alias=False, exclude_none=True)
-    from .repository import CreativeSettingRepository
-
     repo = CreativeSettingRepository(session)
     setting = await repo.save_setting(book_id, data)
     if not setting:

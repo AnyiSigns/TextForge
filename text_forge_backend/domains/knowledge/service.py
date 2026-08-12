@@ -41,8 +41,8 @@ class KnowledgeService:
             检索结果列表，每个元素包含 content、distance 等字段。
 
         Raises:
-            ValueError: 未配置 embedding 模型或 embedding 生成失败时抛出，
-                附带具体原因，由上层转为用户可见错误信息。
+            ValueError: embedding 配置存在但生成失败时抛出，附带具体原因，
+                由上层转为用户可见错误信息；未配置 embedding 时回退全文检索，不抛错。
         """
         if not query.strip():
             return []
@@ -59,15 +59,23 @@ class KnowledgeService:
                     "请检查模型配置中的 embedding 模型设置"
                 ) from exc
 
-        if embedding is None or not embedding:
-            raise ValueError("知识库语义检索需要 embedding 模型，请在模型配置中启用后再搜索")
-
         vector_repo = VectorRepository(self.session)
-        items = await vector_repo.search_external_books(
-            query_embedding=embedding,
-            rag_filter={"query": query},
-            top_k=top_k,
-        )
+        rag_filter = {"query": query}
+        if embedding:
+            items = await vector_repo.search_external_books(
+                query_embedding=embedding,
+                rag_filter=rag_filter,
+                top_k=top_k,
+            )
+        else:
+            # 无 embedding 配置或生成空向量 → 回退全文检索
+            # （决策 embedding_config_empty_fallback_fulltext：前端未携带 embedding
+            # 配置时走 fulltext 分支，不做语义检索）。
+            items = await vector_repo.search_external_books_fulltext(
+                query=query,
+                rag_filter=rag_filter,
+                top_k=top_k,
+            )
         return items
 
     async def upload_public(self, file, emb_config: dict | None = None):
