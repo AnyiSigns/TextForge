@@ -356,9 +356,10 @@ async def workflow_runner_node(state: dict[str, Any]) -> dict[str, Any]:
                         "tokens": res.get("tokens", 0),
                         "elapsed_ms": _node_elapsed_ms,
                     }
-                    # 单节点执行：该节点若是内容节点（executor=main），即作为唯一候选正文
-                    _executor = node_def.get("executor")
-                    if _executor == "main":
+                    # 单节点执行：executor 缺省/auto/main 节点输出即正文候选，
+                    # 与 run_workflow 的 content_nodes 判定一致（audit/tool 排除）
+                    _executor = node_def.get("executor") or "main"
+                    if _executor in ("main", "auto"):
                         result["content_nodes"] = [
                             {
                                 "node_id": node_id,

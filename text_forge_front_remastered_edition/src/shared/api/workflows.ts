@@ -6,7 +6,7 @@ export interface WorkflowNode {
   systemPrompt?: string;
   tier?: 'cheap' | 'standard';
   contextFields?: string[];
-  ragFilter?: { docIds?: string[]; authorIds?: string[]; sample?: string };
+  ragFilter?: { query?: string; docIds?: string[]; authorIds?: string[]; sample?: string };
   ragTopK?: number;
   executor?: 'main' | 'audit' | 'tool' | 'auto';
 }

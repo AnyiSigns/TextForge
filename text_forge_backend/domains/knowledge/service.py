@@ -39,6 +39,10 @@ class KnowledgeService:
 
         Returns:
             检索结果列表，每个元素包含 content、distance 等字段。
+
+        Raises:
+            ValueError: 未配置 embedding 模型或 embedding 生成失败时抛出，
+                附带具体原因，由上层转为用户可见错误信息。
         """
         if not query.strip():
             return []
@@ -50,9 +54,13 @@ class KnowledgeService:
                 embedding = await llm.embedding.aembed_query(query)
             except Exception as exc:
                 logger.warning(f"知识库检索 embedding 失败: {exc}")
+                raise ValueError(
+                    f"知识库检索 embedding 生成失败（{type(exc).__name__}: {exc}），"
+                    "请检查模型配置中的 embedding 模型设置"
+                ) from exc
 
         if embedding is None or not embedding:
-            return []
+            raise ValueError("知识库语义检索需要 embedding 模型，请在模型配置中启用后再搜索")
 
         vector_repo = VectorRepository(self.session)
         items = await vector_repo.search_external_books(

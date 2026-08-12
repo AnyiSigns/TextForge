@@ -336,13 +336,13 @@ async def test_execute_node_audit_fail_sets_needs_review(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_execute_node_long_output_truncated(monkeypatch):
+async def test_execute_node_long_output_kept_full(monkeypatch):
+    # 超长输出不再破坏性截断：output 保留全文，供 write_workflow_candidate 落库完整正文
     long_chunk = "长" * 10000
     result, factory = await run_node(monkeypatch, {"chunks": [long_chunk]})
     assert result["success"] is True
-    # 截断后长度 = 3000 + 省略标记 + 2000
-    assert "（中间省略）" in result["output"]
-    assert len(result["output"]) < 8000
+    assert result["output"] == long_chunk
+    assert "（中间省略）" not in result["output"]
 
 
 @pytest.mark.asyncio
@@ -469,3 +469,193 @@ async def test_run_workflow_injects_seed_upstream_outputs(monkeypatch):
     # 无 edges 时每个节点都拿到完整 seed 上游输出
     for upstream in seen_upstreams:
         assert upstream.get("web_search") == "联网搜索结果正文"
+
+
+# ---------------------------------------------------------------------------
+# 节点级 RAG：rag_filter / rag_top_k 消费
+# ---------------------------------------------------------------------------
+
+class FakeEmbedding:
+    def __init__(self, vector):
+        self._vector = vector
+
+    async def aembed_query(self, query):
+        return self._vector
+
+
+class FakeRagModelFactory:
+    """假 ModelFactory：main/audit 正常生成，embedding 返回固定向量。"""
+
+    def __init__(self, config: dict, vector=None):
+        self.main = FakeStreamLLM(config.get("chunks") or ["RAG 增强输出"], raise_error=False)
+        self.audit = FakeAuditLLM("PASS")
+        self.embedding = FakeEmbedding(vector or [0.1, 0.2])
+
+
+@pytest.mark.asyncio
+async def test_query_node_rag_formats_results(monkeypatch):
+    """节点 rag_filter 配置时执行向量检索并格式化为外部文档块。"""
+    captured = {}
+
+    class FakeVectorRepo:
+        def __init__(self, session):
+            captured["session"] = session
+            self.session = session
+
+        async def search_external_books(self, query_embedding, rag_filter, top_k):
+            captured["rag_filter"] = rag_filter
+            captured["top_k"] = top_k
+            return [
+                {"doc_title": "设定文档", "doc_author": "a", "content": "世界观核心内容", "distance": 0.1},
+            ]
+
+    monkeypatch.setattr(we, "ModelFactory", lambda cfg: FakeRagModelFactory({}, vector=[0.5, 0.5]))
+    monkeypatch.setattr(
+        "domains.knowledge.repository.VectorRepository",
+        FakeVectorRepo,
+    )
+    node_def = {
+        "id": "n1",
+        "system_prompt": "根据知识库写设定",
+        "rag_filter": {"query": "世界观", "doc_ids": ["1", "2"], "author_ids": ["5"], "sample": "设定"},
+        "rag_top_k": 5,
+    }
+    embedding, rag_filter, top_k = await we._prepare_node_rag(node_def, {})
+    text = await we._search_node_rag(embedding, rag_filter, top_k, object())
+    assert "## 节点知识库检索结果" in text
+    assert "世界观核心内容" in text
+    assert rag_filter["query"] == "世界观"
+    assert rag_filter["doc_ids"] == ["1", "2"]
+    assert rag_filter["author_ids"] == ["5"]
+    assert rag_filter["sample"] == "设定"
+    assert top_k == 5
+
+
+@pytest.mark.asyncio
+async def test_query_node_rag_falls_back_to_system_prompt(monkeypatch):
+    """未配置检索 query 时回退节点 system_prompt 作为语义查询。"""
+    captured = {}
+
+    class FakeVectorRepo:
+        def __init__(self, session):
+            self.session = session
+
+        async def search_external_books(self, query_embedding, rag_filter, top_k):
+            captured["query"] = rag_filter["query"]
+            return []
+
+    monkeypatch.setattr(we, "ModelFactory", lambda cfg: FakeRagModelFactory({}, vector=[0.5]))
+    monkeypatch.setattr(
+        "domains.knowledge.repository.VectorRepository",
+        FakeVectorRepo,
+    )
+    node_def = {"id": "n1", "system_prompt": "你是设定考据师，检索世界观相关资料"}
+    embedding, rag_filter, top_k = await we._prepare_node_rag(node_def, {})
+    text = await we._search_node_rag(embedding, rag_filter, top_k, object())
+    assert "你是设定考据师" in captured["query"]
+    assert text == ""
+
+
+@pytest.mark.asyncio
+async def test_execute_node_injects_node_rag_context(monkeypatch):
+    """execute_node 配置 rag_filter 时把检索结果注入 LLM 输入。"""
+    from langchain_core.messages import HumanMessage
+
+    seen_messages = {}
+
+    class CollectingStreamLLM(FakeStreamLLM):
+        async def astream(self, messages):
+            seen_messages["human"] = next(
+                (m.content for m in messages if isinstance(m, HumanMessage)), ""
+            )
+            for c in self._chunks:
+                yield SimpleNamespace(content=c)
+
+    class CollectingFactory:
+        def __init__(self, config):
+            self.main = CollectingStreamLLM(config.get("chunks") or ["正文输出"])
+            self.audit = FakeAuditLLM("PASS")
+            self.embedding = FakeEmbedding([0.5, 0.5])
+
+    class RAGVectorRepo:
+        def __init__(self, session):
+            self.session = session
+
+        async def search_external_books(self, query_embedding, rag_filter, top_k):
+            return [
+                {"doc_title": "检索文档", "doc_author": "a", "content": "检索到的内容", "distance": 0.1},
+            ]
+
+    monkeypatch.setattr(we, "ModelFactory", CollectingFactory)
+    monkeypatch.setattr(
+        "domains.knowledge.repository.VectorRepository",
+        RAGVectorRepo,
+    )
+
+    async def _q(*a, **k):
+        return {}
+
+    monkeypatch.setattr(we, "_load_context_pool", _q)
+    monkeypatch.setattr(we, "_query_structured_context", _q)
+
+    result = await we.execute_node(
+        node_def={
+            "id": "n1",
+            "system_prompt": "测试节点",
+            "executor": "main",
+            "rag_filter": {"query": "测试"},
+            "rag_top_k": 3,
+        },
+        book_id=1,
+        model_config={"chunks": ["正文输出"]},
+        node_id="n1",
+    )
+    assert result["success"] is True
+    assert "检索文档" in seen_messages["human"]
+    assert "节点知识库检索结果" in seen_messages["human"]
+
+
+# ---------------------------------------------------------------------------
+# run_workflow：无 id 节点在拓扑重排后仍应进入 content_nodes 候选
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_run_workflow_unid_nodes_survive_topological_reorder(monkeypatch):
+    """节点兜底 id 按原始 nodes 顺序解析，拓扑重排后候选集合仍能正确命中。
+
+    _resolve_node_id 兜底（name/label/node-{idx}）按原始 nodes 顺序统一解析，
+    即使 topological_sort 改变了执行顺序，content_nodes 候选也不会错配/遗漏。
+    此处通过 mock topological_sort 输出重排顺序来验证。
+    """
+    nodes = [
+        {"id": "nodeA", "executor": "main", "system_prompt": "写正文A"},
+        {"id": "nodeB", "executor": "audit", "system_prompt": "审计"},
+        {"id": "nodeC", "executor": "main", "system_prompt": "写正文C"},
+    ]
+    wf_workflow = SimpleNamespace(id="wf1", name="测试工作流", user_id=1, nodes=nodes, edges=[])
+    # 模拟拓扑排序返回与原列表不同的顺序（nodeC 在前）
+    monkeypatch.setattr(
+        we, "topological_sort",
+        lambda _nodes, _edges: [nodes[2], nodes[1], nodes[0]],
+    )
+    calls: list[dict] = []
+
+    async def fake_execute_node(**kwargs):
+        calls.append(kwargs)
+        return {"success": True, "output": "正文", "needs_review": False, "quality_check": {"passed": True}, "tokens": 3}
+
+    monkeypatch.setattr(we, "db_manager", SimpleNamespace(with_db=lambda: FakeWFDB(wf_workflow)))
+    monkeypatch.setattr(we, "execute_node", fake_execute_node)
+
+    result = await wf.run_workflow(
+        workflow_id="wf1",
+        book_id=1,
+        model_config={},
+        on_progress=lambda ev: None,
+    )
+
+    assert result["status"] == "completed"
+    # 重排后执行顺序为 nodeC → nodeB → nodeA，但候选应只含 main 节点且 id 正确
+    candidates = [n["node_id"] for n in result["content_nodes"]]
+    assert set(candidates) == {"nodeA", "nodeC"}
+    assert len(calls) == 3

@@ -10,10 +10,11 @@ from domains.agent.web_search_service import WebSearchService
 
 
 class FakeCache:
-    def __init__(self, results, created_at=None):
+    def __init__(self, results, created_at=None, last_accessed_at=None):
         self.results = results
         self.hit_count = 0
         self.created_at = created_at or datetime.now()
+        self.last_accessed_at = last_accessed_at
         self.id = 1
 
 

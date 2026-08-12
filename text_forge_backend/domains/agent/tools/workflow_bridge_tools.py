@@ -44,7 +44,6 @@ def build_workflow_bridge_tools(session_factory, model_config: dict | None = Non
         upstream_outputs: Annotated[dict | None, "上游节点的输出映射，格式为 {node_id: text}，注入每个工作流节点上下文"] = None,
         user_id: Annotated[int, InjectedState("user_id")] = 0,
         book_id: Annotated[int, InjectedState("active_book_id")] = 0,
-        personal_rag_results: Annotated[list[dict] | None, InjectedState("personal_rag_results")] = None,
     ) -> dict:
         """执行完整工作流，按拓扑顺序自动运行所有节点。
 
@@ -82,7 +81,6 @@ def build_workflow_bridge_tools(session_factory, model_config: dict | None = Non
         upstream_outputs: Annotated[dict | None, "上游节点的输出映射，格式为 {node_id: text}"] = None,
         user_id: Annotated[int, InjectedState("user_id")] = 0,
         book_id: Annotated[int, InjectedState("active_book_id")] = 0,
-        personal_rag_results: Annotated[list[dict] | None, InjectedState("personal_rag_results")] = None,
     ) -> dict:
         """执行工作流中的单个节点。
 

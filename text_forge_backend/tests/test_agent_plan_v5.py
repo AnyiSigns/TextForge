@@ -145,7 +145,7 @@ async def test_strip_api_key_removes_key_and_preserves_rest():
 
     cfg = {
         "main_config": {"api_key": "secret", "base_url": "http://x", "model_id": "m"},
-        "search_config": {"api_key": "search-secret"},
+        "search_config": {"api_key": "search-secret", "base_url": "http://search"},
     }
     graph = _FakeGraph(cfg)
     await _strip_api_key_from_checkpoint(graph, {"configurable": {"thread_id": "t1"}})
@@ -155,8 +155,10 @@ async def test_strip_api_key_removes_key_and_preserves_rest():
     assert stripped["main_config"]["api_key"] == ""
     assert stripped["main_config"]["base_url"] == "http://x"
     assert stripped["main_config"]["model_id"] == "m"
-    # 非 main 配置保留（search_config 等）
-    assert stripped["search_config"]["api_key"] == "search-secret"
+    # 非 main 配置同样剥离密钥（search_config 也含 API Key，防 checkpoint 泄露），
+    # 其余字段保留
+    assert stripped["search_config"]["api_key"] == ""
+    assert stripped["search_config"]["base_url"] == "http://search"
 
 
 @pytest.mark.asyncio

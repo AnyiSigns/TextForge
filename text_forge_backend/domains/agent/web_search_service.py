@@ -115,7 +115,9 @@ class WebSearchService:
         result = await self.session.execute(stmt)
         cache = result.scalar_one_or_none()
         if cache:
-            created = cache.created_at
+            # TTL 基准取最近访问时间：缓存被持续命中时以 last_accessed_at 续期，
+            # 避免低频查询因 created_at 固定而提前失效、高频查询永远不过期
+            created = cache.last_accessed_at or cache.created_at
             if created and (datetime.now() - created) > timedelta(hours=_CACHE_TTL_HOURS):
                 logger.info(f"web_search 缓存过期，删除并重新搜索: {query_hash[:8]}")
                 await self.session.execute(sqla_delete(WebSearchCache).where(WebSearchCache.id == cache.id))

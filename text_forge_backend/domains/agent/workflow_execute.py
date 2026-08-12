@@ -12,6 +12,7 @@ from shared.database import db_manager
 
 from .workflow_context import (
     _build_chapter_target_context,
+    _format_external_documents,
     _format_prompt_context,
     _load_context_pool,
     _query_structured_context,
@@ -19,6 +20,22 @@ from .workflow_context import (
 )
 
 logger = get_logger(__name__)
+
+
+def _resolve_node_id(node: dict[str, Any], index: int) -> str:
+    """统一节点 id 归一化规则：优先 id，其次 name/label，最后按顺序兜底。
+
+    供 run_workflow 与 content_nodes 候选过滤共用，避免两处规则不一致
+    导致无 id 节点在候选收集中被遗漏。
+
+    Args:
+        node: 节点定义。
+        index: 节点在排序后列表中的序号（兜底 id 使用）。
+
+    Returns:
+        归一化后的节点 id。
+    """
+    return node.get("id") or node.get("name") or node.get("label") or f"node-{index}"
 
 
 class WorkflowCycleError(ValueError):
@@ -73,6 +90,23 @@ def topological_sort(
     return sorted_nodes
 
 
+def _build_audit_preview(output: str) -> str:
+    """构造审计用输出预览：保留首段 + 尾段供审计判断。
+
+    审计仅基于首尾片段（中段不参与判定）；用于控制审计 prompt 长度、
+    避免长文首尾信息丢失。
+
+    Args:
+        output: 节点输出全文。
+
+    Returns:
+        截断后的审计输入文本（首 3000 字 + 尾 500 字）。
+    """
+    if len(output) <= 3000:
+        return output
+    return output[:3000] + "\n…（中间省略）…\n" + output[-500:]
+
+
 async def audit_node_output(
     output: str,
     system_prompt: str,
@@ -81,7 +115,7 @@ async def audit_node_output(
     """使用 audit 模型检查节点输出质量。
 
     Args:
-        output: 节点输出文本。
+        output: 节点输出文本（可为全文，内部自动截断为审计预览）。
         system_prompt: 节点的系统提示词（含写作要求）。
         model_config: 模型配置。
 
@@ -93,10 +127,11 @@ async def audit_node_output(
 
     try:
         llm = ModelFactory(model_config)
+        preview = _build_audit_preview(output)
         quality_prompt = (
             f"请判断以下创作输出是否符合角色节点的写作要求。\n\n"
             f"【角色节点要求】\n{system_prompt[:1500]}\n\n"
-            f"【创作输出】\n{output[:3000]}\n\n"
+            f"【创作输出】\n{preview}\n\n"
             f"输出是否严格遵循了上述写作要求？只回答 PASS 或 FAIL，然后简要说明理由。"
         )
         quality_response = await asyncio.wait_for(
@@ -114,6 +149,73 @@ async def audit_node_output(
     except Exception:
         logger.exception("audit_node_output 失败，默认通过")
         return {"passed": True}
+
+
+async def _prepare_node_rag(
+    node_def: dict[str, Any],
+    model_config: dict,
+) -> tuple[list[float] | None, dict[str, Any], int]:
+    """准备节点级 RAG 的检索参数（embedding 与过滤条件）。
+
+    embedding 计算是外部网络往返、与 DB 无关，故在 execute_node 的 DB 会话外执行，
+    避免持有池连接等待 embedding API。
+
+    Args:
+        node_def: 节点定义（含 rag_filter / rag_top_k / system_prompt）。
+        model_config: 模型配置（embedding 模型）。
+
+    Returns:
+        (query_embedding, rag_filter, top_k)；embedding 失败或无 query 时
+        query_embedding 为 None。
+    """
+    rag_filter_raw = node_def.get("rag_filter") or {}
+    rag_filter: dict[str, Any] = dict(rag_filter_raw)
+    query = (rag_filter.get("query") or "").strip()
+    if not query:
+        # 未显式配置检索 query 时回退节点系统提示词作为语义查询
+        query = (node_def.get("system_prompt") or "")[:200].strip()
+    if not query:
+        return None, rag_filter, 0
+    top_k = int(node_def.get("rag_top_k") or 3)
+
+    llm = ModelFactory(model_config)
+    embedding = await llm.embedding.aembed_query(query)
+    if not embedding:
+        return None, rag_filter, top_k
+    rag_filter["query"] = query
+    return embedding, rag_filter, top_k
+
+
+async def _search_node_rag(
+    embedding: list[float],
+    rag_filter: dict[str, Any],
+    top_k: int,
+    session: Any,
+) -> str:
+    """按过滤条件检索公开知识库并格式化为外部文档上下文块。
+
+    Args:
+        embedding: 已计算好的查询向量。
+        rag_filter: 过滤条件（含 query / doc_ids / author_ids / sample）。
+        top_k: 返回结果数。
+        session: 数据库会话（由调用方复用）。
+
+    Returns:
+        格式化后的检索结果文本；无结果返回空字符串。
+    """
+    from domains.knowledge.repository import VectorRepository
+
+    repo = VectorRepository(session)
+    items = await repo.search_external_books(
+        query_embedding=embedding,
+        rag_filter=rag_filter,
+        top_k=top_k,
+    )
+    if not items:
+        return ""
+    return _format_external_documents(
+        items, section_title="\n## 节点知识库检索结果（外部文档）"
+    )
 
 
 async def execute_node(
@@ -152,31 +254,62 @@ async def execute_node(
         context_fields = auto_allocate_context(system_prompt)
 
     structured = {}
-    if book_id and context_fields:
-        context_pool = await _load_context_pool(book_id)
-        async with db_manager.with_db() as session:
-            structured = await _query_structured_context(
-                session,
-                book_id,
-                context_fields,
-                context_pool,
-                target_chapter_id=target_chapter_id,
+    chapter_target_text = ""
+    node_rag_text = ""
+    # 上下文池与 embedding 均与 DB 会话无关，在会话外准备：
+    # _load_context_pool 内部自开会话，embedding 是外部网络往返——
+    # 二者若放在 with_db 块内会额外占用/长时间占用池连接。
+    context_pool = (
+        await _load_context_pool(book_id) if book_id and context_fields else {}
+    )
+    rag_embedding: list[float] | None = None
+    rag_filter: dict[str, Any] | None = None
+    rag_top_k = 0
+    if node_def.get("rag_filter"):
+        try:
+            rag_embedding, rag_filter, rag_top_k = await _prepare_node_rag(
+                node_def, model_config or {}
             )
+        except Exception as exc:
+            logger.warning(f"节点级 RAG embedding 失败: {exc}")
+            rag_embedding = None
+
+    if book_id and (context_fields or target_chapter_id or rag_filter):
+        async with db_manager.with_db() as session:
+            if book_id and context_fields:
+                structured = await _query_structured_context(
+                    session,
+                    book_id,
+                    context_fields,
+                    context_pool,
+                    target_chapter_id=target_chapter_id,
+                )
+            # 目标章节写作目标注入（让节点明确自己正在写哪一章）
+            # 复用同一会话，避免 execute_node 每节点双开 DB 连接
+            if target_chapter_id:
+                try:
+                    chapter_target_text = await _build_chapter_target_context(
+                        book_id, target_chapter_id, session=session
+                    )
+                except Exception as exc:
+                    logger.warning(f"构建章节目标上下文失败: {exc}")
+                    chapter_target_text = ""
+            # 节点级 RAG：embedding 已在会话外算好，此处仅做向量检索，
+            # 检索结果以外部文档块注入节点上下文
+            if rag_filter and rag_embedding:
+                try:
+                    node_rag_text = await _search_node_rag(
+                        rag_embedding, rag_filter, rag_top_k, session
+                    )
+                except Exception as exc:
+                    logger.warning(f"节点级 RAG 检索失败: {exc}")
+                    node_rag_text = ""
 
     context_text = _format_prompt_context(
         structured, personal_rag_results, upstream_outputs
     )
-
-    # 目标章节写作目标注入（让节点明确自己正在写哪一章）
-    chapter_target_text = ""
-    if target_chapter_id:
-        try:
-            chapter_target_text = await _build_chapter_target_context(
-                book_id, target_chapter_id
-            )
-        except Exception as exc:
-            logger.warning(f"构建章节目标上下文失败: {exc}")
-            chapter_target_text = ""
+    if node_rag_text:
+        context_text = f"{context_text}\n\n{node_rag_text}"
 
     llm = ModelFactory(model_config or {})
 
@@ -282,15 +415,14 @@ async def execute_node(
             "tokens": 0,
         }
 
-    if len(full_content) > 8000:
-        full_content = full_content[:3000] + "\n…（中间省略）…\n" + full_content[-2000:]
-
     if skip_quality_audit:
         # 用户已接受该节点输出（审核卡「接受」）时跳过自动质量审计，避免重复拦截死循环，
         # 直接把当前输出作为候选正文呈现给用户落库。
         qc = {"passed": True, "reason": "用户已接受，跳过自动质量审计"}
         needs_review = False
     else:
+        # 审计输入在 audit_node_output 内部经 _build_audit_preview 截断（首段+尾段），
+        # 此处 full_content 保留全文返回，落库候选不再丢中段。
         qc = await audit_node_output(full_content, system_prompt, model_config or {})
         needs_review = not qc.get("passed", True)
 
@@ -396,9 +528,20 @@ async def run_workflow(
 
     node_results: list[dict[str, Any]] = []
     upstream_outputs: dict[str, str] = dict(seed_upstream_outputs or {})
+    # 兜底 id 必须在原始 nodes 顺序上统一解析：拓扑排序是原列表的排列，
+    # 若按 sorted_nodes 的 index 兜底，与 content_nodes 过滤（按 nodes 顺序）
+    # 的 index 不一致，会导致无 id 节点候选错配/遗漏。
+    node_id_map = {
+        id(node): _resolve_node_id(node, i) for i, node in enumerate(nodes)
+    }
+    content_node_ids = {
+        node_id_map[id(node)]
+        for node in nodes
+        if (node.get("executor") or "main") in ("main", "auto")
+    }
 
-    for idx, node in enumerate(sorted_nodes):
-        node_id = node.get("id") or node.get("name") or node.get("label") or f"node-{idx}"
+    for node in sorted_nodes:
+        node_id = node_id_map.get(id(node)) or _resolve_node_id(node, 0)
         node_label = node.get("label") or node.get("name") or node_id
 
         on_progress(
@@ -480,9 +623,10 @@ async def run_workflow(
         "status": "completed",
         "node_results": node_results,
         "upstream_outputs": upstream_outputs,
-        # 候选正文：executor=main 且产出文本的节点输出。审计/仲裁（audit）节点输出是
-        # 报告，不是正文。自定义工作流可能含多个正文节点（writer/polish/改写等），
-        # 最终用哪个做章节正文需由用户确认（Agent 询问用户后 write_chapter_content 落库）。
+        # 候选正文：executor 为 main（或缺省按 main 处理）的节点输出。审计（audit）与
+        # 工具（tool）节点输出是报告/结构化结果，不是正文。判定与 execute_node 的
+        # 执行分支一致（缺省/auto 同样走 main 模型产出文本，即正文候选）；
+        # 显式排除 audit / tool，避免历史自定义工作流中的 tool 节点被误作候选。
         "content_nodes": [
             {
                 "node_id": nr["node_id"],
@@ -493,7 +637,6 @@ async def run_workflow(
             }
             for nr in node_results
             if nr.get("status") == "completed"
-            and nr.get("node_id")
-            in {n.get("id") for n in nodes if n.get("executor") == "main"}
+            and nr.get("node_id") in content_node_ids
         ],
     }

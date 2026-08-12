@@ -1,0 +1,89 @@
+"""VectorRepository 过滤分支 与 KnowledgeService 错误路径测试。
+
+覆盖：
+- search_external_books 的 doc_ids / author_ids / sample 过滤条件传递
+- search_public embedding 失败时抛具体 ValueError（而非静默空列表）
+"""
+
+from __future__ import annotations
+
+import pytest
+
+
+@pytest.mark.asyncio
+async def test_search_external_books_passes_author_ids_and_sample(monkeypatch):
+    """author_ids / sample 过滤条件应被构造进 SQL where（此前为死代码分支）。"""
+    from domains.knowledge.repository import VectorRepository
+
+    seen_stmt = {}
+
+    class FakeRows:
+        def all(self):
+            return []
+
+    class FakeSession:
+        async def execute(self, stmt):
+            seen_stmt["stmt"] = stmt
+            return FakeRows()
+
+    repo = VectorRepository(FakeSession())
+    await repo.search_external_books(
+        query_embedding=[0.1, 0.2],
+        rag_filter={
+            "query": "测试",
+            "doc_ids": ["1", "2", "abc"],
+            "author_ids": ["作者A"],
+            "sample": "设定",
+        },
+        top_k=5,
+        use_cache=False,
+    )
+    sql = str(seen_stmt["stmt"])
+    # doc_ids 非数字被过滤掉；author_ids 与 sample 进入 WHERE
+    assert "documents.id IN" in sql
+    assert "documents.author IN" in sql
+    assert "file_name" in sql
+    assert "LIKE" in sql.upper()
+
+
+@pytest.mark.asyncio
+async def test_search_public_embedding_failure_raises_specific_error(monkeypatch):
+    """embedding 生成失败时 search_public 应抛出带具体原因的 ValueError。"""
+    from domains.knowledge.service import KnowledgeService
+
+    class BoomEmbedding:
+        async def aembed_query(self, query):
+            raise RuntimeError("embedding 服务不可用")
+
+    class BoomFactory:
+        def __init__(self, config):
+            self.embedding = BoomEmbedding()
+
+    monkeypatch.setattr(
+        "domains.knowledge.service.ModelFactory", BoomFactory
+    )
+    service = KnowledgeService(object())
+    with pytest.raises(ValueError) as exc_info:
+        await service.search_public("测试查询", top_k=3, model_config={"x": 1})
+    assert "embedding 生成失败" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_search_public_without_model_config_raises(monkeypatch):
+    """未提供模型配置（无 embedding）时应抛出明确错误而非静默空列表。"""
+    from domains.knowledge.service import KnowledgeService
+
+    service = KnowledgeService(object())
+    with pytest.raises(ValueError) as exc_info:
+        await service.search_public("测试查询", top_k=3, model_config=None)
+    assert "embedding" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_search_public_blank_query_returns_empty(monkeypatch):
+    """空查询直接返回空列表，不抛错。"""
+    from domains.knowledge.service import KnowledgeService
+
+    service = KnowledgeService(object())
+    result = await service.search_public("   ", top_k=3, model_config=None)
+    assert result == []

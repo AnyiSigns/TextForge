@@ -32,7 +32,11 @@ async def search_public_knowledge(
 
     model_config = body.model_config_data
     service = KnowledgeService(session)
-    items = await service.search_public(query=body.query, top_k=body.top_k or 3, model_config=model_config)
+    try:
+        items = await service.search_public(query=body.query, top_k=body.top_k or 3, model_config=model_config)
+    except ValueError as exc:
+        # embedding 未配置/生成失败等可控原因 → 400 携带具体原因，不静默返回空结果
+        raise HTTPException(status_code=400, detail=str(exc))
 
     chunks = [
         KnowledgeChunk(

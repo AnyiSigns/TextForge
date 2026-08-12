@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class RagFilter(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
+    query: str | None = None
     doc_ids: list[str] | None = Field(default=None, alias="docIds")
     author_ids: list[str] | None = Field(default=None, alias="authorIds")
     sample: str | None = None

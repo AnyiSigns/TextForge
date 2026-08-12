@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import get_current
 from domains.agent.workflow_scheduler import run_workflow as scheduler_run_workflow
+from schema.request.common import PersonalRagHit
 from schema.response.workflow import ListWorkflowsResponse, WorkflowDetailResponse
 from schema.workflow import Workflow
 from shared.database import db_manager
@@ -32,6 +33,11 @@ class ExecuteWorkflowRequest(BaseModel):
     target_chapter_id: int | None = Field(
         default=None, alias="targetChapterId",
         description="目标章节 ID；传入后会把本章写作目标（标题/摘要/前章衔接/关联事件）注入各节点上下文",
+    )
+    # 个人库检索结果（{doc_name, content, score} 列表）：与 agent 对话路径同源，
+    # 经 scheduler_run_workflow 注入每个节点上下文（个人知识库增强写作）。
+    personal_rag_results: list[PersonalRagHit] | None = Field(
+        default=None, alias="personalRagResults", max_length=5
     )
 
 
@@ -133,6 +139,11 @@ async def run_workflow_endpoint(
                 model_config=model_config,
                 on_progress=on_progress,
                 target_chapter_id=body.target_chapter_id,
+                personal_rag_results=(
+                    [r.model_dump() for r in body.personal_rag_results]
+                    if body.personal_rag_results
+                    else None
+                ),
             )
         )
 
