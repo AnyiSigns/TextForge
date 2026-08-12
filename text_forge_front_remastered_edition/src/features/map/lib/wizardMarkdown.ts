@@ -1,5 +1,6 @@
-// 初始化向导 Step 1-6 的 Markdown 方案解析器。
+// 初始化向导 Step 0-6 的 Markdown 方案解析器。
 // 统一格式：
+// - Step 0 世界观：# 世界观方案 + 「文风基调/世界观/写作禁忌/自定义字段：」字段行
 // - Step 1 地点：# 地点（标题层级表达父子关系）+ 「类型/自定义字段：」字段行
 // - Step 2 角色：## 角色 + 「类型/别名/状态/首次出场/关系链/自定义字段：」字段行
 // - Step 3 情节线：# 线 / ## 线 + 「类型：」字段行
@@ -18,6 +19,70 @@ export function splitNames(text: string | undefined | null): string[] {
 }
 
 const FIELD_RE = /^(\S+?)[:：]\s*(.*)$/;
+
+/* ── Step 0：世界观（块字段：文风基调/世界观/写作禁忌/自定义字段） ── */
+
+export interface ParsedCreativeSetting {
+  name: string;
+  tone: string;
+  worldview: string;
+  taboos: string;
+  customFields: Record<string, string>;
+}
+
+/** 世界观方案顶层字段定义（单一数据源）：字段名 → 解析目标与是否多行续写 */
+const CREATIVE_FIELDS = {
+  文风基调: { target: 'tone', multiline: false },
+  世界观: { target: 'worldview', multiline: true },
+  写作禁忌: { target: 'taboos', multiline: true },
+  自定义字段: { target: 'custom', multiline: false },
+} as const;
+
+type CreativeTarget = (typeof CREATIVE_FIELDS)[keyof typeof CREATIVE_FIELDS]['target'];
+const CREATIVE_FIELD_KEYS = new Set(Object.keys(CREATIVE_FIELDS));
+
+export function parseCreativeSetting(markdown: string): ParsedCreativeSetting {
+  const out: ParsedCreativeSetting = { name: '', tone: '', worldview: '', taboos: '', customFields: {} };
+  let current: CreativeTarget | null = null;
+  let currentMulti = false;
+
+  for (const raw of markdown.split('\n')) {
+    const line = raw.trimEnd();
+    const hm = line.match(/^#\s*世界观方案[:：]\s*(.+)$/);
+    if (hm) {
+      const { title } = splitTitleSummary(hm[1]);
+      out.name = title;
+      current = null;
+      currentMulti = false;
+      continue;
+    }
+    // 其他任意标题 → 结束当前字段块
+    if (/^#{1,6}\s/.test(line)) {
+      current = null;
+      currentMulti = false;
+      continue;
+    }
+    if (line.trim() === '') continue;
+
+    const fm = line.match(FIELD_RE);
+    if (fm && CREATIVE_FIELD_KEYS.has(fm[1])) {
+      const def = CREATIVE_FIELDS[fm[1] as keyof typeof CREATIVE_FIELDS];
+      current = def.target;
+      currentMulti = def.multiline;
+      if (def.target !== 'custom') out[def.target] = fm[2].trim();
+      continue;
+    }
+
+    if (current && currentMulti) {
+      const target = current as 'worldview' | 'taboos';
+      out[target] += out[target] ? `\n${line.trim()}` : line.trim();
+    } else if (current === 'custom') {
+      const kvm = line.match(FIELD_RE);
+      if (kvm) out.customFields[kvm[1].trim()] = kvm[2].trim();
+    }
+  }
+  return out;
+}
 
 /* ── Step 1：地点（标题层级表达父子关系 + 块字段） ── */
 

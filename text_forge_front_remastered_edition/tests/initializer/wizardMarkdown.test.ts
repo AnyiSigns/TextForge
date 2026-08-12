@@ -1,7 +1,52 @@
 // tests/initializer/wizardMarkdown.test.ts
-// 初始化向导 Markdown 解析器纯单测：验证 Step 1 地点 / Step 2 角色 的解析契约。
+// 初始化向导 Markdown 解析器纯单测：验证 Step 0 世界观 / Step 1 地点 / Step 2 角色 的解析契约。
 import { describe, it, expect } from 'vitest';
-import { parseLocations, parseCharacters } from '@/features/map/lib/wizardMarkdown';
+import { parseLocations, parseCharacters, parseCreativeSetting } from '@/features/map/lib/wizardMarkdown';
+
+describe('parseCreativeSetting（Step 0 世界观）', () => {
+  it('方案标题 + 单行字段 + 自定义字段块', () => {
+    const out = parseCreativeSetting([
+      '# 世界观方案：星辰纪元',
+      '文风基调：史诗奇幻、宏大叙事',
+      '世界观：星辰之力驱动的奇幻世界',
+      '写作禁忌：禁止现代科技；禁止降智反派',
+      '自定义字段：',
+      '战力体系：星辰等级制',
+      '势力：三大公会',
+    ].join('\n'));
+
+    expect(out.name).toBe('星辰纪元');
+    expect(out.tone).toBe('史诗奇幻、宏大叙事');
+    expect(out.worldview).toBe('星辰之力驱动的奇幻世界');
+    expect(out.taboos).toBe('禁止现代科技；禁止降智反派');
+    expect(out.customFields).toEqual({ 战力体系: '星辰等级制', 势力: '三大公会' });
+  });
+
+  it('世界观/写作禁忌多行续写合并', () => {
+    const out = parseCreativeSetting([
+      '# 世界观方案：星辰纪元',
+      '文风基调：史诗奇幻',
+      '世界观：',
+      '星辰之力驱动的奇幻世界。',
+      '三大公会共治天下，星门遗迹遍布大陆。',
+      '写作禁忌：',
+      '禁止现代科技',
+      '禁止降智反派',
+      '自定义字段：',
+      '战力体系：星辰等级制',
+    ].join('\n'));
+
+    expect(out.worldview).toContain('星辰之力驱动的奇幻世界');
+    expect(out.worldview).toContain('三大公会共治天下');
+    expect(out.taboos).toContain('禁止现代科技');
+    expect(out.taboos).toContain('禁止降智反派');
+    expect(out.customFields).toEqual({ 战力体系: '星辰等级制' });
+  });
+
+  it('空文本解析为空字段', () => {
+    expect(parseCreativeSetting('')).toEqual({ name: '', tone: '', worldview: '', taboos: '', customFields: {} });
+  });
+});
 
 describe('parseLocations（Step 1 地点）', () => {
   it('标题层级表达父子关系（多叉树：一父多子）', () => {

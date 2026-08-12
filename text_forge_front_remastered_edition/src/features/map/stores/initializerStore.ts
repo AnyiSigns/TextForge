@@ -2,12 +2,6 @@ import { create } from 'zustand';
 import { useEntityStore } from './entityStore';
 import { saveStepText } from '@/features/map/wizard/saveStepText';
 
-interface Candidate {
-  id: string;
-  title: string;
-  fields: Array<{ key: string; value: string }>;
-}
-
 const STEP_LABELS = [
   '世界观', '地点', '角色', '情节线', '大纲', '事件', '伏笔',
 ];
@@ -15,9 +9,6 @@ const STEP_LABELS = [
 interface InitializerState {
   isOpen: boolean;
   currentStep: number;
-  candidates: Candidate[][];
-  lockedIds: Set<string>;
-  confirmedIds: Set<string>;
   saving: boolean;
   error: string | null;
   generating: boolean;
@@ -38,19 +29,9 @@ interface InitializerState {
   clearError: () => void;
 }
 
-function generateCandidates(step: number): Candidate[] {
-  // 不再内置硬编码候选：初始为空，候选全部由 AI 生成（regenerateCandidates 调后端 wizard/generate），
-  // 避免用户误锁假数据写入真实书籍。
-  void step;
-  return [];
-}
-
 export const useInitializerStore = create<InitializerState>((set, get) => ({
   isOpen: false,
   currentStep: 0,
-  candidates: Array.from({ length: 7 }, (_, i) => generateCandidates(i)),
-  lockedIds: new Set<string>(),
-  confirmedIds: new Set<string>(),
   saving: false,
   error: null,
   generating: false,
@@ -126,7 +107,7 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
   },
 
   regenerateCandidates: async (extraInstruction?: string) => {
-    const { currentStep, candidates, lockedIds, confirmedIds } = get();
+    const { currentStep } = get();
     const { useBookDetailStore } = await import('@/app/(dashboard)/books/[id]/store');
     const bookId = useBookDetailStore.getState().bookId;
     if (!bookId) {
@@ -134,130 +115,73 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
       return;
     }
 
-    // 收集前序步骤中 locked/confirmed 的卡片
-    const previousCards: Array<{ step: number; title: string; fields: Array<{ key: string; value: string }> }> = [];
-    for (let s = 0; s < currentStep; s++) {
-      for (const c of candidates[s]) {
-        if (lockedIds.has(c.id) || confirmedIds.has(c.id)) {
-          previousCards.push({ step: s, title: c.title, fields: c.fields });
-        }
-      }
-    }
-
-    // 当前步已锁定的标题，传给后端避免重复生成
-    const excludeTitles = candidates[currentStep]
-      .filter((c) => lockedIds.has(c.id) || confirmedIds.has(c.id))
-      .map((c) => c.title);
-
-    set({ generating: true, streaming: currentStep >= 1, error: null });
-
-    // Step 1-6：流式生成单份 Markdown 方案，文本累积到 stepText
-    if (currentStep >= 1) {
-      const controller = new AbortController();
-      set({ abortRef: controller });
-      try {
-        const { streamGenerateMarkdown } = await import('@/shared/api/wizard');
-        // 重新生成：清除该步骤已保存标记（允许再次落库新文本）
+    const controller = new AbortController();
+    set({ generating: true, streaming: true, error: null, abortRef: controller });
+    // 节流合并 delta 更新，避免每个 SSE 行都触发 zustand set 造成高频重渲染；
+    // 声明在 try 外，使 finally 在异常/中止路径也能取消定时器
+    let pendingText = '';
+    let flushTimer: ReturnType<typeof setTimeout> | null = null;
+    const flushPending = () => {
+      if (flushTimer) clearTimeout(flushTimer);
+      if (pendingText) {
+        const chunk = pendingText;
+        pendingText = '';
         set((s) => ({
-          stepText: { ...s.stepText, [currentStep]: '' },
-          savedSteps: new Set([...s.savedSteps].filter((x) => x !== currentStep)),
+          stepText: { ...s.stepText, [currentStep]: (s.stepText[currentStep] ?? '') + chunk },
         }));
-        // 节流合并 delta 更新，避免每个 SSE 行都触发 zustand set 造成高频重渲染
-        let pendingText = '';
-        let flushTimer: ReturnType<typeof setTimeout> | null = null;
-        const flushPending = () => {
-          if (pendingText) {
-            const chunk = pendingText;
-            pendingText = '';
+      }
+      flushTimer = null;
+    };
+    try {
+      const { streamGenerateMarkdown } = await import('@/shared/api/wizard');
+      // 重新生成：清除该步骤已保存标记（允许再次落库新文本）
+      set((s) => ({
+        stepText: { ...s.stepText, [currentStep]: '' },
+        savedSteps: new Set([...s.savedSteps].filter((x) => x !== currentStep)),
+      }));
+      const fullText = await streamGenerateMarkdown(bookId, currentStep, {
+        extraInstruction,
+        signal: controller.signal,
+        onEvent: (ev) => {
+          if (ev.type === 'delta' && ev.text) {
+            pendingText += ev.text;
+            if (!flushTimer) flushTimer = setTimeout(flushPending, 100);
+          }
+          if (ev.type === 'error' && ev.message) set({ error: ev.message });
+        },
+      });
+      flushPending();
+      if (fullText) {
+        set((s) => ({ stepText: { ...s.stepText, [currentStep]: fullText } }));
+        // Step 0：解析 Markdown 方案填入创意设定表单（表单仍是可编辑源，下一步才落库）
+        if (currentStep === 0) {
+          const { parseCreativeSetting } = await import('@/features/map/lib/wizardMarkdown');
+          const parsed = parseCreativeSetting(fullText);
+          if (parsed.worldview) {
             set((s) => ({
-              stepText: { ...s.stepText, [currentStep]: (s.stepText[currentStep] ?? '') + chunk },
+              creativeForm: {
+                name: parsed.name || s.creativeForm.name,
+                tone: parsed.tone || s.creativeForm.tone,
+                worldview: parsed.worldview,
+                taboos: parsed.taboos || s.creativeForm.taboos,
+                customFields: Object.keys(parsed.customFields).length > 0
+                  ? Object.entries(parsed.customFields).map(([key, value]) => ({ key, value, _uid: crypto.randomUUID() }))
+                  : s.creativeForm.customFields,
+              },
             }));
           }
-          flushTimer = null;
-        };
-        const fullText = await streamGenerateMarkdown(bookId, currentStep, {
-          extraInstruction,
-          previousCards,
-          signal: controller.signal,
-          onEvent: (ev) => {
-            if (ev.type === 'delta' && ev.text) {
-              pendingText += ev.text;
-              if (!flushTimer) flushTimer = setTimeout(flushPending, 100);
-            }
-            if (ev.type === 'error' && ev.message) set({ error: ev.message });
-          },
-        });
-        if (flushTimer) clearTimeout(flushTimer);
-        flushPending();
-        if (fullText) {
-          set((s) => ({ stepText: { ...s.stepText, [currentStep]: fullText } }));
         }
-      } catch (e) {
-        // AbortError 为用户关闭面板/中止，不视为错误
-        if ((e as Error)?.name !== 'AbortError') {
-          const msg = e instanceof Error ? e.message : 'AI 生成失败，请检查模型配置后重试';
-          set({ error: msg });
-        }
-      } finally {
-        set({ generating: false, streaming: false, abortRef: null });
       }
-      return;
-    }
-
-    try {
-      const { generateWizardCards } = await import('@/shared/api/wizard');
-      const cards = await generateWizardCards(bookId, currentStep, previousCards, excludeTitles, extraInstruction);
-
-      // Step 0: 取第一个卡片填入表单
-      if (currentStep === 0 && cards.length > 0) {
-        const first = cards[0];
-        const form = get().creativeForm;
-        const name = first.title || '';
-        const tone = first.fields.find((f) => f.key === '文风基调')?.value ?? '';
-        const worldview = first.fields.find((f) => f.key === '世界观')?.value ?? '';
-        const taboos = first.fields.find((f) => f.key === '写作禁忌')?.value ?? '';
-        const customRaw = first.fields.find((f) => f.key === '自定义字段')?.value ?? '';
-
-        let customFields: Array<{ key: string; value: string; _uid?: string }> = [];
-        try {
-          const parsed = JSON.parse(customRaw);
-          if (Array.isArray(parsed)) {
-            customFields = parsed.map((x: Record<string, string>) => ({ key: x.key || '', value: x.value || '', _uid: crypto.randomUUID() }));
-          }
-        } catch {
-          // 文本格式："键：值" 每行
-          customFields = customRaw
-            .split('\n')
-            .map((line) => {
-              const idx = line.indexOf('：') >= 0 ? line.indexOf('：') : line.indexOf(':');
-              if (idx >= 0) return { key: line.slice(0, idx).trim(), value: line.slice(idx + 1).trim(), _uid: crypto.randomUUID() };
-              return null;
-            })
-            .filter((x): x is { key: string; value: string; _uid: string } => x !== null && x.key.length > 0);
-        }
-        set({
-          generating: false,
-          creativeForm: { name, tone, worldview, taboos, customFields: customFields.length > 0 ? customFields : form.customFields },
-        });
-        return;
-      }
-
-      const mapped: Candidate[] = cards.map((c, i) => ({
-        id: `${currentStep}-ai-${Date.now()}-${i}`,
-        title: c.title,
-        fields: c.fields,
-      }));
-
-      const newCandidates = [...get().candidates];
-      // 保留已锁定/确认的卡片，新生成的追加到末尾
-      const kept = newCandidates[currentStep].filter(
-        (c) => lockedIds.has(c.id) || confirmedIds.has(c.id),
-      );
-      newCandidates[currentStep] = [...kept, ...mapped];
-      set({ candidates: newCandidates, generating: false });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'AI 生成失败，请检查模型配置后重试';
-      set({ generating: false, error: msg });
+      // AbortError 为用户关闭面板/中止，不视为错误
+      if ((e as Error)?.name !== 'AbortError') {
+        const msg = e instanceof Error ? e.message : 'AI 生成失败，请检查模型配置后重试';
+        set({ error: msg });
+      }
+    } finally {
+      // 任何退出路径（成功/异常/中止）都取消节流定时器，避免残留文本在流关闭后写入 stepText
+      if (flushTimer) clearTimeout(flushTimer);
+      set({ generating: false, streaming: false, abortRef: null });
     }
   },
 
@@ -292,4 +216,3 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
 }));
 
 export { STEP_LABELS };
-export type { Candidate };

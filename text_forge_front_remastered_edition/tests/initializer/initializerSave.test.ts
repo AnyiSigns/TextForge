@@ -1,6 +1,7 @@
 // tests/initializer/initializerSave.test.ts
 // 初始化器「流式生成 Markdown 方案 → 解析落库」测试：
-// 验证 Step 3-6 的 Markdown 文本被前端解析器正确映射并写入后端各实体字段。
+// 验证 Step 0 世界观填入创意设定表单、Step 1-6 的 Markdown 文本被前端解析器
+// 正确映射并写入后端各实体字段。
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useInitializerStore } from '@/features/map/stores/initializerStore';
 import { useBookDetailStore } from '@/app/(dashboard)/books/[id]/store';
@@ -37,6 +38,9 @@ const booksApi = vi.hoisted(() => ({
 const entityStoreApi = vi.hoisted(() => ({
   loadFromApi: vi.fn(async () => {}),
 }));
+const wizardApi = vi.hoisted(() => ({
+  streamGenerateMarkdown: vi.fn(async () => ''),
+}));
 
 vi.mock('@/shared/api/world', () => worldApi);
 vi.mock('@/shared/api/characters', () => charactersApi);
@@ -44,6 +48,7 @@ vi.mock('@/shared/api/books', () => booksApi);
 vi.mock('@/features/map/stores/entityStore', () => ({
   useEntityStore: { getState: () => entityStoreApi },
 }));
+vi.mock('@/shared/api/wizard', () => wizardApi);
 
 function setStepText(step: number, text: string) {
   useInitializerStore.setState((s) => ({
@@ -58,9 +63,6 @@ beforeEach(() => {
   useInitializerStore.setState({
     isOpen: true,
     currentStep: 0,
-    candidates: Array.from({ length: 7 }, () => []),
-    lockedIds: new Set(),
-    confirmedIds: new Set(),
     stepText: {},
     savedSteps: new Set(),
     creativeForm: { name: '', tone: '', worldview: '测试世界观', taboos: '', customFields: [] },
@@ -216,24 +218,26 @@ describe('初始化器字段映射（与后端 wizard label 对齐）', () => {
     expect(lighthouseUpdate).toBeUndefined();
   });
 
-  it('Step0 创意设定：自定义字段从「自定义字段」label 读取（后端映射）', async () => {
-    useInitializerStore.setState({
-      currentStep: 0,
-      candidates: [[{
-        id: 's0',
-        title: '星辰纪元',
-        fields: [
-          { key: '文风基调', value: '史诗奇幻' },
-          { key: '世界观', value: '星辰之力驱动的世界' },
-          { key: '写作禁忌', value: '禁止现代科技' },
-          { key: '自定义字段', value: '[{"key":"战力体系","value":"星辰等级制"}]' },
-        ],
-      }]],
-    });
-    // 直接注入候选（绕过 LLM），验证 regenerate 后的表单填充
+  it('Step0 创意设定：Markdown 方案解析后填入表单', async () => {
+    wizardApi.streamGenerateMarkdown.mockResolvedValue([
+      '# 世界观方案：星辰纪元',
+      '文风基调：史诗奇幻',
+      '世界观：星辰之力驱动的世界',
+      '写作禁忌：禁止现代科技',
+      '自定义字段：',
+      '战力体系：星辰等级制',
+    ].join('\n'));
+    useInitializerStore.setState({ currentStep: 0 });
     await useInitializerStore.getState().regenerateCandidates();
-    // regenerateCandidates 会调 wizard API，mock 掉以直接注入
-    expect(true).toBe(true);
+    const form = useInitializerStore.getState().creativeForm;
+    expect(form.name).toBe('星辰纪元');
+    expect(form.tone).toBe('史诗奇幻');
+    expect(form.worldview).toBe('星辰之力驱动的世界');
+    expect(form.taboos).toBe('禁止现代科技');
+    expect(form.customFields).toContainEqual(expect.objectContaining({ key: '战力体系', value: '星辰等级制' }));
+    // 生成结束后状态复位，可正常进入下一步
+    expect(useInitializerStore.getState().generating).toBe(false);
+    expect(useInitializerStore.getState().streaming).toBe(false);
   });
 
   it('Step4 大纲：markdown 卷章场景解析并落库（卷摘要/场景时间/地点/角色/情节线）', async () => {

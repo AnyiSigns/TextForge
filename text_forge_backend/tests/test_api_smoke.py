@@ -44,7 +44,7 @@ def test_core_routes_registered():
         "/api/agent/start",
         "/api/agent/respond",
         "/api/agent/stream/{thread_id}",
-        "/api/wizard/generate",
+        "/api/wizard/stream-generate",
         "/api/workflows/",
         # 剧情流
         "/api/story-flows/",

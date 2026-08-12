@@ -1,27 +1,6 @@
 import { fetchModelConfig } from './models';
-import { apiClient, API_BASE } from './client';
+import { API_BASE } from './client';
 import { useAuthStore } from '@/shared/stores/authStore';
-
-export interface CardField {
-  key: string;
-  value: string | string[];
-}
-
-export interface Card {
-  title: string;
-  fields: CardField[];
-  card_type?: string;
-}
-
-export interface WizardCard {
-  title: string;
-  fields: Array<{ key: string; value: string }>;
-}
-
-export interface WizardGenerateResponse {
-  step: number;
-  cards: WizardCard[];
-}
 
 async function getModelConfigData() {
   try {
@@ -45,30 +24,6 @@ async function getModelConfigData() {
   }
 }
 
-/**
- * 调用后端 AI 为初始化向导生成候选卡片。
- * Step 0: 返回表单填充数据（前端取第一项填入表单）。
- * Step 1-6: 返回候选卡片列表。
- */
-export async function generateWizardCards(
-  bookId: number,
-  step: number,
-  previousCards?: Array<{ step: number; title: string; fields: Array<{ key: string; value: string }> }>,
-  excludeTitles?: string[],
-  extraInstruction?: string,
-): Promise<WizardCard[]> {
-  const modelConfigData = await getModelConfigData();
-  const { data } = await apiClient.post<WizardGenerateResponse>('/wizard/generate', {
-    book_id: bookId,
-    step,
-    previous_cards: previousCards || [],
-    exclude_titles: excludeTitles || [],
-    model_config_data: modelConfigData,
-    extra_instruction: extraInstruction,
-  });
-  return data.cards ?? [];
-}
-
 export interface WizardStreamEvent {
   type: 'meta' | 'delta' | 'volume_end' | 'done' | 'error';
   text?: string;
@@ -81,15 +36,13 @@ export interface WizardStreamEvent {
 
 export interface StreamGenerateOptions {
   extraInstruction?: string;
-  previousCards?: Array<{ step: number; title: string; fields: Array<{ key: string; value: string }> }>;
   onEvent?: (ev: WizardStreamEvent) => void;
   signal?: AbortSignal;
 }
 
 /**
- * 流式生成 Markdown 单份方案（Step 1-6，SSE）。
+ * 流式生成 Markdown 单份方案（Step 0-6，SSE）。
  * Step 4 大纲后端按卷分批生成，其余步骤单次生成，文本逐行推送。
- * Step 1 地点 / Step 2 角色 同样使用本接口（一次生成完整方案，前端解析落库）。
  */
 export async function streamGenerateMarkdown(
   bookId: number,
@@ -110,7 +63,6 @@ export async function streamGenerateMarkdown(
       step,
       model_config_data: modelConfigData,
       extra_instruction: opts.extraInstruction,
-      previous_cards: opts.previousCards || [],
     }),
   });
   if (!resp.ok || !resp.body) {
