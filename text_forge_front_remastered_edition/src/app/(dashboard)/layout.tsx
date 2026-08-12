@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import {
   BookOpen, Database, Settings,
   Workflow, ChevronsLeft, LogOut,
@@ -27,11 +27,10 @@ const menuGroups = [
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
-  const { isAuthenticated, hasHydrated } = useAuthStore();
+  const { hasHydrated } = useAuthStore();
 
   const [userName, setUserName] = useState('');
   const [userEmail, setUserEmail] = useState('');
@@ -44,12 +43,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [sidebarDragging, setSidebarDragging] = useState(false);
   const [prevPathname, setPrevPathname] = useState(pathname);
   const agentActive = useBookDetailStore((s) => s.agentOpen);
-
-  useEffect(() => {
-    if (hasHydrated && !isAuthenticated) {
-      router.replace('/login');
-    }
-  }, [hasHydrated, isAuthenticated, router]);
 
   useEffect(() => {
     userApi.fetchProfile().then((p) => {
