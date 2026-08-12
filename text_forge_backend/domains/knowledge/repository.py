@@ -37,7 +37,8 @@ class VectorRepository:
             use_cache: 是否使用 Redis 缓存。
 
         Returns:
-            检索结果列表，每个元素包含 doc_id、doc_title、doc_author、content、distance。
+            检索结果列表，每个元素包含 doc_id、doc_title、doc_author、content、distance、score
+            （score = 1 - distance，供上下文格式化直接消费）。
         """
         query_text = rag_filter.get("query", "")
         cache_hit = None
@@ -82,15 +83,18 @@ class VectorRepository:
         rows = result.all()
         items = []
         for row in rows:
+            distance = float(row.distance) if row.distance is not None else 0.0
             items.append(
                 {
                     "doc_id": row.Chunk.doc_id,
                     "doc_title": row.doc_title,
                     "doc_author": row.doc_author,
                     "content": row.content,
-                    "distance": (
-                        float(row.distance) if row.distance is not None else 0.0
-                    ),
+                    "distance": distance,
+                    # 相关度 = 1 - 余弦距离：与 world_tools search(mode=docs)
+                    # 的换算一致，保证节点级 RAG 经 _format_external_documents
+                    # 渲染出真实相关度而非恒 0。
+                    "score": 1 - distance,
                 }
             )
 

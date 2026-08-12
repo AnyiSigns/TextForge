@@ -177,7 +177,11 @@ def _build_world_tools(session_factory, model_config: dict | None = None):
                     "doc_title": item.get("doc_title"),
                     "doc_author": item.get("doc_author"),
                     "content": item.get("content"),
-                    "score": 1 - float(item.get("distance", 0) or 0),
+                    # 相关度权威来源已下沉到 search_external_books（score=1-distance）；
+                    # distance 兜底兼容旧版 Redis 缓存中未含 score 的条目。
+                    "score": item.get(
+                        "score", 1 - float(item.get("distance", 0) or 0)
+                    ),
                 }
                 for item in items
             ]

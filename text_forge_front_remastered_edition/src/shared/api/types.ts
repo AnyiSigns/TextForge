@@ -301,8 +301,4 @@ export interface SSEEvent {
 
 export interface BookContextConfig {
   character_ids: number[];
-  chapter_content_ids: number[];
-  chapter_summary_ids: number[];
-  volume_ids: number[];
-  outline_node_ids: number[];
 }

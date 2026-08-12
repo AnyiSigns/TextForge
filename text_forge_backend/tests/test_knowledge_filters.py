@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 
@@ -87,3 +89,40 @@ async def test_search_public_blank_query_returns_empty(monkeypatch):
     service = KnowledgeService(object())
     result = await service.search_public("   ", top_k=3, model_config=None)
     assert result == []
+
+
+@pytest.mark.asyncio
+async def test_search_external_books_returns_score_from_distance():
+    """YEL-1 回归：检索结果必须同时带 score=1-distance。
+
+    节点级 RAG 与个人库注入都经 _format_external_documents 渲染相关度，
+    只返回 distance 会使其恒为 0.0%。
+    """
+    from domains.knowledge.repository import VectorRepository
+
+    class FakeRows:
+        def all(self):
+            return [
+                SimpleNamespace(
+                    Chunk=SimpleNamespace(doc_id=1),
+                    doc_title="设定集",
+                    doc_author="作者A",
+                    content="世界观",
+                    distance=0.2,
+                )
+            ]
+
+    class FakeSession:
+        async def execute(self, stmt):
+            return FakeRows()
+
+    repo = VectorRepository(FakeSession())
+    items = await repo.search_external_books(
+        query_embedding=[0.1, 0.2],
+        rag_filter={"query": "世界观"},
+        top_k=3,
+        use_cache=False,
+    )
+    assert len(items) == 1
+    assert items[0]["score"] == pytest.approx(0.8)
+    assert items[0]["distance"] == pytest.approx(0.2)

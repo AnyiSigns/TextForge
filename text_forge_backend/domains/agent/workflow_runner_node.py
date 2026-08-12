@@ -38,7 +38,10 @@ async def _finish_with_candidate(
     from langchain_core.messages import AIMessage
 
     content_nodes = result.get("content_nodes") or []
-    target = result.get("target_chapter_id")
+    # 候选文案里的章节号直接取入参：run_workflow / execute_node 返回体均不含
+    # target_chapter_id，此前用 result.get(...) 恒为 None，逐章生成时回复
+    # 永远显示"本章"而丢失"第X章"信息。
+    target = target_chapter_id
     logger.info(
         f"[workflow_runner] 收尾候选确认: status={result.get('status')} "
         f"content_nodes={len(content_nodes)} target_chapter_id={target} "
@@ -355,6 +358,9 @@ async def workflow_runner_node(state: dict[str, Any]) -> dict[str, Any]:
                         # 任务 31：单节点重跑透传 tokens 与耗时（execute_node 返回 tokens）
                         "tokens": res.get("tokens", 0),
                         "elapsed_ms": _node_elapsed_ms,
+                        # 透传起始上游输出：审核卡重跑该节点时，streaming.py 据此
+                        # 恢复祖先节点输出，避免单节点续跑丢失上游上下文。
+                        "upstream_outputs": pending.get("upstream_outputs"),
                     }
                     # 单节点执行：executor 缺省/auto/main 节点输出即正文候选，
                     # 与 run_workflow 的 content_nodes 判定一致（audit/tool 排除）

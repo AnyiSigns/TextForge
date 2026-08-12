@@ -299,6 +299,15 @@ async def stream_agent(
                         queued: dict = {"workflow_id": wf_id, "node_id": nid}
                         if tcid is not None:
                             queued["target_chapter_id"] = tcid
+                        # 重跑必须携带祖先节点输出：run_workflow 返回的 upstream_outputs
+                        # 是到失败节点为止的全部已执行节点输出（不含失败节点自身），
+                        # 若不透传，汇聚类节点（如总编仲裁官）重跑时丢失上游上下文。
+                        # workflow_result 随即在下文被清空，故须在此先取出。
+                        _upstream = (state_data.get("workflow_result") or {}).get(
+                            "upstream_outputs"
+                        )
+                        if _upstream:
+                            queued["upstream_outputs"] = _upstream
                         if review_decision == "accept":
                             # 用户接受当前输出：重跑该节点但跳过自动质量审计，直接作为候选呈现
                             queued["skip_audit"] = True

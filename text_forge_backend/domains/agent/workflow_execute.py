@@ -544,13 +544,11 @@ async def run_workflow(
         node_id = node_id_map.get(id(node)) or _resolve_node_id(node, 0)
         node_label = node.get("label") or node.get("name") or node_id
 
-        on_progress(
-            {
-                "event": "node_start",
-                "node_id": node_id,
-                "label": node_label,
-            }
-        )
+        # node_start / node_end 统一由 execute_node 经 on_progress 推送，
+        # 此处不再重复发送——否则 /run 直跑端点（on_progress 入 SSE 队列）会收到
+        # 两份 start/end；agent 路径 on_progress 为空操作，不受影响。
+        # node_fail 仍在此兜底：execute_node 的 needs_review 分支只经
+        # stream_writer 发 node_fail（agent 图内有效），/run 路径需由这里补发。
 
         # 上游全量传递：汇聚节点（如 chief「阅读全部输出」）需要看到所有已执行
         # 祖先节点的输出，而非仅直接前驱；writer 也能拿到 strategist 策划书。
@@ -599,15 +597,6 @@ async def run_workflow(
             }
 
         upstream_outputs[node_id] = result["output"]
-        on_progress(
-            {
-                "event": "node_end",
-                "node_id": node_id,
-                "label": node_label,
-                "output_preview": result["output"][:500],
-                "tokens": result.get("tokens", 0),
-            }
-        )
         node_results.append(
             {
                 "node_id": node_id,

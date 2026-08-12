@@ -471,6 +471,62 @@ async def test_run_workflow_injects_seed_upstream_outputs(monkeypatch):
         assert upstream.get("web_search") == "联网搜索结果正文"
 
 
+@pytest.mark.asyncio
+async def test_run_workflow_emits_single_node_start_and_end(monkeypatch):
+    """YEL-2 回归：node_start/node_end 由 execute_node 统一推送，run_workflow 不得重复发送。"""
+    wf_workflow = SimpleNamespace(
+        id="wf1",
+        name="测试工作流",
+        user_id=1,
+        nodes=[
+            {"id": "n1", "label": "节点1", "executor": "main", "system_prompt": "写正文"},
+        ],
+        edges=[],
+    )
+    events: list[dict] = []
+
+    async def fake_execute_node(**kwargs):
+        on_progress = kwargs.get("on_progress")
+        if on_progress:
+            on_progress({"event": "node_start", "node_id": "n1", "label": "节点1"})
+            on_progress({"event": "node_stream", "node_id": "n1", "token": "内", "index": 1})
+            on_progress({"event": "node_end", "node_id": "n1", "output_preview": "内容", "tokens": 1})
+        return {"success": True, "output": "内容", "needs_review": False, "quality_check": {"passed": True}, "tokens": 1}
+
+    monkeypatch.setattr(we, "db_manager", SimpleNamespace(with_db=lambda: FakeWFDB(wf_workflow)))
+    monkeypatch.setattr(we, "execute_node", fake_execute_node)
+
+    result = await wf.run_workflow(
+        workflow_id="wf1",
+        book_id=1,
+        model_config={},
+        on_progress=events.append,
+    )
+    assert result["status"] == "completed"
+    kinds = [e["event"] for e in events]
+    assert kinds.count("node_start") == 1
+    assert kinds.count("node_end") == 1
+    assert kinds.count("node_stream") == 1
+
+
+@pytest.mark.asyncio
+async def test_finish_with_candidate_uses_target_chapter_id():
+    """YEL-5 回归：候选确认文案应显示真实章节号而非恒为"本章"。"""
+    from domains.agent import workflow_runner_node as wrn
+
+    result = {
+        "status": "completed",
+        "content_nodes": [
+            {"node_id": "writer", "node_label": "执笔写手", "output": "正文", "summary": "正文摘要", "tokens": 5},
+        ],
+    }
+    update = await wrn._finish_with_candidate(result, target_chapter_id=7)
+    reply = update["messages"][0].content
+    assert "第7章" in reply
+    assert "候选1" in reply
+    assert "本章" not in reply
+
+
 # ---------------------------------------------------------------------------
 # 节点级 RAG：rag_filter / rag_top_k 消费
 # ---------------------------------------------------------------------------

@@ -40,10 +40,11 @@ def auto_allocate_context(system_prompt: str) -> list[str]:
 
 
 async def _load_context_pool(book_id: int) -> dict[str, list[int]]:
-    """加载书籍上下文池。
+    """加载书籍上下文池（当前仅角色范围过滤生效）。
 
-    若书籍未配置任何上下文选择（全部为空），则默认加载本书全部章节与卷，
-    保证章节摘要/正文/大纲在未手动配置时也能进入工作流上下文。
+    书籍未配置角色选择时返回空角色列表，表示不做角色过滤（全量）。
+    章节/卷/大纲范围字段已随审查移除——outline 树与 previous_chapters
+    始终全量加载，本章场景由 target_chapter_id 精确定位，与池无关。
 
     Args:
         book_id: 书籍 ID。
@@ -56,33 +57,7 @@ async def _load_context_pool(book_id: int) -> dict[str, list[int]]:
     async with db_manager.with_db() as session:
         repo = BookContextConfigRepository(session)
         config = await repo.get_config(book_id)
-        if any(config.values()):
-            return config
-
-        from models.book import Chapter, Volume
-        from sqlalchemy import select
-
-        chapters = (
-            (
-                await session.execute(
-                    select(Chapter)
-                    .join(Volume, Volume.id == Chapter.volume_id)
-                    .where(Volume.book_id == book_id)
-                    .order_by(Volume.sort_order, Chapter.sort_order)
-                )
-            )
-            .scalars()
-            .all()
-        )
-        chapter_ids = [c.id for c in chapters]
-        volume_ids = list(dict.fromkeys(c.volume_id for c in chapters))
-        return {
-            "character_ids": [],
-            "chapter_content_ids": chapter_ids,
-            "chapter_summary_ids": chapter_ids,
-            "volume_ids": volume_ids,
-            "outline_node_ids": chapter_ids,
-        }
+        return config
 
 
 def _format_context_field(
