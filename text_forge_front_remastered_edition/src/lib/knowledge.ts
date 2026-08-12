@@ -43,7 +43,7 @@ export const ragClient = {
       id, name: file.name, status: 'indexing', createdAt: new Date().toISOString(),
       scope: 'personal', uploaderId: userId, uploaderName: userName, content,
     };
-    // 任务 20：先落「索引中」，索引完成才置 indexed，失败置 failed 并上抛，
+    // 先落「索引中」，索引完成才置 indexed，失败置 failed 并上抛，
     // 避免索引失败仍显示已索引（检索空手用户无感知）。
     // 空/不可读内容（二进制、PDF、读取失败）indexDocument 会直接 return 不抛错，
     // 必须在此显式判失败，否则 0 chunk 仍显示「已索引」。

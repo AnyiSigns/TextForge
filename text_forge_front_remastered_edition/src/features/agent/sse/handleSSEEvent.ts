@@ -51,7 +51,7 @@ export function createSSEHandler(ctx: SSEHandlerContext): (event: SSEEvent) => v
         break;
       }
       case 'agent_reasoning':
-        // 任务 23：思考内容流式累积进独立气泡（不写入会话历史，只做 UI 展示）
+        // 思考内容流式累积进独立气泡（不写入会话历史，只做 UI 展示）
         ctx.reasoningBufferRef.current += event.token || '';
         ctx.setAgentReasoning(ctx.reasoningBufferRef.current);
         ctx.setAgentStatus({ kind: 'thinking' });
@@ -82,7 +82,7 @@ export function createSSEHandler(ctx: SSEHandlerContext): (event: SSEEvent) => v
         break;
       }
       case 'tool_end': {
-        // 任务 25：优先用事件里的 tool_call_id 配对；兼容旧后端（不带 id）时
+        // 优先用事件里的 tool_call_id 配对；兼容旧后端（不带 id）时
         // 按最近记录的 tool_start 工具名回退。success=false 表示工具失败。
         assertToolEnd(event as unknown as Record<string, unknown>);
         const toolName = event.tool || ctx.currentToolNameRef.current;
@@ -152,7 +152,7 @@ export function createSSEHandler(ctx: SSEHandlerContext): (event: SSEEvent) => v
         const reason = event.reason || '';
         ctx.upsertNodeStatus({ nodeId, label, status: 'failed', reason });
         ctx.updateNodeMessage(nodeId, { label, nodeStatus: 'failed', reason });
-        // 任务 25：失败节点固化已流式内容（node_end 同款处理），
+        // 失败节点固化已流式内容（node_end 同款处理），
         // 否则新消息开始时 clearNodeOutputs() 清空 nodeOutputs，卡片只剩「暂无输出」。
         const accumulated = useBookDetailStore.getState().nodeOutputs?.[nodeId] || '';
         if (accumulated) {
@@ -170,14 +170,14 @@ export function createSSEHandler(ctx: SSEHandlerContext): (event: SSEEvent) => v
         ctx.setAgentStatus({ kind: 'working', label: '追加章节大纲中...' });
         break;
       case 'subgraph_start':
-        // supervisor 路由事件（任务 23）：显示「正在进入 xx 阶段」徽标
+        // supervisor 路由事件：显示「正在进入 xx 阶段」徽标
         ctx.setAgentStatus({
           kind: 'working',
           label: event.label ? `正在进入「${event.label}」阶段` : '正在进入创作子图',
         });
         break;
       case 'progress':
-        // 任务 14：区分 build_outline（建大纲 N/M）与 generate_chapter（生成章节 N/M）
+        // 区分 build_outline（建大纲 N/M）与 generate_chapter（生成章节 N/M）
         if ((event as { step?: string }).step === 'build_outline') {
           const label = (event as { label?: string }).label || '';
           ctx.setAgentStatus({
@@ -196,7 +196,7 @@ export function createSSEHandler(ctx: SSEHandlerContext): (event: SSEEvent) => v
         }
         break;
       case 'turn_metrics': {
-        // 任务 28：回合指标事件——仅作调试/日志展示，不影响 UI 状态
+        // 回合指标事件——仅作调试/日志展示，不影响 UI 状态
         // 2.3：契约统一为嵌套结构 { type, metrics }
         assertTurnMetrics(event as unknown as Record<string, unknown>);
         break;
@@ -251,7 +251,7 @@ export function createSSEHandler(ctx: SSEHandlerContext): (event: SSEEvent) => v
         break;
       }
       case 'title_update':
-        // 任务 25：title_update 是会话标题唯一通道（end 事件不携带 title，
+        // title_update 是会话标题唯一通道（end 事件不携带 title，
         // 后端契约已确认），统一走 agentEvents 分发避免双通道分歧。
         if (event.thread_id && event.title) {
           emitAgentTitle(event.thread_id, event.title);

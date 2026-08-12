@@ -171,7 +171,7 @@ async def _finish_with_candidate(
             # 携带目标章节与所属工作流：用户审核决策后续跑时据此精确重跑该节点，
             # 避免 LLM 臆测节点 ID（如误把审计角色 auditor 当作工作流节点）。
             "target_chapter_id": target_chapter_id,
-            # 任务 31：卡片展示节点 tokens 与耗时
+            # 卡片展示节点 tokens 与耗时
             "tokens": _last.get("tokens", 0),
             "elapsed_ms": _last.get("elapsed_ms", 0),
         }
@@ -188,7 +188,7 @@ async def _finish_with_candidate(
             "output_preview": (result.get("output") or "")[:1000],
             "reason": _qc.get("reason", "输出质量不满足角色节点要求"),
             "target_chapter_id": target_chapter_id,
-            # 任务 31：卡片展示节点 tokens 与耗时
+            # 卡片展示节点 tokens 与耗时
             "tokens": result.get("tokens", 0),
             "elapsed_ms": result.get("elapsed_ms", 0),
         }
@@ -309,7 +309,7 @@ async def workflow_runner_node(
                     # - skip_audit：用户「接受」后重跑该节点但跳过自动审计，避免重复拦截死循环。
                     forced_output = pending.get("forced_output")
                     skip_audit = pending.get("skip_audit", False)
-                    # 任务 31：单节点重跑也统计耗时（审核卡展示 tokens/耗时）
+                    # 单节点重跑也统计耗时（审核卡展示 tokens/耗时）
                     _node_started = time.monotonic()
                     if forced_output is not None:
                         res = {
@@ -361,7 +361,7 @@ async def workflow_runner_node(
                         "status": "completed" if res.get("success") else "error",
                         "needs_review": res.get("needs_review", False),
                         "quality_check": res.get("quality_check"),
-                        # 任务 31：单节点重跑透传 tokens 与耗时（execute_node 返回 tokens）
+                        # 单节点重跑透传 tokens 与耗时（execute_node 返回 tokens）
                         "tokens": res.get("tokens", 0),
                         "elapsed_ms": _node_elapsed_ms,
                         # 透传起始上游输出：审核卡重跑该节点时，streaming.py 据此

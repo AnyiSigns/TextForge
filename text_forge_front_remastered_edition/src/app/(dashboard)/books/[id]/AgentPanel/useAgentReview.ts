@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * 任务 24：Agent 审核 / 重试 / 复制 / 编辑重发的逻辑抽取为 hook。
+ * Agent 审核 / 重试 / 复制 / 编辑重发的逻辑抽取为 hook。
  * AgentPanel 与 MessageList 共用，避免 800+ 行单组件继续膨胀。
  */
 import { useCallback } from 'react';
@@ -71,7 +71,7 @@ export function useAgentReview(opts: {
       setAgentStreaming(false);
       // 续跑失败（如书籍锁被占用/网络异常）：恢复审核卡与待审状态，允许用户重试。
       // 恢复时必须给卡片换新 id——否则 React 复用同 key 组件实例，ReviewCard 的
-      // submitting 状态卡在 true，按钮永久禁用（任务 31 防双提交与此冲突的边界）。
+      // submitting 状态卡在 true，按钮永久禁用（防双提交与此冲突的边界）。
       setPendingReview(prevReview);
       if (removedCards.length > 0) {
         const _now = Date.now();
@@ -90,7 +90,7 @@ export function useAgentReview(opts: {
     await performUnlockAndRetry(bookId, retryMessage, sendMessage);
   }, [bookId, sendMessage, setAgentStatus]);
 
-  // 任务 23：消息 hover 菜单——复制 / 编辑重发（重新生成 = 回填后手动发送）
+  // 消息 hover 菜单——复制 / 编辑重发（重新生成 = 回填后手动发送）
   const handleCopyMessage = useCallback(async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);

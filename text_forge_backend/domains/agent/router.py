@@ -71,7 +71,7 @@ async def list_messages(
     stmt = (
         select(Message)
         .where(Message.conversation_id == conv_id)
-        # 任务 23：从最新往回分页（offset 指最新之前的条数）。
+        # 从最新往回分页（offset 指最新之前的条数）。
         # create_at + id 双键保证同时间戳多条消息的排序稳定，offset 分页不重复/不遗漏。
         .order_by(Message.create_at.desc(), Message.id.desc())
         .offset(offset)
@@ -117,7 +117,7 @@ async def rename_conversation(
     body: dict,
     session: Annotated[AsyncSession, Depends(db_manager.get_db)] = None,
 ):
-    """任务 23：会话手动重命名。
+    """会话手动重命名。
 
     body: {"title": "新标题"}。标题为空/非字符串/超长（>200）返回 422 具体错误，
     符合错误信息具体化约束。
@@ -303,7 +303,7 @@ async def review_action(
         checkpointer=checkpoint,
     )
     await graph.aupdate_state(config, values=review_values)
-    # 任务 29 写操作审计：记录用户的审核卡决策（接受/重试/修改/终止）。
+    # 写操作审计：记录用户的审核卡决策（接受/重试/修改/终止）。
     # pending_review 的写工具决策在 gated_tool_node 执行时另行留痕；
     # 这里补记工作流审核卡决策。注意：写工具卡 build_preview 也复用 node_id=tool_name，
     # 必须用 workflow_id 区分——只有真·工作流审核卡才在此记录，避免写工具决策被重复
@@ -339,7 +339,7 @@ async def list_write_audits(
     limit: int = Query(default=50, ge=1, le=200),
     session: Annotated[AsyncSession, Depends(db_manager.get_db)] = None,
 ):
-    """查询写操作审计记录（任务 29 审计闭环的读取端）。
+    """查询写操作审计记录（审计闭环的读取端）。
 
     原审计只写不读，无法追溯谁在何时改了什么；此端点按用户（可选书籍）倒序
     返回最近审计行，供管理/调试/安全审计消费。
@@ -380,7 +380,7 @@ async def list_turn_metrics(
     limit: int = Query(default=50, ge=1, le=200),
     session: Annotated[AsyncSession, Depends(db_manager.get_db)] = None,
 ):
-    """查询回合指标记录（任务 28 指标落库的读取端，供统计/面板消费）。"""
+    """查询回合指标记录（指标落库的读取端，供统计/面板消费）。"""
     from models.agent_metric import AgentTurnMetric
 
     stmt = (

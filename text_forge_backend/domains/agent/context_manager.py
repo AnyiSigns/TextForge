@@ -35,7 +35,7 @@ def _estimate_tokens(messages: list) -> int:
 def flatten_messages_for_summary(messages: list, per_line_chars: int = 600) -> str:
     """把消息列表展平为「role: content」文本，供摘要 LLM 消费。
 
-    任务 30（审查修复）：router 的 auto_digest / manual_compress 与压缩节点各自
+    router 的 auto_digest / manual_compress 与压缩节点各自
     重复实现了 role+content 展平（含多模态 content 分支），此处提供共享实现，
     三处统一调用，避免截断策略漂移。
     """
@@ -99,7 +99,7 @@ def safe_compress_cutoff(messages: list, keep: int) -> int:
 async def _book_outline_brief(session, book_id: int | None) -> str:
     """构造压缩摘要中的「书上下文 + 大纲」节（从 DB 取最新快照，每次压缩重建，不会累积膨胀）。
 
-    计划任务 12：compressed_context 结构 = 书上下文 + 大纲 + 最近 N 轮对话摘要。
+    compressed_context 结构 = 书上下文 + 大纲 + 最近 N 轮对话摘要。
     """
     if not book_id:
         return ""
@@ -183,9 +183,16 @@ async def auto_compress_node(state: UserAgentState, session_factory=None) -> dic
     old_messages = messages[: safe_compress_cutoff(messages, COMPRESS_KEEP)]
     prior_summary = state.get("compressed_context") or ""
     book_id = state.get("active_book_id", 0) or 0
-    llm = ModelFactory(state["model_config"])
+    # 档位模型容错：tool 档位配置异常时剔除后重建，保证 main 档可用（压缩不中断）
+    try:
+        llm = ModelFactory(state["model_config"])
+    except Exception as exc:
+        logger.warning(f"auto_compress ModelFactory 初始化失败，剔除 tool_config 后重建: {exc}")
+        _cfg = dict(state.get("model_config") or {})
+        _cfg.pop("tool_config", None)
+        llm = ModelFactory(_cfg)
 
-    # 任务 12：书上下文 + 大纲快照（每次重建，随摘要一起进入压缩上下文）
+    # 书上下文 + 大纲快照（每次重建，随摘要一起进入压缩上下文）
     book_brief = ""
     if session_factory:
         try:
@@ -217,9 +224,11 @@ async def auto_compress_node(state: UserAgentState, session_factory=None) -> dic
     try:
         from core.llm_retry import retry_llm
 
-        # 任务 10（扩展）：LLM 调用指数退避重试（瞬时故障重试 3 次）
+        # LLM 调用指数退避重试（瞬时故障重试 3 次）。
+        # 压缩类功能统一走 tool 档位（结构化/摘要专用），未配置时回落 main 兜底。
+        compress_llm = getattr(llm, "tool", None) or llm.main
         result = await retry_llm(
-            lambda: llm.main.ainvoke(prompt.format_messages()),
+            lambda: compress_llm.ainvoke(prompt.format_messages()),
             desc="auto_compress",
         )
         summary = result.content if hasattr(result, "content") else str(result)
@@ -228,7 +237,7 @@ async def auto_compress_node(state: UserAgentState, session_factory=None) -> dic
         # 摘要失败不应阻断裁剪：沿用旧摘要，保证对话可继续
         summary = prior_summary
 
-    # 任务 12：压缩上下文 = 书上下文 + 大纲 + 对话摘要（结构化分段，子图切换时 agent_call 统一注入）。
+    # 压缩上下文 = 书上下文 + 大纲 + 对话摘要（结构化分段，子图切换时 agent_call 统一注入）。
     # 失败路径 summary == prior_summary（已含前缀），直接沿用不再二次嵌套；
     # 首次失败（prior 为空）至少保留书上下文快照，保证模型不丢创作设定。
     if book_brief:
@@ -267,7 +276,7 @@ async def auto_compress_node(state: UserAgentState, session_factory=None) -> dic
         f"auto_compress: 压缩了 {len(old_messages)} 条消息，保留最近 {COMPRESS_KEEP} 条"
     )
 
-    # 任务 30（压缩修复）：add_messages 只增不减，直接返回 messages[-K:] 无法真正裁剪；
+    # add_messages 只增不减，直接返回 messages[-K:] 无法真正裁剪；
     # 必须返回 RemoveMessage 列表，消息通道才会删除被裁掉的旧消息。
     # 同时把被删 ID 写入 removed_message_ids，由子图输出回流父层，
     # 父层 sync 节点再应用到父层 messages 通道（跨回合真正裁剪）。
@@ -278,6 +287,6 @@ async def auto_compress_node(state: UserAgentState, session_factory=None) -> dic
         "removed_message_ids": removed_ids,
         "compressed_context": compressed_context,
         "message_count_at_compress": len(messages),
-        # 任务 28 指标层：压缩次数计数
+        # 指标层：压缩次数计数
         "turn_metrics": {"compress_count": 1},
     }

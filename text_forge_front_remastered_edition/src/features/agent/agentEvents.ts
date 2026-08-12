@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * 任务 25：Agent 相关 window CustomEvent 总线收敛为类型安全的事件工具。
+ * Agent 相关 window CustomEvent 总线收敛为类型安全的事件工具。
  *
  * 把散落各处的 `window.dispatchEvent(new CustomEvent('textforge:...'))` /
  * `addEventListener` 收敛为带 payload 类型的 emit/on 一对，避免字符串事件名

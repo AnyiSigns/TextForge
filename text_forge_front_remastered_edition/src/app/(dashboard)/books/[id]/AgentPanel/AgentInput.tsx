@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * 任务 24：Agent 面板输入区组件。
+ * Agent 面板输入区组件。
  * 负责：textarea + 提及建议浮层（@角色/#设定）+ 工作流快捷建议 + 发送/停止按钮。
  */
 import { ArrowUp, CircleStop } from 'lucide-react';
@@ -63,7 +63,7 @@ export function AgentInput(props: AgentInputProps) {
         </div>
       )}
       <div className="relative flex-1">
-        {/* 任务 23：@角色/#设定 提及建议浮层 */}
+        {/* @角色/#设定 提及建议浮层 */}
         {mention && mention.items.length > 0 && (
           <div className="absolute bottom-full left-0 right-0 mb-1 rounded-lg border border-border/60 bg-background shadow-xl overflow-hidden z-10">
             <div className="px-3 py-1 text-[10px] text-muted-foreground/50 border-b border-border/30">

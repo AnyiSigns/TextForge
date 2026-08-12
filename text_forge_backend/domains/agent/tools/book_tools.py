@@ -288,7 +288,7 @@ def _build_book_tools(session_factory, model_config: dict | None = None):
                 if not isinstance(ev, dict) or not ev.get("title"):
                     continue
                 try:
-                    # 任务 18：与 build_outline 场景事件字段对齐——正文用 description（兼容 content）
+                    # 与 build_outline 场景事件字段对齐——正文用 description（兼容 content）
                     data = {
                         "title": ev["title"],
                         "content": ev.get("description") or ev.get("content") or "",

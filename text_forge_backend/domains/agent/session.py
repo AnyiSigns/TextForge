@@ -33,7 +33,7 @@ async def _generate_title(model_config: dict, user_msg: str, reply: str) -> str 
             f"用户：{user_msg[:200]}\n"
             f"AI：{reply[:200]}"
         )
-        # 任务 10（扩展）：LLM 调用指数退避重试（瞬时故障重试 3 次）
+        # LLM 调用指数退避重试（瞬时故障重试 3 次）
         res = await retry_llm(
             lambda: model.ainvoke([HumanMessage(content=prompt)]),
             desc="generate_title",
@@ -52,7 +52,7 @@ async def _generate_title(model_config: dict, user_msg: str, reply: str) -> str 
         return None
 
 
-# 任务 19b：回合结束自动摘要存库的节流阈值（新增消息 ≥ 该值时触发一次 digest）。
+# 回合结束自动摘要存库的节流阈值（新增消息 ≥ 该值时触发一次 digest）。
 AUTO_DIGEST_INTERVAL = 10
 # 单次 digest 摘要的输入消息数上限（只取最近 N 条生成，控制 token 成本）。
 AUTO_DIGEST_RECENT = 20
@@ -68,7 +68,7 @@ async def _auto_digest_if_due(
 ) -> None:
     """回合结束后按节流阈值生成会话摘要并直写 AgentMemory（source=auto_digest）。
 
-    任务 19b 定案：不走 manage_memory（source 硬编码 agent_self_reflection），
+    不走 manage_memory（source 硬编码 agent_self_reflection），
     复用 manual_compress / auto_compress 同款 AgentMemoryRepository 直写路径，
     落点 agent_memories 表，memory_type="context_summary"（与压缩摘要同语义，recall 可命中）。
 
@@ -93,13 +93,13 @@ async def _auto_digest_if_due(
         from .context_manager import flatten_messages_for_summary
 
         llm = ModelFactory(model_config)
-        # 任务 30（审查修复）：复用 context_manager 的共享展平实现，避免重复造轮子
+        # 复用 context_manager 的共享展平实现，避免重复造轮子
         combined = flatten_messages_for_summary(messages[-AUTO_DIGEST_RECENT:], 400)
         prompt = (
             "请总结以下最近的对话，保留关键创作决策、用户偏好、剧情设定和重要信息。"
             "这份摘要将作为 Agent 的长期记忆存档：\n\n" + combined[:12000]
         )
-        # 任务 10（扩展）：LLM 调用指数退避重试（瞬时故障重试 3 次）
+        # LLM 调用指数退避重试（瞬时故障重试 3 次）
         result = await retry_llm(
             lambda: llm.main.ainvoke(
                 [
@@ -260,12 +260,12 @@ async def _prepare_agent_state(
             "workflow_result": None,
             "pending_workflow": None,
             "pending_tool": None,
-            # 任务 28 指标层：每回合独立计数，新回合清零（__reset__ 让 reducer 覆盖旧值）。
+            # 指标层：每回合独立计数，新回合清零（__reset__ 让 reducer 覆盖旧值）。
             "turn_metrics": {"__reset__": True},
             "subgraph_steps": {"__reset__": True},
             # 嵌套子图版：子图出口结算报告，回合开始显式清空（sync 节点也会清，双保险）
             "subgraph_report": None,
-            # 任务 30（压缩修复）：被压缩裁剪的旧消息 ID，回合开始清空（sync 节点也会清，双保险）
+            # 被压缩裁剪的旧消息 ID，回合开始清空（sync 节点也会清，双保险）
             "removed_message_ids": None,
             # 注意：suggestions_signature / message_count_at_compress 不在新回合重置，
             # 缺省 key 时 LangGraph 保留 checkpoint 旧值，跨轮建议去重与压缩计数才能生效；

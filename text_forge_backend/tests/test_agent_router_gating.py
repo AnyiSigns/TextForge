@@ -76,7 +76,7 @@ def test_router_ends_on_plain_reply():
 
 
 # ---------------------------------------------------------------------------
-# 任务 30（审查修复 H1）：gated_tool_node 审批分支 audit_rows 初始化
+# gated_tool_node 审批分支 audit_rows 初始化
 # ---------------------------------------------------------------------------
 
 
@@ -112,7 +112,7 @@ class _ApprovedResult:
 
 @pytest.mark.asyncio
 async def test_gated_tool_node_approved_path_no_audit_rows_crash(monkeypatch):
-    """任务 30（审查修复 H1）：审批分支（pending_tool.decision 存在）此前因
+    """审批分支（pending_tool.decision 存在）此前因
     audit_rows 未初始化抛 UnboundLocalError，导致写工具审批流 100% 失败。
 
     本测试 mock GatingService.apply + session_factory，确保审批分支正常返回。
@@ -165,7 +165,7 @@ async def test_gated_tool_node_approved_path_no_audit_rows_crash(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_gated_tool_node_duplicate_guard_counts_current_turn_only(monkeypatch):
-    """任务 30（审查修复 M3）：重复工具守卫只统计最后一个用户消息之后的工具调用，
+    """重复工具守卫只统计最后一个用户消息之后的工具调用，
     跨回合的多章生成/多章读取不会被累计计数误杀。"""
     import domains.agent.agent_nodes as an
     from langchain_core.messages import ToolMessage
@@ -208,7 +208,7 @@ async def test_gated_tool_node_duplicate_guard_counts_current_turn_only(monkeypa
 
 
 # ---------------------------------------------------------------------------
-# 任务 30（审查修复）：_is_tool_error 统一失败判词 + JSON 边界
+# _is_tool_error 统一失败判词 + JSON 边界
 # ---------------------------------------------------------------------------
 
 
@@ -230,7 +230,7 @@ def test_is_tool_error_dict_and_string_forms():
 
 
 def test_is_tool_error_json_success_with_error_word_not_misjudged():
-    """任务 30（审查修复）：合法成功 JSON 内容中若带 "error" 字样（如 review_text 的
+    """合法成功 JSON 内容中若带 "error" 字样（如 review_text 的
     issues 正文），不得被子串启发式误判为失败——必须按结构化 error 键判断。
 
     注：ToolMessage 会把 dict content 规范化为 Python repr 字符串（json.loads 失败），

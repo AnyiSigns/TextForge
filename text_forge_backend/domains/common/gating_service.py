@@ -150,7 +150,7 @@ def build_preview(operation: str, tool_name: str, args: dict) -> dict:
         "node_label": f"工具调用：{tool_name}",
         "output_preview": preview,
         "reason": "该操作会修改书籍数据，需你确认后才会执行",
-        # 与 workflow_runner_node 的审核卡契约对齐（任务 31 卡片展示 tokens/耗时）
+        # 与 workflow_runner_node 的审核卡契约对齐（卡片展示 tokens/耗时）
         "tokens": 0,
         "elapsed_ms": 0,
     }

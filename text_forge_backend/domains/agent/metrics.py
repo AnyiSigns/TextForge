@@ -1,11 +1,11 @@
-"""Agent 指标与写操作审计辅助（任务 28/29）。
+"""Agent 指标与写操作审计辅助。
 
 指标层设计：
 - 回合内跨节点累加保存在 state.turn_metrics（merge_metrics reducer 数值相加），
   包括 llm_calls / tool_calls / tool_success / tool_fail / compress_count /
   approval_count / approval_accept 与按子图分布的 subgraph_usage。
 - 回合结束由 stream_agent 汇总 duration_ms 后：
-  1) 发 `turn_metrics` SSE 事件（前端状态栏/日志共用，任务 8 事件透传的扩展）；
+  1) 发 `turn_metrics` SSE 事件（前端状态栏/日志共用， 事件透传的扩展）；
   2) 落库 agent_turn_metrics 表（决策数据来源，支持查询统计）；
   3) 结构化日志输出。
 
@@ -51,7 +51,7 @@ def build_turn_metrics_payload(
     duration_ms = round((time.monotonic() - started_at) * 1000, 1)
     # steps_per_subgraph 存在独立的 subgraph_steps 通道（agent_call 写入），
     # 不从 turn_metrics 读取，否则恒为空（step cap 调参数据丢失）。
-    # 任务 30（审查修复）：thread_id 由调用方（router.py）事后用真实值覆盖，
+    # thread_id 由调用方（router.py）事后用真实值覆盖，
     # 此处不再从 state 读不存在的 _thread_id 死键。
     payload = {
         "thread_id": "",

@@ -223,7 +223,7 @@ export interface AgentMessage {
   role: string;
   content: string;
   think?: string;
-  /** 任务 32：事件卡片消息（review-card 等）持久化还原 */
+  /** 事件卡片消息（review-card 等）持久化还原 */
   type?: string;
   token?: string;
   createdAt: string;
@@ -284,7 +284,7 @@ export interface SSEEvent {
   removed_count?: number;
   remaining_count?: number;
   items?: Array<{ type?: string; message?: string; suggestion?: string }>;
-  // 任务 28：回合指标（turn_metrics 事件）
+  // 回合指标（turn_metrics 事件）
   metrics?: {
     thread_id?: string;
     subgraph?: string;

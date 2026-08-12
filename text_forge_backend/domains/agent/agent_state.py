@@ -8,7 +8,7 @@ from shared.utils import merge_dicts as _merge_dicts
 def merge_dicts_or_clear(base: dict | None, overlay: dict | None) -> dict | None:
     """merge_dicts 的可清空变体：overlay 为 None 时整体清空通道（返回 None）。
 
-    任务 30（审查修复 M8）：共享的 merge_dicts 是纯 overlay 合并，空 dict {}
+    共享的 merge_dicts 是纯 overlay 合并，空 dict {}
     覆盖是 no-op，无法清除 workflow_node_outputs 等通道的旧值；terminate 工作流后
     旧节点输出会滞留，write_workflow_candidate 仍能读到过期候选。此 reducer 允许
     调用方传 None 真正清空（LastValue 通道返回 None 即置空）。
@@ -48,7 +48,7 @@ class UserAgentState(TypedDict):
     user_id: int
     active_book_id: int
     model_config: dict
-    # 任务 30（审查修正）：step_outputs 在主 agent 图中无生产者/消费者，
+    # step_outputs 在主 agent 图中无生产者/消费者，
     # 但 GenerateChapterState 继承本状态并实际读写它（generate_chapter 子图 think/reflect
     # 节点写入 step_outputs），故保留不删。
     step_outputs: Annotated[dict, _merge_dicts]
@@ -72,17 +72,17 @@ class UserAgentState(TypedDict):
     preferred_workflow_node: str | None  # 用户最近一次选定的工作流候选节点 ID，后续多章自动沿用（不再每章询问）
     subgraph: str  # 当前创作子图：chat/worldbuilding/outlining/drafting/revising（supervisor 分类结果）
     resume_from_subgraph: str | None  # resume 回合直接回原子图，不重新分类
-    # 任务 13：drafting/revising 进入前装配的域上下文（章摘要 + 场景 + 角色卡），
+    # drafting/revising 进入前装配的域上下文（章摘要 + 场景 + 角色卡），
     # 由 supervisor_node 对新用户消息路由到对应子图时写入，agent_call 注入 prompt。
     domain_context: str | None
-    last_digest_message_count: int | None  # 任务 19b：最近一次 auto_digest 时的消息数，用于节流（新增 ≥ N 条才再生成摘要）
-    # 任务 28 指标层：单回合跨节点累加的计数器（LLM 调用/工具成败/压缩次数/审批计数/按子图步数）。
+    last_digest_message_count: int | None  # 最近一次 auto_digest 时的消息数，用于节流（新增 ≥ N 条才再生成摘要）
+    # 指标层：单回合跨节点累加的计数器（LLM 调用/工具成败/压缩次数/审批计数/按子图步数）。
     # 嵌套子图版：父图通道由 sync 节点合并子图 subgraph_report 而来（每子图回合一次），
     # 不再由子图内节点直接写入（私有通道见 SubgraphState，防求和 reducer 二次合并翻倍）。
     turn_metrics: Annotated[dict, merge_metrics]
     subgraph_steps: Annotated[dict, merge_metrics]  # 子图 step cap：{subgraph: 已执行步数}（父层仅作指标统计）
     subgraph_report: dict | None  # 子图出口结算报告 {metrics, steps}（LastValue，sync 节点合并后清空）
-    # 任务 30（压缩修复）：子图压缩裁剪掉的旧消息 ID，由 sync 节点转成 RemoveMessage
+    # 子图压缩裁剪掉的旧消息 ID，由 sync 节点转成 RemoveMessage
     # 应用到父层 messages 通道，实现跨回合真正裁剪（add_messages 只增不减）。
     removed_message_ids: list | None
 
@@ -146,7 +146,7 @@ class SubgraphState(TypedDict):
     turn_metrics: Annotated[dict, merge_metrics]
     subgraph_steps: Annotated[dict, merge_metrics]
     subgraph_report: dict | None  # 出口结算报告（LastValue，final 节点写入）
-    # 任务 30（压缩修复）：压缩裁剪掉的旧消息 ID（LastValue），由 SubgraphOutput 回流父层，
+    # 压缩裁剪掉的旧消息 ID（LastValue），由 SubgraphOutput 回流父层，
     # sync 节点转成 RemoveMessage 应用到父层 messages 通道。
     removed_message_ids: list | None
 
@@ -170,4 +170,4 @@ class SubgraphOutput(TypedDict):
     compressed_context: str | None
     message_count_at_compress: int | None
     subgraph_report: dict | None
-    removed_message_ids: list | None  # 任务 30（压缩修复）：裁剪掉的旧消息 ID，供父层 sync 应用删除
+    removed_message_ids: list | None  # 裁剪掉的旧消息 ID，供父层 sync 应用删除

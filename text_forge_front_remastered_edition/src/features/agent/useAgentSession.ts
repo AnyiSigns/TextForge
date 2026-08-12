@@ -108,7 +108,7 @@ export function useAgentSession(opts: AgentSessionOptions) {
     ],
   );
 
-  // 任务 25：sendMessage / resume 共用同一流式执行骨架，仅起始差异（消息内容 / 续跑）。
+  // sendMessage / resume 共用同一流式执行骨架，仅起始差异（消息内容 / 续跑）。
   const runAgentStream = useCallback(
     async (opts: {
       message: string;
@@ -120,9 +120,9 @@ export function useAgentSession(opts: AgentSessionOptions) {
       setAgentStreaming(true);
       const abort = opts.abortController ?? new AbortController();
       abortRef.current = abort;
-      // 任务 25：新回合复位 token + node 缓冲（旧回合残留一并丢弃）
+      // 新回合复位 token + node 缓冲（旧回合残留一并丢弃）
       resetBuffers();
-      // 任务 23：新回合复位上一轮的思考气泡内容
+      // 新回合复位上一轮的思考气泡内容
       reasoningBufferRef.current = '';
       setAgentReasoning('');
       // 复位上一轮残留的状态（thinking/working/error），避免新一轮开始时旧思考状态被再次激活
@@ -180,7 +180,7 @@ export function useAgentSession(opts: AgentSessionOptions) {
         if (aborted) {
           // 主动停止（abort 已清空 token/reply 缓冲）：只需定型残留的 streaming 气泡，
           // 不要再 flush 缓冲——否则 updateAgentStreamToken 找不到 streaming 消息会
-          // 追加一条新消息，产生「停止后重复回复」或跨会话内容泄漏（任务 25 修复）。
+          // 追加一条新消息，产生「停止后重复回复」或跨会话内容泄漏（修复）。
           flushNodeOutputs();
           commitStreamingMessage();
         } else {
@@ -203,7 +203,7 @@ export function useAgentSession(opts: AgentSessionOptions) {
             });
             setAgentStatus({ kind: 'error', message: errMsg });
           } else {
-            // 任务 22：所有错误都附带原消息，供面板渲染「重试」按钮；
+            // 所有错误都附带原消息，供面板渲染「重试」按钮；
             // 书籍锁冲突（503）时额外提示可解除占用。
             addAgentMessage({
               role: 'assistant',
@@ -262,7 +262,7 @@ export function useAgentSession(opts: AgentSessionOptions) {
           }
         }
 
-        // 任务 20：发送时附带个人库检索结果（随流请求体下发，键形状对齐后端契约）。
+        // 发送时附带个人库检索结果（随流请求体下发，键形状对齐后端契约）。
         // 先置流式态：检索窗口内阻塞发送按钮（sendMessage 的 agentStreaming 守卫），避免重复发送。
         setAgentStreaming(true);
         // N：RAG 检索前就创建 AbortController——检索窗口内点「停止」也能被捕获，
@@ -321,7 +321,7 @@ export function useAgentSession(opts: AgentSessionOptions) {
     // 显式通知服务端取消任务（尽快释放书籍锁），再本地中止连接
     if (agentThreadId) void agentApi.cancelStream(agentThreadId);
     abortRef.current?.abort();
-    // 任务 25：停止时丢弃未刷新的 token 缓冲，避免 catch 里 flushTokens()
+    // 停止时丢弃未刷新的 token 缓冲，避免 catch 里 flushTokens()
     // 找不到 streaming 消息时追加新消息（重复回复 / 跨会话泄漏）
     discardTokenBuffer();
     // N9：冲刷未落库的 node_stream 缓冲（部分正文保留在节点卡片）

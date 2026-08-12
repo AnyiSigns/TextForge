@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * 任务 24：Agent 面板会话列表组件。
+ * Agent 面板会话列表组件。
  * 负责：会话搜索、刷新、重命名、删除、展开/收起。
  */
 import { Pencil, PanelRightClose, RefreshCw, Search, Trash2 } from 'lucide-react';

@@ -10,7 +10,7 @@ import type { AgentNodeStatus } from '../store';
 export function useExpandedNodeCards(agentNodeStatuses: AgentNodeStatus[]) {
   const [expandedNodeCards, setExpandedNodeCards] = useState<Set<string>>(new Set());
   const seenNodeIdsRef = useRef<Set<string>>(new Set());
-  // 原渲染期 setState 改为 effect + ref（任务 22：渲染期调整移除）
+  // 原渲染期 setState 改为 effect + ref（渲染期调整移除）
   const prevStatusLenRef = useRef(agentNodeStatuses.length);
 
   useEffect(() => {

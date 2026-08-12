@@ -55,7 +55,7 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
   }, [bookId, loadFromApi]);
 
   // Agent 生成/修改大纲（如 AI 追加章节）后刷新左侧大纲树
-  // 任务 25：走类型化事件总线（onAgentOutlinesRefresh），与 agentEvents 注册表保持联动
+  // 走类型化事件总线（onAgentOutlinesRefresh），与 agentEvents 注册表保持联动
   useEffect(() => {
     const onRefresh = () => { void loadFromApi(bookId); };
     return onAgentOutlinesRefresh(onRefresh);

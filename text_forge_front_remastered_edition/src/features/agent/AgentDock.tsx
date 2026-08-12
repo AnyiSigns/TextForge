@@ -344,7 +344,7 @@ export function AgentDock() {
           <div className="flex-1 space-y-2 overflow-y-auto px-3 py-2 text-[12px]">
             {visible.length === 0 && <div className="text-muted-foreground/70">和 Agent 对话，或选中正文发起润色/检查。</div>}
             {visible.slice(-14).map((m, i) => {
-              // 任务 25：AgentMessage 为 discriminated union，retryMessage 仅错误消息携带
+              // AgentMessage 为 discriminated union，retryMessage 仅错误消息携带
               const retryMsg = m.type === 'error' ? m.retryMessage : undefined;
               return (
                 <div

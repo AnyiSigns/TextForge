@@ -120,7 +120,7 @@ def _sync_missing_columns(sync_conn):
                 logger.info("已迁移 agent_memories.embedding 为不定维度 vector")
         except Exception as e:
             logger.warning(f"agent_memories.embedding 维度迁移跳过: {e}")
-        # 任务 16：save 可选记忆标题（存量库补列）
+        # save 可选记忆标题（存量库补列）
         try:
             _mem_cols = {c["name"] for c in inspect(sync_conn).get_columns("agent_memories")}
             if "title" not in _mem_cols:
@@ -135,7 +135,7 @@ def _sync_missing_columns(sync_conn):
     if "messages" in tables:
         try:
             _mcols = {c["name"] for c in inspect(sync_conn).get_columns("messages")}
-            # 任务 32：事件卡片消息持久化所需列（type/token）
+            # 事件卡片消息持久化所需列（type/token）
             for _col, _ddl in (
                 ("type", "VARCHAR(32) NOT NULL DEFAULT ''"),
                 ("token", "TEXT"),

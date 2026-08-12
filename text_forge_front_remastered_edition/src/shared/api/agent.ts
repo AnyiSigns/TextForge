@@ -95,7 +95,7 @@ export async function streamAgent(
     onEvent(event);
 
     if (event.type === 'end') {
-      // 任务 25 双通道收敛：会话标题只走 title_update 事件（end 事件不携带 title），
+      // 双通道收敛：会话标题只走 title_update 事件（end 事件不携带 title），
       // onDone 仅回传最终回复正文。
       onDone(event.reply || '');
       // 不立即返回，继续读取后续事件，流结束自然退出。

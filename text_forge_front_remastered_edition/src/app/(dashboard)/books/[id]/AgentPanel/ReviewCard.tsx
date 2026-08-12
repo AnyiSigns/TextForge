@@ -32,7 +32,7 @@ export function ReviewCard({ data, onAction, disabled = false }: ReviewCardProps
   const outputPreview = fullPreview.slice(0, 300);
   // 后端审计拦截卡携带目标章节；「终止并生成正文」需回传定位落库章节
   const targetChapterId = typeof data.target_chapter_id === 'number' ? data.target_chapter_id : undefined;
-  // 任务 31：卡片展示节点 tokens 与耗时（后端 pending_review 附带）
+  // 卡片展示节点 tokens 与耗时（后端 pending_review 附带）
   const tokens = typeof data.tokens === 'number' ? data.tokens : undefined;
   const elapsedMs = typeof data.elapsed_ms === 'number' ? data.elapsed_ms : undefined;
   const category = reasonCategory(reason);
@@ -105,7 +105,7 @@ export function ReviewCard({ data, onAction, disabled = false }: ReviewCardProps
             maxLength={10000}
             onChange={(e) => setEditText(e.target.value)}
             onKeyDown={(e) => {
-              // Esc 取消，Ctrl/Cmd+Enter 提交（任务 31 快捷键）
+              // Esc 取消，Ctrl/Cmd+Enter 提交（快捷键）
               if (e.key === 'Escape') { e.preventDefault(); setEditing(false); }
               if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); handleAction('edit', editText); }
             }}

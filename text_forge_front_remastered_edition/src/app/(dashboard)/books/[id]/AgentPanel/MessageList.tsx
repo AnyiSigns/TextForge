@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * 任务 24：Agent 面板消息区组件。
+ * Agent 面板消息区组件。
  * 负责：消息列表渲染（MessageItem 组件映射）、思考气泡、滚动懒加载、空状态引导、状态条。
  */
 import { useCallback, useRef } from 'react';
@@ -45,7 +45,7 @@ export function MessageList(props: MessageListProps) {
   const historyScrollElRef = useRef<HTMLElement | null>(null);
 
   const handleScroll = useCallback((e: React.UIEvent<HTMLElement>) => {
-    // 任务 23：滚动到顶部附近时懒加载更早历史消息
+    // 滚动到顶部附近时懒加载更早历史消息
     const el = e.currentTarget;
     historyScrollElRef.current = el;
     if (el.scrollTop < 120 && !loadingMoreRef.current) {
@@ -106,7 +106,7 @@ export function MessageList(props: MessageListProps) {
         </div>
       )}
 
-      {/* 任务 23：思考气泡（Kilo/Claude Code 模式）。
+      {/* 思考气泡（Kilo/Claude Code 模式）。
           默认展开、半透明、可折叠；固定在消息区顶部，不随主消息滚动；
           内容仅流式累积于 store（agentReasoning），不写入会话历史。 */}
       {agentReasoning.trim() && (

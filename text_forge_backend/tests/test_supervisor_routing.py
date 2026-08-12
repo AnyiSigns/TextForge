@@ -1,4 +1,4 @@
-"""supervisor / guardrail / chat / 子图路由测试（阶段二任务 7/9）。
+"""supervisor / guardrail / chat / 子图路由测试（阶段二）。
 
 覆盖：
 - supervisor_node：新用户消息 → LLM 分类写入 subgraph；非用户消息回合不分类（防对 ToolMessage 瞎分类）；
@@ -77,7 +77,7 @@ def test_extract_route_invalid_falls_back_chat():
 
 
 def test_extract_route_low_confidence_falls_back_chat():
-    # 任务 27b：confidence < 0.5 时即使 route 合法也回 chat
+    # confidence < 0.5 时即使 route 合法也回 chat
     assert _extract_route('{"route": "drafting", "confidence": 0.2, "reason": "不确定"}') == "chat"
     assert _extract_route('{"route": "drafting", "confidence": 0.49, "reason": "边缘"}') == "chat"
 

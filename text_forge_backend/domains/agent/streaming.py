@@ -183,7 +183,7 @@ async def stream_agent(
                 raise HTTPException(status_code=404, detail="未找到会话状态")
 
             state_data = dict(state_snapshot.get("channel_values", {}))
-            # 任务 28 修复：turn_metrics/subgraph_steps 是求和 reducer 通道，
+            # turn_metrics/subgraph_steps 是求和 reducer 通道，
             # resume 输入会把 checkpoint 旧值再次喂给 reducer 求和导致计数翻倍
             # （并可能使 quality_gate_router 读到虚高的 subgraph_steps 提前 END）。
             # 从输入中剔除这两个键：LangGraph 保留 checkpoint 原值，新节点执行继续累加。
@@ -192,11 +192,11 @@ async def stream_agent(
             # 嵌套子图版：subgraph_report 是 LastValue 回流通道，sync 节点已清空；
             # 剔除 checkpoint 旧值（若有残留），防子图失败路径读到陈旧 report 二次合并。
             state_data.pop("subgraph_report", None)
-            # 任务 30（审查修复 M7）：checkpoint 持久化的 model_config 可能携带 api_key
+            # checkpoint 持久化的 model_config 可能携带 api_key
             # 且可能已过时（用户改了配置）。resume 回合必须用请求体携带的最新配置覆盖，
             # 避免陈旧/泄露的密钥被读取复用，也保证用户改配后立即生效。
             state_data["model_config"] = model_config
-            # 任务 7 接线：resume 回合（无新用户消息）不重新做意图分类，
+            # resume 回合（无新用户消息）不重新做意图分类，
             # supervisor_node 见 resume_from_subgraph 直接沿用原子图；新消息回合在
             # _prepare_agent_state 置 None 复位。
             _resume_subgraph = state_data.get("subgraph")
@@ -277,7 +277,7 @@ async def stream_agent(
                         "edited_content": None,
                         "terminate_chapter_id": None,
                         "active_workflow_id": None,
-                        # 任务 30（审查修复 M8）：merge_dicts 对 {} 是 no-op（旧值滞留，
+                        # merge_dicts 对 {} 是 no-op（旧值滞留，
                         # write_workflow_candidate 仍可读到过期候选），必须传 None 经
                         # merge_dicts_or_clear 真正清空 workflow_node_outputs。
                         "workflow_node_outputs": None,
@@ -377,7 +377,7 @@ async def stream_agent(
                     body.book_id,
                 )
             )
-        # 任务 20：个人库检索结果随回合下发（请求体优先）。
+        # 个人库检索结果随回合下发（请求体优先）。
         # 不能靠 PATCH checkpoint——_prepare_agent_state 对 personal_rag_results
         # 显式置 None，last-value 语义会覆盖 PATCH 值；此处直接覆盖回合输入。
         # PersonalRagHit 模型 → dict（workflow_scheduler 用 item.get(...) 读取）。
@@ -422,14 +422,14 @@ async def stream_agent(
             异常路径统一经 classify_agent_error 转译为具体错误事件，不中断流。
             """
             _ag_iter = None
-            # 任务 28 指标层：回合开始时间（time.monotonic 单调时钟，不受系统时间调整影响）
+            # 指标层：回合开始时间（time.monotonic 单调时钟，不受系统时间调整影响）
             _turn_started = time.monotonic()
             # 回合指标 payload：先构造并下发 SSE 事件，落库在 end/锁释放后进行
             _metrics_payload: dict | None = None
             try:
                 yield ":\n\n"
                 final_reply = ""
-                # 任务 32：收集本回合推送的审核卡，回合结束统一落库为卡片消息，
+                # 收集本回合推送的审核卡，回合结束统一落库为卡片消息，
                 # 使历史会话能还原审核卡（Message 表新增 type/token 列）
                 _card_payloads: list[dict] = []
                 # 单迭代器：stream_mode=["updates","custom"]，二者按真实执行顺序交错产出，
@@ -443,7 +443,7 @@ async def stream_agent(
                     state,
                     config=config,
                     stream_mode=["updates", "custom"],
-                    # 嵌套子图版（任务 7 重建）：必须开 subgraphs=True，子图内
+                    # 嵌套子图版（重建）：必须开 subgraphs=True，子图内
                     # get_stream_writer() 才会继承父流（否则 agent_token 等 custom
                     # 事件在子图内丢失）；事件随之变 (ns, mode, data) 三元组，
                     # 顶层 ns=()、子图内部 ns=("子图名:hash",)。
@@ -518,7 +518,7 @@ async def stream_agent(
                                 if isinstance(last, _AIMsg) and getattr(
                                     last, "tool_calls", None
                                 ):
-                                    # 任务 14：按本轮 generate_chapter 调用次数给出真实 N/M 进度
+                                    # 按本轮 generate_chapter 调用次数给出真实 N/M 进度
                                     # （单章生成的真实进度仍由 progress_events 透传）
                                     _gcs = [
                                         t for t in last.tool_calls
@@ -538,7 +538,7 @@ async def stream_agent(
                                         elif tname == "generate_outline_extension":
                                             yield f"data: {json.dumps({'type': 'extend_outline', 'step': 'extend_outline', 'n': 0, 'total': 1}, ensure_ascii=False)}\n\n"
                                         elif tname == "build_outline":
-                                            # 任务 14：build_outline 批量建卷的 N/M 进度（按卷粒度）
+                                            # build_outline 批量建卷的 N/M 进度（按卷粒度）
                                             _bo_args = (
                                                 _tc.get("args")
                                                 if isinstance(_tc, dict)
@@ -556,7 +556,7 @@ async def stream_agent(
                                                 if isinstance(_v, dict):
                                                     _v_title = str(_v.get("title") or "")[:50]
                                                 yield f"data: {json.dumps({'type': 'progress', 'step': 'build_outline', 'n': _vi, 'total': _bo_total, 'words': 0, 'eta': 0, 'label': _v_title}, ensure_ascii=False)}\n\n"
-                                        # 任务 25：tool_start 携带 tool_call_id，供前端按 id 配对工具卡片
+                                        # tool_start 携带 tool_call_id，供前端按 id 配对工具卡片
                                         # （同轮同名工具连续调用不再错位更新）
                                         _tc_id = (
                                             _tc.get("id") if isinstance(_tc, dict) else getattr(_tc, "id", "")
@@ -587,10 +587,10 @@ async def stream_agent(
                                     ) == "completed" and _parsed.get("progress_events"):
                                         for prog in _parsed["progress_events"]:
                                             yield f"data: {json.dumps({'type': 'progress', **prog}, ensure_ascii=False)}\n\n"
-                                # 任务 25：tool_end 携带 tool_call_id（与 tool_start 配对）
+                                # tool_end 携带 tool_call_id（与 tool_start 配对）
                                 # 与 success 失败语义——工具返回 error 时 UI 不再一律显示成功 ✓。
                                 _tc_id = getattr(m, "tool_call_id", "") or ""
-                                # 任务 30（审查修复）：复用 agent_nodes._is_tool_error 统一
+                                # 复用 agent_nodes._is_tool_error 统一
                                 # 失败判词，避免两处字符串启发式漂移。
                                 from .agent_nodes import _is_tool_error
 
@@ -651,7 +651,7 @@ async def stream_agent(
                     )
                     session.add(ai_msg)
                     await session.commit()
-                # 任务 32：审核卡落库为卡片消息（历史会话可还原）
+                # 审核卡落库为卡片消息（历史会话可还原）
                 if _card_payloads:
                     try:
                         for _card in _card_payloads:
@@ -694,7 +694,7 @@ async def stream_agent(
                             pass
                 except Exception as exc:
                     logger.warning(f"SSE 推送建议失败: {exc}")
-                # 任务 28 指标层：回合指标 SSE 事件（必须在 end 之前推送，
+                # 指标层：回合指标 SSE 事件（必须在 end 之前推送，
                 # 前端可读取完整指标；end 事件后流尚未关闭）。落库移到 end 之后，
                 # 避免新开池连接 + commit 阻塞用户可见的流结束（同标题/摘要的处理顺序）。
                 try:
@@ -719,7 +719,7 @@ async def stream_agent(
                 # 新消息会被 503 拒绝。此处释放后 finally 中的 cleanup 幂等（Lua
                 # 持有者校验 + 心跳任务 cancel 无副作用），重复调用安全。
                 await cleanup()
-                # 任务 19b：回合结束自动摘要存库（节流：新增消息 ≥ AUTO_DIGEST_INTERVAL 才生成）。
+                # 回合结束自动摘要存库（节流：新增消息 ≥ AUTO_DIGEST_INTERVAL 才生成）。
                 # 放在锁释放之后，digest 的完整 LLM 调用不阻塞用户新消息发送；失败静默。
                 if not is_resume:
                     try:
@@ -746,7 +746,7 @@ async def stream_agent(
                             yield f"data: {json.dumps({'type': 'title_update', 'thread_id': thread_id, 'title': generated}, ensure_ascii=False)}\n\n"
                     except Exception as exc:
                         logger.warning(f"自动生成会话标题失败: {exc}")
-                # 任务 28 指标层：回合指标落库 + 结构化日志。放在 end/锁释放之后，
+                # 指标层：回合指标落库 + 结构化日志。放在 end/锁释放之后，
                 # 与 auto_digest/标题同一批非阻塞收尾，避免新开池连接阻塞用户可见流结束。
                 if _metrics_payload:
                     try:
@@ -835,7 +835,7 @@ async def cancel_stream(
     if task and not task.done():
         task.cancel()
         # 清理 checkpoint 中的 pending 三件套：abort 后若用户 resume（无消息续跑），
-        # 不会继续执行被拦截的写工具（计划任务 11）。新消息路径已由
+        # 不会继续执行被拦截的写工具（计划）。新消息路径已由
         # _prepare_agent_state 一次性重置，二者不冲突。
         try:
             checkpoint = graph_pool_manager.checkpoint
@@ -891,7 +891,7 @@ async def manual_compress(
         if not state_snapshot:
             _pop_compress_task()
             await _release_thread_lock(_t_key, _t_holder)
-            # 任务 30（审查修复）：SSE 样板统一走 _sse_headers/_sse_compress_done
+            # SSE 样板统一走 _sse_headers/_sse_compress_done
             return StreamingResponse(
                 _single_sse(_sse_compress_done("", 0, 0)),
                 media_type="text/event-stream",
@@ -921,12 +921,19 @@ async def manual_compress(
                 headers=_sse_headers(),
             )
 
-        llm = ModelFactory(model_config)
+        # 档位模型容错：tool 档位配置异常时剔除后重建，保证 main 档可用（压缩不中断）
+        try:
+            llm = ModelFactory(model_config)
+        except Exception as exc:
+            logger.warning(f"manual_compress ModelFactory 初始化失败，剔除 tool_config 后重建: {exc}")
+            _cfg = dict(model_config or {})
+            _cfg.pop("tool_config", None)
+            llm = ModelFactory(_cfg)
         from langchain_core.messages import HumanMessage, SystemMessage
 
         from .context_manager import flatten_messages_for_summary, safe_compress_cutoff
 
-        # 任务 30（审查修复）：复用共享展平实现
+        # 复用共享展平实现
         combined = flatten_messages_for_summary(messages, 400)
 
         prompt = (
@@ -941,8 +948,10 @@ async def manual_compress(
                 summary = ""
                 try:
                     # N4：逐 chunk 120s 超时（复用 workflow_scheduler.py:740 的
-                    # wait_for(anext(stream)) 模式），防止 MaaS 挂起导致压缩永久卡住
-                    stream = llm.main.astream(
+                    # wait_for(anext(stream)) 模式），防止 MaaS 挂起导致压缩永久卡住。
+                    # 压缩类功能统一走 tool 档位（结构化/摘要专用），未配置时回落 main 兜底。
+                    compress_llm = getattr(llm, "tool", None) or llm.main
+                    stream = compress_llm.astream(
                         [
                             SystemMessage(content="你是专业的对话摘要助手。"),
                             HumanMessage(content=prompt),
@@ -990,7 +999,7 @@ async def manual_compress(
                 except Exception as exc:
                     logger.warning(f"保存压缩摘要到 AgentMemory 失败: {exc}")
 
-                # 任务 30（压缩修复）：add_messages 只增不减，aupdate_state 传入消息子集无法删除
+                # add_messages 只增不减，aupdate_state 传入消息子集无法删除
                 # 旧消息，必须传 RemoveMessage 列表才能从 checkpoint 的 messages 通道真正裁剪。
                 from langchain_core.messages import RemoveMessage
 

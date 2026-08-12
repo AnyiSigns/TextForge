@@ -22,7 +22,7 @@ class MessagesResponse(BaseModel):
     role: str = Field(..., description="发送者角色：user / assistant")
     content: str = Field(..., description="消息正文内容")
     think: str | None = Field(default=None, description="模型思考过程（reasoning_content），仅 assistant 消息可能有值")
-    # 任务 32：卡片消息还原（review-card 等）。type 非空表示事件卡片，
+    # 卡片消息还原（review-card 等）。type 非空表示事件卡片，
     # token 为整张卡片的 JSON 载荷，前端据此还原审核卡/建议卡。
     type: str = Field(default="", description="消息类型（空为普通消息）")
     token: str | None = Field(default=None, description="卡片消息的 JSON 载荷")

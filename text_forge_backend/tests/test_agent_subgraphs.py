@@ -1,4 +1,4 @@
-"""嵌套子图架构测试（任务 7 重建：私有通道 + output_schema 输出契约 + report 回流）。
+"""嵌套子图架构测试（重建：私有通道 + output_schema 输出契约 + report 回流）。
 
 覆盖：
 - subgraph_entry_router：候选确认/待审核退出、已审批工具/排队工作流直达内部节点、默认进 agent
@@ -107,7 +107,7 @@ def test_sync_node_merges_report_and_clears():
     assert result["turn_metrics"] == {"llm_calls": 3, "tool_calls": 1}
     assert result["subgraph_steps"] == {"drafting": 2}
     assert result["subgraph_report"] is None
-    # 任务 30（压缩修复）：sync 始终清空 removed_message_ids；无裁剪时无 messages 更新
+    # sync 始终清空 removed_message_ids；无裁剪时无 messages 更新
     assert result["removed_message_ids"] is None
     assert "messages" not in result
 
@@ -120,7 +120,7 @@ def test_sync_node_noop_without_report():
 
 
 def test_sync_node_propagates_compressed_removals():
-    """任务 30（压缩修复）：子图压缩裁剪的旧消息 ID 由 sync 转成 RemoveMessage 应用父层。"""
+    """子图压缩裁剪的旧消息 ID 由 sync 转成 RemoveMessage 应用父层。"""
     from langchain_core.messages import RemoveMessage
 
     result = sync_node(

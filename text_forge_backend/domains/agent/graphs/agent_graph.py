@@ -22,7 +22,7 @@ from ..workflow_runner_node import workflow_runner_node
 SUBGRAPH_NODES = ("worldbuilding", "outlining", "drafting", "revising")
 
 # =====================================================================
-# 嵌套子图（任务 7 重建，2026-08-11）
+# 嵌套子图（重建，2026-08-11）
 # ---------------------------------------------------------------------
 # 曾因 langgraph 1.2.9 两个回归回退扁平节点，现均已解决（venv 实测验证）：
 # 1) 流式事件丢失：父图 astream 必须开 subgraphs=True，子图内 get_stream_writer()
@@ -85,7 +85,7 @@ def subgraph_final_node(state: SubgraphState) -> dict[str, Any]:
 def sync_node(state: UserAgentState) -> dict[str, Any]:
     """父图同步节点：子图报告合并进父层指标通道（merge_metrics 加和），清空 report 防残留二次合并。
 
-    任务 30（压缩修复）：子图压缩裁剪掉的旧消息 ID（removed_message_ids）在此转为
+    子图压缩裁剪掉的旧消息 ID（removed_message_ids）在此转为
     RemoveMessage 应用到父层 messages 通道——add_messages 只增不减，子图内的裁剪
     不回流父层，必须在此显式删除才能实现跨回合真正裁剪。
     """

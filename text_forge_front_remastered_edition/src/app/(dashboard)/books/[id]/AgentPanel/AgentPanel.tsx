@@ -76,7 +76,7 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
   const { mention, setMention, detectMention, applyMention, handleInputKeyDown: mentionKeyDown } = useAgentMentions({ bookId, inputRef, setInput });
   const { handleManualCompress } = useManualCompress({ agentThreadId, agentStreaming });
 
-  // 任务 24：审核 / 重试 / 复制 / 编辑重发逻辑抽到 useAgentReview
+  // 审核 / 重试 / 复制 / 编辑重发逻辑抽到 useAgentReview
   const { handleReviewAction, handleUnlockAndRetry, handleCopyMessage, handleEditSend } = useAgentReview({
     agentThreadId,
     bookId,
@@ -112,7 +112,7 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
     void sendMessage(msg);
   }, [input, sendMessage, setMention]);
 
-  // 任务 23：@角色/#设定 提及——输入时检测触发词，弹出建议浮层
+  // @角色/#设定 提及——输入时检测触发词，弹出建议浮层
   const handleInputChange = useCallback((value: string, el: HTMLTextAreaElement) => {
     setInput(value);
     el.style.height = 'auto';
@@ -132,7 +132,7 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
     void sendMessage(msg);
   }, [sendMessage]);
 
-  // 任务 25：abort 的统一复位语义收敛在 useAgentSender.abort（streaming→system、
+  // abort 的统一复位语义收敛在 useAgentSender.abort（streaming→system、
   // running/pending 工具卡→error、清空节点/审核/思考状态），面板侧仅作入口。
   const handleAbort = () => {
     abort();
@@ -154,7 +154,7 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
           <button onClick={() => void handleManualCompress()} className="agent-icon-btn" title="压缩上下文" disabled={!agentThreadId || agentStreaming}>
             <Shrink size={12} strokeWidth={1.8} />
           </button>
-          {/* 任务 22：记忆按钮入口常驻（原来仅在会话列表收起时显示） */}
+          {/* 记忆按钮入口常驻（原来仅在会话列表收起时显示） */}
           {bookId > 0 && (
             <button onClick={() => setShowMemoryManager(true)} className="agent-icon-btn" title="记忆">
               <BookOpen size={12} strokeWidth={1.8} />

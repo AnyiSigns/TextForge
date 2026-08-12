@@ -8,7 +8,7 @@ from models.base import Base
 
 
 class AgentWriteAudit(Base):
-    """写操作审计（任务 29）：门控审批与全部写工具执行留痕。
+    """写操作审计：门控审批与全部写工具执行留痕。
 
     支撑回溯与回滚定位；ChapterContent 已版本化，update_entity 等改字段操作无留痕，
     本表补齐该缺口。

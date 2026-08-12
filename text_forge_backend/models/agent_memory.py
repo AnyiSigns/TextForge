@@ -29,7 +29,7 @@ class AgentMemory(Base):
     memory_type: Mapped[str] = mapped_column(
         String(20), nullable=False, index=True, comment="记忆类型"
     )
-    # 任务 16：可选的记忆标题（save 时可传，前端列表更可读）
+    # 可选的记忆标题（save 时可传，前端列表更可读）
     title: Mapped[str | None] = mapped_column(
         String(200), nullable=True, comment="记忆标题"
     )

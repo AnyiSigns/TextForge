@@ -3,7 +3,7 @@
 import { create } from 'zustand';
 
 /**
- * 任务 25：AgentMessage 改 discriminated union。
+ * AgentMessage 改 discriminated union。
  * type 为判别字段，按类型收敛各自字段，避免「所有字段全可选」的宽接口
  * 在渲染/更新时误用（如 tool 卡片带 nodeId、review-card 带 toolStatus）。
  */
@@ -11,7 +11,7 @@ import { create } from 'zustand';
 interface AgentMessageBase {
   role: 'user' | 'assistant';
   content: string;
-  /** 稳定 id：插入时生成，供消息列表 key 使用（任务 22 稳定 key） */
+  /** 稳定 id：插入时生成，供消息列表 key 使用（稳定 key） */
   id?: string;
 }
 
@@ -42,7 +42,7 @@ export interface AgentToolMessage extends AgentMessageBase {
   tool: string;
   /** pending：门控写工具被拦截待审核（review_card 到达时置位，区别于 running 的「请求外援中」） */
   toolStatus?: 'running' | 'done' | 'error' | 'pending';
-  /** 任务 25：tool_call_id 配对——同轮同名工具连续调用不错位；失败语义由 toolSuccess 表达 */
+  /** tool_call_id 配对——同轮同名工具连续调用不错位；失败语义由 toolSuccess 表达 */
   toolCallId?: string;
   toolSuccess?: boolean;
 }
@@ -113,7 +113,7 @@ interface BookDetailState {
   agentMessages: AgentMessage[];
   agentStreaming: boolean;
   agentStatus: AgentStatus;
-  /** 任务 23：当前回合的流式思考内容（agent_reasoning 累积，不写入会话历史） */
+  /** 当前回合的流式思考内容（agent_reasoning 累积，不写入会话历史） */
   agentReasoning: string;
   agentReasoningExpanded: boolean;
   agentNodeStatuses: AgentNodeStatus[];
@@ -251,7 +251,7 @@ export const useBookDetailStore = create<BookDetailState>((set) => ({
 
   updateToolMessage: (tool, status, opts) =>
     set((state) => {
-      // 任务 25：优先按 tool_call_id 配对（同轮同名工具不错位），
+      // 优先按 tool_call_id 配对（同轮同名工具不错位），
       // 无 id（旧事件/后端兼容）时回退从后往前匹配同名工具。
       const messages = [...state.agentMessages];
       const { toolCallId, success } = opts || {};

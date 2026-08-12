@@ -1,6 +1,6 @@
 """GatingService.apply 决策语义回归测试。
 
-覆盖任务 30 审查修复：
+覆盖 审查修复：
 - L1：写工具审批卡的 retry（「拒绝重试」）必须拒绝执行，不得把 AI 原文落库。
 - L2：edit 决策按写操作映射到对应入参字段（chapter.write→content、
   chapter.edit→new_text、chapter.diff→unified_diff），并保留其余入参。

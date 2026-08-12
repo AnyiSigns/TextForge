@@ -6,7 +6,7 @@ import { useBookDetailStore } from '@/app/(dashboard)/books/[id]/store';
 /**
  * Agent SSE token / node_stream 的 rAF 节流器。
  *
- * 任务 25：token 流攒批一帧内多次 token 再写一次 store，避免每 token 全量
+ * token 流攒批一帧内多次 token 再写一次 store，避免每 token 全量
  * set store 导致长消息列表 O(n²) 重渲；N9：node_stream 输出同样 rAF 批处理。
  * replyRef 记录已提交的流式回复正文（end.reply 比对基准）。
  */

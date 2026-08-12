@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * 任务 25：消息渲染的 type→组件映射字典。
+ * 消息渲染的 type→组件映射字典。
  *
  * 原 renderAgentMessage 的 10 分支收敛为组件映射表 + 兜底文本渲染，
  * 独立文件便于单测；同时修复历史遗留问题：
@@ -232,7 +232,7 @@ function TextMessage({ msg, onCopy, onEditSend }: {
           : 'px-3 py-2 border-l-2 border-foreground/10 agent-markdown',
       )}>
         {msg.role === 'user' ? msg.content : <MarkdownContent>{msg.content}</MarkdownContent>}
-        {/* 任务 23：消息 hover 菜单——复制（assistant 复制正文）/ 编辑重发（user 消息回填输入框） */}
+        {/* 消息 hover 菜单——复制（assistant 复制正文）/ 编辑重发（user 消息回填输入框） */}
         <div className="absolute -top-3 right-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
           {msg.role === 'assistant' && msg.content && (
             <button
@@ -289,7 +289,7 @@ function RagRefCard({ msg }: { msg: Extract<AgentMessage, { type: 'rag-ref' }> }
 }
 
 /**
- * 任务 25：type→组件映射字典。
+ * type→组件映射字典。
  * key 为消息 type；未匹配（普通 user/assistant 文本）走兜底 TextMessage。
  * 数组内顺序即优先级（旧 node-output 消息显式丢弃）。
  */
@@ -349,7 +349,7 @@ const MESSAGE_RENDERERS: Record<string, (props: MessageItemProps) => React.React
 
 export function MessageItem(props: MessageItemProps) {
   const { msg } = props;
-  // 稳定 key（任务 22）：消息插入时生成的 id 优先，历史映射消息回退 index。
+  // 稳定 key：消息插入时生成的 id 优先，历史映射消息回退 index。
   // key 放在外层容器，保证 React 按消息身份复用/卸载而非按 index。
   const stableKey = msg.id || `i-${props.index}`;
   const renderer = MESSAGE_RENDERERS[msg.type || ''];

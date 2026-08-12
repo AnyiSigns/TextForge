@@ -8,7 +8,7 @@ from models.base import Base
 
 
 class AgentTurnMetric(Base):
-    """Agent 回合指标（任务 28 指标层）：每回合耗时 / LLM 调用 / 工具成败 / 压缩 / 审批。
+    """Agent 回合指标（指标层）：每回合耗时 / LLM 调用 / 工具成败 / 压缩 / 审批。
 
     用于开放项（子图 step cap、模型分层、重试策略）的决策数据来源。
     """

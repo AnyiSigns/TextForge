@@ -1,4 +1,4 @@
-"""任务 28 指标层 / 子图 step cap / 任务 29 写操作审计 测试。
+""" 指标层 / 子图 step cap / 写操作审计 测试。
 
 覆盖：
 - merge_metrics reducer：数值相加 / 嵌套 dict 合并 / __reset__ 重置
@@ -141,7 +141,7 @@ def test_step_cap_ignores_unknown_subgraph():
 
 
 # ---------------------------------------------------------------------------
-# 每回合输出字符预算（任务 10 扩展）
+# 每回合输出字符预算（扩展）
 # ---------------------------------------------------------------------------
 
 
@@ -206,7 +206,7 @@ def test_build_payload_includes_duration_and_details():
     assert isinstance(payload["duration_ms"], (int, float))
     assert 0 <= payload["duration_ms"] < 60000
     assert payload["details"]["llm_calls_per_subgraph"] == {"drafting": 2}
-    # 任务 28 修复：steps_per_subgraph 从独立 subgraph_steps 通道读取
+    # steps_per_subgraph 从独立 subgraph_steps 通道读取
     assert payload["details"]["steps_per_subgraph"] == {"drafting": 3}
 
 
@@ -286,7 +286,7 @@ def test_record_write_audit_writes_row():
 
 
 def test_persist_metrics_book_id_zero_normalized_to_none():
-    """任务 28 修复：book_id=0（无书籍会话历史约定）必须归一化，避免 FK 违例静默丢数据。"""
+    """book_id=0（无书籍会话历史约定）必须归一化，避免 FK 违例静默丢数据。"""
     factory = FakeSessionFactory({})
     import asyncio
 
@@ -311,7 +311,7 @@ def test_persist_metrics_book_id_zero_normalized_to_none():
 
 
 def test_audit_long_tool_name_truncated_not_dropped():
-    """任务 29 修复：超长 tool_name（用户定义工作流 node_id）截断，保证审计行不丢。"""
+    """超长 tool_name（用户定义工作流 node_id）截断，保证审计行不丢。"""
     factory = FakeSessionFactory({})
     import asyncio
 
@@ -355,7 +355,7 @@ def test_audit_book_id_zero_normalized_to_none():
 
 
 # ---------------------------------------------------------------------------
-# 任务 30（审查修复 H2）：上下文压缩返回 RemoveMessage 而非消息子集
+# 上下文压缩返回 RemoveMessage 而非消息子集
 # ---------------------------------------------------------------------------
 
 
@@ -373,7 +373,7 @@ class _FakeCompressFactory:
 
 @pytest.mark.asyncio
 async def test_auto_compress_returns_remove_messages(monkeypatch):
-    """任务 30（审查修复 H2）：add_messages 只增不减，压缩必须返回 RemoveMessage
+    """add_messages 只增不减，压缩必须返回 RemoveMessage
     才能真正裁剪；同时把被删 ID 写入 removed_message_ids 供父层 sync 回流删除。"""
     from langchain_core.messages import RemoveMessage
 

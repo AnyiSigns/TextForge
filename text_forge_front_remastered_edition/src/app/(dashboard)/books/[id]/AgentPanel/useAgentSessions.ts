@@ -43,7 +43,7 @@ export function useAgentSessions({ bookId, input, setInput, abort }: UseAgentSes
   const [renamingSessionId, setRenamingSessionId] = useState<number | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
   const [draftByThreadId, setDraftByThreadId] = useState<Map<string, string>>(new Map());
-  // 任务 23：消息分页/懒加载——已加载的历史条数（loadMoreHistory 的 offset 基数）
+  // 消息分页/懒加载——已加载的历史条数（loadMoreHistory 的 offset 基数）
   const [historyLoadedCount, setHistoryLoadedCount] = useState(0);
   const [historyConvId, setHistoryConvId] = useState<number | null>(null);
 
@@ -71,7 +71,7 @@ export function useAgentSessions({ bookId, input, setInput, abort }: UseAgentSes
     return () => { alive = false; };
   }, [bookId]);
 
-  // 任务 25：事件总线收敛——会话刷新 / 标题更新统一走 agentEvents
+  // 事件总线收敛——会话刷新 / 标题更新统一走 agentEvents
   useEffect(() => {
     return onAgentSessionsRefresh(() => { void fetchSessions(); });
   }, [fetchSessions]);
@@ -122,7 +122,7 @@ export function useAgentSessions({ bookId, input, setInput, abort }: UseAgentSes
     if (input.trim() && agentThreadId) {
       saveDraft(agentThreadId, input);
     }
-    // 任务 22：切换会话前先中止当前流的流式响应，避免旧响应写入新会话列表
+    // 切换会话前先中止当前流的流式响应，避免旧响应写入新会话列表
     if (agentStreaming) {
       abort();
     }
@@ -132,14 +132,14 @@ export function useAgentSessions({ bookId, input, setInput, abort }: UseAgentSes
     setHistoryLoadedCount(0);
     setHistoryConvId(s.id);
     try {
-      // 任务 23：消息分页/懒加载——首次只拉最近 50 条，滚动到顶时加载更早
+      // 消息分页/懒加载——首次只拉最近 50 条，滚动到顶时加载更早
       const msgs = await agentApi.fetchAgentMessages(s.id, { limit: 50, offset: 0 });
       setHistoryLoadedCount(msgs.length);
       useBookDetailStore.setState({ agentMessages: msgs.map(mapHistoryMessage) });
     } catch { /* ignore */ }
   }, [input, saveDraft, abort, setAgentThreadId, setInput, draftByThreadId]);
 
-  // 任务 23：懒加载更早消息（offset = 已加载条数，向后翻页）；返回实际加载条数，
+  // 懒加载更早消息（offset = 已加载条数，向后翻页）；返回实际加载条数，
   // 调用方据此推进 offset，避免最后一页不足 limit 时用相同 offset 重复加载相同消息。
   const loadMoreHistory = useCallback(async (convId: number, totalLoaded: number): Promise<number> => {
     try {
@@ -164,7 +164,7 @@ export function useAgentSessions({ bookId, input, setInput, abort }: UseAgentSes
     } catch { /* ignore */ }
   }, [handleNewSession]);
 
-  // 任务 23：会话手动重命名（行内编辑，Enter/失焦确认，Esc 取消）
+  // 会话手动重命名（行内编辑，Enter/失焦确认，Esc 取消）
   const handleRenameStart = useCallback((s: AgentConversation) => {
     setRenameDraft(s.title || '');
     setRenamingSessionId(s.id);

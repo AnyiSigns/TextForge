@@ -62,7 +62,7 @@ async def get_previous_chapter_context(session: AsyncSession, book_id: int, chap
 
 
 async def build_domain_context(session: AsyncSession, book_id: int, subgraph: str) -> str:
-    """任务 13：为 drafting/revising 子图装配域上下文（章摘要 + 场景事件 + 角色卡）。
+    """为 drafting/revising 子图装配域上下文（章摘要 + 场景事件 + 角色卡）。
 
     在 supervisor 将新用户消息路由到 drafting/revising 时调用，把该书的
     最近章节摘要/场景事件与出场角色卡拼成紧凑文本，随 domain_context 注入子图 prompt，
