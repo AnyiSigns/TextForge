@@ -766,9 +766,9 @@ function Step4Flow() {
           </div>
           <div className="rounded-xl border border-border bg-card p-3.5 space-y-3 shadow-sm">
             <div>
-              <label className="text-[10px] text-foreground/55 block mb-1">卷数 (1-10)</label>
-              <input type="number" min={1} max={10} value={volCount}
-                onChange={(e) => setVolCount(Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
+              <label className="text-[10px] text-foreground/55 block mb-1">卷数 (1-20)</label>
+              <input type="number" min={1} max={20} value={volCount}
+                onChange={(e) => setVolCount(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
                 className="w-full h-8 px-3 rounded-lg text-xs bg-background border border-border focus:outline-none focus:border-foreground/25" />
             </div>
             <div>

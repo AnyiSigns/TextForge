@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useEntityStore } from '@/features/map/stores/entityStore';
+import { lockChapter } from '@/shared/api/books';
 
 interface ChapterEditorProps {
   entityType: 'chapter' | 'volume';
@@ -17,11 +18,16 @@ export function ChapterEditor({ entityType, entityId, onClose }: ChapterEditorPr
   const volumes = useEntityStore((s) => s.volumes);
   const updateChapter = useEntityStore((s) => s.updateChapter);
   const updateVolume = useEntityStore((s) => s.updateVolume);
+  // P0-4：锁接口需要 bookId（锁定章归属校验）
+  const bookId = useEntityStore((s) => s.book?.id);
 
   const isChapter = entityType === 'chapter';
   const entity = isChapter
     ? chapters.find((c) => c.id === entityId)
     : volumes.find((v) => v.id === entityId);
+
+  // P1-8：锁定章禁止改名/改摘要，仅允许走专用锁接口解锁
+  const currentLocked = isChapter ? !!(entity as { locked?: boolean } | undefined)?.locked : false;
 
   const [title, setTitle] = useState('');
   const [summary, setSummary] = useState('');
@@ -41,7 +47,15 @@ export function ChapterEditor({ entityType, entityId, onClose }: ChapterEditorPr
   const handleSave = () => {
     if (!entityId) return;
     if (isChapter) {
-      updateChapter(entityId, { title: title.trim(), summary: summary.trim(), locked });
+      const prevLocked = !!(entity as { locked?: boolean } | undefined)?.locked;
+      // P1-8：锁定章禁止改名/改摘要，仅允许走专用锁接口解锁
+      if (!prevLocked) {
+        updateChapter(entityId, { title: title.trim(), summary: summary.trim() });
+      }
+      // P0-4：锁定状态改走专用 lockChapter 接口，避免 PUT 锁校验 409 导致无法解锁
+      if (locked !== prevLocked && bookId != null) {
+        lockChapter(bookId, entityId, locked).catch(() => toast.error('锁定状态更新失败'));
+      }
     } else {
       updateVolume(entityId, { title: title.trim(), summary: summary.trim() });
     }
@@ -58,8 +72,9 @@ export function ChapterEditor({ entityType, entityId, onClose }: ChapterEditorPr
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
+          disabled={currentLocked}
           placeholder={isChapter ? '章节标题' : '卷标题'}
-          className="w-full h-9 px-3 rounded-md text-sm bg-background border border-border focus:outline-none focus:border-foreground/20"
+          className="w-full h-9 px-3 rounded-md text-sm bg-background border border-border focus:outline-none focus:border-foreground/20 disabled:opacity-60"
         />
       </div>
 
@@ -70,9 +85,10 @@ export function ChapterEditor({ entityType, entityId, onClose }: ChapterEditorPr
         <textarea
           value={summary}
           onChange={(e) => setSummary(e.target.value)}
+          disabled={currentLocked}
           placeholder="概括本章要写的主要内容、情节走向……"
           rows={6}
-          className="w-full px-3 py-2 rounded-md text-sm bg-background border border-border focus:outline-none focus:border-foreground/20 resize-none leading-relaxed"
+          className="w-full px-3 py-2 rounded-md text-sm bg-background border border-border focus:outline-none focus:border-foreground/20 resize-none leading-relaxed disabled:opacity-60"
         />
       </div>
 

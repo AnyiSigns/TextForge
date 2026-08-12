@@ -17,8 +17,10 @@ export async function changePasswordByEmail(code: string, newPassword: string): 
   await apiClient.post('/user/change-password-by-email', { code, newPassword });
 }
 
-export async function sendCode(): Promise<void> {
-  await apiClient.post('/user/send-code', {});
+export async function sendCode(email?: string): Promise<void> {
+  // 不传 email 时发送当前绑定邮箱验证码（如邮箱改密）；
+  // 传 email（新邮箱）时后端按新邮箱存储 change_email 验证码。
+  await apiClient.post('/user/send-code', email ? { email } : {});
 }
 
 export async function uploadAvatar(file: File): Promise<{ avatar_url: string }> {

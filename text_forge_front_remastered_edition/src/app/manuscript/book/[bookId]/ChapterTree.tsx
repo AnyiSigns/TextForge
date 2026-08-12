@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { Plus, Trash2, FileText, ChevronRight, ChevronDown, BookPlus } from 'lucide-react';
+import { Plus, Trash2, FileText, ChevronRight, ChevronDown, BookPlus, Lock } from 'lucide-react';
 import { cn } from '@/shared/lib/cn';
 import { useManuscriptStore } from './store';
 
@@ -96,10 +96,12 @@ export function ChapterTree() {
                 <div className="space-y-0.5 mt-0.5">
                   {volChapters.map((item) => {
                     const chapterId = item.chapterId as number;
+                    const isLocked = !!item.locked;
                     return (
                       <div
                         key={`chapter-${chapterId}`}
-                        draggable
+                        // P1-8：锁定章禁止拖拽排序
+                        draggable={!isLocked}
                         onDragStart={() => setDragId(chapterId)}
                         onDragOver={(e) => { e.preventDefault(); setDragOverId(chapterId); }}
                         onDrop={(e) => { e.preventDefault(); if (dragId != null) void reorderChapters(dragId, chapterId); setDragId(null); setDragOverId(null); }}
@@ -108,6 +110,7 @@ export function ChapterTree() {
                         onMouseLeave={handleLeave}
                         className={cn(
                           'group flex items-center gap-1.5 pl-5 pr-2.5 py-1.5 rounded-md cursor-grab active:cursor-grabbing text-[13px] transition-colors',
+                          isLocked && 'cursor-default',
                           activeChapterId === chapterId ? 'bg-[var(--sidebar-hover)] text-foreground font-medium' : 'text-foreground/80 hover:bg-[var(--sidebar-hover)]',
                           dragOverId === chapterId && dragId !== chapterId && 'ring-1 ring-foreground/30',
                           dragId === chapterId && 'opacity-50',
@@ -118,11 +121,19 @@ export function ChapterTree() {
                       >
                         <FileText size={11} className="text-muted-foreground shrink-0" />
                         <span className="flex-1 truncate">{item.title}</span>
+                        {isLocked && (
+                          <Lock size={11} className="text-muted-foreground/60 shrink-0" aria-label="已锁定" />
+                        )}
                         <button
                           type="button"
                           aria-label="删除章节"
+                          // P1-8：锁定章禁止删除
+                          disabled={isLocked}
                           onClick={(e) => { e.stopPropagation(); setPendingDeleteId(chapterId); }}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground shrink-0 cursor-pointer bg-transparent border-none p-0.5"
+                          className={cn(
+                            'transition-opacity text-muted-foreground hover:text-foreground shrink-0 cursor-pointer bg-transparent border-none p-0.5',
+                            isLocked ? 'opacity-30 cursor-not-allowed' : 'opacity-0 group-hover:opacity-100',
+                          )}
                         >
                           <Trash2 size={12} />
                         </button>

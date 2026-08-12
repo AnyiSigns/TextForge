@@ -358,7 +358,7 @@ export function TimelineBar() {
           </button>
           <span>{book.title}</span>
           <span className="text-muted-foreground/30">|</span>
-          <span>{book.totalWordGoal ?? 0 >= 10000 ? `${((book.totalWordGoal ?? 0) / 10000).toFixed(1)} 万字` : `${(book.totalWordGoal ?? 0).toLocaleString()} 字`}</span>
+          <span>{(book.totalWordGoal ?? 0) >= 10000 ? `${((book.totalWordGoal ?? 0) / 10000).toFixed(1)} 万字` : `${(book.totalWordGoal ?? 0).toLocaleString()} 字`}</span>
         </div>
       </div>
     </div>

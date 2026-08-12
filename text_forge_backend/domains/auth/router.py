@@ -1,11 +1,12 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from config.logging import get_logger
 from config.settings import settings
+from core.exceptions import AppException
 from core.security import create_token, verify_token
 from schema.request.auth import (
     EmailRequest,
@@ -28,20 +29,47 @@ from .verification import verification
 logger = get_logger(__name__)
 router = APIRouter(prefix="/auth", tags=["认证"])
 
+# refresh token 以 HttpOnly cookie 下发（XSS 不可读），前端仅保留同名的
+# 非敏感登录标志 cookie（tf_logged_in）供 middleware/proxy 判断登录态。
+REFRESH_COOKIE = "tf_rt"
+_REFRESH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60  # 与 JWT refresh 有效期一致（7 天）
+
+
+def _set_refresh_cookie(response: Response, token: str) -> None:
+    """下发 HttpOnly refresh cookie：仅可被后端读取，防 XSS 窃取长期凭据。"""
+    response.set_cookie(
+        key=REFRESH_COOKIE,
+        value=token,
+        max_age=_REFRESH_COOKIE_MAX_AGE,
+        path="/",
+        httponly=True,
+        samesite="lax",
+        secure=settings.ENV == "production",
+    )
+
+
+def _clear_refresh_cookie(response: Response) -> None:
+    response.delete_cookie(key=REFRESH_COOKIE, path="/")
+
 
 @router.post("/logout")
 async def logout(
-    request: RefreshRequest,
+    body: RefreshRequest,
+    raw_req: Request,
+    response: Response,
     user_serve: Annotated[UserAuthService, Depends(user_db_serve)],
 ):
     """登出：删除 refresh token，并将 access token 加入黑名单立即失效。"""
-    payload = verify_token(request.refresh_token)
+    # HttpOnly cookie 优先（前端不再传 refresh_token body）；body 兼容旧客户端/测试
+    refresh_token = raw_req.cookies.get(REFRESH_COOKIE) or body.refresh_token
+    _clear_refresh_cookie(response)
+    payload = verify_token(refresh_token)
     if not payload:
         raise HTTPException(status_code=401, detail="令牌无效")
     user_id = int(payload.get("sub"))
     jti = payload.get("jti")
     await user_serve.token_repo.delete_user_and_jti(user_id, jti)
-    await redis_client.srem(f"refresh_token_{user_id}", request.refresh_token)
+    await redis_client.srem(f"refresh_token_{user_id}", refresh_token)
     # access token 黑名单：jti → 黑名单，TTL 取 access 剩余有效期（默认 15 分钟）
     access_token = request.access_token
     if access_token:
@@ -63,10 +91,14 @@ async def logout(
 
 @router.post("/refresh", response_model=RefreshResponse)
 async def refresh_at(
-    request: RefreshRequest,
+    body: RefreshRequest,
+    raw_req: Request,
+    response: Response,
     user_serve: Annotated[UserAuthService, Depends(user_db_serve)],
 ):
-    payload = verify_token(request.refresh_token)
+    # HttpOnly cookie 优先；body 兼容旧客户端/测试
+    refresh_token = raw_req.cookies.get(REFRESH_COOKIE) or body.refresh_token
+    payload = verify_token(refresh_token)
     if not payload:
         raise HTTPException(status_code=401, detail="令牌无效")
     user_id = int(payload.get("sub"))
@@ -78,7 +110,7 @@ async def refresh_at(
     if not user_token:
         raise HTTPException(status_code=401, detail="用户/令牌不存在")
     if not await redis_client.sismember(
-        f"refresh_token_{user_id}", request.refresh_token
+        f"refresh_token_{user_id}", refresh_token
     ):
         raise HTTPException(status_code=401, detail="令牌不存在")
     at_jti = str(uuid.uuid4())
@@ -97,6 +129,8 @@ async def refresh_at(
         expire=settings.JWT_ACCESS_TIME,
     )
     user_resp = UserResponse.model_validate(user)
+    # 刷新成功：滑动续期 HttpOnly refresh cookie
+    _set_refresh_cookie(response, refresh_token)
     return RefreshResponse(access_token=access_token, user=user_resp)
 
 
@@ -167,12 +201,14 @@ async def verify_email(
 
 @router.post("/login", response_model=TokenRes)
 async def user_login(
-    request: UserLogin, user_serve: Annotated[UserAuthService, Depends(user_db_serve)]
+    body: UserLogin,
+    response: Response,
+    user_serve: Annotated[UserAuthService, Depends(user_db_serve)],
 ):
     # 登录失败限流：防止暴力破解。按邮箱计数，成功即清零；窗口 15 分钟。
     LOGIN_FAIL_WINDOW = 900  # 15 分钟
     LOGIN_FAIL_MAX = 10
-    fail_key = f"auth:login:fail:{request.email.lower()}"
+    fail_key = f"auth:login:fail:{body.email.lower()}"
     try:
         fail_count = int(await redis_client.get(fail_key) or 0)
     except Exception:
@@ -183,7 +219,7 @@ async def user_login(
         )
 
     user, access_token, refresh_token, msg = await user_serve.user_login(
-        email=request.email, pwd=request.password
+        email=body.email, pwd=body.password
     )
     if msg:
         try:
@@ -193,11 +229,16 @@ async def user_login(
             await pipe.execute()
         except Exception as exc:
             logger.warning(f"登录失败计数失败: {exc}")
-        status_code = 403 if "邮箱未验证" in msg else 401
-        raise HTTPException(status_code=status_code, detail=msg)
+        # 结构化错误码优先：前端按 code 分支，避免耦合 detail 文案。
+        # 状态码统一 401（凭据无效），避免 403/401 差异泄露账号注册与验证状态
+        # （账号枚举）；EMAIL_NOT_VERIFIED 仅通过响应体 error_code 传递。
+        if "邮箱未验证" in msg:
+            raise AppException(401, msg, "EMAIL_NOT_VERIFIED")
+        raise HTTPException(status_code=401, detail=msg)
     try:
         await redis_client.delete(fail_key)
     except Exception:
         pass
     user_resp = UserResponse.model_validate(user)
+    _set_refresh_cookie(response, refresh_token)
     return TokenRes(access_token=access_token, refresh_token=refresh_token, user=user_resp)  # type: ignore

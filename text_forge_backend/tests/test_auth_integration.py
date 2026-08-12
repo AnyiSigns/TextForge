@@ -90,5 +90,7 @@ async def test_login_rejected_before_verification():
         assert resp.status_code == 200, resp.text
 
         resp = await client.post("/api/auth/login", json={"email": email, "password": _PASSWORD})
-        assert resp.status_code == 403, resp.text
-        assert "未验证" in resp.text
+        # 状态码统一 401（凭据无效），避免 403/401 差异泄露账号注册与验证状态；
+        # 未验证详情通过响应体 error_code=EMAIL_NOT_VERIFIED 传递
+        assert resp.status_code == 401, resp.text
+        assert "EMAIL_NOT_VERIFIED" in resp.text

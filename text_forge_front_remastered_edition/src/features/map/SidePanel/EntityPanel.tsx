@@ -20,20 +20,38 @@ export function EntityPanel() {
   const [deleteFwId, setDeleteFwId] = useState<number | null>(null);
   const [deletePtId, setDeletePtId] = useState<number | null>(null);
 
-  const statusColor = (status: string) => {
+  const statusColor = (kind: 'foreshadowing' | 'plot-thread', status: string) => {
+    if (kind === 'foreshadowing') {
+      switch (status) {
+        case 'planted': return 'text-amber-500/60';
+        case 'resolved': return 'text-muted-foreground/40';
+        case 'abandoned': return 'text-red-500/50';
+        default: return 'text-muted-foreground/50';
+      }
+    }
     switch (status) {
-      case 'planted': return 'text-amber-500/60';
-      case 'ongoing': return 'text-emerald-500/60';
-      case 'resolved': return 'text-muted-foreground/40';
+      case 'active': return 'text-emerald-500/60';
+      case 'completed': return 'text-muted-foreground/40';
+      case 'paused': return 'text-sky-500/60';
+      case 'abandoned': return 'text-red-500/50';
       default: return 'text-muted-foreground/50';
     }
   };
 
-  const statusLabel = (status: string) => {
+  const statusLabel = (kind: 'foreshadowing' | 'plot-thread', status: string) => {
+    if (kind === 'foreshadowing') {
+      switch (status) {
+        case 'planted': return '已埋下';
+        case 'resolved': return '已回收';
+        case 'abandoned': return '已放弃';
+        default: return status;
+      }
+    }
     switch (status) {
-      case 'planted': return '已埋下';
-      case 'ongoing': return '进行中';
-      case 'resolved': return '已回收';
+      case 'active': return '进行中';
+      case 'completed': return '已完结';
+      case 'paused': return '已暂停';
+      case 'abandoned': return '已放弃';
       default: return status;
     }
   };
@@ -74,8 +92,8 @@ export function EntityPanel() {
                   </p>
                   <div className="flex items-center gap-1 flex-shrink-0">
                     {f.locked && <Lock size={9} className="text-muted-foreground/30" />}
-                    <span className={cn('text-[9px]', statusColor(f.status))}>
-                      {statusLabel(f.status)}
+                    <span className={cn('text-[9px]', statusColor('foreshadowing', f.status))}>
+                      {statusLabel('foreshadowing', f.status)}
                     </span>
                   </div>
                 </div>
@@ -167,8 +185,8 @@ export function EntityPanel() {
                   </div>
                 </div>
                 <div className="flex items-center justify-between mt-0.5">
-                  <span className={cn('text-[9px]', statusColor(p.status))}>
-                    {statusLabel(p.status)}
+                  <span className={cn('text-[9px]', statusColor('plot-thread', p.status))}>
+                    {statusLabel('plot-thread', p.status)}
                   </span>
                 </div>
                 <p className="text-[10px] text-muted-foreground/60 mt-1 leading-relaxed">

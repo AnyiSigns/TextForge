@@ -191,7 +191,16 @@ export function useAgentSession(opts: AgentSessionOptions) {
           const errMsg = (err as Error)?.message || 'Agent 请求失败，请重试。';
           const status = (err as Error & { status?: number })?.status;
           const lockConflict = status === 503;
-          if (status === 404) {
+          if (status === 409) {
+            // P1.6：会话正在生成中（并发请求被后端 409 拒绝）：明确提示，
+            // 不附加 retryMessage（重试只会再次触发 409）。
+            addAgentMessage({
+              role: 'assistant',
+              type: 'error',
+              content: '该会话正在生成中，请等待完成或使用其他会话',
+            });
+            setAgentStatus({ kind: 'error', message: errMsg });
+          } else if (status === 404) {
             // N5：会话不存在/已失效（被删除或过期）→ 重置会话并引导新建，
             // 不附加 retryMessage（重试只会再次 404）；刷新侧栏移除已失效会话
             setAgentThreadId(null);

@@ -14,7 +14,7 @@ class VerifyEmailRequest(EmailRequest):
 class RefreshRequest(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
-    refresh_token: str
+    refresh_token: str | None = None  # HttpOnly cookie 化后由后端从 cookie 读取；body 兼容旧客户端/测试
     access_token: str | None = None  # 登出时可选携带：将其加入黑名单立即失效
 
 

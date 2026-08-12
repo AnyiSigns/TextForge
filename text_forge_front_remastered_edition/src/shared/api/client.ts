@@ -86,24 +86,15 @@ apiClient.interceptors.request.use(async (config) => {
   return config;
 });
 
-let refreshPromise: Promise<boolean> | null = null;
-
-async function waitForRefresh(): Promise<boolean> {
-  if (!refreshPromise) {
-    refreshPromise = useAuthStore.getState().refreshAccessToken().finally(() => {
-      refreshPromise = null;
-    });
-  }
-  return refreshPromise;
-}
-
 apiClient.interceptors.response.use(
   (res) => res,
   async (err) => {
     const originalRequest = err.config;
     if (err.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
-      const ok = await waitForRefresh();
+      // 直接复用 store 的 refreshAccessToken（其内部 refreshInFlight 已是单飞），
+      // 移除 axios 层重复的 refreshPromise 包装，避免双重单飞。
+      const ok = await useAuthStore.getState().refreshAccessToken();
       if (ok) {
         const newToken = useAuthStore.getState().accessToken;
         if (newToken) {

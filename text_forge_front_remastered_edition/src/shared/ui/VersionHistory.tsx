@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { X, GitCompare } from 'lucide-react';
 import { cn } from '@/shared/lib/cn';
+import { formatUtc } from '@/shared/lib/datetime';
 
 interface VersionItem {
   version: number;
@@ -68,7 +69,8 @@ export function VersionHistory({ versions, currentVersion, onCompare, onClose }:
               {v.content?.slice(0, 60) || '空内容'}
             </div>
             <div className="text-[10px] text-muted-foreground/60 mt-0.5">
-              {new Date(v.createdAt).toLocaleString()}
+              {/* P1-12：后端 naive UTC 时间按 UTC 解析，避免本地时区偏移 */}
+              {formatUtc(v.createdAt)}
             </div>
           </div>
         ))}

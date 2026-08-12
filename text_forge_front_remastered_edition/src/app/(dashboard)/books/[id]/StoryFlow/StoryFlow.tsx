@@ -320,6 +320,11 @@ export function StoryFlow() {
               </div>
             ) : (
               <div className="max-w-2xl mx-auto">
+                {!isEnded && nodes.length >= 27 && nodes.length < 30 && (
+                  <div className="mb-4 px-3 py-2 rounded-lg text-[11px] leading-relaxed bg-amber-500/[0.08] text-amber-600/80 border border-amber-500/30">
+                    自由推演已达 {nodes.length}/30 幕，即将自动结束
+                  </div>
+                )}
                 {currentNode && (
                   <>
                     {/* 场景标题 */}
@@ -470,9 +475,13 @@ export function StoryFlow() {
           decisionNodeIndices={decisionNodeIndices}
           currentSceneId={currentSceneId}
           submitState={submitState}
+          streaming={streaming}
           applyPerspective={applyPerspective}
           onGoToNode={goToNode}
-          onSubmit={() => (isEnded ? void handleSubmitToWorkflow() : openEndConfirm('submit'))}
+          onSubmit={() => {
+            if (streaming) return;
+            isEnded ? void handleSubmitToWorkflow() : openEndConfirm('submit');
+          }}
         />
       </div>
 

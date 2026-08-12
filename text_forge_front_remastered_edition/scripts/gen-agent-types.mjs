@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 阶段 4（大厂标准化）：OpenAPI → TS 类型生成。
+ * OpenAPI → TS 类型生成。
  *
  * 从后端 /openapi.json 中筛出 agent 相关三组路径（/agent、/agent-memories、/workflows），
  * 用 openapi-typescript 生成 src/shared/api/gen-agent-types.ts。

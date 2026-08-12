@@ -74,8 +74,8 @@ describe('searchAgentMemories 语义/全文降级', () => {
 
     const [url, body] = postMock.mock.calls[0];
     expect(url).toBe('/agent-memories/search');
-    expect(body).toMatchObject({ q: '主角身世', book_id: 7, mode: 'semantic' });
-    expect(body.model_config_data.embedding_config).toMatchObject({ model_id: 'text-embedding-v4', api_key: 'k' });
+    expect(body).toMatchObject({ q: '主角身世', bookId: 7, mode: 'semantic' });
+    expect(body.modelConfig.embedding_config).toMatchObject({ model_id: 'text-embedding-v4', api_key: 'k' });
   });
 
   it('未配置 embedding 时不携带 mode（后端降级 fulltext）', async () => {
@@ -86,7 +86,7 @@ describe('searchAgentMemories 语义/全文降级', () => {
     const body = postMock.mock.calls[0][1] as Record<string, unknown>;
     expect(body.q).toBe('主角身世');
     expect(body.mode).toBeUndefined();
-    expect(body.model_config_data).toBeUndefined();
+    expect(body.modelConfig).toBeUndefined();
   });
 
   it('embedding 配置为空（无 model_id）时同样走全文分支', async () => {

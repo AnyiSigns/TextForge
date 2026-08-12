@@ -210,9 +210,10 @@ export function InspectorPanel({ node, onChange, onClose }: InspectorPanelProps)
           </div>
           <button
             onClick={() => onChange({ contextFields: [] })}
+            title="清空当前节点已选的上下文字段（无法可靠自动推断，请按需手动勾选）"
             className="w-full mt-2 py-1 text-[10px] text-foreground/30 hover:text-foreground/50 bg-transparent border border-dashed border-border rounded cursor-pointer"
           >
-            自动匹配
+            清空上下文
           </button>
         </div>
 

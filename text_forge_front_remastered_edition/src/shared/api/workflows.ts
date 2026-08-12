@@ -36,8 +36,9 @@ export async function getWorkflow(id: string): Promise<Workflow> {
 
 export async function saveWorkflow(wf: Workflow): Promise<Workflow> {
   if (!wf.id) {
-    // 新建工作流（前端尚未生成 id）：走创建接口；若继续 PUT 到集合路径
-    // /workflows/ 会被后端 405 拒绝
+    // 死分支：前端在新建页已通过 makeNodeId 生成且始终携带 id（见 [id]/page.tsx），
+    // 实际保存均走下方 PUT。此处保留仅为兼容后端契约（POST /workflows/ 创建），
+    // 防止极端情况下 wf.id 为空时 PUT 集合路径被后端 405 拒绝。
     const { data } = await apiClient.post<{ workflow: Workflow }>('/workflows/', wf);
     return data.workflow;
   }

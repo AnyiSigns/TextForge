@@ -21,6 +21,7 @@ export function ProfileTab() {
   const [showOldPwd, setShowOldPwd] = useState(false);
   const [showNewPwd, setShowNewPwd] = useState(false);
 
+  const [sendingEmailCode, setSendingEmailCode] = useState(false);
   const [emailPwdCode, setEmailPwdCode] = useState('');
   const [emailPwdNewPwd, setEmailPwdNewPwd] = useState('');
   const [sendingPwdCode, setSendingPwdCode] = useState(false);
@@ -63,6 +64,18 @@ export function ProfileTab() {
       toast.success('已保存');
     } catch { toast.error('保存失败'); }
     finally { setSavingProfile(false); }
+  };
+
+  const handleSendEmailCode = async () => {
+    const newEmail = email.trim();
+    if (!newEmail) { toast.error('请输入新邮箱'); return; }
+    if (newEmail === originalEmail) { toast.error('新邮箱不能与当前邮箱相同'); return; }
+    setSendingEmailCode(true);
+    try {
+      await userApi.sendCode(newEmail);
+      toast.success('验证码已发送到新邮箱');
+    } catch { toast.error('发送失败'); }
+    finally { setSendingEmailCode(false); }
   };
 
   const handleSaveEmail = async () => {
@@ -174,13 +187,20 @@ export function ProfileTab() {
             <TextInput value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
           {email !== originalEmail && (
-            <div className="flex items-center gap-2">
-              <TextInput value={emailCode} onChange={(e) => setEmailCode(e.target.value)}
-                placeholder="验证码" maxLength={6} size="sm" className="w-32" />
-              <Button size="sm" onClick={handleSaveEmail} disabled={savingProfile}>
-                {savingProfile ? '保存中...' : '保存邮箱'}
-              </Button>
-              <span className="text-[10px] text-muted-foreground">修改邮箱后需保存验证</span>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="secondary" onClick={handleSendEmailCode}
+                  disabled={sendingEmailCode || savingProfile}
+                  className="flex items-center gap-1">
+                  <Mail size={10} /> {sendingEmailCode ? '发送中...' : '发送验证码'}
+                </Button>
+                <TextInput value={emailCode} onChange={(e) => setEmailCode(e.target.value)}
+                  placeholder="验证码" maxLength={6} size="sm" className="w-32" />
+                <Button size="sm" onClick={handleSaveEmail} disabled={savingProfile}>
+                  {savingProfile ? '保存中...' : '保存邮箱'}
+                </Button>
+              </div>
+              <span className="text-[10px] text-muted-foreground">验证码将发送至新邮箱，填写后保存完成修改</span>
             </div>
           )}
           {email === originalEmail && (

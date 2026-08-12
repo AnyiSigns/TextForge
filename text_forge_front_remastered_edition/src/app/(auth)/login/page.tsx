@@ -46,7 +46,9 @@ export default function LoginPage() {
       router.push(getRedirect());
     } catch (err: unknown) {
       const msg = getApiErrorMessage(err, '登录失败');
-      if (msg.includes('邮箱未验证')) {
+      // 优先按后端结构化 code 分支，文案含"邮箱未验证"作为兜底兼容。
+      const errCode = (err as { errorCode?: string })?.errorCode;
+      if (errCode === 'EMAIL_NOT_VERIFIED' || msg.includes('邮箱未验证')) {
         showApiError(err, '邮箱未验证');
         router.push(`/verify-email?email=${encodeURIComponent(email)}`);
         return;

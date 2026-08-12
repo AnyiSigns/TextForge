@@ -122,6 +122,8 @@ export function useSimRoomSocket(room: SimRoomDetail | null): UseSimRoomResult {
     // 指数退避重连：1s/2s/4s/8s… 上限 10s；仅在房间仍存在、组件未卸载时尝试
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let reconnectDelay = 1000;
+    // 模型未配置仅提示一次，避免重连时反复弹 toast。
+    let modelWarned = false;
 
     const scheduleReconnect = () => {
       if (cancelled || !roomId || reconnectTimer) return;
@@ -149,6 +151,10 @@ export function useSimRoomSocket(room: SimRoomDetail | null): UseSimRoomResult {
         // 配置缺失时后端会返回「没有配置提供商」，由用户先在设置页配置模型
       }
       if (cancelled) return;
+      if (!modelConfig && !modelWarned) {
+        modelWarned = true;
+        toast.error('尚未配置模型，请先到设置页配置');
+      }
       const ws = new WebSocket(wsUrl, token ? [token] : []);
       ws.onopen = () => {
         if (cancelled) return;

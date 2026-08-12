@@ -8,6 +8,7 @@ import * as characterApi from '@/shared/api/characters';
 import type { Character } from '@/shared/api/types';
 import { PageContainer } from '@/shared/ui/PageContainer';
 import { PageHeader } from '@/shared/ui/PageHeader';
+import { formatUtc } from '@/shared/lib/datetime';
 
 export default function CharacterDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -178,11 +179,11 @@ export default function CharacterDetailPage({ params }: { params: Promise<{ id: 
             </div>
             <div className="p-3 rounded-lg border border-border bg-card">
               <div className="text-muted-foreground mb-1">创建时间</div>
-              <div className="font-medium">{character.createdAt ? new Date(character.createdAt).toLocaleString() : '-'}</div>
+              <div className="font-medium">{formatUtc(character.createdAt)}</div>
             </div>
             <div className="p-3 rounded-lg border border-border bg-card">
               <div className="text-muted-foreground mb-1">更新时间</div>
-              <div className="font-medium">{character.updatedAt ? new Date(character.updatedAt).toLocaleString() : '-'}</div>
+              <div className="font-medium">{formatUtc(character.updatedAt)}</div>
             </div>
           </div>
         </section>

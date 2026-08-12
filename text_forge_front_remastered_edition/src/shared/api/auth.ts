@@ -16,7 +16,15 @@ interface RefreshResponse {
 /** 从非 2xx 响应提取后端具体错误原因（字符串 / 422 数组 / {message} 对象），兜底文案。 */
 async function throwApiError(res: Response, fallback: string): Promise<never> {
   const detail = await extractApiDetail(res);
-  throw new Error(detail ?? fallback);
+  // 透传后端 error_code（如 EMAIL_NOT_VERIFIED），前端可按 code 分支而非耦合文案。
+  let errorCode: string | undefined;
+  try {
+    const body = (await res.clone().json()) as { error_code?: string };
+    if (typeof body.error_code === 'string') errorCode = body.error_code;
+  } catch { /* ignore */ }
+  const err = new Error(detail ?? fallback) as Error & { errorCode?: string };
+  err.errorCode = errorCode;
+  throw err;
 }
 
 export async function loginApi(email: string, password: string): Promise<LoginResponse> {
@@ -46,11 +54,11 @@ export async function registerApi(
   return { email_sent: !!data.email_sent };
 }
 
-export async function refreshTokenApi(refreshToken: string): Promise<RefreshResponse> {
+export async function refreshTokenApi(): Promise<RefreshResponse> {
   const res = await fetch(`${API_BASE}/auth/refresh`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refresh_token: refreshToken }),
+    // refresh token 由后端从 HttpOnly cookie（tf_rt）读取，前端不可读也不传 body
     credentials: 'include',
     cache: 'no-store',
   });
@@ -58,11 +66,12 @@ export async function refreshTokenApi(refreshToken: string): Promise<RefreshResp
   return res.json();
 }
 
-export async function logoutApi(refreshToken: string, accessToken?: string): Promise<void> {
+export async function logoutApi(accessToken?: string): Promise<void> {
+  // refresh token 由后端从 HttpOnly cookie 读取撤销；access token 传 body 进黑名单
   await fetch(`${API_BASE}/auth/logout`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refresh_token: refreshToken, access_token: accessToken ?? null }),
+    body: JSON.stringify({ access_token: accessToken ?? null }),
     credentials: 'include',
   }).catch(() => {});
 }

@@ -105,15 +105,12 @@ export async function getSimRoom(roomId: number): Promise<SimRoomDetail | null> 
 }
 
 // 创建新的模拟房间，返回后端生成的房间 id 与名称。
+// 创建失败（如 403 无权访问该书籍）让异常向上抛出，由调用方展示具体错误原因。
 export async function createSimRoom(
   payload: CreateSimRoomPayload,
-): Promise<{ id: number; name: string } | null> {
-  try {
-    const { data } = await apiClient.post<{ id: number; name: string }>('/sim-rooms/', payload);
-    return data;
-  } catch {
-    return null;
-  }
+): Promise<{ id: number; name: string }> {
+  const { data } = await apiClient.post<{ id: number; name: string }>('/sim-rooms/', payload);
+  return data;
 }
 
 // 删除模拟房间（后端级联清理参与者/消息/支线/角色记忆）。

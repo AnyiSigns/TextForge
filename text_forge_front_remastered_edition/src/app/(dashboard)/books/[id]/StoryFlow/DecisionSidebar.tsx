@@ -16,6 +16,8 @@ interface DecisionSidebarProps {
   decisionNodeIndices: number[];
   currentSceneId: number;
   submitState: SubmitState;
+  /** 场景流式生成中：禁用提交，防与生成并发写 */
+  streaming: boolean;
   applyPerspective: (text: string) => string;
   onGoToNode: (index: number) => void;
   /** isEnded ? 提交到工作流 : 打开结束确认（submit 动作） */
@@ -28,6 +30,7 @@ export function DecisionSidebar({
   decisionNodeIndices,
   currentSceneId,
   submitState,
+  streaming,
   applyPerspective,
   onGoToNode,
   onSubmit,
@@ -82,7 +85,7 @@ export function DecisionSidebar({
         <div className="px-4 py-3 border-t border-border/20 flex-shrink-0">
           <button
             onClick={onSubmit}
-            disabled={submitState === 'summarizing' || submitState === 'streaming'}
+            disabled={submitState === 'summarizing' || submitState === 'streaming' || streaming}
             className="w-full flex items-center justify-center gap-1.5 h-8 rounded-md text-[11px] font-medium bg-foreground text-background hover:opacity-90 transition-opacity border-none cursor-pointer disabled:opacity-50"
           >
             <Send size={11} />

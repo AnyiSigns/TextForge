@@ -79,6 +79,8 @@ interface StoryFlowState {
   finishFlow: () => Promise<string>;
   restore: (flowId: number) => Promise<void>;
   goToNode: (index: number) => void;
+  /** 409 冲突后从服务端拉取最新 flow 重建本地状态（不自动续推，避免用旧 seq 再次 409） */
+  recoverFromConflict: (flowId: number) => Promise<void>;
 }
 
 function mapNode(n: ApiStoryFlowNode): SceneNode {
@@ -424,6 +426,11 @@ export const useStoryFlowStore = create<StoryFlowState>((set, get) => ({
         },
         onError: (msg) => {
           clearStreamBuffer();
+          // 乐观锁冲突（409）：拉取最新 flow 重建本地状态，避免 retry 用旧 seq 再次 409。
+          if (/409|场景已推进|请刷新后重试|conflict/i.test(msg)) {
+            void get().recoverFromConflict(flowId);
+            return;
+          }
           toast.error(msg);
           set({ streaming: false, abortController: null });
         },
@@ -505,6 +512,43 @@ export const useStoryFlowStore = create<StoryFlowState>((set, get) => ({
   },
 
   goToNode: (index) => set({ currentSceneId: index }),
+
+  recoverFromConflict: async (flowId) => {
+    set({ loading: true, streaming: false, abortController: null });
+    try {
+      const data = await apiFetch(flowId);
+      const nodes = data.nodes.map(mapNode);
+      let viewCharacterId = data.flow.viewCharacterId;
+      let perspectiveLocked = false;
+      if (viewCharacterId != null) {
+        const exists = useEntityStore
+          .getState()
+          .characters.some((c) => c.id === viewCharacterId);
+        if (!exists) {
+          viewCharacterId = null;
+          perspectiveLocked = true;
+        }
+      }
+      set({
+        flowId: data.flow.id,
+        status: data.flow.status,
+        nodes,
+        viewCharacterId,
+        perspectiveLocked,
+        currentSceneId: nodes.length - 1,
+        decisionChain: buildDecisionChain(nodes),
+        loading: false,
+        streaming: false,
+        pendingChosenOption: null,
+        anchorEventIds: data.flow.anchorEventIds ?? [],
+        currentEventIndex: data.flow.currentEventIndex ?? -1,
+      });
+      toast.info('已同步到最新进度，请继续推演');
+    } catch {
+      toast.error('剧情流状态同步失败，请刷新页面');
+      set({ loading: false, streaming: false, abortController: null });
+    }
+  },
 }));
 
 export type { SceneNode, SceneOption, Decision, Perspective };

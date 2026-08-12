@@ -18,6 +18,7 @@ import type { Character, Location, SceneEvent, Foreshadowing, PlotThread } from 
 import { RoomSidebar } from './RoomSidebar';
 import { ChatArea } from './ChatArea';
 import type { CreateRoomFormPayload } from './CreateRoomForm';
+import { showApiError } from '@/shared/lib/apiError';
 
 interface SimRoomProps {
   bookId: number;
@@ -129,8 +130,8 @@ export function SimRoom({ bookId, bookTitle, onClose }: SimRoomProps) {
       relatedForeshadowingIds: form.relatedForeshadowingIds,
       relatedPlotThreadIds: form.relatedPlotThreadIds,
     };
-    const created = await createSimRoom(payload);
-    if (created) {
+    try {
+      const created = await createSimRoom(payload);
       setRooms((prev) => [
         ...prev,
         {
@@ -145,8 +146,8 @@ export function SimRoom({ bookId, bookTitle, onClose }: SimRoomProps) {
       ]);
       setShowNew(false);
       await enterRoom(created.id);
-    } else {
-      toast.error('创建失败');
+    } catch (e) {
+      showApiError(e, '创建失败');
     }
   };
 

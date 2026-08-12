@@ -238,6 +238,13 @@ async def _prepare_node_rag(
     """
     rag_filter_raw = node_def.get("rag_filter") or {}
     rag_filter: dict[str, Any] = dict(rag_filter_raw)
+    # 键名归一：前端 InspectorPanel 保存 camelCase（docIds/authorIds/topK/sample），
+    # 后端检索契约用 snake_case（doc_ids/author_ids）。不做归一则节点级 RAG 的
+    # docIds/authorIds 过滤条件永远匹配不到，过滤静默失效（query 需在下方重写）。
+    _rag_alias = {"docIds": "doc_ids", "authorIds": "author_ids", "topK": "top_k"}
+    for _camel, _snake in _rag_alias.items():
+        if _camel in rag_filter and _snake not in rag_filter:
+            rag_filter[_snake] = rag_filter.pop(_camel)
     query = (rag_filter.get("query") or "").strip()
     if not query:
         # 未显式配置检索 query 时回退节点系统提示词作为语义查询

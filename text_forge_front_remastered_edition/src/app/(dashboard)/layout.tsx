@@ -45,6 +45,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const agentActive = useBookDetailStore((s) => s.agentOpen);
 
   useEffect(() => {
+    // 优先使用 authStore 中已恢复的完整 profile，避免重复请求；缺失时回退 fetchProfile。
+    const stored = useAuthStore.getState().user;
+    if (stored) {
+      setUserName(stored.username || '');
+      setUserEmail(stored.email || '');
+      return;
+    }
     userApi.fetchProfile().then((p) => {
       setUserName(p.username || '');
       setUserEmail(p.email || '');

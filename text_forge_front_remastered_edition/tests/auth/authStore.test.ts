@@ -1,8 +1,8 @@
 // tests/auth/authStore.test.ts
 // authStore 回归测试：
-//  - P0-3：刷新后 refreshToken 不被覆盖为 null，登出仍能带上服务端撤销
+//  - P0-3：刷新后 refreshToken 不被覆盖为 null
 //  - P1-8：并发刷新单飞（只发一次刷新请求）
-//  - refreshToken 不再持久化（XSS 暴露面收窄）
+//  - refreshToken 不持久化（XSS 暴露面收窄）；HttpOnly 化后前端仅维护登录标志 cookie
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthStore } from '@/shared/stores/authStore';
 
@@ -16,13 +16,13 @@ vi.mock('@/shared/api/auth', () => ({
 }));
 
 vi.mock('@/lib/auth/cookie', () => ({
-  setRefreshCookie: vi.fn(),
-  getRefreshCookie: vi.fn(() => null),
-  clearRefreshCookie: vi.fn(),
+  setLoginFlag: vi.fn(),
+  getLoginFlag: vi.fn(() => false),
+  clearLoginFlag: vi.fn(),
 }));
 
 import * as authApi from '@/shared/api/auth';
-import { clearRefreshCookie, getRefreshCookie, setRefreshCookie } from '@/lib/auth/cookie';
+import { clearLoginFlag, getLoginFlag, setLoginFlag } from '@/lib/auth/cookie';
 
 const user = { id: 1, username: 'u', email: 'a@b.com', isVerified: true, createdAt: '2026-01-01' };
 
@@ -43,7 +43,7 @@ describe('authStore', () => {
     vi.clearAllMocks();
   });
 
-  it('登录写入 accessToken/refreshToken 并设置 cookie', async () => {
+  it('登录写入 accessToken/refreshToken 并设置登录标志', async () => {
     vi.mocked(authApi.loginApi).mockResolvedValue({
       access_token: 'at',
       refresh_token: 'rt',
@@ -57,7 +57,8 @@ describe('authStore', () => {
     expect(s.accessToken).toBe('at');
     expect(s.refreshToken).toBe('rt');
     expect(s.isAuthenticated).toBe(true);
-    expect(setRefreshCookie).toHaveBeenCalledWith('rt');
+    // 真实 refresh token 由后端 HttpOnly cookie 下发，前端只维护非敏感登录标志
+    expect(setLoginFlag).toHaveBeenCalled();
   });
 
   it('刷新后保留 refreshToken（P0-3 回归）', async () => {
@@ -74,21 +75,22 @@ describe('authStore', () => {
     expect(ok).toBe(true);
     expect(useAuthStore.getState().accessToken).toBe('at2');
     expect(useAuthStore.getState().refreshToken).toBe('rt');
+    expect(setLoginFlag).toHaveBeenCalled();
   });
 
-  it('刷新后登出仍调用 logoutApi（cookie 兜底，P0-3 回归）', async () => {
+  it('登出调用 logoutApi（access 传 body 黑名单）并清除登录标志', async () => {
     useAuthStore.setState({
       user,
       accessToken: 'at',
-      refreshToken: null,
+      refreshToken: 'rt',
       isAuthenticated: true,
     });
-    vi.mocked(getRefreshCookie).mockReturnValue('rt-cookie');
 
     await useAuthStore.getState().logout();
 
-    expect(authApi.logoutApi).toHaveBeenCalledWith('rt-cookie', 'at');
-    expect(clearRefreshCookie).toHaveBeenCalled();
+    // refresh token 由后端从 HttpOnly cookie 读取，前端仅传 access token
+    expect(authApi.logoutApi).toHaveBeenCalledWith('at');
+    expect(clearLoginFlag).toHaveBeenCalled();
     const s = useAuthStore.getState();
     expect(s.isAuthenticated).toBe(false);
     expect(s.accessToken).toBeNull();
@@ -120,10 +122,9 @@ describe('authStore', () => {
     expect(useAuthStore.getState().accessToken).toBe('at2');
   });
 
-  it('无 refresh token（含 cookie）时刷新返回 false 且不发请求', async () => {
-    vi.mocked(getRefreshCookie).mockReturnValue(null);
+  it('刷新失败返回 false（HttpOnly cookie 刷新由后端判定，失败清会话）', async () => {
+    vi.mocked(authApi.refreshTokenApi).mockRejectedValue(new Error('令牌无效'));
     const ok = await useAuthStore.getState().refreshAccessToken();
     expect(ok).toBe(false);
-    expect(authApi.refreshTokenApi).not.toHaveBeenCalled();
   });
 });

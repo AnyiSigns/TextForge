@@ -68,15 +68,24 @@ export async function streamAgent(
 ): Promise<void> {
   const modelConfigData = await getModelConfigData();
 
+  // P1.2：个人库命中片段可能超长（后端 PersonalRagHit.content 上限 2000），
+  // 发送前截断 content 到 2000 字符，避免请求体 422（键名对齐后端 alias）。
+  const personalRagPayload = personalRagResults
+    ? personalRagResults.map((h) => ({
+        ...h,
+        content: typeof h.content === 'string' ? h.content.slice(0, 2000) : h.content,
+      }))
+    : null;
+
   const res = await authedFetch(`/api/agent/stream/${threadId}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       thread_id: threadId,
       message,
-      model_config_data: modelConfigData,
-      book_id: bookId,
-      personal_rag_results: personalRagResults || null,
+      modelConfig: modelConfigData,
+      bookId: bookId,
+      personalRagResults: personalRagPayload,
     }),
     signal: abortSignal,
   });
@@ -120,9 +129,8 @@ export async function resumeAgent(
 export async function cancelStream(threadId: string): Promise<void> {
   try {
     await apiClient.post(`/agent/stream/${threadId}/cancel`);
-  } catch (e) {
-    // 取消失败不影响本地中止（浏览器断开连接同样会触发服务端清理）
-    console.warn('[agent] cancelStream 失败', e);
+  } catch {
+    // 取消失败不影响本地中止（浏览器断开连接同样会触发服务端清理），静默忽略
   }
 }
 
@@ -230,7 +238,7 @@ export async function searchAgentMemories(bookId: number, query: string): Promis
   try {
     // 语义检索依赖 embedding 模型配置：已配置时走 mode=semantic（pgvector 向量检索），
     // 未配置/为空时降级 mode=fulltext（后端缺省），保证搜索始终可用。
-    const body: Record<string, unknown> = { q: query, book_id: bookId };
+    const body: Record<string, unknown> = { q: query, bookId };
     // 与 streamAgent 统一走 getModelConfigData 全量下发（含 main_config/embedding_config），
     // 避免只下发 embedding_config 触发后端 ModelFactory 强依赖 main_config 的历史缺陷；
     // main 未配置（返回 null）时回退仅发 embedding_config（后端已容错 embedding-only）。
@@ -239,7 +247,7 @@ export async function searchAgentMemories(bookId: number, query: string): Promis
     if (emb && emb.adapter && emb.model_id && emb.api_key) {
       body.mode = 'semantic';
       const full = await getModelConfigData();
-      body.model_config_data = full ?? {
+      body.modelConfig = full ?? {
         embedding_config: {
           adapter: emb.adapter,
           base_url: emb.base_url,
@@ -264,7 +272,7 @@ export async function streamCompress(
   const res = await authedFetch(`/api/agent/compress`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ thread_id: threadId, model_config_data: modelConfigData }),
+    body: JSON.stringify({ thread_id: threadId, modelConfig: modelConfigData }),
   });
   if (!res.ok) {
     // 2.5：与 streamAgent 复用同一错误具体化（后端 detail 归一化）

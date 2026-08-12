@@ -3,12 +3,16 @@
 /**
  * Agent 面板：书籍占用锁预检 + 强制解除（从 AgentPanel.tsx 抽离）。
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import * as agentApi from '@/shared/api/agent';
 import { useBookDetailStore } from '../store';
 
 export function useBookLock(bookId: number, enabled: boolean) {
   const [bookLocked, setBookLocked] = useState(false);
+  // P1.3：订阅流式态，流式结束（由 true→false）后重查锁，复位被后端已释放的占用横幅。
+  // fetchBookLockStatus 只读取状态、不触发任何流状态变更，故不会形成循环。
+  const agentStreaming = useBookDetailStore((s) => s.agentStreaming);
+  const prevStreamingRef = useRef(false);
 
   // 面板打开时预检书籍占用锁，占用中展示横幅（可强制解除）
   useEffect(() => {
@@ -23,6 +27,19 @@ export function useBookLock(bookId: number, enabled: boolean) {
       .catch(() => { /* 预检失败静默，不影响面板使用 */ });
     return () => { alive = false; };
   }, [enabled, bookId]);
+
+  // 流式结束后重查：后端已在 end 事件后释放锁，但前端不重查会残留占用横幅。
+  // 仅在 true→false 的下降沿触发，避免挂载时与上方预检重复请求。
+  useEffect(() => {
+    const wasStreaming = prevStreamingRef.current;
+    prevStreamingRef.current = agentStreaming;
+    if (!enabled || !bookId || !wasStreaming || agentStreaming) return;
+    let alive = true;
+    agentApi.fetchBookLockStatus(bookId)
+      .then((st) => { if (alive) setBookLocked(!!st?.locked); })
+      .catch(() => { /* 重查失败静默，横幅保持现状 */ });
+    return () => { alive = false; };
+  }, [agentStreaming, bookId, enabled]);
 
   const handleForceReleaseLock = useCallback(async () => {
     try {

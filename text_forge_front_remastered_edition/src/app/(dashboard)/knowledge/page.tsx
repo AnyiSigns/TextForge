@@ -12,6 +12,7 @@ import { resetForTier, reindexAll } from '@/lib/rag/vectorStore';
 import { getAllKbDocs } from '@/lib/storage/indexedDB';
 import { useEmbedDownloaded } from '@/hooks/useEmbedDownloaded';
 import { useEmbedTier } from '@/hooks/useEmbedTier';
+import { formatUtc } from '@/shared/lib/datetime';
 import { PageContainer } from '@/shared/ui/PageContainer';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { ListRow } from '@/shared/ui/ListRow';
@@ -232,7 +233,7 @@ export default function KnowledgePage() {
                         <p className="text-sm truncate">{doc.name}</p>
                         <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
                           {statusBadge(doc.status)}
-                          {doc.createdAt ? <span className="shrink-0">{new Date(doc.createdAt).toLocaleDateString()}</span> : null}
+                          {doc.createdAt ? <span className="shrink-0">{formatUtc(doc.createdAt, { year: 'numeric', month: '2-digit', day: '2-digit' })}</span> : null}
                         </div>
                       </div>
                     </div>

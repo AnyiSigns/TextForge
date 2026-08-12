@@ -127,6 +127,9 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
   const [saving, setSaving] = useState(false);
 
   const loadedRef = useRef(false);
+  // 记录已整体布局过的工作流 id：仅在该 id 首次加载或变化时执行 layoutNodes（重排坐标），
+  // 后续 nodes/edges 数据变化只合并 data，保留用户拖拽坐标（后端不持久化 position）。
+  const laidOutIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (isNew) loadedRef.current = true;
@@ -141,8 +144,8 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
     }).catch(() => {});
   }, [id, isNew]);
 
-  const initialNodes = workflow.nodes.map(wfNodeToFlowNode);
-  const initialEdges = workflow.edges.map((e) => ({
+  const initialNodes = (workflow.nodes ?? []).map(wfNodeToFlowNode);
+  const initialEdges = (workflow.edges ?? []).map((e) => ({
     id: `${e.from}->${e.to}`,
     source: e.from,
     target: e.to,
@@ -156,8 +159,8 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
 
   useEffect(() => {
     if (!loadedRef.current) return;
-    const flowNodes = workflow.nodes.map(wfNodeToFlowNode);
-    const flowEdges = workflow.edges.map((e) => ({
+    const flowNodes = (workflow.nodes ?? []).map(wfNodeToFlowNode);
+    const flowEdges = (workflow.edges ?? []).map((e) => ({
       id: `${e.from}->${e.to}`,
       source: e.from,
       target: e.to,
@@ -165,9 +168,24 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
       style: { stroke: 'var(--foreground)', strokeWidth: 1, opacity: 0.25 },
       markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--foreground)', width: 8, height: 8 },
     }));
-    setNodes(layoutNodes(flowNodes, flowEdges));
-    setEdges(flowEdges);
-  }, [workflow.nodes, workflow.edges, setNodes, setEdges]);
+    if (laidOutIdRef.current !== id) {
+      // 首次加载此工作流（或 id 变化）：整体布局并重置坐标为自动排布。
+      setNodes(layoutNodes(flowNodes, flowEdges));
+      setEdges(flowEdges);
+      laidOutIdRef.current = id;
+    } else {
+      // 后续数据变更：保留节点现有位置与用户拖拽坐标，仅原地更新 data 并同步新增/删除节点。
+      setNodes((nds) => {
+        const byId = new Map(nds.map((n) => [n.id, n]));
+        return flowNodes.map((fn) => {
+          const prev = byId.get(fn.id);
+          if (prev) return { ...prev, data: fn.data };
+          return fn;
+        });
+      });
+      setEdges(flowEdges);
+    }
+  }, [workflow.nodes, workflow.edges, id, setNodes, setEdges]);
 
   const onConnect = useCallback(
     (connection: Connection) => {
@@ -277,7 +295,7 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
             </span>
           )}
           <span className="text-[10px] text-foreground/25">
-            {workflow.nodes.length} 个节点 · {workflow.edges.length} 条连线
+            {(workflow.nodes ?? []).length} 个节点 · {(workflow.edges ?? []).length} 条连线
           </span>
         </div>
         <div className="flex items-center gap-2">

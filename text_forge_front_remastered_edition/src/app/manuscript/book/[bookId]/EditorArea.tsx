@@ -3,6 +3,7 @@
 import { useRef, useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { cn } from '@/shared/lib/cn';
+import { getApiErrorMessage } from '@/shared/lib/apiError';
 import { apiClient } from '@/shared/api/client';
 import { downloadBlob } from '@/lib/utils/download';
 import { useManuscriptStore } from './store';
@@ -177,6 +178,11 @@ export function EditorArea() {
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      // P0-2：卸载（如离开手稿页）时若有未保存内容则触发保存，避免 2s 内未保存正文丢失
+      const st = useManuscriptStore.getState();
+      if (st.dirty && st.activeChapterId) {
+        void st.save();
+      }
     };
   }, []);
 
@@ -185,11 +191,18 @@ export function EditorArea() {
       const d = (e as CustomEvent).detail as { chapterId: number; content: string } | undefined;
       if (!d?.chapterId || !d.content) return;
       void contentsApi.saveContent(d.chapterId, d.content).then((saved) => {
+        // P0-14：Agent 写入成功后清除该章 hover 预览缓存
+        const cache = { ...useManuscriptStore.getState().previewCache };
+        delete cache[d.chapterId];
+        useManuscriptStore.setState({ previewCache: cache });
         if (d.chapterId === activeChapterId) {
           commitContent(d.content);
           useManuscriptStore.setState({ version: saved.version, savedAt: saved.createdAt, dirty: false });
         }
-      }).catch(() => {});
+      // P1-9：审核卡写入失败需提示具体原因（如锁定章 409），避免静默
+      }).catch((err) => {
+        toast.error(getApiErrorMessage(err, '写入失败'));
+      });
     };
     window.addEventListener('textforge:apply-chapter-content', onApply);
     return () => window.removeEventListener('textforge:apply-chapter-content', onApply);
@@ -207,6 +220,10 @@ export function EditorArea() {
         const s = useManuscriptStore.getState();
         if (activeChapterId !== s.activeChapterId) return;
         if (s.dirty) return;
+        // P0-14：Agent 写入成功后清除该章 hover 预览缓存
+        const cache = { ...s.previewCache };
+        delete cache[activeChapterId];
+        useManuscriptStore.setState({ previewCache: cache });
         commitContent(latest.content || '');
         useManuscriptStore.setState({ version: latest.version, savedAt: latest.createdAt, dirty: false });
       }).catch(() => {});
@@ -256,18 +273,36 @@ export function EditorArea() {
     reader.readAsText(file);
   };
 
-  const handleExport = async (format: 'txt' | 'md' | 'epub' | 'pdf') => {
+  const handleExport = async (
+    format: 'txt' | 'md' | 'epub' | 'pdf',
+    opts: { includeOutline: boolean; includeCharacters: boolean },
+  ) => {
     if (!bookId) return;
     // 统一走后端 /books/{id}/export：服务端逐章拼装（含格式转换/文件名清洗/限流），
     // 避免客户端逐章拉取（N 次请求）且补齐 epub/pdf 能力。
     try {
       const { data } = await apiClient.get<Blob>(`/books/${bookId}/export`, {
-        params: { fmt: format, include_outline: false, include_characters: false },
+        // P1-11：透传 include_outline / include_characters 导出参数
+        params: { fmt: format, include_outline: opts.includeOutline, include_characters: opts.includeCharacters },
         responseType: 'blob',
       });
       downloadBlob(data, `${bookTitle || '手稿'}.${format === 'md' ? 'md' : format}`);
-    } catch {
-      toast.error('导出失败，请重试');
+    } catch (err) {
+      // P1-10：blob 响应错误时读取 Content-Type，若为 JSON 则解析后端 detail（429 限流/404 等）
+      const resp = (err as { response?: { data?: unknown; headers?: Record<string, string> } })?.response;
+      let msg = '导出失败，请重试';
+      const blob = resp?.data;
+      if (typeof Blob !== 'undefined' && blob instanceof Blob) {
+        const ct = blob.type || (resp?.headers && (resp.headers['content-type'] || resp.headers['Content-Type'])) || '';
+        if (ct.includes('application/json')) {
+          try {
+            const text = await blob.text();
+            const json = JSON.parse(text) as { detail?: unknown };
+            if (typeof json.detail === 'string' && json.detail) msg = json.detail;
+          } catch { /* 解析失败回退通用文案 */ }
+        }
+      }
+      toast.error(msg);
     }
     setExportOpen(false);
   };

@@ -1,13 +1,19 @@
 'use client';
 
+import { useState } from 'react';
 import { FileText, BookOpen, FileDown } from 'lucide-react';
 
 export type ExportFormat = 'txt' | 'md' | 'epub' | 'pdf';
 
+export interface ExportOptions {
+  includeOutline: boolean;
+  includeCharacters: boolean;
+}
+
 interface ExportBookDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onExport: (format: ExportFormat) => void;
+  onExport: (format: ExportFormat, opts: ExportOptions) => void;
 }
 
 const FORMATS: { key: ExportFormat; label: string; hint: string }[] = [
@@ -18,6 +24,10 @@ const FORMATS: { key: ExportFormat; label: string; hint: string }[] = [
 ];
 
 export function ExportBookDialog({ open, onOpenChange, onExport }: ExportBookDialogProps) {
+  // P1-11：默认导出时包含大纲与角色设定（对齐后端常用意图）
+  const [includeOutline, setIncludeOutline] = useState(true);
+  const [includeCharacters, setIncludeCharacters] = useState(true);
+
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70" onClick={() => onOpenChange(false)}>
@@ -33,7 +43,7 @@ export function ExportBookDialog({ open, onOpenChange, onExport }: ExportBookDia
           {FORMATS.map((f) => (
             <button
               key={f.key}
-              onClick={() => onExport(f.key)}
+              onClick={() => onExport(f.key, { includeOutline, includeCharacters })}
               className="flex flex-col items-center gap-1 h-16 rounded-md text-xs font-medium border border-border bg-transparent cursor-pointer hover:bg-muted"
             >
               {f.key === 'txt' ? <FileText size={14} /> : f.key === 'md' ? <BookOpen size={14} /> : <FileDown size={14} />}
@@ -41,6 +51,26 @@ export function ExportBookDialog({ open, onOpenChange, onExport }: ExportBookDia
               <span className="text-[9px] text-foreground/30 font-normal">{f.hint}</span>
             </button>
           ))}
+        </div>
+        <div className="px-4 pb-3 space-y-1.5">
+          <label className="flex items-center gap-2 text-[12px] text-muted-foreground cursor-pointer">
+            <input
+              type="checkbox"
+              checked={includeOutline}
+              onChange={(e) => setIncludeOutline(e.target.checked)}
+              className="accent-foreground"
+            />
+            包含大纲
+          </label>
+          <label className="flex items-center gap-2 text-[12px] text-muted-foreground cursor-pointer">
+            <input
+              type="checkbox"
+              checked={includeCharacters}
+              onChange={(e) => setIncludeCharacters(e.target.checked)}
+              className="accent-foreground"
+            />
+            包含角色设定
+          </label>
         </div>
         <div className="px-4 pb-3 flex justify-end">
           <button

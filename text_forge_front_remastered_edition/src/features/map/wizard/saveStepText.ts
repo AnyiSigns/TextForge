@@ -75,7 +75,21 @@ function matchEntity<T extends { id: number; name: string }>(
 ): T | undefined {
   if (refId != null) {
     const byId = entities.find((e) => e.id === refId);
-    if (byId) return byId;
+    if (byId) {
+      // 用户改名后 refId 仍指向旧实体：校验当前名称与表单名称是否一致，
+      // 不一致则按名称重查一次，避免绑定到被改名的旧实体。
+      if (!refName || byId.name === refName || nameMatches(byId.name, refName)) {
+        return byId;
+      }
+      const exact = entities.find((e) => e.name === refName);
+      if (exact) return exact;
+      const fuzzy = entities.find((e) => nameMatches(e.name, refName));
+      if (fuzzy) return fuzzy;
+      // refId 仍指向真实存在的实体：id 是权威引用（用户/LLM 明确指定），
+      // 名称重查仅是「id 失效时的候选」。两者都落空时兜底信任 id，
+      // 避免把合法引用解绑成 undefined 导致引用被静默丢弃。
+      return byId;
+    }
   }
   if (refName) {
     const exact = entities.find((e) => e.name === refName);

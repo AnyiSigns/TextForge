@@ -27,6 +27,11 @@ export function EditorToolbar({ wordCount, onImportClick, onExportClick }: Edito
   const freq = useManuscriptStore((s) => s.suggestionFrequency);
   const setFreq = useManuscriptStore((s) => s.setSuggestionFrequency);
   const activeChapterId = useManuscriptStore((s) => s.activeChapterId);
+  // P1-8：锁定章禁止改名
+  const activeLocked = useManuscriptStore((s) => {
+    const c = s.chapters.find((x) => x.chapterId === s.activeChapterId);
+    return !!c?.locked;
+  });
 
   const onVersions = () => { void loadVersions(); toggleVersions(); };
 
@@ -46,7 +51,10 @@ export function EditorToolbar({ wordCount, onImportClick, onExportClick }: Edito
       <input
         value={title}
         onChange={(e) => setTitle(e.target.value)}
-        className="text-sm font-medium bg-transparent border-none outline-none min-w-[150px] placeholder:text-muted-foreground"
+        // P0-1：标题输入失焦时直接提交，确保标题编辑落库
+        onBlur={() => { void save(); }}
+        disabled={activeLocked}
+        className="text-sm font-medium bg-transparent border-none outline-none min-w-[150px] placeholder:text-muted-foreground disabled:opacity-60"
         placeholder="章节标题"
       />
       <span className="text-xs text-muted-foreground tabular-nums">{wordCount.toLocaleString()} 字</span>

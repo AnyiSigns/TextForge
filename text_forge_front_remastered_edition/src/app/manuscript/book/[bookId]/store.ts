@@ -2,6 +2,7 @@
 
 import { create } from 'zustand';
 import { toast } from 'sonner';
+import { getApiErrorMessage } from '@/shared/lib/apiError';
 import * as booksApi from '@/shared/api/books';
 import * as contentsApi from '@/shared/api/contents';
 import * as charactersApi from '@/shared/api/characters';
@@ -14,6 +15,8 @@ interface ChapterTreeItem {
   chapterId?: number;
   volumeId?: number;
   sortOrder: number;
+  // P1-8：保留章节锁定状态，用于禁用锁定章的改名/删除/排序操作
+  locked?: boolean;
 }
 
 export type SuggestionFrequency = 'off' | 'medium' | 'high';
@@ -43,6 +46,8 @@ interface ManuscriptState {
   version: number;
   dirty: boolean;
   saving: boolean;
+  // P0-13：保存进行中若再次触发保存，仅标记 pending，待本次完成后再存一次，避免竞态丢编辑
+  pendingSave: boolean;
   savedAt: string | null;
 
   showVersions: boolean;
@@ -57,7 +62,7 @@ interface ManuscriptState {
   previewCache: Record<number, string>;
 
   loadBook: (bookId: number) => Promise<void>;
-  setActiveChapter: (chapterId: number) => void;
+  setActiveChapter: (chapterId: number) => Promise<void>;
   setContent: (content: string) => void;
   setChapterTitle: (title: string) => void;
   save: () => Promise<void>;
@@ -102,7 +107,8 @@ function buildTree(vols: (Volume & { chapters: Chapter[] })[]): ChapterTreeItem[
   for (const v of vols) {
     tree.push({ id: v.id, title: v.title || `第${v.sortOrder}卷`, type: 'volume', volumeId: v.id, sortOrder: v.sortOrder });
     for (const ch of v.chapters) {
-      tree.push({ id: ch.id, title: ch.title, type: 'chapter', chapterId: ch.id, volumeId: v.id, sortOrder: ch.sortOrder });
+      // P1-8：保留 locked，供 UI 禁用锁定章操作
+      tree.push({ id: ch.id, title: ch.title, type: 'chapter', chapterId: ch.id, volumeId: v.id, sortOrder: ch.sortOrder, locked: ch.locked });
     }
   }
   return tree;
@@ -132,6 +138,7 @@ export const useManuscriptStore = create<ManuscriptState>((set, get) => {
     version: 0,
     dirty: false,
     saving: false,
+    pendingSave: false,
     savedAt: null,
 
     showVersions: false,
@@ -172,9 +179,17 @@ export const useManuscriptStore = create<ManuscriptState>((set, get) => {
       }
     },
 
-    setActiveChapter: (chapterId) => {
-      const ch = get().chapters.find((c) => c.chapterId === chapterId);
+    // P0-2：切章前先 flush 当前未保存内容；flush 失败（如锁定章 409）则中断切换，
+    // 保留当前章与未保存正文，避免内容被清空丢弃
+    setActiveChapter: async (chapterId) => {
+      const { chapters, dirty, activeChapterId } = get();
+      const ch = chapters.find((c) => c.chapterId === chapterId);
       if (!ch) return;
+      if (dirty && activeChapterId) {
+        await get().save();
+        // save() 内部 catch 吞错不抛：flush 后仍有脏标记说明保存失败，中止切换
+        if (get().dirty) return;
+      }
       set({
         activeChapterId: chapterId,
         activeChapterTitle: ch.title,
@@ -192,16 +207,50 @@ export const useManuscriptStore = create<ManuscriptState>((set, get) => {
     setChapterTitle: (title) => set({ activeChapterTitle: title, dirty: true }),
 
     save: async () => {
-      const { activeChapterId, content, dirty, saving } = get();
-      if (!activeChapterId || !dirty || saving) return;
+      const { activeChapterId, dirty } = get();
+      if (!activeChapterId || !dirty) return;
+      // P0-13：保存进行中再次触发保存，仅记 pending，避免直接 return 丢编辑
+      if (get().saving) {
+        set({ pendingSave: true });
+        return;
+      }
       set({ saving: true });
+      // 快照保存起点；保存期间用户可能继续输入（content/title 变化）
+      const snapshot = { content: get().content, title: get().activeChapterTitle };
+      let succeeded = false;
       try {
-        const saved = await contentsApi.saveContent(activeChapterId, content);
-        set({ version: saved.version, dirty: false, savedAt: saved.createdAt, saving: false });
+        const { activeChapterTitle, chapters } = get();
+        const ch = chapters.find((c) => c.chapterId === activeChapterId);
+        const titleChanged = ch ? ch.title !== snapshot.title : false;
+        const locked = ch?.locked ?? false;
+        // P0-1：标题变更需同步落库（之前仅存正文）
+        // P1-8：锁定章禁止改名，标题变更跳过，仅保存正文
+        const tasks: Promise<unknown>[] = [contentsApi.saveContent(activeChapterId, snapshot.content)];
+        if (titleChanged && !locked) {
+          tasks.push(booksApi.updateChapter(activeChapterId, { title: snapshot.title }));
+        }
+        const [saved] = await Promise.all(tasks);
+        const result = saved as { version: number; createdAt: string };
+        // 保存期间的新编辑（content/title 与快照不一致）保持 dirty，交由 finally 补偿再存；
+        // 避免直接把 dirty 清零导致保存期间输入的内容永久丢失
+        const hasNewEdits = get().content !== snapshot.content || get().activeChapterTitle !== snapshot.title;
+        set({ version: result.version, dirty: hasNewEdits, savedAt: result.createdAt, saving: false });
+        succeeded = true;
+        // P0-14：保存成功后清除该章 hover 预览缓存，避免展示陈旧内容
+        const cache = { ...get().previewCache };
+        delete cache[activeChapterId];
+        set({ previewCache: cache });
       } catch (err) {
         set({ saving: false });
         // 1.4（〇-5）：保存失败必须展示具体原因（锁定章 409 / 网络错误），避免静默失败
         toast.error(`保存失败：${err instanceof Error && err.message ? err.message : '请稍后重试'}`);
+      } finally {
+        // P0-13：仅当本次保存成功且期间有新编辑（dirty）或触发过保存（pendingSave）才补偿再存，
+        // 避免保存失败时 dirty 保持 true 造成无限重试循环
+        if (succeeded && (get().pendingSave || get().dirty)) {
+          set({ pendingSave: false });
+          await get().save();
+        }
       }
     },
 
@@ -226,23 +275,43 @@ export const useManuscriptStore = create<ManuscriptState>((set, get) => {
     clearDiff: () => set({ diffState: null }),
     toggleVersions: () => set((s) => ({ showVersions: !s.showVersions })),
 
+    // P1-5：增删需错误处理并 toast，避免静默失败
     addVolume: async (title) => {
       const { bookId } = get();
-      await booksApi.createVolume(bookId, title ?? '新卷');
-      await refreshTree();
+      try {
+        await booksApi.createVolume(bookId, title ?? '新卷');
+        await refreshTree();
+      } catch (err) {
+        toast.error(getApiErrorMessage(err, '新建卷失败'));
+      }
     },
 
     addChapter: async (volumeId, title) => {
       const { chapters } = get();
-      const count = chapters.filter((c) => c.volumeId === volumeId && c.type === 'chapter').length;
-      const ch = await booksApi.createChapter(volumeId, { title: title ?? `第 ${count + 1} 章` });
-      await refreshTree();
-      get().setActiveChapter(ch.id);
+      try {
+        // P1-7：新建章节显式传 sortOrder = 同级最大+1，对齐后端 order_by(sort_order, id)
+        const siblings = chapters.filter((c) => c.volumeId === volumeId && c.type === 'chapter');
+        const maxSort = siblings.reduce((m, c) => Math.max(m, c.sortOrder || 0), 0);
+        const ch = await booksApi.createChapter(volumeId, {
+          title: title ?? `第 ${siblings.length + 1} 章`,
+          sortOrder: maxSort + 1,
+        });
+        await refreshTree();
+        await get().setActiveChapter(ch.id);
+      } catch (err) {
+        toast.error(getApiErrorMessage(err, '新建章节失败'));
+      }
     },
 
     removeChapter: async (chapterId) => {
       const { activeChapterId } = get();
-      await booksApi.deleteChapter(chapterId);
+      try {
+        await booksApi.deleteChapter(chapterId);
+      } catch (err) {
+        // P1-5：锁定章删除被后端 409 拦截，给出明确提示（而非静默）
+        toast.error(getApiErrorMessage(err, '删除章节失败'));
+        return;
+      }
       if (activeChapterId === chapterId) {
         const remaining = get().chapters.filter((c) => c.type === 'chapter' && c.chapterId !== chapterId);
         const next = remaining[0]?.chapterId ?? null;
@@ -255,7 +324,12 @@ export const useManuscriptStore = create<ManuscriptState>((set, get) => {
       const { chapters } = get();
       const dragged = chapters.find((c) => c.chapterId === draggedId);
       const target = chapters.find((c) => c.chapterId === targetId);
+      // P1-8：锁定章禁止排序
       if (!dragged || !target || dragged.volumeId !== target.volumeId) return;
+      if (dragged.locked || target.locked) {
+        toast.error('锁定章节不可排序');
+        return;
+      }
       const ids = chapters
         .filter((c) => c.volumeId === dragged.volumeId && c.type === 'chapter')
         .map((c) => c.chapterId as number);
@@ -269,8 +343,13 @@ export const useManuscriptStore = create<ManuscriptState>((set, get) => {
           c.chapterId && order.has(c.chapterId) ? { ...c, sortOrder: order.get(c.chapterId) as number } : c,
         ),
       }));
+      // P1-6：排序失败需 toast 提示，并保留刷新以回正视图
       for (const id of ids) {
-        await booksApi.updateChapter(id, { sortOrder: order.get(id) as number }).catch(() => {});
+        try {
+          await booksApi.updateChapter(id, { sortOrder: order.get(id) as number });
+        } catch (err) {
+          toast.error(getApiErrorMessage(err, '排序更新失败'));
+        }
       }
       await refreshTree();
     },

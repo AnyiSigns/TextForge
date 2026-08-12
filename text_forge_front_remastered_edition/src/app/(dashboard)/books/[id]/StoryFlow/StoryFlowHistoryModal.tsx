@@ -5,6 +5,7 @@ import { History, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { listStoryFlows, deleteStoryFlow, type StoryFlow } from '@/shared/api/storyFlow';
 import { useEntityStore } from '@/features/map/stores/entityStore';
+import { parseUtc } from '@/shared/lib/datetime';
 
 interface StoryFlowHistoryModalProps {
   open: boolean;
@@ -15,7 +16,8 @@ interface StoryFlowHistoryModalProps {
 
 function formatTime(iso?: string | null): string {
   if (!iso) return '';
-  const d = new Date(iso);
+  // 后端时间为 naive UTC：统一经 parseUtc 按 UTC 解析，避免本地时区偏移
+  const d = parseUtc(iso);
   if (Number.isNaN(d.getTime())) return '';
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;

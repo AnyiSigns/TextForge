@@ -380,9 +380,9 @@ describe('useAgentSender 事件处理（store 状态变更）', () => {
     const ref = state.agentMessages.find((m) => m.type === 'rag-ref');
     expect(ref).toBeTruthy();
     expect((ref as { refs?: Array<{ docName: string }> })?.refs?.[0]?.docName).toBe('设定集.md');
-    // 请求体带 personal_rag_results（键形状对齐后端 PersonalRagHit）
+    // 请求体带 personalRagResults（camelCase 键对齐后端 PersonalRagHit alias）
     const callBody = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
-    expect(callBody.personal_rag_results).toEqual([
+    expect(callBody.personalRagResults).toEqual([
       { doc_name: '设定集.md', content: '主角姓林，生于雾城。', score: 0.9 },
     ]);
   });

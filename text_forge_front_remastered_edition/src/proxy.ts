@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { REFRESH_COOKIE } from './lib/auth/cookie';
+import { LOGIN_FLAG_COOKIE } from './lib/auth/cookie';
 
 const PROTECTED_PREFIXES = ['/books', '/workflow', '/knowledge', '/settings'];
 const AUTH_PAGES = ['/login', '/register', '/verify-email'];
@@ -16,7 +16,8 @@ function isAuthPage(pathname: string): boolean {
 
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
-  const hasSession = Boolean(request.cookies.get(REFRESH_COOKIE)?.value);
+  // 真实 refresh token 在 HttpOnly cookie（tf_rt）中不可读；这里用非敏感登录标志判断
+  const hasSession = Boolean(request.cookies.get(LOGIN_FLAG_COOKIE)?.value);
 
   if (hasSession && isAuthPage(pathname)) {
     return NextResponse.redirect(new URL('/', request.url));

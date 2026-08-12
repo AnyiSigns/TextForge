@@ -450,18 +450,51 @@ async def stream_agent(
                     subgraphs=True,
                 ).__aiter__()
                 _idle_timeout = settings.LLM_TIMEOUT
+                # 周期心跳：长步骤内子图/工具可能数分钟无 token 输出，前端 60s
+                # watchdog 会误杀连接。实现：__anext__ 任务常驻推进（绝不能取消，
+                # 取消会关闭 async generator 导致流提前终止），另起 20s 心跳探针
+                # 与之 race——探针先到则下发 SSE 注释行 `:\n\n`（前端 readSSE 跳过
+                # 注释行但数据读取已发生，watchdog 被重置）并重建探针；
+                # 单步总空闲仍受 LLM_TIMEOUT 约束。
+                _heartbeat_interval = 20
+                _step_start = time.monotonic()
+                _anext_task: asyncio.Task = asyncio.create_task(_ag_iter.__anext__())
+                _heartbeat_task: asyncio.Task = asyncio.create_task(
+                    asyncio.sleep(_heartbeat_interval)
+                )
                 while True:
-                    try:
-                        _step = await asyncio.wait_for(
-                            _ag_iter.__anext__(), timeout=_idle_timeout
+                    _done, _ = await asyncio.wait(
+                        {_anext_task, _heartbeat_task},
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+                    if _anext_task in _done:
+                        # 迭代器推进完成：取消心跳探针并重置；取得步骤（StopAsyncIteration
+                        # 表示图正常结束）。不取消 __anext__ 任务本身。
+                        if not _heartbeat_task.done():
+                            _heartbeat_task.cancel()
+                        _heartbeat_task = asyncio.create_task(
+                            asyncio.sleep(_heartbeat_interval)
                         )
-                    except StopAsyncIteration:
-                        break
-                    except asyncio.TimeoutError:
-                        logger.error("Agent 流式空闲超时，主动终止回合")
-                        yield f"data: {json.dumps({'type': 'error', 'message': '生成超时，请稍后重试'}, ensure_ascii=False)}\n\n"
-                        break
-                    ns, mode, data = _step
+                        try:
+                            _step = _anext_task.result()
+                        except StopAsyncIteration:
+                            break
+                        # 收到真实步骤/事件：重置单步空闲计时，并常驻推进下一轮
+                        _step_start = time.monotonic()
+                        _anext_task = asyncio.create_task(_ag_iter.__anext__())
+                    else:
+                        # 心跳探针先到：单步总空闲超过 LLM_TIMEOUT 才判定真正超时
+                        # （长步骤允许）；未超时则下发心跳并重建探针。
+                        _now = time.monotonic()
+                        if _now - _step_start >= _idle_timeout:
+                            logger.error("Agent 流式空闲超时，主动终止回合")
+                            yield f"data: {json.dumps({'type': 'error', 'message': '生成超时，请稍后重试'}, ensure_ascii=False)}\n\n"
+                            break
+                        yield ":\n\n"
+                        _heartbeat_task = asyncio.create_task(
+                            asyncio.sleep(_heartbeat_interval)
+                        )
+                        continue
                     # 客户端断连：尽快终止并释放书籍锁，避免空占锁到 TTL
                     if await request.is_disconnected():
                         logger.info("客户端已断开，终止 Agent 流式")

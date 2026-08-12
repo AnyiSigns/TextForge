@@ -4,6 +4,7 @@
  * 角色模拟：右侧对话区（从 SimRoom.tsx 内联抽离）。
  * 房间头部 + 消息列表 + 输入区；无活跃房间时展示空状态。
  */
+import { useMemo } from 'react';
 import { X, MessageCircle } from 'lucide-react';
 import { cn } from '@/shared/lib/cn';
 import type { SimRoomDetail, SimRoomMessage } from '@/shared/api/simRooms';
@@ -51,6 +52,25 @@ export function ChatArea({
   onAutoAdvance,
   onBranchType,
 }: ChatAreaProps) {
+  // 历史用户消息的 senderLabel 是后端原样存储的 "character:<id>" / "director"，
+  // 需映射为可读角色名再展示（实时消息已在 useSimRoom 本地回显为角色名，不受影响）。
+  const resolvedMessages = useMemo(() => {
+    if (!activeRoom) return messages;
+    const roleByEntity = new Map<number, string>();
+    activeRoom.participants.forEach((p) => roleByEntity.set(p.entityId, p.roleLabel));
+    return messages.map((m) => {
+      if (m.senderType !== 'user') return m;
+      let label = m.senderLabel;
+      if (label.startsWith('character:')) {
+        const role = roleByEntity.get(Number(label.slice('character:'.length)));
+        if (role) label = role;
+      } else if (label === 'director') {
+        label = myRole && myRole !== '用户' ? myRole : '导演';
+      }
+      return label === m.senderLabel ? m : { ...m, senderLabel: label };
+    });
+  }, [messages, activeRoom, myRole]);
+
   if (!activeRoom) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-2">
@@ -103,7 +123,7 @@ export function ChatArea({
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-        {messages.map((m) => (
+        {resolvedMessages.map((m) => (
           <ChatMessage key={m.id} message={m} avatarUrl={avatarByCharacter.get(m.senderLabel) ?? null} />
         ))}
         <div ref={messagesEndRef} />
