@@ -21,15 +21,19 @@ from models.sim_room import SimBranch, SimRoom
 
 
 def _chain_rel(rel) -> dict:
-    """关系链条目兼容 dict 与对象两种形态。"""
+    """关系链条目兼容 dict 与对象两种形态。
+
+    键约定需双向兼容：前端全应用（含初始化向导）写入 {targetId, type, description}，
+    历史数据与部分消费方读取 {target, relation}。统一在此收敛为 {target, relation}。
+    """
     if isinstance(rel, dict):
         return {
-            "target": rel.get("target", "") or "",
-            "relation": rel.get("relation", "") or "",
+            "target": rel.get("target") or rel.get("targetName") or rel.get("targetId") or "",
+            "relation": rel.get("relation") or rel.get("type") or "",
         }
     return {
-        "target": getattr(rel, "target", "") or "",
-        "relation": getattr(rel, "relation", "") or "",
+        "target": getattr(rel, "target", None) or getattr(rel, "targetName", None) or getattr(rel, "targetId", None) or "",
+        "relation": getattr(rel, "relation", None) or getattr(rel, "type", None) or "",
     }
 
 

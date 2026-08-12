@@ -64,7 +64,7 @@ interface InitializerState {
   removeItem: (index: number) => void;
   removeNestedItem: (volIdx: number, chIdx: number | null, scIdx: number | null) => void;
   addItem: () => void;
-  addNestedItem: (volIdx: number, chIdx: number | null) => void;
+  addNestedItem: (volIdx: number | null, chIdx: number | null) => void;
   /** 表单「确定落库」：校验（引用不合法抛错提示）→ 落库 → 前进/完成 */
   confirmSave: () => Promise<void>;
   finish: () => Promise<void>;
@@ -97,6 +97,8 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
     volumeProgress: null,
     review: false,
     items: null,
+    generating: false,
+    streaming: false,
     // mode 交由后端按 has_existing 权威推断（meta 事件回传解析结果）
     mode: 'auto',
   }),
@@ -126,14 +128,18 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
           if (bookId) {
             const { updateCreativeSetting } = await import('@/shared/api/books');
             try {
-              await updateCreativeSetting(bookId, {
-                tone: creativeForm.tone,
-                worldview: creativeForm.worldview,
-                writingTaboos: creativeForm.taboos,
-                customDimensions: Object.fromEntries(
-                  creativeForm.customFields.filter((f) => f.key && f.value).map((f) => [f.key, f.value]),
-                ),
-              });
+              // 追加不覆盖：只提交非空字段（空串/空对象不提交，避免清空库中已有设定）
+              const payload: Record<string, unknown> = {};
+              if (creativeForm.tone) payload.tone = creativeForm.tone;
+              if (creativeForm.worldview) payload.worldview = creativeForm.worldview;
+              if (creativeForm.taboos) payload.writingTaboos = creativeForm.taboos;
+              const dimensions = Object.fromEntries(
+                creativeForm.customFields.filter((f) => f.key && f.value).map((f) => [f.key, f.value]),
+              );
+              if (Object.keys(dimensions).length > 0) payload.customDimensions = dimensions;
+              if (Object.keys(payload).length > 0) {
+                await updateCreativeSetting(bookId, payload as Parameters<typeof updateCreativeSetting>[1]);
+              }
             } catch {
               set({ error: '创意设定保存失败，请重试或检查网络' });
             }
@@ -153,7 +159,6 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
               set((s) => ({ savedSteps: new Set(s.savedSteps).add(currentStep) }));
             } catch (e) {
               // 引用校验失败：透出明细（含正确格式提示），停留当前步让用户微调后重试
-              console.error(`[wizard:store] nextStep saveStepText FAILED`, e);
               const detail = e instanceof Error && e.message ? e.message : '方案保存失败，请重试';
               set({ error: detail });
               return;
@@ -162,14 +167,14 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
         }
       }
 
-      set({ currentStep: currentStep + 1 });
+      set({ currentStep: currentStep + 1, warnings: [] });
     }
   },
 
   prevStep: () => {
     const { currentStep, generating, streaming } = get();
     if (generating || streaming) return;
-    if (currentStep > 0) set({ currentStep: currentStep - 1 });
+    if (currentStep > 0) set({ currentStep: currentStep - 1, warnings: [] });
   },
 
   setCreativeForm: (data) => {
@@ -192,6 +197,8 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
     // 声明在 try 外，使 finally 在异常/中止路径也能取消定时器
     let pendingText = '';
     let flushTimer: ReturnType<typeof setTimeout> | null = null;
+    // 后端 error 事件标记：流结束后丢弃残留部分文本，避免「生成完成」误确认截断方案
+    let streamFailed = false;
     const flushPending = () => {
       if (flushTimer) clearTimeout(flushTimer);
       if (pendingText) {
@@ -230,11 +237,16 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
             pendingText += ev.text;
             if (!flushTimer) flushTimer = setTimeout(flushPending, 100);
           }
-          if (ev.type === 'error' && ev.message) set({ error: ev.message });
+          if (ev.type === 'error' && ev.message) {
+            streamFailed = true;
+            set({ error: ev.message });
+          }
         },
       });
       flushPending();
-      if (fullText) {
+      if (streamFailed) {
+        set((s) => ({ stepText: { ...s.stepText, [currentStep]: '' } }));
+      } else if (fullText) {
         set((s) => ({ stepText: { ...s.stepText, [currentStep]: fullText } }));
         // Step 0：解析 Markdown 方案填入创意设定表单（表单仍是可编辑源，下一步才落库）
         if (currentStep === 0) {
@@ -256,10 +268,10 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
         }
       }
     } catch (e) {
-      // AbortError 为用户关闭面板/中止，不视为错误
+      // AbortError 为用户关闭面板/中止，不视为错误；其余错误（含超时）清残留文本并提示
       if ((e as Error)?.name !== 'AbortError') {
         const msg = e instanceof Error ? e.message : 'AI 生成失败，请检查模型配置后重试';
-        set({ error: msg });
+        set((s) => ({ error: msg, stepText: { ...s.stepText, [currentStep]: '' } }));
       }
     } finally {
       // 任何退出路径（成功/异常/中止）都取消节流定时器，避免残留文本在流关闭后写入 stepText
@@ -278,7 +290,11 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
       set({ error: '方案解析失败，请重新生成，或检查输出格式' });
       return;
     }
-    set({ review: true, items, error: null });
+    // 为条目附加稳定 key（_uid），避免删除/重排时列表 key 抖动
+    const withUids = Array.isArray(items)
+      ? (items.map((it) => ({ ...it, _uid: crypto.randomUUID() })) as ParsedStepResult)
+      : items;
+    set({ review: true, items: withUids, error: null });
   },
 
   backToPreview: () => {
@@ -321,6 +337,11 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
   removeNestedItem: (volIdx, chIdx, scIdx) => set((s) => {
     const items = Array.isArray(s.items) ? [...s.items] as ParsedOutlineVolume[] : null;
     if (!items || !items[volIdx]) return {};
+    if (chIdx == null && scIdx == null) {
+      // 删除整卷
+      items.splice(volIdx, 1);
+      return { items: items as ParsedStepResult };
+    }
     const vol = { ...items[volIdx], chapters: items[volIdx].chapters.map((c) => ({ ...c, scenes: c.scenes.map((sc) => ({ ...sc })) })) };
     if (scIdx != null && chIdx != null) {
       if (!vol.chapters[chIdx]) return {};
@@ -335,10 +356,18 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
   addItem: () => set((s) => {
     const template = EMPTY_ITEM[s.currentStep];
     if (!template || !Array.isArray(s.items)) return {};
-    return { items: [...s.items, template] as ParsedStepResult };
+    const copy = Array.isArray(template) ? template.map((t) => ({ ...t })) : { ...template };
+    return { items: [...s.items, { ...copy, _uid: crypto.randomUUID() }] as ParsedStepResult };
   }),
 
   addNestedItem: (volIdx, chIdx) => set((s) => {
+    if (volIdx == null && chIdx == null) {
+      // 新增卷：末尾追加空卷（章可再通过「新增章」填充）
+      const items = Array.isArray(s.items) ? [...s.items] as ParsedOutlineVolume[] : [];
+      items.push({ title: '', summary: '', chapters: [], _uid: crypto.randomUUID() } as ParsedOutlineVolume);
+      return { items: items as ParsedStepResult };
+    }
+    if (volIdx == null) return {};
     const items = Array.isArray(s.items) ? [...s.items] as ParsedOutlineVolume[] : null;
     if (!items || !items[volIdx]) return {};
     const vol = { ...items[volIdx], chapters: items[volIdx].chapters.map((c) => ({ ...c, scenes: c.scenes.map((sc) => ({ ...sc })) })) };
@@ -375,6 +404,7 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
         review: false,
         items: null,
         saving: false,
+        warnings: [],
       }));
       if (currentStep === 6) {
         set({ isOpen: false });
@@ -383,7 +413,6 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
       }
     } catch (e) {
       // 引用校验失败：透出明细（含正确格式提示），停留在表单让用户微调后重试
-      console.error(`[wizard:store] confirmSave FAILED`, e);
       const detail = e instanceof Error && e.message ? e.message : '方案保存失败，请重试';
       set({ saving: false, error: detail });
     }

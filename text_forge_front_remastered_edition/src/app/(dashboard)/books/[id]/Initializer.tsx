@@ -240,6 +240,60 @@ function FieldInput({ field, value, onChange }: { field: FieldDef; value: unknow
         className={cn(inputCls(), 'py-2 resize-none')} />
     );
   }
+  if (field.type === 'relations') {
+    const relations = Array.isArray(value) ? (value as Array<Record<string, unknown>>) : [];
+    const updateRelation = (i: number, patch: Record<string, unknown>) => {
+      onChange(relations.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+    };
+    return (
+      <div className="space-y-1.5">
+        {relations.length === 0 && <p className="text-[9px] text-foreground/30">暂无关系，可点击下方添加</p>}
+        {relations.map((r, i) => (
+          <div key={i} className="rounded-md border border-border/60 bg-background/40 p-1.5 space-y-1">
+            <div className="flex gap-1">
+              <input
+                list={`rel-target-${field.key}-${i}`}
+                value={String(r.targetName ?? '')}
+                onChange={(e) => updateRelation(i, { targetName: e.target.value, targetRefId: undefined })}
+                placeholder="目标角色"
+                className={cn(inputCls(true), 'flex-1')}
+              />
+              <datalist id={`rel-target-${field.key}-${i}`}>
+                {(field.options ?? []).map((o) => <option key={o} value={o} />)}
+              </datalist>
+              <input
+                value={String(r.type ?? '')}
+                onChange={(e) => updateRelation(i, { type: e.target.value })}
+                placeholder="关系类型"
+                className={cn(inputCls(true), 'flex-1')}
+              />
+              <button
+                type="button"
+                onClick={() => onChange(relations.filter((_, j) => j !== i))}
+                className="w-5 h-7 flex items-center justify-center rounded bg-transparent border-none cursor-pointer text-foreground/15 hover:text-red-500/60 transition-colors"
+                aria-label="删除关系"
+              >
+                <X size={10} />
+              </button>
+            </div>
+            <input
+              value={String(r.description ?? '')}
+              onChange={(e) => updateRelation(i, { description: e.target.value })}
+              placeholder="关系描述（30-60字，可续行）"
+              className={cn(inputCls(true), 'w-full')}
+            />
+          </div>
+        ))}
+        <button
+          type="button"
+          onClick={() => onChange([...relations, { type: '', targetName: '', description: '' }])}
+          className="flex items-center gap-1 h-5 px-1.5 rounded text-[9px] text-foreground/35 hover:text-foreground/60 hover:bg-foreground/[0.03] bg-transparent border border-dashed border-border cursor-pointer transition-colors"
+        >
+          <Plus size={9} /> 添加关系
+        </button>
+      </div>
+    );
+  }
   return (
     <input value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} placeholder={field.placeholder}
       className={inputCls()} />
@@ -372,7 +426,7 @@ function StepReviewForm() {
     <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
       {items.map((it, i) => (
         <ItemCard
-          key={i}
+          key={String((it as unknown as Record<string, unknown>)._uid ?? i)}
           index={i}
           item={it as unknown as Record<string, unknown>}
           fields={fields}
@@ -405,7 +459,7 @@ function OutlineReviewForm() {
       {items.map((vol, vi) => {
         const volChapters = Array.isArray(vol.chapters) ? vol.chapters as Array<Record<string, unknown>> : [];
         return (
-          <div key={vi} className="rounded-xl border border-border bg-card p-3 shadow-sm">
+          <div key={String((vol as Record<string, unknown>)._uid ?? vi)} className="rounded-xl border border-border bg-card p-3 shadow-sm">
             <div className="flex items-center gap-1.5 mb-2">
               <span className="w-4 h-4 rounded flex-shrink-0 flex items-center justify-center text-[8px] font-bold text-background bg-foreground/50">{vi + 1}</span>
               <span className={cn('flex-1 text-[11px] font-semibold truncate', String(vol.title ?? '') ? 'text-foreground/70' : 'text-foreground/25 italic')}>
@@ -504,7 +558,7 @@ function OutlineReviewForm() {
           </div>
         );
       })}
-      <button onClick={() => addNestedItem(items.length, null)}
+      <button onClick={() => addNestedItem(null, null)}
         className="w-full h-8 rounded-lg border border-dashed border-border text-[10px] text-foreground/35 hover:text-foreground/60 hover:border-foreground/25 bg-transparent cursor-pointer transition-colors flex items-center justify-center gap-1">
         <Plus size={11} />
         新增卷

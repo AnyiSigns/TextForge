@@ -49,15 +49,25 @@ export interface StreamGenerateOptions {
   timeoutMs?: number;
 }
 
-/** 合并调用方 signal 与超时 signal（低版本浏览器不支持 AbortSignal.any 时退化为仅调用方 signal）。 */
-function mergeSignals(signal: AbortSignal | undefined, timeoutMs: number): AbortSignal | undefined {
-  if (!signal && timeoutMs <= 0) return undefined;
-  if (typeof AbortSignal.timeout === 'function' && typeof AbortSignal.any === 'function') {
-    const timeoutSignal = timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined;
-    if (signal && timeoutSignal) return AbortSignal.any([signal, timeoutSignal]);
-    return signal ?? timeoutSignal;
+/** 构建合并信号并挂载超时标记：超时触发时 timedOut=true（fetch 抛错名在不同环境可能是
+ * AbortError 或 TimeoutError，仅凭 name 无法可靠区分，用标记判定）。 */
+function buildSignal(
+  signal: AbortSignal | undefined,
+  timeoutMs: number,
+): { signal: AbortSignal | undefined; timedOut: () => boolean } {
+  if (!signal && timeoutMs <= 0) return { signal: undefined, timedOut: () => false };
+  let timedOut = false;
+  let timeoutSignal: AbortSignal | undefined;
+  if (typeof AbortSignal.timeout === 'function' && timeoutMs > 0) {
+    timeoutSignal = AbortSignal.timeout(timeoutMs);
+    timeoutSignal.addEventListener('abort', () => {
+      timedOut = true;
+    });
   }
-  return signal;
+  if (signal && timeoutSignal && typeof AbortSignal.any === 'function') {
+    return { signal: AbortSignal.any([signal, timeoutSignal]), timedOut: () => timedOut };
+  }
+  return { signal: signal ?? timeoutSignal, timedOut: () => timedOut };
 }
 
 /**
@@ -73,22 +83,28 @@ export async function streamGenerateMarkdown(
   const modelConfigData = await getModelConfigData();
   const token = useAuthStore.getState().accessToken;
   const timeoutMs = opts.timeoutMs ?? 120_000;
-  const signal = mergeSignals(opts.signal, timeoutMs);
-  const resp = await fetch(`${API_BASE}/wizard/stream-generate`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    signal,
-    body: JSON.stringify({
-      bookId,
-      step,
-      mode: opts.mode ?? 'auto',
-      modelConfig: modelConfigData,
-      extraInstruction: opts.extraInstruction,
-    }),
-  });
+  const { signal, timedOut } = buildSignal(opts.signal, timeoutMs);
+  let resp: Response;
+  try {
+    resp = await fetch(`${API_BASE}/wizard/stream-generate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      signal,
+      body: JSON.stringify({
+        bookId,
+        step,
+        mode: opts.mode ?? 'auto',
+        modelConfig: modelConfigData,
+        extraInstruction: opts.extraInstruction,
+      }),
+    });
+  } catch (e) {
+    if (timedOut()) throw new Error('AI 生成超时，请重试（可适当降低卷数或条目数量）');
+    throw e;
+  }
   if (!resp.ok || !resp.body) {
     throw new Error(`AI 生成失败（${resp.status}）`);
   }
@@ -96,22 +112,28 @@ export async function streamGenerateMarkdown(
   const decoder = new TextDecoder('utf-8');
   let buffer = '';
   let fullText = '';
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    let idx: number;
-    while ((idx = buffer.indexOf('\n\n')) !== -1) {
-      const raw = buffer.slice(0, idx);
-      buffer = buffer.slice(idx + 2);
-      if (!raw.startsWith('data:')) continue;
-      try {
-        const ev = JSON.parse(raw.slice(5).trim()) as WizardStreamEvent;
-        if (ev.type === 'delta' && ev.text) fullText += ev.text;
-        if (ev.type === 'done' && ev.full_text) fullText = ev.full_text;
-        opts.onEvent?.(ev);
-      } catch { /* 忽略无法解析的 SSE 消息 */ }
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let idx: number;
+      while ((idx = buffer.indexOf('\n\n')) !== -1) {
+        const raw = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 2);
+        if (!raw.startsWith('data:')) continue;
+        try {
+          const ev = JSON.parse(raw.slice(5).trim()) as WizardStreamEvent;
+          if (ev.type === 'delta' && ev.text) fullText += ev.text;
+          if (ev.type === 'done' && ev.full_text) fullText = ev.full_text;
+          opts.onEvent?.(ev);
+        } catch { /* 忽略无法解析的 SSE 消息 */ }
+      }
     }
+  } catch (e) {
+    // 超时与用户取消共用 abort 通道，但语义不同：超时需给出可恢复的明确提示
+    if (timedOut()) throw new Error('AI 生成超时，请重试（可适当降低卷数或条目数量）');
+    throw e;
   }
   return fullText;
 }

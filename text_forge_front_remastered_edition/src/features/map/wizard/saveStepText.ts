@@ -32,15 +32,25 @@ export class WizardValidationError extends Error {
   }
 }
 
+/** 中文数字转数值：支持个/十/百/千位及零（"一百零三"→103；"第十一章"→11）。 */
 function cnToNum(s: string): number | null {
-  const map: Record<string, number> = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
-  const cleaned = s.replace(/[^一二三四五六七八九十\d]/g, '');
+  const digits: Record<string, number> = { 零: 0, 〇: 0, 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+  const cleaned = s.replace(/[^〇零一二三四五六七八九十百千\d]/g, '');
   if (/^\d+$/.test(cleaned)) return parseInt(cleaned, 10);
-  if (cleaned === '十') return 10;
-  if (cleaned.length === 2 && cleaned.startsWith('十')) return 10 + (map[cleaned[1]] ?? 0);
-  if (cleaned.length === 2 && cleaned.endsWith('十')) return (map[cleaned[0]] ?? 0) * 10;
-  if (cleaned.length === 3) return (map[cleaned[0]] ?? 0) * 10 + (map[cleaned[2]] ?? 0);
-  return map[cleaned] ?? null;
+  let value = 0;
+  let num = 0;
+  for (const ch of cleaned) {
+    if (ch === '零' || ch === '〇') continue;
+    if (ch in digits) {
+      num = digits[ch];
+      continue;
+    }
+    const unit = ch === '十' ? 10 : ch === '百' ? 100 : ch === '千' ? 1000 : 0;
+    if (!unit) return null;
+    value += (num === 0 ? 1 : num) * unit;
+    num = 0;
+  }
+  return value + num;
 }
 
 function mapRevealType(raw: string): string {
@@ -194,7 +204,8 @@ async function persistLocations(bookId: number, locations: ParsedLocation[]): Pr
     if (loc.parentRefId != null && byId.has(loc.parentRefId)) {
       parentId = loc.parentRefId;
     } else if (loc.parentName) {
-      parentId = allIds[loc.parentName];
+      // 落库与校验同源：名称模糊匹配（校验阶段已确认存在，这里保证精确映射失败也能命中）
+      parentId = allIds[loc.parentName] ?? existing.find((l) => nameMatches(l.name, loc.parentName!))?.id;
     }
     if (parentId != null) {
       parentUpdates.push(updateLocation(id, { parentId }, bookId));
@@ -275,10 +286,12 @@ async function persistCharacters(bookId: number, characters: ParsedCharacter[]):
     if (!id || ch.relationships.length === 0) continue;
     const chain = ch.relationships
       .map((r) => {
-        // JSON 路径优先 targetRefId（[id] 精确），否则按名称
+        // JSON 路径优先 targetRefId（[id] 精确），否则按名称（校验已确认存在，落库同样模糊兜底）
         const targetId = r.targetRefId != null && existingById.has(r.targetRefId)
           ? r.targetRefId
-          : allIds[r.targetName];
+          : r.targetName
+            ? (allIds[r.targetName] ?? existing.find((c) => nameMatches(c.name, r.targetName))?.id)
+            : undefined;
         return { targetId, type: r.type, description: r.description };
       })
       .filter((r) => r.targetId != null);
@@ -325,10 +338,12 @@ async function persistPlotThreads(bookId: number, threads: ParsedPlotThread[]): 
   const createFailures: string[] = [];
   for (const t of toCreate) {
     try {
-      // 父线优先：parentRefId（JSON 路径 [id]）→ parentName → 本批最近主线
+      const parentName = t.parentName;
+      // 父线优先：parentRefId（JSON 路径 [id]）→ parentName（模糊兜底）→ 本批最近主线
       const parentByRef = t.parentRefId != null ? existingById.get(t.parentRefId) : undefined;
       const parentId = parentByRef?.id
-        ?? allNames[t.parentName ?? '']
+        ?? allNames[parentName ?? '']
+        ?? (parentName ? existing.find((x) => nameMatches(x.name, parentName))?.id : undefined)
         ?? (t.level === 2 && mainId != null ? mainId : undefined);
       const created = await createPlotThread({
         bookId,
@@ -400,6 +415,10 @@ async function persistOutline(bookId: number, volumes: ParsedOutlineVolume[]): P
   const existingChByVolTitle = new Map<string, Set<string>>(
     tree.map((v) => [v.title, new Set(v.chapters.map((c) => c.title))]),
   );
+  // 已存在卷的章节 sortOrder 最大值：向已存在卷追加章节时续排，避免与已有章撞序
+  const existingMaxChOrder = new Map(
+    tree.map((v) => [v.title, v.chapters.reduce((m, c) => Math.max(m, c.sortOrder ?? 0), 0)]),
+  );
 
   // 新增卷 sortOrder 续接已有卷数（append 模式）：已有 tree.length 卷占 1..N，
   // 首批新增卷从 N+1 起算，与后端生成提示词的 base_vol 顺延语义一致；
@@ -407,6 +426,7 @@ async function persistOutline(bookId: number, volumes: ParsedOutlineVolume[]): P
   let nextSortOrder = tree.length + 1;
   const sceneFailures: string[] = [];
   for (const vol of volumes) {
+    const wasExisting = existingVolByTitle.has(vol.title);
     let existingVol = existingVolByTitle.get(vol.title);
     if (!existingVol) {
       const created = await createVolume(bookId, vol.title, vol.summary || undefined, nextSortOrder);
@@ -417,10 +437,12 @@ async function persistOutline(bookId: number, volumes: ParsedOutlineVolume[]): P
       existingChByVolTitle.set(vol.title, new Set<string>());
     }
     const volId = existingVol.id;
+    // 已存在卷：章序号从已有最大值后继续；新卷：从 1 起
+    const chBase = wasExisting ? (existingMaxChOrder.get(vol.title) ?? 0) : 0;
     const existingChTitles = existingChByVolTitle.get(vol.title) ?? new Set<string>();
     for (const [ci, ch] of vol.chapters.entries()) {
       if (existingChTitles.has(ch.title)) continue; // 重复章跳过
-      const createdCh = await createChapter(volId, { title: ch.title, summary: ch.summary || undefined, sortOrder: ci + 1 });
+      const createdCh = await createChapter(volId, { title: ch.title, summary: ch.summary || undefined, sortOrder: chBase + ci + 1 });
       existingChTitles.add(ch.title);
       for (const sc of ch.scenes) {
         try {
@@ -648,5 +670,9 @@ export function parseStepItems(
 /** Markdown 文本落库：优先解析末尾 JSON 数据块，缺失/损坏回退 Markdown 解析器。 */
 export async function saveStepText(bookId: number, step: number, text: string): Promise<void> {
   const items = parseStepItems(text, step);
+  // 解析不出任何条目不再静默跳过：抛错中止整步，由调用方透出错误并停留当前步
+  if (items == null || (Array.isArray(items) && items.length === 0)) {
+    throw new Error('方案解析失败，未识别到任何有效条目，请重新生成或检查 AI 输出格式');
+  }
   await saveStepItems(bookId, step, items);
 }

@@ -482,7 +482,7 @@ export function parseForeshadowings(markdown: string): ParsedForeshadowing[] {
 /** 提取文本中所有围栏 JSON 块并逐个解析，返回成功解析的对象列表。 */
 export function extractJsonBlocks(text: string): Record<string, unknown>[] {
   const blocks: Record<string, unknown>[] = [];
-  const re = /```(?:json)?\s*\n([\s\S]*?)```/g;
+  const re = /```(?:json)?[ \t]*\r?\n?([\s\S]*?)```/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
     try {
@@ -547,24 +547,13 @@ export type ParsedStepResult =
   | ParsedEvent[]
   | ParsedForeshadowing[];
 
-/** 按步骤解析 JSON 块为与 markdown 解析器同构的实体结构；无有效块返回 null（调用方回退 markdown）。 */
+/** 按步骤解析 JSON 块为与 markdown 解析器同构的实体结构；无有效块返回 null（调用方回退 markdown）。
+ * 注：Step 0 走 parseCreativeSetting，不进入本函数（case 0 已移除）。 */
 export function parseStepJson(text: string, step: number): ParsedStepResult | null {
   const blocks = extractJsonBlocks(text);
   if (blocks.length === 0) return null;
-  const first = blocks[0];
 
   switch (step) {
-    case 0: {
-      const cs = asRecord(first.creativeSetting ?? first);
-      if (Object.keys(cs).length === 0) return null;
-      return {
-        name: asString(cs.name),
-        tone: asString(cs.tone),
-        worldview: asString(cs.worldview),
-        taboos: asString(cs.taboos),
-        customFields: asStringMap(cs.customFields),
-      };
-    }
     case 1: {
       // 长输出可能拆多个块：合并全部块的 locations
       const items = blocks.flatMap((b) => asArray(b.locations));

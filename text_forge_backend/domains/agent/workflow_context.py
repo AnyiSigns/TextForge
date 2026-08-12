@@ -140,11 +140,16 @@ def _format_context_field(
             rels = getattr(r, "relationship_chain", None) or []
             rel_texts = []
             for rel in rels[:8]:
-                target = rel.get("target", "") if isinstance(rel, dict) else getattr(rel, "target", "")
-                relation = (
-                    rel.get("relation", "")
+                # 键约定双向兼容：前端/向导写 {targetId, type}，历史数据与提示词写 {target, relation}
+                target = (
+                    rel.get("target") or rel.get("targetName") or rel.get("targetId") or ""
                     if isinstance(rel, dict)
-                    else getattr(rel, "relation", "")
+                    else getattr(rel, "target", None) or getattr(rel, "targetName", None) or ""
+                )
+                relation = (
+                    rel.get("relation") or rel.get("type") or ""
+                    if isinstance(rel, dict)
+                    else getattr(rel, "relation", None) or getattr(rel, "type", None) or ""
                 )
                 if target and relation:
                     rel_texts.append(f"{target}（{relation}）")

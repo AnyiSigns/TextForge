@@ -34,7 +34,7 @@ const charactersApi = vi.hoisted(() => {
 const booksApi = vi.hoisted(() => ({
   createVolume: vi.fn(async (_b: unknown, _title: string, _summary?: string, _sortOrder?: number) => ({ id: 100 })),
   createChapter: vi.fn(async (_v: unknown, _body: Record<string, unknown>) => ({ id: 200 })),
-  updateCreativeSetting: vi.fn(async () => ({})),
+  updateCreativeSetting: vi.fn(async (_b: unknown, _setting: Record<string, unknown>) => ({})),
   // 与后端契约一致：wizard 创建的卷/章 sortOrder 从 1 起（saveStep4 显式传入）
   fetchChaptersTree: vi.fn(async () => [{ id: 100, title: '卷一', sortOrder: 1, chapters: [{ id: 200, title: '第一章', sortOrder: 1 }, { id: 201, title: '第十章', sortOrder: 10 }] }]),
 }));
@@ -42,7 +42,7 @@ const entityStoreApi = vi.hoisted(() => ({
   loadFromApi: vi.fn(async () => {}),
 }));
 const wizardApi = vi.hoisted(() => ({
-  streamGenerateMarkdown: vi.fn(async () => ''),
+  streamGenerateMarkdown: vi.fn(async (_b: number, _s: number, _o: { onEvent?: (ev: unknown) => void }) => ''),
 }));
 
 vi.mock('@/shared/api/world', () => worldApi);
@@ -555,5 +555,84 @@ describe('初始化器字段映射（与后端 wizard label 对齐）', () => {
     scenes = (vol.chapters as unknown as Array<Record<string, unknown>>)[0].scenes as unknown as Array<Record<string, unknown>>;
     expect(scenes).toHaveLength(1);
     expect(scenes[0].title).toBe('');
+  });
+
+  it('大纲嵌套表单：新增卷 / 删除卷生效', () => {
+    setStepText(4, [
+      '```json',
+      '{"volume": {"title": "觉醒", "summary": "觉醒之旅", "chapters": [{"title": "初入江湖", "scenes": []}]}}',
+      '```',
+    ].join('\n'));
+    useInitializerStore.setState({ currentStep: 4 });
+    useInitializerStore.getState().enterReview();
+    let vols = useInitializerStore.getState().items as unknown as Array<Record<string, unknown>>;
+    expect(vols).toHaveLength(1);
+    // 新增卷（items.length 越界路径修复前为静默 no-op）
+    useInitializerStore.getState().addNestedItem(null, null);
+    vols = useInitializerStore.getState().items as unknown as Array<Record<string, unknown>>;
+    expect(vols).toHaveLength(2);
+    expect(vols[1]).toMatchObject({ title: '', summary: '', chapters: [] });
+    // 删除卷（(null,null) 分支修复前为静默 no-op）：删除末尾新增的空卷，保留原卷
+    useInitializerStore.getState().removeNestedItem(1, null, null);
+    vols = useInitializerStore.getState().items as unknown as Array<Record<string, unknown>>;
+    expect(vols).toHaveLength(1);
+    expect(vols[0].title).toBe('觉醒');
+  });
+
+  it('Step0 落库只提交非空字段（空串/空对象不覆盖已有设定）', async () => {
+    useInitializerStore.setState({
+      currentStep: 0,
+      creativeForm: { name: '方案名', tone: '', worldview: '新世界观', taboos: '', customFields: [] },
+    });
+    await useInitializerStore.getState().nextStep();
+    expect(booksApi.updateCreativeSetting).toHaveBeenCalledTimes(1);
+    const payload = booksApi.updateCreativeSetting.mock.calls[0][1] as Record<string, unknown>;
+    expect(payload).toEqual({ worldview: '新世界观' });
+    expect(payload).not.toHaveProperty('tone');
+    expect(payload).not.toHaveProperty('writingTaboos');
+    expect(payload).not.toHaveProperty('customDimensions');
+  });
+
+  it('Step0 表单为空时不调用落库（不覆盖已有设定）', async () => {
+    useInitializerStore.setState({
+      currentStep: 0,
+      creativeForm: { name: '', tone: '', worldview: '', taboos: '', customFields: [] },
+    });
+    await useInitializerStore.getState().nextStep();
+    expect(booksApi.updateCreativeSetting).not.toHaveBeenCalled();
+    expect(useInitializerStore.getState().currentStep).toBe(1);
+  });
+
+  it('Markdown 解析失败不再静默前进（报错并停留当前步）', async () => {
+    setStepText(5, ['这是一段无法解析的文本，没有事件标题也没有 JSON 块', '第二行'].join('\n'));
+    await useInitializerStore.getState().nextStep();
+    expect(useInitializerStore.getState().currentStep).toBe(5);
+    expect(useInitializerStore.getState().error).toContain('方案解析失败');
+    expect(worldApi.createSceneEvent).not.toHaveBeenCalled();
+  });
+
+  it('生成超时：清残留部分文本并给出明确错误提示', async () => {
+    wizardApi.streamGenerateMarkdown.mockRejectedValueOnce(new Error('AI 生成超时，请重试（可适当降低卷数或条目数量）'));
+    useInitializerStore.setState({ currentStep: 5, stepText: { 5: '旧内容' } });
+    await useInitializerStore.getState().regenerateCandidates();
+    const st = useInitializerStore.getState();
+    expect(st.error).toContain('超时');
+    expect(st.stepText[5]).toBe('');
+    expect(st.generating).toBe(false);
+    expect(st.streaming).toBe(false);
+  });
+
+  it('后端 error 事件：丢弃残留部分文本，避免「生成完成」误确认截断方案', async () => {
+    wizardApi.streamGenerateMarkdown.mockImplementationOnce(async (_b, _s, opts) => {
+      opts?.onEvent?.({ type: 'delta', text: '部分内容' });
+      opts?.onEvent?.({ type: 'error', message: 'AI 生成失败: 测试错误' });
+      return '部分内容';
+    });
+    useInitializerStore.setState({ currentStep: 5 });
+    await useInitializerStore.getState().regenerateCandidates();
+    const st = useInitializerStore.getState();
+    expect(st.error).toContain('测试错误');
+    expect(st.stepText[5]).toBe('');
+    expect(st.generating).toBe(false);
   });
 });
