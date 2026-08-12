@@ -6,9 +6,16 @@ import { cn } from '@/shared/lib/cn';
 
 interface RoleNodeData {
   label: string;
-  executor?: 'main' | 'audit' | 'auto';
+  executor?: 'main' | 'audit' | 'tool' | 'router';
   layer?: 'decision' | 'execution' | 'audit';
 }
+
+const EXECUTOR_LABEL: Record<string, string> = {
+  main: '主模型',
+  audit: '审计模型',
+  router: '路由模型',
+  tool: '工具模型',
+};
 
 const LAYER_COLORS: Record<string, string> = {
   decision: 'bg-foreground/[0.06] border-foreground/[0.12]',
@@ -52,7 +59,7 @@ export const RoleNode = memo(({ data, selected }: NodeProps) => {
         {label}
       </div>
       <div className={cn('text-[9px] mt-0.5', LAYER_LABEL_STYLE[layer])}>
-        {executor === 'audit' ? '审计模型' : '主模型'}
+        {EXECUTOR_LABEL[executor] || EXECUTOR_LABEL.main}
       </div>
       <Handle
         type="source"

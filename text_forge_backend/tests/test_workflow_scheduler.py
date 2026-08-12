@@ -47,13 +47,15 @@ class FakeAuditLLM:
 
 
 class FakeNodeModelFactory:
-    """假 ModelFactory：main 走 astream，audit 走 ainvoke。"""
+    """假 ModelFactory：main/audit/router/tool 档位齐全，main 走 astream，audit 走 ainvoke。"""
 
     def __init__(self, config: dict):
         chunks = config.get("chunks") or ["测试输出内容"]
         audit_response = config.get("audit_response", "PASS")
         self.main = FakeStreamLLM(chunks, raise_error=config.get("raise_error", False))
         self.audit = FakeAuditLLM(audit_response)
+        self.router = FakeStreamLLM(chunks)
+        self.tool = FakeStreamLLM(chunks)
 
     def set_main_error(self):
         self.main._should_raise = True

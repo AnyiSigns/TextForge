@@ -90,8 +90,10 @@ export function InspectorPanel({ node, onChange, onClose }: InspectorPanelProps)
             onChange={(e) => onChange({ executor: e.target.value as WorkflowNode['executor'] })}
             className="w-full h-8 px-2 rounded-md text-xs bg-card border border-border focus:outline-none"
           >
-            <option value="main">主生成模型</option>
+            <option value="main">主模型（生成/创作）</option>
             <option value="audit">审计模型</option>
+            <option value="router">路由模型（判断/决策）</option>
+            <option value="tool">工具模型（结构化输出）</option>
           </select>
         </div>
 

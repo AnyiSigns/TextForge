@@ -237,7 +237,9 @@ async def _finish_with_candidate(
     return _update
 
 
-async def workflow_runner_node(state: dict[str, Any]) -> dict[str, Any]:
+async def workflow_runner_node(
+    state: dict[str, Any], session_factory: Any | None = None
+) -> dict[str, Any]:
     """原生图节点：执行工作流并流式推送节点事件。
 
     由 Agent 在调用 execute_workflow / execute_workflow_node 工具时写入
@@ -246,6 +248,7 @@ async def workflow_runner_node(state: dict[str, Any]) -> dict[str, Any]:
 
     Args:
         state: 含 pending_workflow 的 Agent 状态。
+        session_factory: 数据库会话工厂（agent_graph 注入，透传给审计子图）。
 
     Returns:
         写入 workflow_result 与清空 pending_workflow。
@@ -330,6 +333,8 @@ async def workflow_runner_node(state: dict[str, Any]) -> dict[str, Any]:
                                 on_progress=_on_progress,
                                 target_chapter_id=target_chapter_id,
                                 skip_quality_audit=skip_audit,
+                                user_id=user_id,
+                                session_factory=session_factory,
                             )
                         except Exception as exc:
                             # 兜底：单节点执行异常转 error 结果，避免整个图崩溃断流
@@ -363,10 +368,10 @@ async def workflow_runner_node(state: dict[str, Any]) -> dict[str, Any]:
                         # 恢复祖先节点输出，避免单节点续跑丢失上游上下文。
                         "upstream_outputs": pending.get("upstream_outputs"),
                     }
-                    # 单节点执行：executor 缺省/auto/main 节点输出即正文候选，
+                    # 单节点执行：executor 缺省/main 节点输出即正文候选，
                     # 与 run_workflow 的 content_nodes 判定一致（audit/tool 排除）
                     _executor = node_def.get("executor") or "main"
-                    if _executor in ("main", "auto"):
+                    if _executor == "main":
                         result["content_nodes"] = [
                             {
                                 "node_id": node_id,
@@ -394,6 +399,8 @@ async def workflow_runner_node(state: dict[str, Any]) -> dict[str, Any]:
             personal_rag_results=state.get("personal_rag_results"),
             seed_upstream_outputs=pending.get("upstream_outputs"),
             target_chapter_id=target_chapter_id,
+            user_id=user_id,
+            session_factory=session_factory,
         )
     except Exception as exc:
         # 兜底：调度器未捕获异常（如配置/LLM 层外的意外错误）不能让整个图崩溃，

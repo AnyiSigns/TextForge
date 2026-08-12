@@ -90,48 +90,21 @@ def topological_sort(
     return sorted_nodes
 
 
-def _build_audit_preview(output: str) -> str:
-    """构造审计用输出预览：保留首段 + 尾段供审计判断。
-
-    审计仅基于首尾片段（中段不参与判定）；用于控制审计 prompt 长度、
-    避免长文首尾信息丢失。
-
-    Args:
-        output: 节点输出全文。
-
-    Returns:
-        截断后的审计输入文本（首 3000 字 + 尾 500 字）。
-    """
-    if len(output) <= 3000:
-        return output
-    return output[:3000] + "\n…（中间省略）…\n" + output[-500:]
-
-
-async def audit_node_output(
+async def _audit_single_call(
     output: str,
     system_prompt: str,
     model_config: dict,
 ) -> dict[str, Any]:
-    """使用 audit 模型检查节点输出质量。
-
-    Args:
-        output: 节点输出文本（可为全文，内部自动截断为审计预览）。
-        system_prompt: 节点的系统提示词（含写作要求）。
-        model_config: 模型配置。
-
-    Returns:
-        {"passed": bool, "reason": str}
-    """
+    """单次调用审计（无 session_factory / 缺参时的回退路径，保持旧行为）。"""
     if not output.strip() or len(output) < 50:
         return {"passed": True}
 
     try:
         llm = ModelFactory(model_config)
-        preview = _build_audit_preview(output)
         quality_prompt = (
             f"请判断以下创作输出是否符合角色节点的写作要求。\n\n"
             f"【角色节点要求】\n{system_prompt[:1500]}\n\n"
-            f"【创作输出】\n{preview}\n\n"
+            f"【创作输出】\n{output}\n\n"
             f"输出是否严格遵循了上述写作要求？只回答 PASS 或 FAIL，然后简要说明理由。"
         )
         quality_response = await asyncio.wait_for(
@@ -149,6 +122,101 @@ async def audit_node_output(
     except Exception:
         logger.exception("audit_node_output 失败，默认通过")
         return {"passed": True}
+
+
+async def _audit_via_subgraph(
+    output: str,
+    node_def: dict,
+    book_id: int,
+    chapter_id: int | None,
+    user_id: int,
+    session_factory: Any,
+    model_config: dict,
+) -> dict[str, Any]:
+    """审计子图路径：审计代理按节点职责自助查库核对后输出 verdict。
+
+    子图为独立编译图，每次 ainvoke 全新会话（无持久化），thread_id 仅作隔离标识。
+    """
+    from .subgraphs.audit_graph import build_audit_graph
+
+    graph = build_audit_graph(
+        session_factory=session_factory, model_config=model_config
+    )
+    state = {
+        "node_def": node_def,
+        "node_output": output,
+        "book_id": book_id,
+        "chapter_id": chapter_id,
+        "user_id": user_id,
+        "active_book_id": book_id,
+        "model_config": model_config or {},
+        "messages": [],
+        "audit_rounds": 0,
+        "verdict": None,
+    }
+    thread_id = (
+        f"audit-{book_id}-{(node_def.get('id') or node_def.get('label') or 'node')}"
+        f"-{int(time.time() * 1000)}"
+    )
+    result = await asyncio.wait_for(
+        graph.ainvoke(state, config={"thread_id": thread_id}), timeout=120
+    )
+    verdict = result.get("verdict") or {}
+    return {
+        # fail-closed：缺失 verdict 时不默认放行，交由人工审核卡决定
+        "passed": bool(verdict.get("passed", False)),
+        "reason": (verdict.get("reason") or "")[:500],
+    }
+
+
+async def audit_node_output(
+    output: str,
+    system_prompt: str,
+    model_config: dict,
+    *,
+    node_def: dict | None = None,
+    book_id: int = 0,
+    chapter_id: int | None = None,
+    user_id: int = 0,
+    session_factory: Any | None = None,
+) -> dict[str, Any]:
+    """使用审计子图检查节点输出质量（缺参时回退单次调用审计）。
+
+    Args:
+        output: 节点输出全文（不截断，避免因中段缺失导致误审）。
+        system_prompt: 节点的系统提示词（含写作要求；回退路径使用）。
+        model_config: 模型配置。
+        node_def: 被审节点定义（label/system_prompt/executor 等，子图路径使用）。
+        book_id: 书籍 ID（子图只读工具归属校验）。
+        chapter_id: 目标章节 ID。
+        user_id: 当前用户 ID（子图工具注入）。
+        session_factory: 数据库会话工厂；传入时走审计子图，否则回退单次调用。
+
+    Returns:
+        {"passed": bool, "reason": str}
+    """
+    if not output.strip() or len(output) < 50:
+        return {"passed": True}
+
+    if session_factory is not None and node_def:
+        try:
+            return await _audit_via_subgraph(
+                output,
+                node_def,
+                book_id,
+                chapter_id,
+                user_id,
+                session_factory,
+                model_config,
+            )
+        except asyncio.TimeoutError:
+            # 超时根因大概率是模型/上下文慢，回退单次调用大概率同样超时；
+            # 直接 fail-closed 交由人工审核卡，避免 120s+60s 双重等待。
+            logger.error("审计子图超时，fail-closed 交由人工审核")
+            return {"passed": False, "reason": "审计子图超时，请人工审核"}
+        except Exception:
+            logger.exception("审计子图执行失败，回退单次调用审计")
+    return await _audit_single_call(output, system_prompt, model_config)
 
 
 async def _prepare_node_rag(
@@ -229,6 +297,8 @@ async def execute_node(
     on_progress: Callable[[dict[str, Any]], None] | None = None,
     target_chapter_id: int | None = None,
     skip_quality_audit: bool = False,
+    user_id: int = 0,
+    session_factory: Any | None = None,
 ) -> dict[str, Any]:
     """执行单个工作流节点。
 
@@ -311,12 +381,21 @@ async def execute_node(
     if node_rag_text:
         context_text = f"{context_text}\n\n{node_rag_text}"
 
-    llm = ModelFactory(model_config or {})
+    # 档位模型容错：ModelFactory 按用户配置逐个创建 main/audit/router/tool 档位
+    # （未配置的档位自动回落 main_config）。若某档位配置异常导致整体构造失败，
+    # 剔除异常档位后重建，保证 main 档可用。
+    try:
+        llm = ModelFactory(model_config or {})
+    except Exception as exc:
+        logger.warning(f"[execute_node] ModelFactory 初始化失败，剔除异常档位后重建: {exc}")
+        cfg = dict(model_config or {})
+        for key in ("audit_config", "router_config", "tool_config"):
+            cfg.pop(key, None)
+        llm = ModelFactory(cfg)
 
-    if executor_type == "audit":
-        model = llm.audit
-    else:
-        model = llm.main
+    # executor → 模型档位：档位名即 ModelFactory 属性名（main/audit/router/tool），
+    # 惰性取值避免无关档位初始化；未知值或档位缺失回退 main。
+    model = getattr(llm, executor_type, None) or llm.main
 
     messages = [
         SystemMessage(
@@ -420,10 +499,24 @@ async def execute_node(
         # 直接把当前输出作为候选正文呈现给用户落库。
         qc = {"passed": True, "reason": "用户已接受，跳过自动质量审计"}
         needs_review = False
+    elif executor_type == "audit":
+        # 审核节点输出是审计报告，自身不再被自动审计（审查者不被审），
+        # 避免报告被二次拦截、弹卡重跑只重出报告不重写正文。
+        qc = {"passed": True, "reason": "审核节点输出跳过自动审计"}
+        needs_review = False
     else:
-        # 审计输入在 audit_node_output 内部经 _build_audit_preview 截断（首段+尾段），
-        # 此处 full_content 保留全文返回，落库候选不再丢中段。
-        qc = await audit_node_output(full_content, system_prompt, model_config or {})
+        # 审计输入为 full_content 全量（不截断，避免中段缺失导致误审）；
+        # 此处 full_content 同样保留全文返回，落库候选不丢中段。
+        qc = await audit_node_output(
+            full_content,
+            system_prompt,
+            model_config or {},
+            node_def=node_def,
+            book_id=book_id,
+            chapter_id=target_chapter_id,
+            user_id=user_id,
+            session_factory=session_factory,
+        )
         needs_review = not qc.get("passed", True)
 
     if needs_review:
@@ -485,6 +578,8 @@ async def run_workflow(
     seed_upstream_outputs: dict[str, str] | None = None,
     node_id: str = "",
     target_chapter_id: int | None = None,
+    user_id: int = 0,
+    session_factory: Any | None = None,
 ) -> dict[str, Any]:
     """执行完整工作流，按拓扑顺序逐个执行节点。
 
@@ -497,6 +592,8 @@ async def run_workflow(
         seed_upstream_outputs: 起始上游输出（如 Agent 联网搜索结果），{node_id: text}，注入每个节点。
         node_id: 节点 ID。
         target_chapter_id: 目标章节 ID，透传给每个节点。
+        user_id: 当前用户 ID（透传给审计子图工具）。
+        session_factory: 数据库会话工厂（透传给审计子图；缺省走单次调用审计）。
 
     Returns:
         {"status": "completed"/"pending_review"/"error", "node_results": [...], ...}
@@ -537,7 +634,7 @@ async def run_workflow(
     content_node_ids = {
         node_id_map[id(node)]
         for node in nodes
-        if (node.get("executor") or "main") in ("main", "auto")
+        if (node.get("executor") or "main") == "main"
     }
 
     for node in sorted_nodes:
@@ -564,6 +661,8 @@ async def run_workflow(
             node_id=node_id,
             on_progress=on_progress,
             target_chapter_id=target_chapter_id,
+            user_id=user_id,
+            session_factory=session_factory,
         )
         _node_elapsed_ms = round((time.monotonic() - _node_started) * 1000, 1)
 
@@ -614,7 +713,7 @@ async def run_workflow(
         "upstream_outputs": upstream_outputs,
         # 候选正文：executor 为 main（或缺省按 main 处理）的节点输出。审计（audit）与
         # 工具（tool）节点输出是报告/结构化结果，不是正文。判定与 execute_node 的
-        # 执行分支一致（缺省/auto 同样走 main 模型产出文本，即正文候选）；
+        # 执行分支一致（缺省同样走 main 模型产出文本，即正文候选）；
         # 显式排除 audit / tool，避免历史自定义工作流中的 tool 节点被误作候选。
         "content_nodes": [
             {

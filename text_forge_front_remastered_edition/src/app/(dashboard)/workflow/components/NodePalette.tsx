@@ -5,11 +5,18 @@ import { Brain, Pen, Search, Plus } from 'lucide-react';
 interface RoleTemplate {
   id: string;
   label: string;
-  executor: 'main' | 'audit';
+  executor: 'main' | 'audit' | 'router' | 'tool';
   systemPrompt: string;
   contextFields: string[];
   layer: 'decision' | 'execution' | 'audit';
 }
+
+const EXECUTOR_SHORT: Record<string, string> = {
+  main: '主模型',
+  audit: '审计',
+  router: '路由',
+  tool: '工具',
+};
 
 const ROLE_TEMPLATES: RoleTemplate[] = [
   {
@@ -94,6 +101,13 @@ export function NodePalette({ onDragStart }: NodePaletteProps) {
                 {label}
               </span>
             </div>
+            {key === 'audit' && (
+              <div className="mb-2 px-2 py-1.5 rounded-md border border-dashed border-amber-500/30 bg-amber-500/[0.04]">
+                <span className="text-[10px] leading-relaxed text-amber-600/80 dark:text-amber-400/80">
+                  系统已对每个节点输出自动审查，一般无需添加审核类角色节点
+                </span>
+              </div>
+            )}
             <div className="space-y-1">
               {roles.map((role) => (
                 <div
@@ -107,7 +121,7 @@ export function NodePalette({ onDragStart }: NodePaletteProps) {
                     {role.label}
                   </span>
                   <span className="ml-auto text-[8px] text-foreground/25 shrink-0">
-                    {role.executor === 'audit' ? '审计' : '主模型'}
+                    {EXECUTOR_SHORT[role.executor] || EXECUTOR_SHORT.main}
                   </span>
                 </div>
               ))}

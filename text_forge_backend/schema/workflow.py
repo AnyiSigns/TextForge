@@ -22,7 +22,7 @@ class WorkflowNode(BaseModel):
     context_fields: list[str] | None = Field(default=None, alias="contextFields")
     rag_filter: RagFilter | None = Field(default=None, alias="ragFilter")
     rag_top_k: int | None = Field(default=3, alias="ragTopK")
-    executor: Literal["main", "audit", "tool", "auto"] | None = "auto"
+    executor: Literal["main", "audit", "tool", "router"] | None = "main"
 
 
 class WorkflowEdge(BaseModel):

@@ -123,7 +123,7 @@ def build_subgraph(name: str, session_factory, model_config: dict | None = None)
         "tool_calls",
         partial(gated_tool_node, session_factory=session_factory, model_config=model_config),
     )
-    b.add_node("workflow_runner", workflow_runner_node)
+    b.add_node("workflow_runner", partial(workflow_runner_node, session_factory=session_factory))
     b.add_node("compress", partial(auto_compress_node, session_factory=session_factory))
     b.add_node("final", subgraph_final_node)
 

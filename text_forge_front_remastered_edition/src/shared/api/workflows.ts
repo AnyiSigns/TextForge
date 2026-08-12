@@ -8,7 +8,7 @@ export interface WorkflowNode {
   contextFields?: string[];
   ragFilter?: { query?: string; docIds?: string[]; authorIds?: string[]; sample?: string };
   ragTopK?: number;
-  executor?: 'main' | 'audit' | 'tool' | 'auto';
+  executor?: 'main' | 'audit' | 'tool' | 'router';
 }
 
 export interface WorkflowEdge {

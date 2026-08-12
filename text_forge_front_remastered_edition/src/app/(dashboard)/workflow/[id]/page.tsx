@@ -49,6 +49,8 @@ function wfNodeToFlowNode(n: WfNode): Node {
 
 function getLayer(executor: string, label: string): 'decision' | 'execution' | 'audit' {
   if (executor === 'audit') return 'audit';
+  if (executor === 'router') return 'decision';
+  if (executor === 'tool') return 'execution';
   if (label.includes('策划') || label.includes('分镜')) return 'decision';
   return 'execution';
 }

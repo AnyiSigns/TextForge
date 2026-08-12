@@ -148,6 +148,8 @@ async def run_workflow_endpoint(
                     if body.personal_rag_results
                     else None
                 ),
+                user_id=user_id,
+                session_factory=db_manager.session_factory,
             )
         )
 
