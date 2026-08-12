@@ -116,14 +116,12 @@ export function useSimRoomSocket(room: SimRoomDetail | null): UseSimRoomResult {
       const token = useAuthStore.getState().accessToken;
       // token 走 Sec-WebSocket-Protocol（subprotocol）传递：浏览器 WebSocket 无法
       // 自定义请求头，放 query 会让 JWT 进入访问日志/浏览器历史，存在泄露风险。
-      let wsUrl = `${proto}//${location.host}/api/sim-rooms/${roomId}/ws`;
-      // 用户模型配置仅存浏览器 IndexedDB，后端无服务端配置；经 WS query 传入供 LLM 初始化
+      const wsUrl = `${proto}//${location.host}/api/sim-rooms/${roomId}/ws`;
+      // 用户模型配置仅存浏览器 IndexedDB，后端无服务端配置；
+      // 含 api_key 的配置经连接后首帧消息传递（放 query 会进入访问日志/浏览器历史）。
+      let modelConfig: unknown = null;
       try {
-        const modelConfig = await getModelConfigData();
-        if (!cancelled && modelConfig) {
-          const sep = wsUrl.includes('?') ? '&' : '?';
-          wsUrl += `${sep}modelConfig=${encodeURIComponent(JSON.stringify(modelConfig))}`;
-        }
+        modelConfig = await getModelConfigData();
       } catch {
         // 配置缺失时后端会返回「没有配置提供商」，由用户先在设置页配置模型
       }
@@ -131,6 +129,9 @@ export function useSimRoomSocket(room: SimRoomDetail | null): UseSimRoomResult {
       const ws = new WebSocket(wsUrl, token ? [token] : []);
       ws.onopen = () => {
         setConnected(true);
+        if (modelConfig) {
+          ws.send(JSON.stringify({ type: 'config', modelConfig }));
+        }
         const pending = pendingSendsRef.current;
         pendingSendsRef.current = [];
         for (const raw of pending) ws.send(raw);
