@@ -8,7 +8,7 @@ from .tools.chapter_tools import (
     _apply_unified_diff,
     _build_chapter_tools,
 )
-from .tools.lookup_tools import _build_lookup_tools, _normalize_status
+from .tools.lookup_tools import _build_lookup_tools
 from .tools.world_tools import _build_world_tools
 
 __all__ = [
@@ -20,7 +20,6 @@ __all__ = [
     "_build_lookup_tools",
     "_build_world_tools",
     "_extract_entities_from_text",
-    "_normalize_status",
     "_trunc",
     "build_tools",
 ]

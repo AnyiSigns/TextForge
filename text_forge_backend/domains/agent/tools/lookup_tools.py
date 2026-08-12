@@ -6,20 +6,13 @@ from langgraph.prebuilt import InjectedState
 from sqlalchemy import select
 
 from domains.book.repository import CharacterRepository
+from domains.world.constants import (
+    normalize_foreshadowing_status,
+    normalize_plot_thread_status,
+)
 from domains.world.repository import WorldRepository
 
 logger = get_logger(__name__)
-
-
-def _normalize_status(value: str | None) -> str | None:
-    """兼容中英文状态词：前端 initializerStore 可能写入 '进行中'/'已埋下' 等中文值。"""
-    if not value:
-        return value
-    aliases = {
-        "埋下": "planted", "已埋下": "planted", "已回收": "resolved", "已放弃": "abandoned",
-        "进行中": "active", "已完成": "completed", "已暂停": "paused", "已中断": "abandoned",
-    }
-    return aliases.get(value, value)
 
 
 def _build_lookup_tools(session_factory):
@@ -128,7 +121,7 @@ def _build_lookup_tools(session_factory):
         """
         logger.debug(f"[tool] lookup_foreshadowing  book_id={book_id}  status={status}")
         async with session_factory() as session:
-            items = await WorldRepository(session).list_foreshadowings(book_id, status=_normalize_status(status))
+            items = await WorldRepository(session).list_foreshadowings(book_id, status=normalize_foreshadowing_status(status))
             if query:
                 items = [item for item in items if query in (item.description or "")]
             return [
@@ -159,7 +152,7 @@ def _build_lookup_tools(session_factory):
         async with session_factory() as session:
             items = await WorldRepository(session).list_plot_threads(book_id)
             if status:
-                target = _normalize_status(status)
+                target = normalize_plot_thread_status(status)
                 items = [item for item in items if item.status == target]
             if query:
                 items = [item for item in items if query in (item.name or "") or query in (item.description or "")]

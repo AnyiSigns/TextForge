@@ -21,6 +21,7 @@ def build_generate_chapter_tool(session_factory, model_config: dict | None = Non
         instruction: Annotated[str, "创作指令，描述章节的写作要求"] = "",
         instruction_hint: Annotated[str | None, "额外的创作提示，会追加到 instruction 末尾"] = None,
         book_id: Annotated[int, InjectedState("active_book_id")] = 0,
+        personal_rag_results: Annotated[list[dict] | None, InjectedState("personal_rag_results")] = None,
     ) -> dict:
         """生成指定章节的完整正文，并自动写入章节内容库（新增版本，不覆盖）。
 
@@ -177,6 +178,16 @@ def build_generate_chapter_tool(session_factory, model_config: dict | None = Non
                 context_parts.append(
                     f"现有内容（{len(existing_content)}字）：\n{existing_content[:2000]}"
                 )
+
+            if personal_rag_results:
+                from ..workflow_context import _format_external_documents
+
+                _rag_block = _format_external_documents(
+                    personal_rag_results[:3],
+                    section_title="个人知识库检索结果",
+                )
+                if _rag_block:
+                    context_parts.append(_rag_block)
 
             book_context = "\n\n".join(context_parts)
 

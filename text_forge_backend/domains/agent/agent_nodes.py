@@ -137,6 +137,18 @@ async def agent_call(
     if state.get("domain_context"):
         system_prompt += f"\n\n【当前创作域上下文】\n{state['domain_context']}"
 
+    # 个人知识库 RAG 检索结果随回合下发：与 workflow 节点执行同样消费，
+    # 否则直接生成（对话/写章）路径会静默丢弃前端预检索结果。
+    # 外部文档一律经 _format_external_documents 防注入包装后注入。
+    if state.get("personal_rag_results"):
+        from .workflow_context import _format_external_documents
+
+        _rag_block = _format_external_documents(
+            state["personal_rag_results"][:3], section_title="## 个人知识库检索结果"
+        )
+        if _rag_block:
+            system_prompt += f"\n\n{_rag_block}"
+
     workflow_result = state.get("workflow_result")
     if workflow_result:
         # 只把候选正文节点摘要注入（完整正文不注入，避免撑爆上下文；用户选择后再取对应 output）
@@ -874,6 +886,7 @@ async def gated_tool_node(
         "book_id": state.get("active_book_id", 0),
         "workflow_result": state.get("workflow_result"),
         "workflow_node_outputs": state.get("workflow_node_outputs"),
+        "personal_rag_results": state.get("personal_rag_results"),
     }
     pending_workflow: dict | None = state.get("pending_workflow") or None
     preferred_workflow_node: str | None = state.get("preferred_workflow_node") or None

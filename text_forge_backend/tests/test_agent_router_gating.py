@@ -9,11 +9,9 @@
 from __future__ import annotations
 
 import pytest
-
+from domains.agent.agent_nodes import agent_router
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.graph import END
-
-from domains.agent.agent_nodes import agent_router
 
 
 def make_ai_with_tool_calls(content: str, tool_names: list[str]):
@@ -221,9 +219,8 @@ def _tool_msg(content) -> ToolMessage:
 
 
 def test_is_tool_error_dict_and_string_forms():
-    from langchain_core.messages import ToolMessage
-
     from domains.agent.agent_nodes import _is_tool_error
+    from langchain_core.messages import ToolMessage
 
     assert _is_tool_error(_tool_msg({"error": "章节不存在"})) is True
     assert _is_tool_error(_tool_msg({"ok": True})) is False
@@ -245,3 +242,196 @@ def test_is_tool_error_json_success_with_error_word_not_misjudged():
     assert _is_tool_error(_tool_msg('{"ok": true, "issues": "文本中存在若干错别字 error 检查结果"}')) is False
     assert _is_tool_error(_tool_msg('{"status": "completed"}')) is False
     assert _is_tool_error(_tool_msg('{"error": "失败"}')) is True
+
+
+# ---------------------------------------------------------------------------
+# LOG-1（审计修复）：personal_rag_results 经 state_inject 传入工具
+# ---------------------------------------------------------------------------
+
+
+class _CapturingToolService:
+    """捕获 invoke 收到的 args，验证 state_inject 的注入型参数是否送达工具。"""
+
+    def __init__(self):
+        self.captured: list[dict] = []
+
+    async def invoke(self, tool_name, args):
+        self.captured.append({"tool_name": tool_name, "args": args})
+        return {"ok": True}
+
+
+@pytest.mark.asyncio
+async def test_state_inject_passes_personal_rag_results_to_tool(monkeypatch):
+    """LOG-1：gated_tool_node 手动调用工具（不走 ToolNode 自动注入），
+    必须把 state.personal_rag_results 注入 args，否则 generate_chapter 等
+    直接生成路径会静默丢弃前端预检索结果。"""
+    import domains.agent.agent_nodes as an
+    from langchain_core.messages import ToolMessage
+
+    captured = _CapturingToolService()
+    monkeypatch.setattr(
+        "domains.common.gating_service.GatingService",
+        lambda *a, **kw: captured,
+    )
+    monkeypatch.setattr(an, "_flush_audit_rows", lambda *a, **kw: _async_noop())
+
+    messages = []
+    for i in range(3):
+        messages.append(HumanMessage(content="上一轮"))
+        messages.append(
+            ToolMessage(content='{"ok": true}', name="generate_chapter", tool_call_id=f"old-{i}")
+        )
+    last_ai = AIMessage(content="好的，马上生成。")
+    last_ai.tool_calls = [
+        {"name": "generate_chapter", "args": {"chapter_id": 5, "instruction": "写"}, "id": "new-1"}
+    ]
+    messages.append(last_ai)
+
+    rag_hits = [
+        {"doc_name": "设定集", "content": "龙族禁地在北境", "score": 0.9},
+        {"doc_name": "角色卡", "content": "主角有恐高症", "score": 0.8},
+    ]
+    state = {
+        "messages": messages,
+        "subgraph": "drafting",
+        "user_id": 1,
+        "active_book_id": 2,
+        "personal_rag_results": rag_hits,
+        "turn_metrics": {},
+        "pending_tool": None,
+        "pending_review": None,
+    }
+    await an.gated_tool_node(state, session_factory=lambda: _ApprovedFactory(), model_config=None)
+    assert captured.captured, "工具应被实际调用"
+    args = captured.captured[0]["args"]
+    assert args.get("personal_rag_results") == rag_hits
+
+
+@pytest.mark.asyncio
+async def test_state_inject_personal_rag_results_defaults_none(monkeypatch):
+    """LOG-1 边界：state 无 personal_rag_results 时注入 None，不得破坏其他工具调用。"""
+    import domains.agent.agent_nodes as an
+
+    captured = _CapturingToolService()
+    monkeypatch.setattr(
+        "domains.common.gating_service.GatingService",
+        lambda *a, **kw: captured,
+    )
+    monkeypatch.setattr(an, "_flush_audit_rows", lambda *a, **kw: _async_noop())
+
+    messages = [
+        HumanMessage(content="查一下"),
+        AIMessage(content="查"),
+    ]
+    last_ai = messages[-1]
+    last_ai.tool_calls = [
+        {"name": "get_book_context", "args": {"book_id": 2}, "id": "new-1"}
+    ]
+    state = {
+        "messages": messages,
+        "subgraph": "drafting",
+        "user_id": 1,
+        "active_book_id": 2,
+        "turn_metrics": {},
+        "pending_tool": None,
+        "pending_review": None,
+    }
+    await an.gated_tool_node(state, session_factory=lambda: _ApprovedFactory(), model_config=None)
+    assert captured.captured
+    assert "personal_rag_results" in captured.captured[0]["args"]
+    assert captured.captured[0]["args"]["personal_rag_results"] is None
+
+
+@pytest.mark.asyncio
+async def test_generate_chapter_tool_injects_personal_rag_results(
+    monkeypatch, fake_session_factory
+):
+    """LOG-1：generate_chapter 工具（直接生成路径）必须把前端预检索的个人知识库
+    结果注入创作上下文——此前仅 workflow 节点执行路径消费，直接写章会静默丢弃。"""
+    from types import SimpleNamespace
+
+    from domains.agent.tools.generate_chapter_tool import build_generate_chapter_tool
+    from models.book import Book, Chapter, ChapterContent, Volume
+
+    captured: dict = {}
+
+    class _FakeGraph:
+        async def ainvoke(self, state):
+            captured["state"] = state
+            return {"content": "正文内容", "plan": "计划", "reflection": "反思"}
+
+    monkeypatch.setattr(
+        "domains.agent.tools.generate_chapter_tool.build_generate_chapter_graph",
+        lambda: _FakeGraph(),
+    )
+    async def _fake_previous_context(*a, **kw):
+        return {
+            "previous_chapter_summary": None,
+            "previous_chapter_content": None,
+            "cross_chapter_context": {},
+        }
+
+    monkeypatch.setattr(
+        "domains.agent.tools.generate_chapter_tool.get_previous_chapter_context",
+        _fake_previous_context,
+    )
+
+    book = SimpleNamespace(id=1, title="测试之书", genre="奇幻", description="", user_id=1)
+    volume = SimpleNamespace(id=1, book_id=1)
+    chapter = SimpleNamespace(
+        id=5, title="第一章", summary="", locked=False, volume_id=1, generation_batch=None
+    )
+    factory = fake_session_factory(
+        {
+            Book: book,
+            Volume: [volume],
+            Chapter: [chapter],
+            ChapterContent: [],
+        }
+    )
+    # pytest 的 conftest 与 `tests.conftest` 可能是两个模块实例，必须对
+    # factory.session 实例打 patch 才能生效（类级 monkeypatch 会落空）。
+    async def _refresh(obj):
+        return None
+
+    monkeypatch.setattr(factory.session, "refresh", _refresh, raising=False)
+
+    class _RowResult:
+        def __init__(self, objs):
+            self._rows = [(getattr(o, "id", None),) for o in objs]
+
+        def all(self):
+            return self._rows
+
+    _orig_execute = factory.session.execute
+
+    async def _execute_with_row_support(stmt):
+        result = await _orig_execute(stmt)
+        try:
+            from models.book import Volume as _Volume
+
+            if factory.session._entity_of(stmt) is _Volume:
+                return _RowResult(factory.session.rows.get(_Volume) or [])
+        except Exception:
+            pass
+        return result
+
+    monkeypatch.setattr(factory.session, "execute", _execute_with_row_support, raising=False)
+
+    tool = build_generate_chapter_tool(factory, model_config={})
+    rag_hits = [
+        {"doc_name": "设定集", "content": "龙族禁地在北境", "score": 0.9},
+    ]
+    result = await tool.ainvoke(
+        {
+            "chapter_id": 5,
+            "instruction": "写第一章",
+            "book_id": 1,
+            "personal_rag_results": rag_hits,
+        }
+    )
+    assert result["status"] == "completed"
+    ctx = captured["state"]["context"]
+    assert "个人知识库检索结果" in ctx
+    assert "龙族禁地在北境" in ctx
+    assert "相关度：90.0%" in ctx

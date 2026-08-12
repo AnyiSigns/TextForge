@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import pytest
-
 from models.book import Base
 
 
@@ -70,8 +69,24 @@ class FakeSession:
 
         SQLAlchemy 2.0 中 select(Book) 的 froms 是 Table（books 表）而非 Book 类，
         需要反向查找映射类，以便与 rows 的类 key 匹配。
+
+        join 查询（select(A).join(B)）的 from 是 _ORMJoin 而非 Table，
+        递归取其最左子表得到主实体（如 generate_chapter 的
+        select(Chapter).join(Volume, ...) → Chapter）。
         """
+        try:
+            from sqlalchemy.orm.util import _ORMJoin
+
+            def _to_table(f):
+                while isinstance(f, _ORMJoin):
+                    f = f.left
+                return f
+
+        except ImportError:  # pragma: no cover
+            _to_table = lambda f: f
+
         for f in stmt.get_final_froms():
+            f = _to_table(f)
             table = getattr(f, "__table__", None)
             if table is not None:
                 return f

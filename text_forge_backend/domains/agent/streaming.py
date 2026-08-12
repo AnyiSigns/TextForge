@@ -99,6 +99,16 @@ async def respond_to_agent(
                 break
         if not ai_message and final_messages:
             ai_message = str(final_messages[-1])
+        if ai_message:
+            # 与流式路径一致（见 stream_agent 的回合落库）：非流式回复也必须
+            # 持久化，否则该回合 AI 回复从历史会话中永久丢失。
+            ai_msg = Message(
+                conversation_id=conversation.id,
+                role="assistant",
+                content=ai_message,
+            )
+            session.add(ai_msg)
+            await session.commit()
         return {"reply": ai_message, "thread_id": body.thread_id}
     finally:
         if book_id:
