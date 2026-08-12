@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Plus, Shrink, BookOpen, PanelRightOpen, X } from 'lucide-react';
+import { Plus, Shrink, BookOpen, PanelRightOpen, X, Database } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/shared/lib/cn';
 import { useBookDetailStore } from '../store';
@@ -12,6 +12,7 @@ import { AgentMemoryManager } from './AgentMemoryManager';
 import { MessageList } from './MessageList';
 import { AgentInput } from './AgentInput';
 import { ConversationSidebar } from './ConversationSidebar';
+import { RagConfigPanel } from './RagConfigPanel';
 import { useAgentReview } from './useAgentReview';
 import { useBookLock } from './useBookLock';
 import { useModelConfigured } from './useModelConfigured';
@@ -28,6 +29,7 @@ interface AgentPanelProps {
 export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelProps) {
   const [input, setInput] = useState('');
   const [showMemoryManager, setShowMemoryManager] = useState(false);
+  const [showRagConfig, setShowRagConfig] = useState(false);
   const [sessionsExpanded, setSessionsExpanded] = useState(true);
   const [workflowList, setWorkflowList] = useState<Workflow[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -88,6 +90,18 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
     workflowApi.listWorkflows().then(setWorkflowList).catch(() => {});
   }, []);
 
+  // 点击面板外区域关闭个人库注入设置面板
+  useEffect(() => {
+    if (!showRagConfig) return;
+    const onDocMouseDown = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest('[data-rag-config]')) {
+        setShowRagConfig(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
+  }, [showRagConfig]);
+
   const showWorkflowSuggestions = input.trim().startsWith('用') && workflowList.length > 0;
 
   const handleSend = useCallback(() => {
@@ -146,6 +160,16 @@ export function AgentPanel({ panelFullscreen, onToggleFullscreen }: AgentPanelPr
               <BookOpen size={12} strokeWidth={1.8} />
             </button>
           )}
+          <div className="relative" data-rag-config>
+            <button
+              onClick={() => setShowRagConfig((v) => !v)}
+              className="agent-icon-btn"
+              title="个人知识库注入设置"
+            >
+              <Database size={12} strokeWidth={1.8} />
+            </button>
+            {showRagConfig && <RagConfigPanel onClose={() => setShowRagConfig(false)} />}
+          </div>
           {!sessionsExpanded && (
             <button onClick={() => setSessionsExpanded(true)} className="agent-icon-btn" title="展开会话列表">
               <PanelRightOpen size={12} strokeWidth={1.8} />

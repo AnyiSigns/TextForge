@@ -8,7 +8,8 @@
  * - node-output 旧消息不再渲染（已迁移到节点卡片内部）
  * - review-card / propose-cards 的 JSON 解析容错与空数据兜底
  */
-import { ChevronDown } from 'lucide-react';
+import { useState } from 'react';
+import { ChevronDown, FileText } from 'lucide-react';
 import { cn } from '@/shared/lib/cn';
 import { ReviewCard } from './ReviewCard';
 import type { AgentMessage } from '../store';
@@ -257,6 +258,36 @@ function TextMessage({ msg, onCopy, onEditSend }: {
   );
 }
 
+/** 个人知识库引用卡：展示随回合注入的文档名与命中片段，可展开查看。 */
+function RagRefCard({ msg }: { msg: Extract<AgentMessage, { type: 'rag-ref' }> }) {
+  const [expanded, setExpanded] = useState(false);
+  if (!msg.refs?.length) return null;
+  return (
+    <div className="flex justify-start">
+      <div className="max-w-[88%] rounded-lg border border-foreground/10 bg-foreground/[0.03] overflow-hidden">
+        <button
+          onClick={() => setExpanded((e) => !e)}
+          className="w-full flex items-center gap-1.5 px-3 py-1.5 text-[11px] text-muted-foreground/80 bg-transparent border-none cursor-pointer hover:bg-muted/40 text-left"
+        >
+          <FileText size={11} strokeWidth={1.5} className="shrink-0 text-foreground/40" />
+          <span>已注入 {msg.refs.length} 篇个人知识库文档</span>
+          <ChevronDown size={11} strokeWidth={1.5} className={cn('ml-auto text-foreground/30 transition-transform', expanded && 'rotate-180')} />
+        </button>
+        {expanded && (
+          <div className="px-3 pb-2 space-y-1.5">
+            {msg.refs.map((r, i) => (
+              <div key={`${r.docName}-${i}`} className="text-[11px] leading-relaxed">
+                <span className="font-medium text-foreground/70">{r.docName}</span>
+                <span className="block text-foreground/50 line-clamp-3 whitespace-pre-wrap break-words">{r.snippet}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /**
  * 任务 25：type→组件映射字典。
  * key 为消息 type；未匹配（普通 user/assistant 文本）走兜底 TextMessage。
@@ -307,6 +338,10 @@ const MESSAGE_RENDERERS: Record<string, (props: MessageItemProps) => React.React
   error: (props) => {
     const msg = props.msg as Extract<AgentMessage, { type: 'error' }>;
     return <ErrorMessage key={msg.id || `e-${props.index}`} msg={msg} onUnlockAndRetry={props.onUnlockAndRetry} />;
+  },
+  'rag-ref': (props) => {
+    const msg = props.msg as Extract<AgentMessage, { type: 'rag-ref' }>;
+    return <RagRefCard key={msg.id || `rr-${props.index}`} msg={msg} />;
   },
   // 旧 node-output 消息已迁移到节点卡片内部，不渲染（避免与节点卡片重复）。
   'node-output': () => null,

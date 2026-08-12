@@ -33,8 +33,12 @@ function dbName(): string {
   return `text-forge-rag-${getEmbedDim()}`;
 }
 const CHUNK_STORE = 'chunks';
+// 索引序列化字节的落库存储：与主库 text-forge-db 的 keyval 同名不同库，勿混用。
+const INDEX_STORE = 'keyval';
 const INDEX_KEY = 'personal-index';
-const DB_VERSION = 1;
+// v2：补建 keyval 存储——v1 只在 upgrade 里建了 chunks，getEngine/persistEngine
+// 却读写 keyval，导致 NotFoundError（个人库索引无法落盘/恢复，上传必失败）。
+const DB_VERSION = 2;
 
 // altor-vec HNSW 参数
 const M = 16;
@@ -48,6 +52,10 @@ function getDB(): Promise<IDBPDatabase> {
       upgrade(db) {
         if (!db.objectStoreNames.contains(CHUNK_STORE)) {
           db.createObjectStore(CHUNK_STORE, { keyPath: 'id' });
+        }
+        // v2：补建索引字节存储（v1 缺失导致索引读写抛 NotFoundError）
+        if (!db.objectStoreNames.contains(INDEX_STORE)) {
+          db.createObjectStore(INDEX_STORE);
         }
       },
     });
@@ -110,7 +118,7 @@ async function getEngine(): Promise<WasmSearchEngine> {
     engineLoading = (async () => {
       const mod = await loadAltorVec();
       const db = await getDB();
-      const bytes = await db.get('keyval', INDEX_KEY);
+      const bytes = await db.get(INDEX_STORE, INDEX_KEY);
       if (bytes instanceof Uint8Array && bytes.byteLength > 0) {
         return new mod.WasmSearchEngine(bytes);
       }
@@ -142,7 +150,7 @@ async function buildEngine(chunks: StoredChunk[]): Promise<WasmSearchEngine> {
 async function persistEngine(eng: WasmSearchEngine): Promise<void> {
   const bytes = eng.to_bytes();
   const db = await getDB();
-  await db.put('keyval', bytes, INDEX_KEY);
+  await db.put(INDEX_STORE, bytes, INDEX_KEY);
 }
 
 // 把一篇文档分块 + embedding + 存库 + 重建索引

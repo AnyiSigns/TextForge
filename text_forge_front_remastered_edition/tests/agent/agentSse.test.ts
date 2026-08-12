@@ -26,6 +26,22 @@ vi.mock('@/shared/api/models', () => ({
   }),
 }));
 
+// 个人库注入链路：mock ragClient（本地检索）与注入配置
+const ragSearchMock = vi.fn();
+vi.mock('@/lib/knowledge', () => ({
+  ragClient: {
+    listPersonal: async () => [{ id: 'doc-1', name: '设定集.md', scope: 'personal', status: 'indexed', createdAt: '' }],
+    search: (q: string, scope: string, topK: number, filter?: { docIds?: string[] }) =>
+      ragSearchMock(q, scope, topK, filter),
+  },
+}));
+
+const getRagConfigMock = vi.fn();
+vi.mock('@/lib/rag/injectionConfig', () => ({
+  getRagInjectionConfig: () => getRagConfigMock(),
+  saveRagInjectionConfig: async () => {},
+}));
+
 // 只 mock startAgentSession，保留真实 streamAgent（测其 SSE 解析）
 vi.mock('@/shared/api/agent', async (importOriginal) => {
   const orig = await importOriginal<typeof import('@/shared/api/agent')>();
@@ -116,6 +132,9 @@ describe('useAgentSender 事件处理（store 状态变更）', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     resetStore();
+    // 默认开启注入配置 + 无命中（避免影响其它用例）
+    getRagConfigMock.mockResolvedValue({ enabled: true, topK: 3, docIds: [] });
+    ragSearchMock.mockResolvedValue([]);
   });
 
   function mockStream(events: unknown[]) {
@@ -343,5 +362,50 @@ describe('useAgentSender 事件处理（store 状态变更）', () => {
     const { result } = renderHook(() => useAgentSender());
     await act(async () => { await result.current.sendMessage('hi'); });
     expect(useBookDetailStore.getState().agentThreadId).toBe('t1');
+  });
+
+  it('个人库注入：命中时生成 rag-ref 引用卡并下发 personal_rag_results', async () => {
+    mockStream([{ type: 'end', reply: 'ok' }]);
+    ragSearchMock.mockResolvedValue([
+      { docId: 'doc-1', docName: '设定集.md', text: '主角姓林，生于雾城。', score: 0.9 },
+    ]);
+    const fetchMock = vi.fn().mockResolvedValue(sseBody([{ type: 'end', reply: 'ok' }]));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { result } = renderHook(() => useAgentSender());
+    await act(async () => { await result.current.sendMessage('hi'); });
+
+    const state = useBookDetailStore.getState();
+    // 引用卡可见
+    const ref = state.agentMessages.find((m) => m.type === 'rag-ref');
+    expect(ref).toBeTruthy();
+    expect((ref as { refs?: Array<{ docName: string }> })?.refs?.[0]?.docName).toBe('设定集.md');
+    // 请求体带 personal_rag_results（键形状对齐后端 PersonalRagHit）
+    const callBody = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(callBody.personal_rag_results).toEqual([
+      { doc_name: '设定集.md', content: '主角姓林，生于雾城。', score: 0.9 },
+    ]);
+  });
+
+  it('个人库注入：配置关闭时不检索、不生成引用卡、不下发结果', async () => {
+    mockStream([{ type: 'end', reply: 'ok' }]);
+    getRagConfigMock.mockResolvedValue({ enabled: false, topK: 3, docIds: [] });
+    const { result } = renderHook(() => useAgentSender());
+    await act(async () => { await result.current.sendMessage('hi'); });
+
+    expect(ragSearchMock).not.toHaveBeenCalled();
+    expect(useBookDetailStore.getState().agentMessages.some((m) => m.type === 'rag-ref')).toBe(false);
+  });
+
+  it('个人库注入：配置限定 docIds 时透传给检索入口', async () => {
+    mockStream([{ type: 'end', reply: 'ok' }]);
+    getRagConfigMock.mockResolvedValue({ enabled: true, topK: 2, docIds: ['doc-1'] });
+    const { result } = renderHook(() => useAgentSender());
+    await act(async () => { await result.current.sendMessage('hi'); });
+
+    // 第四个参数为过滤条件（docIds 透传）
+    const filterArg = ragSearchMock.mock.calls[0][3] as { docIds?: string[] };
+    expect(ragSearchMock.mock.calls[0][2]).toBe(2);
+    expect(filterArg?.docIds).toEqual(['doc-1']);
   });
 });

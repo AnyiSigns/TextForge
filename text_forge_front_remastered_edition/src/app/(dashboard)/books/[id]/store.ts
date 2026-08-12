@@ -65,13 +65,20 @@ export interface AgentCardMessage extends AgentMessageBase {
   live?: boolean;
 }
 
+/** 个人知识库引用卡：随回合注入个人库检索结果的可见性反馈 */
+export interface AgentRagRefMessage extends AgentMessageBase {
+  type: 'rag-ref';
+  refs: Array<{ docName: string; snippet: string }>;
+}
+
 export type AgentMessage =
   | AgentTextMessage
   | AgentStreamingMessage
   | AgentErrorMessage
   | AgentToolMessage
   | AgentNodeMessage
-  | AgentCardMessage;
+  | AgentCardMessage
+  | AgentRagRefMessage;
 
 interface AgentStatus {
   kind: 'idle' | 'thinking' | 'working' | 'error';

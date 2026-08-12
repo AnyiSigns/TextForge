@@ -115,8 +115,10 @@ export async function cancelStream(threadId: string): Promise<void> {
 
 export async function releaseBookLock(bookId: number): Promise<boolean> {
   try {
-    await apiClient.delete('/agent/book-lock', { params: { book_id: bookId } });
-    return true;
+    const { data } = await apiClient.delete<{ ok?: boolean; released?: boolean }>('/agent/book-lock', { params: { book_id: bookId } });
+    // 后端 redis 删除失败时返回 HTTP 200 + {ok:false}，必须读取响应体判定，
+    // 否则误报"已解除"后重试仍会 503。
+    return data?.released === true || data?.ok === true;
   } catch {
     return false;
   }
@@ -213,7 +215,25 @@ export async function renameConversation(id: number, title: string): Promise<voi
 
 export async function searchAgentMemories(bookId: number, query: string): Promise<AgentMemory[]> {
   try {
-    const { data } = await apiClient.post<AgentMemory[]>('/agent-memories/search', { q: query, book_id: bookId });
+    // 语义检索依赖 embedding 模型配置：已配置时走 mode=semantic（pgvector 向量检索），
+    // 未配置/为空时降级 mode=fulltext（后端缺省），保证搜索始终可用。
+    const body: Record<string, unknown> = { q: query, book_id: bookId };
+    const cfg = await fetchModelConfig();
+    const emb = cfg.embeddingModel;
+    // adapter+model_id 齐全且 api_key 非空才走语义检索；embedding 服务商端点固定
+    // （SDK 直连，base_url 可为空），故只校验 api_key。缺任一条件降级 fulltext。
+    if (emb && emb.adapter && emb.model_id && emb.api_key) {
+      body.mode = 'semantic';
+      body.model_config_data = {
+        embedding_config: {
+          adapter: emb.adapter,
+          base_url: emb.base_url,
+          api_key: emb.api_key,
+          model_id: emb.model_id,
+        },
+      };
+    }
+    const { data } = await apiClient.post<AgentMemory[]>('/agent-memories/search', body);
     return Array.isArray(data) ? data : [];
   } catch {
     return [];

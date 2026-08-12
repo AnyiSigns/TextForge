@@ -4,6 +4,7 @@ import { useCallback, useMemo, useRef } from 'react';
 import { useBookDetailStore } from '@/app/(dashboard)/books/[id]/store';
 import * as agentApi from '@/shared/api/agent';
 import { ragClient } from '@/lib/knowledge';
+import { getRagInjectionConfig } from '@/lib/rag/injectionConfig';
 import { emitAgentOutlinesRefresh, emitAgentSessionsRefresh } from './agentEvents';
 import { useStreamBuffer } from './sse/useStreamBuffer';
 import { createSSEHandler } from './sse/handleSSEEvent';
@@ -269,23 +270,38 @@ export function useAgentSession(opts: AgentSessionOptions) {
         const abort = new AbortController();
         abortRef.current = abort;
         let personalRagResults: Array<Record<string, unknown>> | undefined;
-        try {
-          const personalDocs = await ragClient.listPersonal().catch(() => []);
-          if (personalDocs.length > 0) {
-            const ragHits = await Promise.race([
-              ragClient.search(msg, 'personal', 3).catch(() => []),
-              new Promise<never[]>((resolve) => setTimeout(() => resolve([]), 1000)),
-            ]);
-            if (ragHits.length > 0) {
-              personalRagResults = ragHits.map((h) => ({
-                doc_name: h.docName,
-                content: h.text,
-                score: h.score,
-              }));
+        // 检索入口配置：开关 + topK + 文档范围过滤，持久化于 IndexedDB
+        const ragCfg = await getRagInjectionConfig();
+        if (ragCfg.enabled) {
+          try {
+            const personalDocs = await ragClient.listPersonal().catch(() => []);
+            if (personalDocs.length > 0) {
+              const ragHits = await Promise.race([
+                ragClient
+                  .search(msg, 'personal', ragCfg.topK, {
+                    docIds: ragCfg.docIds.length ? ragCfg.docIds : undefined,
+                  })
+                  .catch(() => []),
+                new Promise<never[]>((resolve) => setTimeout(() => resolve([]), 1000)),
+              ]);
+              if (ragHits.length > 0) {
+                personalRagResults = ragHits.map((h) => ({
+                  doc_name: h.docName,
+                  content: h.text,
+                  score: h.score,
+                }));
+                // 注入可见性：用户消息后插入引用卡，展示注入的文档与命中片段
+                addAgentMessage({
+                  role: 'assistant',
+                  content: '',
+                  type: 'rag-ref',
+                  refs: ragHits.map((h) => ({ docName: h.docName, snippet: h.text })),
+                });
+              }
             }
+          } catch {
+            // best-effort：个人库不可用时照常发送
           }
-        } catch {
-          // best-effort：个人库不可用时照常发送
         }
         if (abort.signal.aborted) {
           setAgentStreaming(false);

@@ -12,7 +12,8 @@ export type KbScope = 'personal' | 'public';
 export interface KbDocMeta {
   id: string;
   name: string;
-  status: 'indexing' | 'indexed' | 'failed';
+  /** 仅个人库返回索引状态；公共库列表（/knowledge/public）不携带该字段 */
+  status?: 'indexing' | 'indexed' | 'failed';
   createdAt: string;
   scope: KbScope;
   uploaderId?: string;
@@ -20,6 +21,9 @@ export interface KbDocMeta {
   content?: string;
 }
 
+// 公共库检索只由后端 agent 的 search 工具（mode="docs"）发起，前端 UI 不调用此路径。
+// 勿在前端接线：后端 /knowledge/search 依赖 model_config_data 生成 embedding，
+// 缺省会 400「需要 embedding 模型」；此分支仅保留为 ragClient.search(scope='public') 契约占位。
 async function backendPublicSearch(q: string): Promise<RagChunk[]> {
   const { data } = await apiClient.post<{ chunks: RagChunk[] }>(
     '/knowledge/search',
