@@ -62,6 +62,14 @@ def test_extract_route_keyword_fallback():
     assert _extract_route("用户想要完善角色设定 worldbuilding") == "worldbuilding"
 
 
+def test_extract_route_chinese_keyword_fallback():
+    # 非 JSON 中文回复（未带英文子图名）也能命中，不再一律掉进 chat
+    assert _extract_route("用户想查询书籍信息") == "outlining"
+    assert _extract_route("帮我搜一下写作素材") == "drafting"
+    assert _extract_route("完善角色设定") == "worldbuilding"
+    assert _extract_route("帮我查查这本小说有没有一致性问题") == "revising"
+
+
 def test_extract_route_invalid_falls_back_chat():
     assert _extract_route("随便聊聊") == "chat"
     assert _extract_route("") == "chat"

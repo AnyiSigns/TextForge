@@ -327,10 +327,18 @@ def _extract_route(text: str) -> str:
                 return route
         except (json.JSONDecodeError, TypeError):
             pass
-    # 非 JSON 时按关键词兜底
+    # 非 JSON 时按关键词兜底（中英文都认，避免模型中文回复掉进 chat）
     low = text.lower()
     for name in ("worldbuilding", "outlining", "drafting", "revising"):
         if name in low:
+            return name
+    for name, cn in (
+        ("worldbuilding", ("世界观", "设定", "角色", "人物", "地点", "时间线")),
+        ("outlining", ("大纲", "章节结构", "卷", "剧情主线", "支线", "书籍信息", "查书")),
+        ("drafting", ("正文", "撰写", "写作", "润色", "生成章节", "写第")),
+        ("revising", ("修订", "一致性", "审查", "逐章", "反馈分析")),
+    ):
+        if any(k in low for k in cn):
             return name
     return "chat"
 
