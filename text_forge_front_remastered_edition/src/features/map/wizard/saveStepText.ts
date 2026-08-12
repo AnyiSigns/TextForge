@@ -166,6 +166,7 @@ async function persistLocations(bookId: number, locations: ParsedLocation[]): Pr
 
   const idMap: Record<string, number> = {};
   const byId = new Map(existing.map((l) => [l.id, l]));
+  const createFailures: string[] = [];
   for (const loc of toCreate) {
     try {
       const created = await createLocation({
@@ -176,7 +177,10 @@ async function persistLocations(bookId: number, locations: ParsedLocation[]): Pr
         attributes: Object.keys(loc.customFields).length > 0 ? loc.customFields : undefined,
       } as Parameters<typeof createLocation>[0]);
       idMap[loc.name] = created.id;
-    } catch { /* 单个地点失败不中断 */ }
+    } catch {
+      // 创建失败不再静默吞掉：收集中止整步，重试时按名称去重跳过已创建项
+      createFailures.push(`地点「${loc.name}」创建失败`);
+    }
   }
   const allIds: Record<string, number> = {
     ...Object.fromEntries(existing.map((l) => [l.name, l.id])),
@@ -197,6 +201,7 @@ async function persistLocations(bookId: number, locations: ParsedLocation[]): Pr
     }
   }
   await Promise.allSettled(parentUpdates);
+  if (createFailures.length > 0) throw new WizardValidationError(createFailures);
 }
 
 /* ── Step 2：角色 ── */
@@ -239,6 +244,7 @@ async function persistCharacters(bookId: number, characters: ParsedCharacter[]):
 
   const idMap: Record<string, number> = {};
   const existingById = new Map(existing.map((c) => [c.id, c]));
+  const createFailures: string[] = [];
   for (const ch of toCreate) {
     const spawnRef = matchEntity(locs, ch.spawnLocationName, ch.spawnLocationRefId);
     try {
@@ -254,7 +260,10 @@ async function persistCharacters(bookId: number, characters: ParsedCharacter[]):
         ...(spawnRef ? { spawnLocationId: spawnRef.id } : {}),
       } as Parameters<typeof createCharacter>[0]);
       idMap[ch.name] = created.id;
-    } catch { /* 单个角色失败不中断 */ }
+    } catch {
+      // 创建失败不再静默吞掉：收集中止整步，重试时按名称去重跳过已创建项
+      createFailures.push(`角色「${ch.name}」创建失败`);
+    }
   }
   const allIds: Record<string, number> = {
     ...Object.fromEntries(existing.map((c) => [c.name, c.id])),
@@ -279,6 +288,7 @@ async function persistCharacters(bookId: number, characters: ParsedCharacter[]):
     );
   }
   await Promise.allSettled(chainUpdates);
+  if (createFailures.length > 0) throw new WizardValidationError(createFailures);
 }
 
 /* ── Step 3：情节线 ── */
@@ -312,6 +322,7 @@ async function persistPlotThreads(bookId: number, threads: ParsedPlotThread[]): 
   };
   const existingById = new Map(existing.map((t) => [t.id, t]));
   let mainId: number | null = null;
+  const createFailures: string[] = [];
   for (const t of toCreate) {
     try {
       // 父线优先：parentRefId（JSON 路径 [id]）→ parentName → 本批最近主线
@@ -330,8 +341,12 @@ async function persistPlotThreads(bookId: number, threads: ParsedPlotThread[]): 
       existingNames.add(t.name);
       allNames[t.name] = created.id;
       if (t.level === 1) mainId = created.id;
-    } catch { /* 单个情节线失败不中断 */ }
+    } catch {
+      // 创建失败不再静默吞掉：收集中止整步，重试时按名称去重跳过已创建项
+      createFailures.push(`情节线「${t.name}」创建失败`);
+    }
   }
+  if (createFailures.length > 0) throw new WizardValidationError(createFailures);
 }
 
 /* ── Step 4：大纲 ── */
@@ -386,11 +401,17 @@ async function persistOutline(bookId: number, volumes: ParsedOutlineVolume[]): P
     tree.map((v) => [v.title, new Set(v.chapters.map((c) => c.title))]),
   );
 
-  for (const [vi, vol] of volumes.entries()) {
+  // 新增卷 sortOrder 续接已有卷数（append 模式）：已有 tree.length 卷占 1..N，
+  // 首批新增卷从 N+1 起算，与后端生成提示词的 base_vol 顺延语义一致；
+  // 否则新卷 sortOrder 从 1 重复，章树按 (sort_order, id) 排序时卷序错乱。
+  let nextSortOrder = tree.length + 1;
+  const sceneFailures: string[] = [];
+  for (const vol of volumes) {
     let existingVol = existingVolByTitle.get(vol.title);
     if (!existingVol) {
-      const created = await createVolume(bookId, vol.title, vol.summary || undefined, vi + 1);
+      const created = await createVolume(bookId, vol.title, vol.summary || undefined, nextSortOrder);
       // 本批去重：后续同名卷标题直接复用（LLM 偶尔重复输出卷块）；章集合同步注册
+      nextSortOrder += 1;
       existingVol = { ...created, chapters: [] };
       existingVolByTitle.set(vol.title, existingVol);
       existingChByVolTitle.set(vol.title, new Set<string>());
@@ -424,10 +445,14 @@ async function persistOutline(bookId: number, volumes: ParsedOutlineVolume[]): P
             characterIds: matchedChars,
             plotThreadIds: matchedThreads,
           } as Parameters<typeof createSceneEvent>[0]);
-        } catch { /* 单个场景失败不影响主流程 */ }
+        } catch {
+          // 场景落库失败不再静默吞掉：收集中止整步，重试时按标题去重跳过已创建项
+          sceneFailures.push(`卷「${vol.title}」第${ci + 1}章场景「${sc.title || '未命名'}」保存失败`);
+        }
       }
     }
   }
+  if (sceneFailures.length > 0) throw new WizardValidationError(sceneFailures);
 }
 
 /* ── Step 5：事件 ── */
@@ -481,6 +506,7 @@ async function persistEvents(bookId: number, events: ParsedEvent[]): Promise<voi
   }
   if (errors.length > 0) throw new WizardValidationError(errors);
 
+  const createFailures: string[] = [];
   for (const ev of events) {
     if (existingTitles.has(ev.title)) continue;
     const chapterId = ev.chapterRefId != null
@@ -509,8 +535,12 @@ async function persistEvents(bookId: number, events: ParsedEvent[]): Promise<voi
         plotThreadIds: matchedThreads,
       } as Parameters<typeof createSceneEvent>[0]);
       existingTitles.add(ev.title);
-    } catch { /* 单个事件失败不影响主流程 */ }
+    } catch {
+      // 事件落库失败不再静默吞掉：收集中止整步，重试时按标题去重跳过已创建项
+      createFailures.push(`事件「${ev.title}」保存失败`);
+    }
   }
+  if (createFailures.length > 0) throw new WizardValidationError(createFailures);
 }
 
 /* ── Step 6：伏笔 ── */
@@ -548,6 +578,7 @@ async function persistForeshadowings(bookId: number, items: ParsedForeshadowing[
   }
   if (errors.length > 0) throw new WizardValidationError(errors);
 
+  const createFailures: string[] = [];
   for (const it of items) {
     const description = `${it.title}${it.description ? '：' + it.description : ''}`;
     if (isDuplicate(it)) continue;
@@ -569,8 +600,12 @@ async function persistForeshadowings(bookId: number, items: ParsedForeshadowing[
     try {
       await createForeshadowing(body as Parameters<typeof createForeshadowing>[0]);
       existingDescriptions.add(description);
-    } catch { /* 单个伏笔失败不中断 */ }
+    } catch {
+      // 伏笔落库失败不再静默吞掉：收集中止整步，重试时按标题前缀去重跳过已创建项
+      createFailures.push(`伏笔「${it.title}」保存失败`);
+    }
   }
+  if (createFailures.length > 0) throw new WizardValidationError(createFailures);
 }
 
 /* ── 入口：结构化数据 / Markdown 文本 ── */

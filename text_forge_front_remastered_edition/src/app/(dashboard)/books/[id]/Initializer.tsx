@@ -8,7 +8,7 @@ import { useEntityStore } from '@/features/map/stores/entityStore';
 
 /* ─── 模式徽标：初始化 / 追加（追加不覆盖已有数据） ─── */
 
-function ModeBadge({ mode }: { mode: 'init' | 'append' }) {
+function ModeBadge({ mode }: { mode: 'init' | 'append' | 'auto' }) {
   return (
     <span
       className={cn(

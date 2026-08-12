@@ -45,14 +45,25 @@ class WorldRepository:
     async def create_location(self, book_id: int, data: dict) -> Location:
         """创建地点。
 
+        按 (book_id, name) 幂等：同名地点已存在时直接返回已有实例，
+        避免初始化器前端按名称去重因并发/分页上限而重复落库。
+
         Args:
             book_id: 书籍 ID。
             data: 地点字段字典。
 
         Returns:
-            新创建的地点实例。
+            新创建（或已存在）的地点实例。
         """
         data.pop("book_id", None)
+        name = data.get("name")
+        if name:
+            stmt = select(Location).where(
+                Location.book_id == book_id, Location.name == name
+            )
+            existing = (await self.session.execute(stmt)).scalar_one_or_none()
+            if existing:
+                return existing
         location = Location(book_id=book_id, **data)
         self.session.add(location)
         await self.session.flush()
@@ -268,14 +279,25 @@ class WorldRepository:
     async def create_plot_thread(self, book_id: int, data: dict) -> PlotThread:
         """创建情节脉络。
 
+        按 (book_id, name) 幂等：同名脉络已存在时直接返回已有实例，
+        避免初始化器前端按名称去重因并发/分页上限而重复落库。
+
         Args:
             book_id: 书籍 ID。
             data: 情节脉络字段字典。
 
         Returns:
-            新创建的情节脉络实例。
+            新创建（或已存在）的情节脉络实例。
         """
         data.pop("book_id", None)
+        name = data.get("name")
+        if name:
+            stmt = select(PlotThread).where(
+                PlotThread.book_id == book_id, PlotThread.name == name
+            )
+            existing = (await self.session.execute(stmt)).scalar_one_or_none()
+            if existing:
+                return existing
         item = PlotThread(book_id=book_id, **data)
         self.session.add(item)
         await self.session.flush()

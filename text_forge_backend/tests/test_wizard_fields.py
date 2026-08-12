@@ -136,16 +136,6 @@ def parse_sse(body: str) -> list[dict]:
     return events
 
 
-def post_wizard(book_id: int, payload: dict) -> list[dict]:
-    """发送 wizard 请求并返回 SSE 事件列表（依赖 overrides 已安装）。"""
-    transport = ASGITransport(app=app)
-    body = {"bookId": book_id, **payload}
-    with app.dependency_overrides:
-        client = AsyncClient(transport=transport, base_url="http://test")
-        resp = client.request("POST", "/api/wizard/stream-generate", json=body)
-    return parse_sse(resp.text)
-
-
 @pytest.mark.asyncio
 async def test_stream_step0_worldview_markdown(monkeypatch):
     """Step0 世界观：Markdown 单份方案经 meta/delta/done 推送。"""
@@ -179,6 +169,42 @@ async def test_stream_step0_worldview_markdown(monkeypatch):
         # 空库 → 推断 init 模式，无 warnings
         assert events[0]["mode"] == "init"
         assert events[0]["warnings"] == []
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_stream_step4_volumes_sse(monkeypatch):
+    """Step4 大纲：meta 携带 batch_volumes，volume_end 连续推送，done 携带 full_text。
+
+    覆盖 SSE 契约（驼峰/蛇形对齐）：meta.batch_volumes 为本次新增卷数，
+    done.full_text 与 delta 累积一致，前端依赖这两个字段渲染卷进度与回填文本。
+    """
+    chunks = ["# 卷一：觉醒 - 觉醒之旅\n", "## 第一章：初入江湖 - 踏上旅途\n"]
+    install_streaming_llm(monkeypatch, chunks)
+    session = FakeSession(make_book())
+    app.dependency_overrides[wizard_router.db_manager.get_db] = lambda: session
+    app.dependency_overrides[wizard_router.get_current] = lambda: 1
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/api/wizard/stream-generate",
+                json={"bookId": 1, "step": 4, "extraInstruction": "卷数=2 每卷章数=3,3"},
+            )
+        assert resp.status_code == 200
+        events = parse_sse(resp.text)
+        assert events[0]["type"] == "meta"
+        assert events[0]["batch_volumes"] == 2
+        assert events[0]["mode"] == "init"  # 空库 → auto 推断 init
+        ends = [ev for ev in events if ev["type"] == "volume_end"]
+        assert [ev["index"] for ev in ends] == [1, 2]
+        done = events[-1]
+        assert done["type"] == "done"
+        # 每卷完整输出一次 chunks，delta 累积与 done.full_text 一致
+        assert done["full_text"] == "".join(chunks) * 2
+        deltas = "".join(ev["text"] for ev in events if ev["type"] == "delta")
+        assert deltas == done["full_text"]
     finally:
         app.dependency_overrides.clear()
 

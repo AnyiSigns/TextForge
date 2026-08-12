@@ -2,7 +2,9 @@ import { create } from 'zustand';
 import { useEntityStore } from './entityStore';
 import { saveStepText, saveStepItems, parseStepItems } from '@/features/map/wizard/saveStepText';
 import type { ParsedStepResult, ParsedOutlineVolume } from '@/features/map/lib/wizardMarkdown';
+import type { WizardMode } from '@/shared/api/wizard';
 
+// 7 步步名与后端 domains/wizard/router.py STEP_NAMES 契约一致（修改需同步两端）
 const STEP_LABELS = [
   '世界观', '地点', '角色', '情节线', '大纲', '事件', '伏笔',
 ];
@@ -17,20 +19,6 @@ const EMPTY_ITEM: Record<number, unknown> = {
   6: { title: '', description: '', type: '', characters: [], relatedEvent: '', revealTiming: '' },
 };
 
-/** 依据已加载的实体数据推断本次打开为初始化还是追加（追加不覆盖已有数据）。 */
-function inferMode(): 'init' | 'append' {
-  const s = useEntityStore.getState();
-  const hasAny =
-    s.volumes.length > 0 ||
-    s.locations.length > 0 ||
-    s.characters.length > 0 ||
-    s.plotThreads.length > 0 ||
-    s.sceneEvents.length > 0 ||
-    s.foreshadowings.length > 0 ||
-    Boolean(s.creativeSetting && (s.creativeSetting.worldview || s.creativeSetting.tone));
-  return hasAny ? 'append' : 'init';
-}
-
 interface InitializerState {
   isOpen: boolean;
   currentStep: number;
@@ -40,8 +28,12 @@ interface InitializerState {
   streaming: boolean;
   stepText: Record<number, string>;
   abortRef: AbortController | null;
-  /** 本次面板模式：初始化（新书）或追加（已有设定，只增不覆盖） */
-  mode: 'init' | 'append';
+  /**
+   * 本次面板模式。恒为 'auto'（mode 交由后端按「是否已有设定」权威推断，
+   * meta 事件回传解析后的 init/append）；前端不再自行推断，避免
+   * entityStore 未加载完成时误判。
+   */
+  mode: WizardMode;
   /** 后端前置校验警告（meta.warnings） */
   warnings: string[];
   /** Step 4 大纲按卷生成进度 */
@@ -88,7 +80,7 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
   streaming: false,
   stepText: {},
   abortRef: null,
-  mode: 'init',
+  mode: 'auto',
   warnings: [],
   volumeProgress: null,
   savedSteps: new Set<number>(),
@@ -105,7 +97,8 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
     volumeProgress: null,
     review: false,
     items: null,
-    mode: inferMode(),
+    // mode 交由后端按 has_existing 权威推断（meta 事件回传解析结果）
+    mode: 'auto',
   }),
 
   close: () => {
@@ -221,11 +214,13 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
         extraInstruction,
         mode,
         signal: controller.signal,
+        // Step4 按卷顺序生成，120s 总超时对多卷过短，按卷数放宽到 10 分钟
+        timeoutMs: currentStep === 4 ? 600_000 : undefined,
         onEvent: (ev) => {
           if (ev.type === 'meta') {
             if (ev.mode) set({ mode: ev.mode });
             if (ev.warnings && ev.warnings.length > 0) set({ warnings: ev.warnings });
-            if (ev.totalVolumes && ev.totalVolumes > 1) set({ volumeProgress: { total: ev.totalVolumes, done: 0 } });
+            if (ev.batch_volumes && ev.batch_volumes > 1) set({ volumeProgress: { total: ev.batch_volumes, done: 0 } });
           }
           if (ev.type === 'volume_end' && ev.index != null) {
             const prev = get().volumeProgress;

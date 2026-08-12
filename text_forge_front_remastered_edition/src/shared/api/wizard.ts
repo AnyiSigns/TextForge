@@ -27,9 +27,11 @@ async function getModelConfigData() {
 export interface WizardStreamEvent {
   type: 'meta' | 'delta' | 'volume_end' | 'done' | 'error';
   text?: string;
-  fullText?: string;
+  /** done 事件的完整文本（snake_case，与后端契约一致；delta 累积为兜底） */
+  full_text?: string;
   index?: number;
-  totalVolumes?: number;
+  /** meta 事件：本次新增卷数（Step4 卷进度条 total；非 Step4 恒为 1） */
+  batch_volumes?: number;
   step?: number;
   mode?: 'init' | 'append';
   warnings?: string[];
@@ -106,7 +108,7 @@ export async function streamGenerateMarkdown(
       try {
         const ev = JSON.parse(raw.slice(5).trim()) as WizardStreamEvent;
         if (ev.type === 'delta' && ev.text) fullText += ev.text;
-        if (ev.type === 'done' && ev.fullText) fullText = ev.fullText;
+        if (ev.type === 'done' && ev.full_text) fullText = ev.full_text;
         opts.onEvent?.(ev);
       } catch { /* 忽略无法解析的 SSE 消息 */ }
     }

@@ -34,6 +34,7 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/wizard", tags=["Wizard"])
 
+# 7 步步名与前端 initializerStore.ts STEP_LABELS 契约一致（修改需同步两端）
 STEP_NAMES: dict[int, str] = {
     0: "世界观",
     1: "地点",
@@ -45,16 +46,20 @@ STEP_NAMES: dict[int, str] = {
 }
 
 
-def _fmt(items, formatter, limit: int):
-    """把实体列表格式化为带 [id] 标注的上下文行（按行数截断上限）。"""
-    rows = [formatter(item) for item in items]
-    return "\n".join(rows[:limit])
+def _fmt(items, formatter):
+    """把实体列表格式化为带 [id] 标注的上下文行（全量注入，不截断）。
+
+    此前按行数截断（40 行），实体数超过上限时 LLM 看不到全部清单，
+    会引用清单外名称导致前端引用校验失败、整步落库被中止。
+    """
+    return "\n".join(formatter(item) for item in items)
 
 
 async def _build_wizard_context(
     session: AsyncSession,
     book_id: int,
     step: int,
+    creative: "CreativeSetting | None" = None,
 ) -> tuple[str, list[str], bool, int]:
     """按步骤类型组装生成上下文（查库生成，不依赖步骤顺序）。
 
@@ -71,6 +76,7 @@ async def _build_wizard_context(
         session: 数据库会话。
         book_id: 书籍 ID。
         step: 向导步骤（0-6）。
+        creative: 已有创意设定（调用方查库后传入，用于 mode=auto 的 has_existing 推断）。
 
     Returns:
         (上下文文本, 前置校验 warnings 列表, 是否已有设定素材, 已有卷数)。
@@ -85,53 +91,32 @@ async def _build_wizard_context(
 
     context_parts: list[str] = []
     warnings: list[str] = []
-    has_existing = False
+    # 已有创意设定由调用方查库后传入（避免 Step 0 双查询双注入）；
+    # has_existing 参与 mode=auto 的「是否已有设定」推断。
+    has_existing = creative is not None
 
-    # Step 0：已有创意设定（追加/重新生成时避免与已保存内容冲突）
-    if step == 0:
-        cs_stmt = select(CreativeSetting).where(CreativeSetting.book_id == book_id)
-        cs_res = await session.execute(cs_stmt)
-        cs = cs_res.scalar_one_or_none()
-        if cs:
-            cs_parts = []
-            if cs.worldview:
-                cs_parts.append(f"世界观：{(cs.worldview)[:300]}")
-            if cs.tone:
-                cs_parts.append(f"文风基调：{cs.tone[:100]}")
-            if cs.writing_taboos:
-                cs_parts.append(f"写作禁忌：{cs.writing_taboos[:150]}")
-            if cs.custom_dimensions:
-                cs_parts.append(
-                    f"自定义设定维度：{json.dumps(cs.custom_dimensions, ensure_ascii=False)[:200]}"
-                )
-            if cs_parts:
-                context_parts.append("\n【已有创意设定】\n" + "\n".join(cs_parts))
-                has_existing = True
-
-    # 已有地点（Step 1+：防重名；Step 2/4/5：引用清单）
+    # 已有地点（Step 1+：防重名；Step 2/4/5：引用清单；全量注入不截断）
     if step >= 1:
-        loc_stmt = select(Location).where(Location.book_id == book_id).limit(60)
+        loc_stmt = select(Location).where(Location.book_id == book_id)
         loc_res = await session.execute(loc_stmt)
         locs = loc_res.scalars().all()
         if locs:
             locs_text = _fmt(
                 locs,
                 lambda l: f"- [{l.id}] {l.name}（{l.type}）：{(l.description or '')[:100]}",
-                40,
             )
             context_parts.append(f"\n【已有地点】\n{locs_text}")
             has_existing = True
 
-    # 已有角色（Step 2+：防重名、关系链目标、场景引用）
+    # 已有角色（Step 2+：防重名、关系链目标、场景引用；全量注入不截断）
     if step >= 2:
-        char_stmt = select(Character).where(Character.book_id == book_id).limit(80)
+        char_stmt = select(Character).where(Character.book_id == book_id)
         char_res = await session.execute(char_stmt)
         chars = char_res.scalars().all()
         if chars:
             chars_text = _fmt(
                 chars,
                 lambda c: f"- [{c.id}] {c.name}（{c.role_type or '角色'}）：{(c.description or '')[:150]}",
-                40,
             )
             context_parts.append(f"\n【已有角色】\n{chars_text}")
             has_existing = True
@@ -147,7 +132,6 @@ async def _build_wizard_context(
             pts_text = _fmt(
                 pts,
                 lambda p: f"- [{p.id}] {p.name}（{p.type or '支线'}）：{(p.description or '')[:100]}",
-                40,
             )
             context_parts.append(f"\n【已有情节线】\n{pts_text}")
             has_existing = True
@@ -183,13 +167,12 @@ async def _build_wizard_context(
         elif step == 5:
             warnings.append("尚未生成大纲（卷/章），生成的事件将无法归属章节")
 
-    # 已有场景事件（Step 5/6：防重、时间线衔接；Step 6 埋下事件候选）
+    # 已有场景事件（Step 5/6：防重、时间线衔接；Step 6 埋下事件候选；全量注入不截断）
     if step >= 5:
         ev_stmt = (
             select(SceneEvent)
             .where(SceneEvent.book_id == book_id)
             .order_by(SceneEvent.story_ts, SceneEvent.id)
-            .limit(80)
         )
         ev_res = await session.execute(ev_stmt)
         evs = ev_res.scalars().all()
@@ -197,7 +180,6 @@ async def _build_wizard_context(
             ev_text = _fmt(
                 evs,
                 lambda e: f"- [{e.id}] {e.title}（{e.story_label or '未标注时间'}）：{(e.content or '')[:60]}",
-                40,
             )
             context_parts.append(f"\n【已有场景事件】\n{ev_text}")
             has_existing = True
@@ -215,7 +197,6 @@ async def _build_wizard_context(
             fs_text = _fmt(
                 fs_items,
                 lambda f: f"- [{f.id}] {f.type or '未分类'}：{(f.description or '')[:80]}",
-                40,
             )
             context_parts.append(f"\n【已有伏笔】\n{fs_text}")
             has_existing = True
@@ -353,7 +334,7 @@ async def stream_generate_wizard(
             dims = json.dumps(creative.custom_dimensions, ensure_ascii=False)
             context_parts.append(f"自定义设定维度：{dims[:400]}")
     structured_context, warnings, has_existing, existing_volume_count = await _build_wizard_context(
-        session, body.book_id, step
+        session, body.book_id, step, creative=creative
     )
     if structured_context:
         context_parts.append(structured_context)
@@ -385,18 +366,21 @@ async def stream_generate_wizard(
     if extra:
         base_user += f"\n\n【用户额外要求】\n{extra}\n请务必满足上述数量与结构约束。"
 
-    llm = await _make_llm(body.model_config_data or {})
-
     async def event_gen():
         full_text = ""
         try:
+            # LLM 构建失败也统一走 SSE error 事件（此前在主函数内构建，
+            # 二次抛异常会直接 500 而非发送 error）
+            llm = await _make_llm(body.model_config_data or {})
             if step == 4:
                 volume_count, chapters = _parse_volume_spec(extra)
                 if len(chapters) < volume_count:
                     tail = chapters[-1] if chapters else 5
                     chapters = chapters + [tail] * (volume_count - len(chapters))
+                # batch_volumes：本次新增卷数（前端进度条 total 用）；
+                # 与提示词里的 total_volumes（全书总卷数 = base_vol + batch）语义不同
                 yield _sse(
-                    {"type": "meta", "step": step, "total_volumes": volume_count, "mode": mode, "warnings": warnings}
+                    {"type": "meta", "step": step, "batch_volumes": volume_count, "mode": mode, "warnings": warnings}
                 )
                 previous_outline = ""
                 # 追加模式：库中已有卷时卷号顺延（避免 LLM 从「第 1 卷」重生成覆盖语义）
@@ -421,7 +405,7 @@ async def stream_generate_wizard(
                     yield _sse({"type": "volume_end", "index": i + 1})
             else:
                 yield _sse(
-                    {"type": "meta", "step": step, "total_volumes": 1, "mode": mode, "warnings": warnings}
+                    {"type": "meta", "step": step, "batch_volumes": 1, "mode": mode, "warnings": warnings}
                 )
                 messages = [
                     SystemMessage(content=system_prompt),

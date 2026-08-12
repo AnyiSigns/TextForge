@@ -392,6 +392,35 @@ describe('初始化器字段映射（与后端 wizard label 对齐）', () => {
     expect(body.title).toBe('拜师风波');
   });
 
+  it('Step4 大纲：追加模式新增卷 sortOrder 续接已有卷数（不重复 1,2）', async () => {
+    booksApi.fetchChaptersTree.mockResolvedValueOnce([
+      { id: 100, title: '卷一', sortOrder: 1, chapters: [{ id: 200, title: '第一章', sortOrder: 1 }] },
+      { id: 101, title: '卷二', sortOrder: 2, chapters: [] },
+      { id: 102, title: '卷三', sortOrder: 3, chapters: [] },
+    ]);
+    setStepText(4, [
+      '# 卷四：崛起 - 新的篇章',
+      '',
+      '## 第一章：新章 - 内容',
+    ].join('\n'));
+    await useInitializerStore.getState().nextStep();
+    // 新卷 sortOrder 从已有卷数后续接（3 + 1 = 4），与后端 base_vol 顺延语义一致
+    expect(booksApi.createVolume.mock.calls[0][3]).toBe(4);
+  });
+
+  it('Step5 事件：落库失败不再静默吞掉（错误上报并停留当前步）', async () => {
+    worldApi.createSceneEvent.mockRejectedValueOnce(new Error('500'));
+    setStepText(5, [
+      '## 事件：城门相遇 - 相遇',
+      '章节：第一章',
+    ].join('\n'));
+    await useInitializerStore.getState().nextStep();
+    // 失败 → 不前进、不置 savedSteps，错误明细含失败条目名
+    expect(useInitializerStore.getState().currentStep).toBe(5);
+    expect(useInitializerStore.getState().error).toContain('城门相遇');
+    expect(useInitializerStore.getState().savedSteps.has(5)).toBe(false);
+  });
+
   it('Step6 伏笔：原始类型落库 + 埋下事件模糊匹配 + 重复跳过', async () => {
     worldApi.fetchSceneEvents.mockResolvedValueOnce([{ id: 300, title: '城门相遇' }]);
     worldApi.fetchForeshadowings.mockResolvedValueOnce([

@@ -72,14 +72,26 @@ class CharacterService:
     async def create_character(self, user_id: int, **data):
         """创建角色。
 
+        按 (book_id, name) 幂等：同名角色已存在时直接返回已有实例，
+        避免初始化器前端按名称去重因并发/分页上限而重复落库。
+
         Args:
             user_id: 用户 ID。
             **data: 角色字段。
 
         Returns:
-            新创建的角色实例，失败返回 None。
+            新创建（或已存在）的角色实例，失败返回 None。
         """
         try:
+            name = data.get("name")
+            book_id = data.get("book_id")
+            if name and book_id:
+                stmt = select(Character).where(
+                    Character.book_id == book_id, Character.name == name
+                )
+                existing = (await self.session.execute(stmt)).scalar_one_or_none()
+                if existing:
+                    return existing
             data["user_id"] = user_id
             instance = await self.character_repo.add(**data)
             await self.session.commit()

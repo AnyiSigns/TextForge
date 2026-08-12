@@ -1,34 +1,49 @@
 import { apiClient } from './client';
 import type { Location, SceneEvent, Foreshadowing, PlotThread } from './types';
 
-export async function fetchLocations(bookId: number): Promise<Location[]> {
-  const { data } = await apiClient.get<Location[] | { items: Location[] }>(`/world/locations?book_id=${bookId}&page_size=100`);
-  if (Array.isArray(data)) return data;
-  if (data?.items) return data.items;
-  return [];
+interface PageResult<T> {
+  items?: T[];
+  total?: number;
 }
 
-function unwrapItems<T>(data: T[] | { items: T[] } | null | undefined): T[] {
-  if (Array.isArray(data)) return data;
-  if (data && 'items' in data && Array.isArray(data.items)) return data.items;
-  return [];
+/**
+ * 翻页拉全列表（后端 PageParams.page_size 上限 100）。
+ * 初始化器落库去重依赖完整实体清单：只取第一页（原 page_size=100 单次拉取）
+ * 在实体数 >100 时去重集不完整，会把已存在实体重复落库。
+ */
+async function fetchAllPages<T>(path: string, baseParams: Record<string, string | number>): Promise<T[]> {
+  const items: T[] = [];
+  for (let page = 1; ; page += 1) {
+    const params = new URLSearchParams({
+      ...Object.fromEntries(Object.entries(baseParams).map(([k, v]) => [k, String(v)])),
+      page: String(page),
+      page_size: '100',
+    });
+    const { data } = await apiClient.get<T[] | PageResult<T>>(`${path}?${params}`);
+    const pageItems = Array.isArray(data) ? data : (data?.items ?? []);
+    items.push(...pageItems);
+    const total = Array.isArray(data) ? pageItems.length : (data?.total ?? pageItems.length);
+    if (items.length >= total || pageItems.length === 0) break;
+  }
+  return items;
+}
+
+export async function fetchLocations(bookId: number): Promise<Location[]> {
+  return fetchAllPages<Location>('/world/locations', { book_id: bookId });
 }
 
 export async function fetchSceneEvents(bookId: number): Promise<SceneEvent[]> {
-  const { data } = await apiClient.get<SceneEvent[] | { items: SceneEvent[] }>(`/world/timeline-events?book_id=${bookId}&page_size=100`);
-  return unwrapItems(data);
+  return fetchAllPages<SceneEvent>('/world/timeline-events', { book_id: bookId });
 }
 
 export async function fetchForeshadowings(bookId: number, status?: string): Promise<Foreshadowing[]> {
-  const params = new URLSearchParams({ book_id: String(bookId), page_size: '100' });
-  if (status) params.set('status', status);
-  const { data } = await apiClient.get<Foreshadowing[] | { items: Foreshadowing[] }>(`/world/foreshadowings?${params}`);
-  return unwrapItems(data);
+  const params: Record<string, string | number> = { book_id: bookId };
+  if (status) params.status = status;
+  return fetchAllPages<Foreshadowing>('/world/foreshadowings', params);
 }
 
 export async function fetchPlotThreads(bookId: number): Promise<PlotThread[]> {
-  const { data } = await apiClient.get<PlotThread[] | { items: PlotThread[] }>(`/world/plot-threads?book_id=${bookId}&page_size=100`);
-  return unwrapItems(data);
+  return fetchAllPages<PlotThread>('/world/plot-threads', { book_id: bookId });
 }
 
 export async function createLocation(body: Partial<Location>): Promise<Location> {
