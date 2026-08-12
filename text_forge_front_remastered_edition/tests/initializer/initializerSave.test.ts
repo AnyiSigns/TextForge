@@ -5,20 +5,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useInitializerStore } from '@/features/map/stores/initializerStore';
 import { useBookDetailStore } from '@/app/(dashboard)/books/[id]/store';
+import type { Foreshadowing, SceneEvent } from '@/shared/api/types';
 
 // 动态 import 的 API 模块全部 mock，捕获调用参数
 const worldApi = vi.hoisted(() => {
   let locSeq = 0;
+  let ptSeq = 0;
   return {
     createLocation: vi.fn(async (b: unknown) => { locSeq += 1; return { ...(b as object), id: 200 + locSeq }; }),
     updateLocation: vi.fn(async (_id: number, _body: Record<string, unknown>) => ({})),
     createSceneEvent: vi.fn(async (b: unknown) => b),
     createForeshadowing: vi.fn(async (b: unknown) => b),
-    createPlotThread: vi.fn(async (b: unknown) => b),
+    createPlotThread: vi.fn(async (b: unknown) => { ptSeq += 1; return { ...(b as object), id: 400 + ptSeq }; }),
     fetchLocations: vi.fn(async () => [{ id: 7, name: '王都' }]),
-    fetchSceneEvents: vi.fn(async () => []),
+    fetchSceneEvents: vi.fn(async () => [] as Partial<SceneEvent>[]),
     fetchPlotThreads: vi.fn(async () => [{ id: 1, name: '主线' }, { id: 2, name: '宗门线索' }]),
-    fetchForeshadowings: vi.fn(async () => []),
+    fetchForeshadowings: vi.fn(async () => [] as Partial<Foreshadowing>[]),
   };
 });
 const charactersApi = vi.hoisted(() => {
@@ -30,10 +32,11 @@ const charactersApi = vi.hoisted(() => {
   };
 });
 const booksApi = vi.hoisted(() => ({
-  createVolume: vi.fn(async (_b: unknown, _title: string, _summary?: string) => ({ id: 100 })),
+  createVolume: vi.fn(async (_b: unknown, _title: string, _summary?: string, _sortOrder?: number) => ({ id: 100 })),
   createChapter: vi.fn(async (_v: unknown, _body: Record<string, unknown>) => ({ id: 200 })),
   updateCreativeSetting: vi.fn(async () => ({})),
-  fetchChaptersTree: vi.fn(async () => [{ id: 100, title: '卷一', chapters: [{ id: 200, title: '第一章', sortOrder: 1 }] }]),
+  // 与后端契约一致：wizard 创建的卷/章 sortOrder 从 1 起（saveStep4 显式传入）
+  fetchChaptersTree: vi.fn(async () => [{ id: 100, title: '卷一', sortOrder: 1, chapters: [{ id: 200, title: '第一章', sortOrder: 1 }, { id: 201, title: '第十章', sortOrder: 10 }] }]),
 }));
 const entityStoreApi = vi.hoisted(() => ({
   loadFromApi: vi.fn(async () => {}),
@@ -241,6 +244,8 @@ describe('初始化器字段映射（与后端 wizard label 对齐）', () => {
   });
 
   it('Step4 大纲：markdown 卷章场景解析并落库（卷摘要/场景时间/地点/角色/情节线）', async () => {
+    // 追加不覆盖：本测试模拟空库（无已有卷章），走全量创建路径
+    booksApi.fetchChaptersTree.mockResolvedValueOnce([]);
     setStepText(4, [
       '# 卷一：觉醒 - 主角觉醒的旅程',
       '',
@@ -265,6 +270,9 @@ describe('初始化器字段映射（与后端 wizard label 对齐）', () => {
     expect(vol1).toBe('觉醒');
     const vol1summary = booksApi.createVolume.mock.calls[0][2] as string;
     expect(vol1summary).toContain('主角觉醒');
+    // 创建时显式传 sortOrder（后端契约：卷/章按序号排序，供 Step5 章节绑定消费）
+    expect(booksApi.createVolume.mock.calls[0][3]).toBe(1);
+    expect((booksApi.createChapter.mock.calls[0][1] as { sortOrder?: number }).sortOrder).toBe(1);
     // 章标题与摘要
     const ch1 = booksApi.createChapter.mock.calls[0][1] as { title: string; summary: string };
     expect(ch1.title).toBe('初入江湖');
@@ -277,5 +285,118 @@ describe('初始化器字段映射（与后端 wizard label 对齐）', () => {
     expect(sceneBody.locationId).toBe(7); // 地点名匹配
     expect(sceneBody.characterIds).toContain(11); // 林晚
     expect(sceneBody.plotThreadIds).toContain(1); // 主线
+  });
+
+  it('Step3 情节线：按名称去重落库（追加不覆盖），子线挂新主线', async () => {
+    setStepText(3, [
+      '# 线：主线 - 已有主线，应跳过',
+      '类型：主线',
+      '',
+      '# 线：暗线 - 新生成的暗线',
+      '类型：暗线',
+      '',
+      '## 线：旧识线 - 挂在暗线下的子线',
+      '类型：支线',
+    ].join('\n'));
+    await useInitializerStore.getState().nextStep();
+    // '主线' 已存在被跳过，仅创建暗线 + 旧识线
+    expect(worldApi.createPlotThread).toHaveBeenCalledTimes(2);
+    const names = worldApi.createPlotThread.mock.calls.map((c) => (c[0] as { name: string }).name);
+    expect(names).toEqual(['暗线', '旧识线']);
+    // 子线挂到本批新建的主线（暗线 id=401）上
+    const sub = worldApi.createPlotThread.mock.calls[1][0] as { parentThreadId?: number };
+    expect(sub.parentThreadId).toBe(401);
+  });
+
+  it('Step5 事件：章节绑定回退（数值不匹配时按标题/子串匹配，不丢绑定）', async () => {
+    // fetchChaptersTree 默认 mock：第一章(sortOrder 1)、第十章(sortOrder 10)
+    setStepText(5, [
+      '## 事件：暗夜追袭 - 第十章发生的事件',
+      '章节：第十章',
+      '时间：第三夜',
+      '地点：王都',
+      '角色：林晚',
+      '情节线：主线',
+      '',
+      '## 事件：无名风波 - 章节引用无法解析序号与标题',
+      '章节：第20章',
+    ].join('\n'));
+    await useInitializerStore.getState().nextStep();
+    const bodies = worldApi.createSceneEvent.mock.calls.map((c) => c[0] as Record<string, unknown>);
+    // 第十章 → sortOrder=10 数值匹配成功
+    expect(bodies[0].chapterId).toBe(201);
+    // 第20章 → 数值 20 无匹配、标题无匹配、子串无匹配 → 不挂错章（undefined）
+    expect(bodies[1].chapterId).toBeUndefined();
+  });
+
+  it('Step5 事件：「卷标题·章标题」组合引用跨卷同名章消歧', async () => {
+    // 多卷结构：卷一/卷二 都有「第一章」（卷内 sortOrder 各自从 1 起）
+    booksApi.fetchChaptersTree.mockResolvedValueOnce([
+      { id: 100, title: '觉醒', sortOrder: 1, chapters: [{ id: 200, title: '第一章', sortOrder: 1 }] },
+      { id: 101, title: '风暴', sortOrder: 2, chapters: [{ id: 201, title: '第一章', sortOrder: 1 }, { id: 202, title: '初入江湖', sortOrder: 2 }] },
+    ]);
+    setStepText(5, [
+      '## 事件：卷二开场 - 风暴卷第一章的事件',
+      '章节：风暴·第一章',
+      '',
+      '## 事件：组合序号引用 - 卷二第2章',
+      '章节：卷二·第二章',
+      '',
+      '## 事件：卷一开场 - 觉醒卷第一章的事件',
+      '章节：觉醒 · 第一章',
+      '',
+      '## 事件：无卷信息 - 回退全局数值匹配',
+      '章节：第一章',
+    ].join('\n'));
+    await useInitializerStore.getState().nextStep();
+    const bodies = worldApi.createSceneEvent.mock.calls.map((c) => c[0] as Record<string, unknown>);
+    // 卷标题·章标题 → 卷二第一章（不再误挂卷一）
+    expect(bodies[0].chapterId).toBe(201);
+    // 卷序号·章序号 → 卷二第二章
+    expect(bodies[1].chapterId).toBe(202);
+    // 卷标题（带空格）·章标题 → 卷一第一章
+    expect(bodies[2].chapterId).toBe(200);
+    // 仅「第一章」无卷信息 → 回退全局数值匹配，命中第一个（卷一第一章）
+    expect(bodies[3].chapterId).toBe(200);
+  });
+
+  it('Step5 事件：重复标题跳过（追加不覆盖已有事件）', async () => {
+    worldApi.fetchSceneEvents.mockResolvedValueOnce([{ id: 300, title: '城门相遇', chapterId: null }]);
+    setStepText(5, [
+      '## 事件：城门相遇 - 已有事件，应跳过',
+      '章节：第一章',
+      '',
+      '## 事件：拜师风波 - 新事件',
+      '章节：第一章',
+    ].join('\n'));
+    await useInitializerStore.getState().nextStep();
+    expect(worldApi.createSceneEvent).toHaveBeenCalledTimes(1);
+    const body = worldApi.createSceneEvent.mock.calls[0][0] as { title: string };
+    expect(body.title).toBe('拜师风波');
+  });
+
+  it('Step6 伏笔：原始类型落库 + 埋下事件模糊匹配 + 重复跳过', async () => {
+    worldApi.fetchSceneEvents.mockResolvedValueOnce([{ id: 300, title: '城门相遇' }]);
+    worldApi.fetchForeshadowings.mockResolvedValueOnce([
+      { id: 1, description: '断剑之谜：上古神器', status: 'planted' },
+    ]);
+    setStepText(6, [
+      '# 伏笔：断剑之谜 - 上古神器（已存在，应跳过）',
+      '类型：身份谜团',
+      '',
+      '# 伏笔：血月预兆 - 血色月亮的预言',
+      '类型：预言',
+      '角色：林晚',
+      '埋下事件：城门相遇事件（LLM 输出带后缀，需模糊匹配）',
+      '揭示建议：第二卷结尾',
+    ].join('\n'));
+    await useInitializerStore.getState().finish();
+    expect(worldApi.createForeshadowing).toHaveBeenCalledTimes(1);
+    const body = worldApi.createForeshadowing.mock.calls[0][0] as Record<string, unknown>;
+    // 原始伏笔类型保留到 type 字段（不再只映射 revealType）
+    expect(body.type).toBe('预言');
+    expect(body.revealType).toBe('twist');
+    expect(body.relatedEventId).toBe(300); // 模糊匹配命中
+    expect(String(body.notes)).toContain('第二卷结尾');
   });
 });

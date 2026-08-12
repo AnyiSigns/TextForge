@@ -56,6 +56,7 @@ class ForeshadowingResponse(BaseModel):
     related_character_ids: list[int] | None = Field(default=[], alias="relatedCharacterIds")
     related_event_id: int | None = Field(default=None, alias="relatedEventId")
     reveal_type: str | None = Field(default=None, alias="revealType")
+    type: str | None = Field(default=None)
     notes: str | None = None
     created_at: datetime | None = Field(default=None, alias="createdAt")
     updated_at: datetime | None = Field(default=None, alias="updatedAt")

@@ -41,8 +41,8 @@ export async function fetchChaptersTree(bookId: number): Promise<(Volume & { cha
   return data.volumes ?? [];
 }
 
-export async function createVolume(bookId: number, title: string, summary?: string): Promise<Volume> {
-  const { data } = await apiClient.post<Volume>(`/volumes/books/${bookId}`, { title, summary });
+export async function createVolume(bookId: number, title: string, summary?: string, sortOrder?: number): Promise<Volume> {
+  const { data } = await apiClient.post<Volume>(`/volumes/books/${bookId}`, { title, summary, ...(sortOrder != null ? { sortOrder } : {}) });
   return data;
 }
 
@@ -57,7 +57,7 @@ export async function deleteVolume(volumeId: number): Promise<void> {
 
 export async function createChapter(
   volumeId: number,
-  body: { title: string; summary?: string; locked?: boolean },
+  body: { title: string; summary?: string; locked?: boolean; sortOrder?: number },
 ): Promise<Chapter> {
   const { data } = await apiClient.post<Chapter>(`/chapters/volumes/${volumeId}`, body);
   return data;

@@ -73,6 +73,15 @@ def _sync_missing_columns(sync_conn):
                     f"ALTER TABLE sim_branches ADD COLUMN {col_name} {col_ddl}"
                 )
                 logger.info(f"已为 sim_branches 表补充列 {col_name}")
+    # foreshadowings.type：伏笔原始类型（身份谜团/隐藏关系/世界秘密/预言/物品/背叛），
+    # 与 reveal_type（揭示方式映射）并存；存量库幂等补列。
+    if "foreshadowings" in tables:
+        existing = {c["name"] for c in inspect(sync_conn).get_columns("foreshadowings")}
+        if "type" not in existing:
+            sync_conn.exec_driver_sql(
+                "ALTER TABLE foreshadowings ADD COLUMN type VARCHAR(50)"
+            )
+            logger.info("已为 foreshadowings 表补充列 type")
     # chapter_contents 版本号唯一约束：存量库 create_all 不会添加新约束，
     # 需幂等补充（并发写入防止重复版本）。
     if "chapter_contents" in tables:

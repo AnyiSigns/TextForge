@@ -31,18 +31,37 @@ export interface WizardStreamEvent {
   index?: number;
   totalVolumes?: number;
   step?: number;
+  mode?: 'init' | 'append';
+  warnings?: string[];
   message?: string;
 }
 
+export type WizardMode = 'init' | 'append' | 'auto';
+
 export interface StreamGenerateOptions {
   extraInstruction?: string;
+  mode?: WizardMode;
   onEvent?: (ev: WizardStreamEvent) => void;
   signal?: AbortSignal;
+  /** 流式请求总超时（毫秒），默认 120s；传 0 禁用 */
+  timeoutMs?: number;
+}
+
+/** 合并调用方 signal 与超时 signal（低版本浏览器不支持 AbortSignal.any 时退化为仅调用方 signal）。 */
+function mergeSignals(signal: AbortSignal | undefined, timeoutMs: number): AbortSignal | undefined {
+  if (!signal && timeoutMs <= 0) return undefined;
+  if (typeof AbortSignal.timeout === 'function' && typeof AbortSignal.any === 'function') {
+    const timeoutSignal = timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined;
+    if (signal && timeoutSignal) return AbortSignal.any([signal, timeoutSignal]);
+    return signal ?? timeoutSignal;
+  }
+  return signal;
 }
 
 /**
- * 流式生成 Markdown 单份方案（Step 0-6，SSE）。
+ * 流式生成 Markdown 单份方案（Step 0-6，SSE，Markdown 传递）。
  * Step 4 大纲后端按卷分批生成，其余步骤单次生成，文本逐行推送。
+ * mode=init/append/auto：初始化与追加共用同一端点；追加不覆盖已有数据。
  */
 export async function streamGenerateMarkdown(
   bookId: number,
@@ -51,18 +70,21 @@ export async function streamGenerateMarkdown(
 ): Promise<string> {
   const modelConfigData = await getModelConfigData();
   const token = useAuthStore.getState().accessToken;
+  const timeoutMs = opts.timeoutMs ?? 120_000;
+  const signal = mergeSignals(opts.signal, timeoutMs);
   const resp = await fetch(`${API_BASE}/wizard/stream-generate`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    signal: opts.signal,
+    signal,
     body: JSON.stringify({
-      book_id: bookId,
+      bookId,
       step,
-      model_config_data: modelConfigData,
-      extra_instruction: opts.extraInstruction,
+      mode: opts.mode ?? 'auto',
+      modelConfig: modelConfigData,
+      extraInstruction: opts.extraInstruction,
     }),
   });
   if (!resp.ok || !resp.body) {

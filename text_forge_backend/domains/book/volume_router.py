@@ -35,9 +35,10 @@ async def create_volume(
     session: Annotated[AsyncSession, Depends(db_manager.get_db)],
 ):
     await assert_book_owner(book_id, user_id, session)
-    item = await volume_service.create_volume(
-        book_id, title=request.title, summary=request.summary
-    )
+    create_kwargs: dict = {"title": request.title, "summary": request.summary}
+    if request.sort_order is not None:
+        create_kwargs["sort_order"] = request.sort_order
+    item = await volume_service.create_volume(book_id, **create_kwargs)
     if not item:
         raise HTTPException(status_code=500, detail="创建卷失败")
     return VolumeResponse.model_validate(item)

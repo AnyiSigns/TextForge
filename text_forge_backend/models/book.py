@@ -435,6 +435,9 @@ class Foreshadowing(Base):
     reveal_type: Mapped[str] = mapped_column(
         String(50), nullable=True, comment="揭示方式"
     )
+    type: Mapped[str] = mapped_column(
+        String(50), nullable=True, comment="伏笔类型（身份谜团/隐藏关系/世界秘密/预言/物品/背叛）"
+    )
     notes: Mapped[str] = mapped_column(Text, nullable=True, comment="备注")
     locked: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False, comment="是否锁定"

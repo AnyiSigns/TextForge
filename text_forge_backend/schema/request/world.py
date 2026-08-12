@@ -50,6 +50,7 @@ class ForeshadowingRequest(BaseModel):
     related_character_ids: list[int] | None = Field(default=[], alias="relatedCharacterIds")
     related_event_id: int | None = Field(default=None, alias="relatedEventId")
     reveal_type: str | None = Field(default=None, alias="revealType")
+    type: str | None = Field(default=None)
     notes: str | None = None
 
 
@@ -115,6 +116,7 @@ class ForeshadowingUpdate(BaseModel):
     related_character_ids: list[int] | None = Field(default=None, alias="relatedCharacterIds")
     related_event_id: int | None = Field(default=None, alias="relatedEventId")
     reveal_type: str | None = Field(default=None, alias="revealType")
+    type: str | None = Field(default=None)
     notes: str | None = None
 
 

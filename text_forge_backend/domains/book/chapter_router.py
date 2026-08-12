@@ -45,12 +45,14 @@ async def create_chapter(
     session: Annotated[AsyncSession, Depends(db_manager.get_db)],
 ):
     await _assert_volume_owner(volume_id, user_id, session)
-    item = await chapter_service.create_chapter(
-        volume_id,
-        title=request.title,
-        summary=request.summary,
-        locked=request.locked,
-    )
+    create_kwargs: dict = {
+        "title": request.title,
+        "summary": request.summary,
+        "locked": request.locked,
+    }
+    if request.sort_order is not None:
+        create_kwargs["sort_order"] = request.sort_order
+    item = await chapter_service.create_chapter(volume_id, **create_kwargs)
     if not item:
         raise HTTPException(status_code=500, detail="创建章节失败")
     return ChapterResponse.model_validate(item)

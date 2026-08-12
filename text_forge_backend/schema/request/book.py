@@ -30,6 +30,7 @@ class VolumeRequest(BaseModel):
 
     title: str
     summary: str | None = None
+    sort_order: int | None = Field(default=None, alias="sortOrder")
 
 
 class VolumeUpdate(BaseModel):
@@ -37,6 +38,7 @@ class VolumeUpdate(BaseModel):
 
     title: str | None = None
     summary: str | None = None
+    sort_order: int | None = Field(default=None, alias="sortOrder")
 
 
 class ChapterRequest(BaseModel):
@@ -46,6 +48,7 @@ class ChapterRequest(BaseModel):
     summary: str | None = None
     locked: bool | None = None
     generation_batch: int | None = Field(default=None, alias="generationBatch")
+    sort_order: int | None = Field(default=None, alias="sortOrder")
 
 
 class ChapterUpdate(BaseModel):
@@ -55,6 +58,7 @@ class ChapterUpdate(BaseModel):
     summary: str | None = None
     locked: bool | None = None
     generation_batch: int | None = Field(default=None, alias="generationBatch")
+    sort_order: int | None = Field(default=None, alias="sortOrder")
 
 
 class SceneEventRequest(BaseModel):

@@ -1,7 +1,7 @@
 // tests/initializer/wizardMarkdown.test.ts
 // 初始化向导 Markdown 解析器纯单测：验证 Step 0 世界观 / Step 1 地点 / Step 2 角色 的解析契约。
 import { describe, it, expect } from 'vitest';
-import { parseLocations, parseCharacters, parseCreativeSetting } from '@/features/map/lib/wizardMarkdown';
+import { parsePlotThreads, parseOutline, parseEvents, parseForeshadowings, parseLocations, parseCharacters, parseCreativeSetting } from '@/features/map/lib/wizardMarkdown';
 
 describe('parseCreativeSetting（Step 0 世界观）', () => {
   it('方案标题 + 单行字段 + 自定义字段块', () => {
@@ -187,5 +187,108 @@ describe('parseCharacters（Step 2 角色）', () => {
 
     expect(items[0].relationships).toHaveLength(1);
     expect(items[0].customFields).toEqual({ 功法: '九天星辰诀' });
+  });
+});
+
+describe('parsePlotThreads（Step 3 情节线）', () => {
+  it('主线/子线层级与类型字段', () => {
+    const items = parsePlotThreads([
+      '# 线：主线 - 主角成长之路',
+      '类型：主线',
+      '',
+      '## 线：宗门线 - 宗门内斗',
+      '类型：支线',
+      '',
+      '# 线：暗线 - 上古真相',
+      '类型：暗线',
+    ].join('\n'));
+
+    expect(items).toHaveLength(3);
+    expect(items[0]).toMatchObject({ name: '主线', type: '主线', level: 1, parentName: undefined });
+    expect(items[1]).toMatchObject({ name: '宗门线', type: '支线', level: 2, parentName: '主线' });
+    expect(items[2]).toMatchObject({ name: '暗线', type: '暗线', level: 1, parentName: undefined });
+    expect(items[0].description).toContain('主角成长之路');
+  });
+});
+
+describe('parseOutline（Step 4 大纲）', () => {
+  it('卷→章→场景节点（时间/地点/角色/情节线）', () => {
+    const vols = parseOutline([
+      '# 卷一：觉醒 - 主角觉醒的旅程',
+      '',
+      '## 第一章：初入江湖 - 踏上旅途',
+      '',
+      '### 场景：城门口 - 主角初入江湖',
+      '时间：第一天清晨',
+      '地点：王都',
+      '角色：林晚、苏璃',
+      '情节线：主线',
+      '',
+      '### 场景：试炼台 - 通过入门考核',
+      '时间：第一天下午',
+      '角色：林晚',
+    ].join('\n'));
+
+    expect(vols).toHaveLength(1);
+    expect(vols[0].title).toBe('觉醒');
+    expect(vols[0].summary).toContain('主角觉醒');
+    expect(vols[0].chapters).toHaveLength(1);
+    expect(vols[0].chapters[0].title).toBe('初入江湖');
+    const scenes = vols[0].chapters[0].scenes;
+    expect(scenes).toHaveLength(2);
+    expect(scenes[0]).toMatchObject({
+      title: '城门口',
+      timeLabel: '第一天清晨',
+      location: '王都',
+      characters: ['林晚', '苏璃'],
+      plotThreads: ['主线'],
+    });
+    expect(scenes[1].characters).toEqual(['林晚']);
+  });
+});
+
+describe('parseEvents（Step 5 事件）', () => {
+  it('事件字段行解析（章节/时间/地点/角色/情节线）', () => {
+    const items = parseEvents([
+      '## 事件：城门相遇 - 主角与神秘人擦肩而过',
+      '章节：第一章',
+      '时间：第一天清晨',
+      '地点：王都',
+      '角色：林晚、苏璃',
+      '情节线：主线',
+    ].join('\n'));
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      title: '城门相遇',
+      chapterRef: '第一章',
+      timeLabel: '第一天清晨',
+      location: '王都',
+      characters: ['林晚', '苏璃'],
+      plotThreads: ['主线'],
+    });
+    expect(items[0].summary).toContain('擦肩而过');
+  });
+});
+
+describe('parseForeshadowings（Step 6 伏笔）', () => {
+  it('伏笔字段行解析（类型/角色/埋下事件/揭示建议）', () => {
+    const items = parseForeshadowings([
+      '# 伏笔：断剑之谜 - 断剑实为上古神器',
+      '类型：身份谜团',
+      '角色：林晚',
+      '埋下事件：城门相遇',
+      '揭示建议：第三卷决战前夕',
+    ].join('\n'));
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      title: '断剑之谜',
+      type: '身份谜团',
+      characters: ['林晚'],
+      relatedEvent: '城门相遇',
+      revealTiming: '第三卷决战前夕',
+    });
+    expect(items[0].description).toContain('上古神器');
   });
 });

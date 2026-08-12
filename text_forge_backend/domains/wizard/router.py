@@ -3,11 +3,18 @@
 全部 7 步统一走 Markdown 单份方案流式生成（SSE）：Step 0 世界观、
 Step 1 地点、Step 2 角色、Step 3 情节线、Step 4 大纲（按卷分批）、
 Step 5 事件、Step 6 伏笔。前端解析 Markdown 后落库。
+
+通用生成器语义：
+- 每步上下文按「该类型生成所需的引用实体 + 已有同类实体」查库组装，
+  不依赖步骤顺序（跳过某步后，后续步骤缺前置数据会以 meta.warnings 提示）。
+- mode=init/append/auto：初始化（新书）与追加（已有设定）共用同一路径；
+  追加时上下文携带已有设定，提示词要求衔接去重，绝不复盖已有数据。
+- 无论何种模式，生成的都是设定素材/结构规划，严禁输出正文成稿与最终结局。
 """
 
 import json
 import re
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -38,12 +45,27 @@ STEP_NAMES: dict[int, str] = {
 }
 
 
+def _fmt(items, formatter, limit: int):
+    """把实体列表格式化为带 [id] 标注的上下文行（按行数截断上限）。"""
+    rows = [formatter(item) for item in items]
+    return "\n".join(rows[:limit])
+
+
 async def _build_wizard_context(
     session: AsyncSession,
     book_id: int,
     step: int,
-) -> str:
-    """组装 wizard 生成步骤的上下文文本。
+) -> tuple[str, list[str], bool, int]:
+    """按步骤类型组装生成上下文（查库生成，不依赖步骤顺序）。
+
+    每步需要的上下文 = 生成该类型所需的「引用实体」+「已有同类实体」：
+    - Step 0 世界观：已有创意设定（追加/重新生成时避免覆盖已有内容）
+    - Step 1 地点：已有地点（防重名）
+    - Step 2 角色：已有地点（首次出场/所在地）+ 已有角色（防重、关系链目标）
+    - Step 3 情节线：已有情节线（防重、子线挂主线）+ 已有角色（交织点，弱依赖）
+    - Step 4 大纲：情节线/地点/角色（场景节点三字段必须取自清单）+ 已有卷章（前序卷衔接）
+    - Step 5 事件：卷章（章节绑定）+ 地点/角色/情节线 + 已有事件（防重、时间线衔接）
+    - Step 6 伏笔：事件（埋下事件必须取自清单）+ 角色 + 已有伏笔（防重、伏笔网络）
 
     Args:
         session: 数据库会话。
@@ -51,65 +73,94 @@ async def _build_wizard_context(
         step: 向导步骤（0-6）。
 
     Returns:
-        组装好的上下文文本。
+        (上下文文本, 前置校验 warnings 列表, 是否已有设定素材, 已有卷数)。
     """
-    from models.book import Character, Location, PlotThread, SceneEvent
+    from models.book import (
+        Character,
+        Foreshadowing,
+        Location,
+        PlotThread,
+        SceneEvent,
+    )
 
-    context_parts = []
+    context_parts: list[str] = []
+    warnings: list[str] = []
+    has_existing = False
 
-    # 已有情节线（Step 4+ 需要：场景节点要关联情节线）
-    if step >= 4:
+    # Step 0：已有创意设定（追加/重新生成时避免与已保存内容冲突）
+    if step == 0:
+        cs_stmt = select(CreativeSetting).where(CreativeSetting.book_id == book_id)
+        cs_res = await session.execute(cs_stmt)
+        cs = cs_res.scalar_one_or_none()
+        if cs:
+            cs_parts = []
+            if cs.worldview:
+                cs_parts.append(f"世界观：{(cs.worldview)[:300]}")
+            if cs.tone:
+                cs_parts.append(f"文风基调：{cs.tone[:100]}")
+            if cs.writing_taboos:
+                cs_parts.append(f"写作禁忌：{cs.writing_taboos[:150]}")
+            if cs.custom_dimensions:
+                cs_parts.append(
+                    f"自定义设定维度：{json.dumps(cs.custom_dimensions, ensure_ascii=False)[:200]}"
+                )
+            if cs_parts:
+                context_parts.append("\n【已有创意设定】\n" + "\n".join(cs_parts))
+                has_existing = True
+
+    # 已有地点（Step 1+：防重名；Step 2/4/5：引用清单）
+    if step >= 1:
+        loc_stmt = select(Location).where(Location.book_id == book_id).limit(60)
+        loc_res = await session.execute(loc_stmt)
+        locs = loc_res.scalars().all()
+        if locs:
+            locs_text = _fmt(
+                locs,
+                lambda l: f"- [{l.id}] {l.name}（{l.type}）：{(l.description or '')[:100]}",
+                40,
+            )
+            context_parts.append(f"\n【已有地点】\n{locs_text}")
+            has_existing = True
+
+    # 已有角色（Step 2+：防重名、关系链目标、场景引用）
+    if step >= 2:
+        char_stmt = select(Character).where(Character.book_id == book_id).limit(80)
+        char_res = await session.execute(char_stmt)
+        chars = char_res.scalars().all()
+        if chars:
+            chars_text = _fmt(
+                chars,
+                lambda c: f"- [{c.id}] {c.name}（{c.role_type or '角色'}）：{(c.description or '')[:150]}",
+                40,
+            )
+            context_parts.append(f"\n【已有角色】\n{chars_text}")
+            has_existing = True
+
+    # 已有情节线（Step 3+：防重、子线挂主线；Step 4/5：场景/事件引用）
+    if step >= 3:
         pt_stmt = (
-            select(PlotThread)
-            .where(PlotThread.book_id == book_id)
-            .order_by(PlotThread.id)
+            select(PlotThread).where(PlotThread.book_id == book_id).order_by(PlotThread.id)
         )
         pt_res = await session.execute(pt_stmt)
         pts = pt_res.scalars().all()
         if pts:
-            pts_text = "\n".join(
-                [
-                    f"- [{pt.id}] {pt.name}（{pt.type or '支线'}）：{(pt.description or '')[:100]}"
-                    for pt in pts
-                ]
+            pts_text = _fmt(
+                pts,
+                lambda p: f"- [{p.id}] {p.name}（{p.type or '支线'}）：{(p.description or '')[:100]}",
+                40,
             )
             context_parts.append(f"\n【已有情节线】\n{pts_text}")
+            has_existing = True
 
-    # 已有地点（Step 1+ 需要：避免生成重复地点）
-    if step >= 1:
-        loc_stmt = select(Location).where(Location.book_id == book_id).limit(20)
-        loc_res = await session.execute(loc_stmt)
-        locs = loc_res.scalars().all()
-        if locs:
-            locs_text = "\n".join(
-                [
-                    f"- [{loc.id}] {loc.name}（{loc.type}）：{(loc.description or '')[:100]}"
-                    for loc in locs
-                ]
-            )
-            context_parts.append(f"\n【已有地点】\n{locs_text}")
-
-    # 已有角色（Step 2+ 需要：避免生成重复角色）
-    if step >= 2:
-        char_stmt = select(Character).where(Character.book_id == book_id).limit(30)
-        char_res = await session.execute(char_stmt)
-        chars = char_res.scalars().all()
-        if chars:
-            chars_text = "\n".join(
-                [
-                    f"- [{ch.id}] {ch.name}（{ch.role_type or '角色'}）：{(ch.description or '')[:200]}"
-                    for ch in chars
-                ]
-            )
-            context_parts.append(f"\n【已有角色】\n{chars_text}")
-
-    # 已有大纲（卷+章）
-    if step >= 3:
+    # 已有大纲（卷+章）：Step 4 前序卷衔接；Step 5 章节绑定
+    existing_volume_count = 0
+    if step >= 4:
         vol_stmt = (
             select(Volume).where(Volume.book_id == book_id).order_by(Volume.sort_order)
         )
         vol_res = await session.execute(vol_stmt)
         volumes = vol_res.scalars().all()
+        existing_volume_count = len(volumes)
         if volumes:
             vol_ids = [v.id for v in volumes]
             ch_stmt = (
@@ -128,36 +179,61 @@ async def _build_wizard_context(
                         f"  {ch.title}{' - ' + ch.summary if ch.summary else ''}"
                     )
             context_parts.append(f"\n【已有大纲】\n{chr(10).join(outline_text_parts)}")
+            has_existing = True
+        elif step == 5:
+            warnings.append("尚未生成大纲（卷/章），生成的事件将无法归属章节")
 
-    # 已有场景事件（Step 5/6 需要：事件作为补充/埋下事件的候选）
+    # 已有场景事件（Step 5/6：防重、时间线衔接；Step 6 埋下事件候选）
     if step >= 5:
         ev_stmt = (
             select(SceneEvent)
             .where(SceneEvent.book_id == book_id)
             .order_by(SceneEvent.story_ts, SceneEvent.id)
-            .limit(40)
+            .limit(80)
         )
         ev_res = await session.execute(ev_stmt)
         evs = ev_res.scalars().all()
         if evs:
-            ev_text = "\n".join(
-                [
-                    f"- [{ev.id}] {ev.title}（{ev.story_label or '未标注时间'}）：{(ev.content or '')[:60]}"
-                    for ev in evs
-                ]
+            ev_text = _fmt(
+                evs,
+                lambda e: f"- [{e.id}] {e.title}（{e.story_label or '未标注时间'}）：{(e.content or '')[:60]}",
+                40,
             )
             context_parts.append(f"\n【已有场景事件】\n{ev_text}")
+            has_existing = True
+        elif step == 6:
+            warnings.append("尚未生成场景事件，伏笔的「埋下事件」将无法关联")
 
-    return "\n".join(context_parts)
+    # 已有伏笔（Step 6：防重、伏笔网络相互引用）
+    if step >= 6:
+        fs_stmt = (
+            select(Foreshadowing).where(Foreshadowing.book_id == book_id).order_by(Foreshadowing.id)
+        )
+        fs_res = await session.execute(fs_stmt)
+        fs_items = fs_res.scalars().all()
+        if fs_items:
+            fs_text = _fmt(
+                fs_items,
+                lambda f: f"- [{f.id}] {f.type or '未分类'}：{(f.description or '')[:80]}",
+                40,
+            )
+            context_parts.append(f"\n【已有伏笔】\n{fs_text}")
+            has_existing = True
+
+    return "\n".join(context_parts), warnings, has_existing, existing_volume_count
 
 
 class WizardStreamRequest(BaseModel):
-    """wizard 流式生成请求（Step 0-6，Markdown 单份方案，SSE）。"""
+    """wizard 流式生成请求（Step 0-6，Markdown 单份方案，SSE）。
+
+    mode 缺省 auto：按书籍是否已有设定自动推断（有设定 → append）。
+    """
 
     model_config = ConfigDict(populate_by_name=True)
 
     book_id: int = Field(alias="bookId")
     step: int = Field(ge=0, le=6)
+    mode: Literal["init", "append", "auto"] = "auto"
     model_config_data: dict | None = Field(default=None, alias="modelConfig")
     extra_instruction: str | None = Field(default=None, alias="extraInstruction")
 
@@ -276,17 +352,35 @@ async def stream_generate_wizard(
         if creative.custom_dimensions:
             dims = json.dumps(creative.custom_dimensions, ensure_ascii=False)
             context_parts.append(f"自定义设定维度：{dims[:400]}")
-    structured_context = await _build_wizard_context(session, body.book_id, step)
+    structured_context, warnings, has_existing, existing_volume_count = await _build_wizard_context(
+        session, body.book_id, step
+    )
     if structured_context:
         context_parts.append(structured_context)
 
+    # 模式推断：显式指定优先；缺省 auto 按「书籍是否已有设定素材」判断
+    mode = body.mode
+    if mode == "auto":
+        mode = "append" if has_existing else "init"
+    mode_hint = (
+        "本次为【追加模式】：书籍已有设定，请与【已有*】清单中的内容衔接，"
+        "只补充新的设定素材，严禁重复或覆盖已有内容。"
+        if mode == "append"
+        else "本次为【初始化模式】：新书首次生成设定，从零创建完整方案。"
+    )
+
     extra = body.extra_instruction or ""
-    init_notice = "\n\n【重要】本向导用于初始化一本新书，生成的是创建阶段的设定素材与结构规划，而非直接创作小说正文。严禁输出成稿正文、大段叙述或最终结局。"
+    setting_notice = (
+        "\n\n【重要】本生成器用于初始化新书或为已有书籍追加设定素材，"
+        "生成的是创建阶段的设定素材与结构规划，而非直接创作小说正文。"
+        "严禁输出成稿正文、大段叙述或最终结局。"
+    )
     base_user = (
         f"你正在为小说创作向导生成「{step_name}」步骤的方案（Markdown，单份完整方案）。\n\n"
         f"以下是当前已有的创作设定：\n\n{chr(10).join(context_parts)}\n\n"
-        f"请根据系统提示词要求直接输出 Markdown 文本，不要输出任何额外说明。"
-        f"{init_notice}"
+        f"{mode_hint}"
+        f"{setting_notice}"
+        f"\n\n请根据系统提示词要求直接输出 Markdown 文本，不要输出任何额外说明。"
     )
     if extra:
         base_user += f"\n\n【用户额外要求】\n{extra}\n请务必满足上述数量与结构约束。"
@@ -302,12 +396,15 @@ async def stream_generate_wizard(
                     tail = chapters[-1] if chapters else 5
                     chapters = chapters + [tail] * (volume_count - len(chapters))
                 yield _sse(
-                    {"type": "meta", "step": step, "total_volumes": volume_count}
+                    {"type": "meta", "step": step, "total_volumes": volume_count, "mode": mode, "warnings": warnings}
                 )
                 previous_outline = ""
+                # 追加模式：库中已有卷时卷号顺延（避免 LLM 从「第 1 卷」重生成覆盖语义）
+                base_vol = existing_volume_count if mode == "append" else 0
+                total_volumes = base_vol + volume_count
                 for i in range(volume_count):
                     vol_prompt = (
-                        f"请生成大纲第 {i + 1} 卷（共 {volume_count} 卷），该卷共 {chapters[i]} 章。\n\n"
+                        f"请生成大纲第 {base_vol + i + 1} 卷（全书共 {total_volumes} 卷），该卷共 {chapters[i]} 章。\n\n"
                         f"【前序卷已生成的大纲】（供衔接参考，不要重复内容）\n{previous_outline or '（无，本卷为第一卷）'}\n\n"
                         f"{base_user}"
                     )
@@ -323,7 +420,9 @@ async def stream_generate_wizard(
                     previous_outline += vol_text + "\n"
                     yield _sse({"type": "volume_end", "index": i + 1})
             else:
-                yield _sse({"type": "meta", "step": step, "total_volumes": 1})
+                yield _sse(
+                    {"type": "meta", "step": step, "total_volumes": 1, "mode": mode, "warnings": warnings}
+                )
                 messages = [
                     SystemMessage(content=system_prompt),
                     HumanMessage(content=base_user),

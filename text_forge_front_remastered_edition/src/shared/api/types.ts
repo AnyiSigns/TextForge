@@ -124,6 +124,7 @@ export interface Foreshadowing {
   relatedCharacterIds: number[];
   relatedEventId?: number | null;
   revealType?: string;
+  type?: string;
   notes?: string;
   locked: boolean;
 }

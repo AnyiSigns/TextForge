@@ -6,6 +6,20 @@ const STEP_LABELS = [
   '世界观', '地点', '角色', '情节线', '大纲', '事件', '伏笔',
 ];
 
+/** 依据已加载的实体数据推断本次打开为初始化还是追加（追加不覆盖已有数据）。 */
+function inferMode(): 'init' | 'append' {
+  const s = useEntityStore.getState();
+  const hasAny =
+    s.volumes.length > 0 ||
+    s.locations.length > 0 ||
+    s.characters.length > 0 ||
+    s.plotThreads.length > 0 ||
+    s.sceneEvents.length > 0 ||
+    s.foreshadowings.length > 0 ||
+    Boolean(s.creativeSetting && (s.creativeSetting.worldview || s.creativeSetting.tone));
+  return hasAny ? 'append' : 'init';
+}
+
 interface InitializerState {
   isOpen: boolean;
   currentStep: number;
@@ -15,6 +29,12 @@ interface InitializerState {
   streaming: boolean;
   stepText: Record<number, string>;
   abortRef: AbortController | null;
+  /** 本次面板模式：初始化（新书）或追加（已有设定，只增不覆盖） */
+  mode: 'init' | 'append';
+  /** 后端前置校验警告（meta.warnings） */
+  warnings: string[];
+  /** Step 4 大纲按卷生成进度 */
+  volumeProgress: { total: number; done: number } | null;
   /** 已成功落库的步骤集合：回退再前进不重复保存；重新生成后清除对应标记 */
   savedSteps: Set<number>;
   creativeForm: { name: string; tone: string; worldview: string; taboos: string; customFields: Array<{ key: string; value: string; _uid?: string }> };
@@ -38,10 +58,21 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
   streaming: false,
   stepText: {},
   abortRef: null,
+  mode: 'init',
+  warnings: [],
+  volumeProgress: null,
   savedSteps: new Set<number>(),
   creativeForm: { name: '', tone: '', worldview: '', taboos: '', customFields: [{ key: '战力体系', value: '', _uid: crypto.randomUUID() }, { key: '势力', value: '', _uid: crypto.randomUUID() }, { key: '交易单位', value: '', _uid: crypto.randomUUID() }] },
 
-  open: () => set({ isOpen: true, currentStep: 0, saving: false, error: null }),
+  open: () => set({
+    isOpen: true,
+    currentStep: 0,
+    saving: false,
+    error: null,
+    warnings: [],
+    volumeProgress: null,
+    mode: inferMode(),
+  }),
 
   close: () => {
     // 中止进行中的流式生成，避免关闭面板后请求仍在运行
@@ -54,22 +85,31 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
     // 生成/流式进行中禁止前进：streaming 状态会泄漏到下一步骤，导致误显示"生成中"
     if (generating || streaming) return;
     if (currentStep < 6) {
-      // Step 0 → Step 1: 保存创意设定（失败时提示，不再静默吞掉）
+      // Step 0 → Step 1: 保存创意设定（失败时提示，不再静默吞掉）；
+      // 仅当表单有实际内容时保存，避免空表单覆盖用户已有设定（追加不覆盖）
       if (currentStep === 0) {
-        const bookId = (await import('@/app/(dashboard)/books/[id]/store')).useBookDetailStore.getState().bookId;
-        if (bookId && creativeForm.worldview) {
-          const { updateCreativeSetting } = await import('@/shared/api/books');
-          try {
-            await updateCreativeSetting(bookId, {
-              tone: creativeForm.tone,
-              worldview: creativeForm.worldview,
-              writingTaboos: creativeForm.taboos,
-              customDimensions: Object.fromEntries(
-                creativeForm.customFields.filter((f) => f.key && f.value).map((f) => [f.key, f.value]),
-              ),
-            });
-          } catch {
-            set({ error: '创意设定保存失败，请重试或检查网络' });
+        const hasContent = Boolean(
+          creativeForm.tone ||
+          creativeForm.worldview ||
+          creativeForm.taboos ||
+          creativeForm.customFields.some((f) => f.key && f.value),
+        );
+        if (hasContent) {
+          const bookId = (await import('@/app/(dashboard)/books/[id]/store')).useBookDetailStore.getState().bookId;
+          if (bookId) {
+            const { updateCreativeSetting } = await import('@/shared/api/books');
+            try {
+              await updateCreativeSetting(bookId, {
+                tone: creativeForm.tone,
+                worldview: creativeForm.worldview,
+                writingTaboos: creativeForm.taboos,
+                customDimensions: Object.fromEntries(
+                  creativeForm.customFields.filter((f) => f.key && f.value).map((f) => [f.key, f.value]),
+                ),
+              });
+            } catch {
+              set({ error: '创意设定保存失败，请重试或检查网络' });
+            }
           }
         }
       }
@@ -107,7 +147,7 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
   },
 
   regenerateCandidates: async (extraInstruction?: string) => {
-    const { currentStep } = get();
+    const { currentStep, mode } = get();
     const { useBookDetailStore } = await import('@/app/(dashboard)/books/[id]/store');
     const bookId = useBookDetailStore.getState().bookId;
     if (!bookId) {
@@ -116,7 +156,7 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
     }
 
     const controller = new AbortController();
-    set({ generating: true, streaming: true, error: null, abortRef: controller });
+    set({ generating: true, streaming: true, error: null, abortRef: controller, warnings: [], volumeProgress: null });
     // 节流合并 delta 更新，避免每个 SSE 行都触发 zustand set 造成高频重渲染；
     // 声明在 try 外，使 finally 在异常/中止路径也能取消定时器
     let pendingText = '';
@@ -134,15 +174,25 @@ export const useInitializerStore = create<InitializerState>((set, get) => ({
     };
     try {
       const { streamGenerateMarkdown } = await import('@/shared/api/wizard');
-      // 重新生成：清除该步骤已保存标记（允许再次落库新文本）
+      // 重新生成：清除该步骤已保存标记（允许再次落库新文本）；落库层按名称去重，不会覆盖已有数据
       set((s) => ({
         stepText: { ...s.stepText, [currentStep]: '' },
         savedSteps: new Set([...s.savedSteps].filter((x) => x !== currentStep)),
       }));
       const fullText = await streamGenerateMarkdown(bookId, currentStep, {
         extraInstruction,
+        mode,
         signal: controller.signal,
         onEvent: (ev) => {
+          if (ev.type === 'meta') {
+            if (ev.mode) set({ mode: ev.mode });
+            if (ev.warnings && ev.warnings.length > 0) set({ warnings: ev.warnings });
+            if (ev.totalVolumes && ev.totalVolumes > 1) set({ volumeProgress: { total: ev.totalVolumes, done: 0 } });
+          }
+          if (ev.type === 'volume_end' && ev.index != null) {
+            const prev = get().volumeProgress;
+            if (prev) set({ volumeProgress: { ...prev, done: Math.min(prev.done + 1, prev.total) } });
+          }
           if (ev.type === 'delta' && ev.text) {
             pendingText += ev.text;
             if (!flushTimer) flushTimer = setTimeout(flushPending, 100);
