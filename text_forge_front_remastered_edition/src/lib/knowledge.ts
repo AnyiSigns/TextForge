@@ -3,6 +3,7 @@
 // 公共库：后端 pgvector POST /api/knowledge/search
 
 import { apiClient } from '@/shared/api/client';
+import { fetchModelConfig } from '@/shared/api/models';
 import { type RagChunk, putKbDoc, getKbDoc, getAllKbDocs, deleteKbDoc, type KbDocRecord } from '@/lib/storage/indexedDB';
 import { vectorSearch, indexDocument, removeDocumentChunks } from '@/lib/rag/vectorStore';
 import { downloadBlob } from '@/lib/utils/download';
@@ -21,23 +22,15 @@ export interface KbDocMeta {
   content?: string;
 }
 
-// 公共库检索只由后端 agent 的 search 工具（mode="docs"）发起，前端 UI 不调用此路径。
-// 勿在前端接线：后端 /knowledge/search 依赖 model_config_data 生成 embedding，
-// 缺省会 400「需要 embedding 模型」；此分支仅保留为 ragClient.search(scope='public') 契约占位。
-async function backendPublicSearch(q: string): Promise<RagChunk[]> {
-  const { data } = await apiClient.post<{ chunks: RagChunk[] }>(
-    '/knowledge/search',
-    { query: q, scope: 'public', top_k: 3 },
-  );
-  return data.chunks ?? [];
-}
+// 公共库检索只由后端 agent 的 search 工具（mode="docs"）发起，前端 UI 不调用此路径，
+// 前端仅消费公共库的列表/下载/上传/删除（后端 /knowledge/search 为 agent 专用端点）。
 
 export const ragClient = {
+  // 仅个人库端侧检索；公共库检索由后端 agent 的 search 工具（mode="docs"）发起
   async search(
-    q: string, scope: KbScope = 'personal', limit = 4,
+    q: string, limit = 4,
     filter?: { docIds?: string[]; authorIds?: string[]; sample?: string },
   ): Promise<RagChunk[]> {
-    if (scope === 'public') return backendPublicSearch(q);
     const query = filter?.sample ?? q;
     const hits = await vectorSearch(query, limit, filter ? { docIds: filter.docIds, authorIds: filter.authorIds } : undefined);
     return hits.map((h) => ({ docId: h.docId, docName: h.docName, text: h.text, score: h.score, uploaderName: h.uploaderName }));
@@ -110,6 +103,23 @@ export const ragClient = {
   async uploadPublic(file: File): Promise<void> {
     const form = new FormData();
     form.append('file', file);
+    // 携带 embedding 配置（model_config_json 表单字段）：后端 /knowledge/upload
+    // 据此为 chunk 生成向量，缺省时落 _EmbeddingStub 写入空向量，
+    // 文档将永远无法被后端 Agent 的公共库语义检索命中。
+    const emb = (await fetchModelConfig().catch(() => null))?.embeddingModel;
+    if (emb && emb.adapter && emb.model_id && emb.api_key) {
+      form.append(
+        'model_config_json',
+        JSON.stringify({
+          embedding_config: {
+            adapter: emb.adapter,
+            base_url: emb.base_url,
+            api_key: emb.api_key,
+            model_id: emb.model_id,
+          },
+        }),
+      );
+    }
     await apiClient.post('/knowledge/upload', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });

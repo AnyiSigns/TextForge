@@ -403,9 +403,9 @@ describe('useAgentSender 事件处理（store 状态变更）', () => {
     const { result } = renderHook(() => useAgentSender());
     await act(async () => { await result.current.sendMessage('hi'); });
 
-    // 第四个参数为过滤条件（docIds 透传）
-    const filterArg = ragSearchMock.mock.calls[0][3] as { docIds?: string[] };
-    expect(ragSearchMock.mock.calls[0][2]).toBe(2);
+    // 第三个参数为过滤条件（docIds 透传）；search(q, limit, filter) 已无 scope 参数
+    const filterArg = ragSearchMock.mock.calls[0][2] as { docIds?: string[] };
+    expect(ragSearchMock.mock.calls[0][1]).toBe(2);
     expect(filterArg?.docIds).toEqual(['doc-1']);
   });
 });

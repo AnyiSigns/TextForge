@@ -102,6 +102,7 @@ export function ReviewCard({ data, onAction, disabled = false }: ReviewCardProps
           <textarea
             ref={textareaRef}
             value={editText}
+            maxLength={10000}
             onChange={(e) => setEditText(e.target.value)}
             onKeyDown={(e) => {
               // Esc 取消，Ctrl/Cmd+Enter 提交（任务 31 快捷键）
@@ -111,7 +112,9 @@ export function ReviewCard({ data, onAction, disabled = false }: ReviewCardProps
             placeholder={outputPreview}
             className="w-full h-20 rounded-md text-xs p-2 bg-background border border-border resize-none focus:outline-none"
           />
-          <div className="flex gap-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-muted-foreground/60 tabular-nums">{editText.length}/10000</span>
+            <div className="flex gap-2">
             <button onClick={() => handleAction('edit', editText)} disabled={!editText.trim() || submitting}
               className="flex-1 h-7 rounded-md bg-foreground text-background text-xs font-medium border-none cursor-pointer hover:opacity-90 disabled:opacity-40 disabled:cursor-default">
               {submitting ? '提交中…' : '提交修改'}
@@ -120,6 +123,7 @@ export function ReviewCard({ data, onAction, disabled = false }: ReviewCardProps
               className="px-3 h-7 rounded-md border border-border text-xs cursor-pointer bg-transparent hover:bg-muted disabled:opacity-40 disabled:cursor-default">
               取消
             </button>
+            </div>
           </div>
         </div>
       ) : (

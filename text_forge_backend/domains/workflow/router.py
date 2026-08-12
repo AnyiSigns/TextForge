@@ -111,6 +111,9 @@ async def run_workflow_endpoint(
 
     通过 SSE 流式推送 node_start / node_end / node_fail 事件，
     结束时推送 type=done 携带完整结果。
+
+    注意：内部/测试用端点——前端 UI 不直接调用（工作流执行经 Agent 子图
+    execute_workflow 工具走 /agent/stream），保留供测试/脚本/CLI 使用。
     """
     workflow_id = body.workflow_id
     # 校验工作流存在且用户可访问（内置模板对所有用户可见）

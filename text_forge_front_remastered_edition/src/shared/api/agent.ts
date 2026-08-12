@@ -16,6 +16,18 @@ export async function getModelConfigData() {
     const main = cfg.textRoleModels?.main;
     if (!main) return null;
     const search = cfg.searchConfig;
+    // embedding 配置齐全（adapter+model_id+api_key，base_url 可为空）才下发：
+    // 后端 Agent 的公共库语义检索（search mode=docs）依赖 ModelFactory(model_config).embedding，
+    // 缺省会落到 _EmbeddingStub 返回空向量导致检索恒空，与 searchAgentMemories 同规则。
+    const emb = cfg.embeddingModel;
+    const embeddingConfig = emb && emb.adapter && emb.model_id && emb.api_key
+      ? {
+          adapter: emb.adapter,
+          base_url: emb.base_url,
+          api_key: emb.api_key,
+          model_id: emb.model_id,
+        }
+      : undefined;
     return {
       main_config: {
         adapter: main.adapter,
@@ -26,6 +38,7 @@ export async function getModelConfigData() {
       search_config: search && search.api_key
         ? { provider: search.provider || 'bocha', api_key: search.api_key }
         : undefined,
+      embedding_config: embeddingConfig,
     };
   } catch {
     return null;

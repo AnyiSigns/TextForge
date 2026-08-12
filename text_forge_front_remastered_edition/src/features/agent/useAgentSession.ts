@@ -278,7 +278,7 @@ export function useAgentSession(opts: AgentSessionOptions) {
             if (personalDocs.length > 0) {
               const ragHits = await Promise.race([
                 ragClient
-                  .search(msg, 'personal', ragCfg.topK, {
+                  .search(msg, ragCfg.topK, {
                     docIds: ragCfg.docIds.length ? ragCfg.docIds : undefined,
                   })
                   .catch(() => []),
