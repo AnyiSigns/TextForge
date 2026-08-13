@@ -33,9 +33,6 @@ pytest==9.1.1
 pytest-asyncio==1.4.0
 pytest-benchmark==4.0.0
 
-# === 补全：运行时实际 import 但此前缺失的依赖 ===
-# 以下包不锁版本，交由 pip 解析器根据已固定的 langchain 1.x 栈自动选取兼容版本，
-# 避免与 langchain-core==1.5.2 等产生版本冲突（provider 包随 langchain 主版本演进）。
 openai
 langchain-openai
 langchain-text-splitters

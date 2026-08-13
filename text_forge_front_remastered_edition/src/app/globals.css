@@ -244,6 +244,98 @@ textarea:focus {
 .app-sidebar.is-collapsed .app-logout-btn { justify-content: center; padding: 7px 0; }
 .app-sidebar.is-collapsed .app-logout-btn > :last-child { display: none; }
 
+/* ===== 移动端 / 平板适配 ===== */
+
+.app-mobile-topbar {
+  display: none;
+}
+.app-sidebar-backdrop {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  /* 移动端顶部栏：仅手机展示，提供抽屉开关 */
+  .app-mobile-topbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 44px;
+    padding: 0 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--background);
+    flex-shrink: 0;
+    position: relative;
+    z-index: 20;
+  }
+  .app-mobile-menu-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: var(--foreground);
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .app-mobile-menu-btn:hover { background: var(--sidebar-hover); }
+  .app-mobile-brand {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--foreground);
+    white-space: nowrap;
+  }
+
+  /* 侧边栏：固定抽屉，默认滑出屏幕 */
+  .app-sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 240px !important;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    z-index: 60;
+    box-shadow: 0 0 24px rgba(0, 0, 0, 0.18);
+  }
+  .app-sidebar.is-open {
+    transform: translateX(0);
+  }
+  .app-sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    background: rgba(0, 0, 0, 0.35);
+  }
+
+  /* 右侧 Agent 面板：全屏覆盖，而非挤压主内容 */
+  .app-right-panel {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    width: 100%;
+    border-left: none;
+  }
+  .app-right-panel-handle {
+    display: none;
+  }
+
+  /* Agent 会话列表：抽屉覆盖，避免与对话区并排挤压 */
+  .ide-agent-sessions {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: min(18rem, 85vw);
+    z-index: 30;
+    background: var(--background);
+    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.12);
+  }
+}
+
 /* ===== IDE 布局 ===== */
 
 .ide-grid {

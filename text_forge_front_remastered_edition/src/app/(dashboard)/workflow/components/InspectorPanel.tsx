@@ -99,7 +99,7 @@ export function InspectorPanel({ node, onChange, onClose }: InspectorPanelProps)
 
   if (!node) {
     return (
-      <div className="w-[280px] shrink-0 border-l border-border bg-background p-6 flex items-center justify-center">
+      <div className="hidden md:flex w-[280px] shrink-0 border-l border-border bg-background p-6 items-center justify-center">
         <span className="text-[11px] text-foreground/30">选择一个节点编辑属性</span>
       </div>
     );
@@ -123,7 +123,7 @@ export function InspectorPanel({ node, onChange, onClose }: InspectorPanelProps)
   ).sort();
 
   return (
-    <div className="w-[280px] shrink-0 border-l border-border bg-background overflow-y-auto">
+    <div className="fixed inset-y-0 right-0 z-40 w-[min(20rem,85vw)] shadow-2xl md:static md:z-auto md:inset-auto md:w-[280px] md:shrink-0 border-l border-border bg-background overflow-y-auto">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-foreground/30">节点属性</span>
         <button onClick={onClose} className="w-5 h-5 flex items-center justify-center rounded bg-transparent border-none cursor-pointer text-foreground/20 hover:text-foreground/50">

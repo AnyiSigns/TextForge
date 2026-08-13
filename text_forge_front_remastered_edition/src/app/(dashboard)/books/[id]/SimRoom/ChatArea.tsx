@@ -5,7 +5,7 @@
  * 房间头部 + 消息列表 + 输入区；无活跃房间时展示空状态。
  */
 import { useMemo } from 'react';
-import { X, MessageCircle } from 'lucide-react';
+import { X, MessageCircle, List } from 'lucide-react';
 import { cn } from '@/shared/lib/cn';
 import type { SimRoomDetail, SimRoomMessage } from '@/shared/api/simRooms';
 import type { SimSuggestion } from '@/shared/api/useSimRoom';
@@ -31,6 +31,7 @@ interface ChatAreaProps {
   onSend: (content: string) => void;
   onAutoAdvance: (turns?: number) => void;
   onBranchType: (type: string) => void;
+  onOpenRooms?: () => void;
 }
 
 export function ChatArea({
@@ -51,6 +52,7 @@ export function ChatArea({
   onSend,
   onAutoAdvance,
   onBranchType,
+  onOpenRooms,
 }: ChatAreaProps) {
   // 历史用户消息的 senderLabel 是后端原样存储的 "character:<id>" / "director"，
   // 需映射为可读角色名再展示（实时消息已在 useSimRoom 本地回显为角色名，不受影响）。
@@ -99,6 +101,15 @@ export function ChatArea({
           )}
         </div>
         <div className="flex items-center gap-2 text-[10px] text-muted-foreground flex-shrink-0">
+          {onOpenRooms && (
+            <button
+              onClick={onOpenRooms}
+              className="w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/5 bg-transparent border-none cursor-pointer sm:hidden"
+              aria-label="房间列表"
+            >
+              <List size={14} strokeWidth={1.5} />
+            </button>
+          )}
           <span
             className={cn(
               'w-1.5 h-1.5 rounded-full',

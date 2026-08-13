@@ -25,6 +25,7 @@ def test_core_routes_registered():
         "/api/auth/login",
         "/api/auth/refresh",
         "/api/user/profile",
+        "/api/user/account",
         # 模型配置
         "/api/models/test",
         "/api/models/proxy/{path}",

@@ -30,6 +30,7 @@ export function SimRoom({ bookId, bookTitle, onClose }: SimRoomProps) {
   const [rooms, setRooms] = useState<SimRoomSummary[]>([]);
   const [activeRoom, setActiveRoom] = useState<SimRoomDetail | null>(null);
   const [loadingRooms, setLoadingRooms] = useState(true);
+  const [mobileRoomsOpen, setMobileRoomsOpen] = useState(false);
 
   const [showNew, setShowNew] = useState(false);
   // 创建房间的世界数据
@@ -186,26 +187,60 @@ export function SimRoom({ bookId, bookTitle, onClose }: SimRoomProps) {
         onClick={onClose}
       />
       <div
-        className="relative w-[880px] max-w-[94vw] h-[74vh] max-h-[760px] bg-card/98 backdrop-blur-md border border-border/50 rounded-2xl shadow-2xl flex overflow-hidden"
+        className="relative w-full sm:w-[880px] sm:max-w-[94vw] h-full sm:h-[74vh] sm:max-h-[760px] bg-card/98 backdrop-blur-md border-0 sm:border border-border/50 rounded-none sm:rounded-2xl shadow-2xl flex overflow-hidden"
         style={{ animation: 'modal-in 0.25s ease-out' }}
       >
-        <RoomSidebar
-          rooms={rooms}
-          loadingRooms={loadingRooms}
-          showNew={showNew}
-          activeRoomId={activeRoom?.id ?? null}
-          branches={branches}
-          characters={characters}
-          locations={locations}
-          events={events}
-          foreshadowings={foreshadowings}
-          plotThreads={plotThreads}
-          onToggleNew={() => setShowNew((v) => !v)}
-          onCancelNew={() => setShowNew(false)}
-          onCreate={(form) => void handleCreate(form)}
-          onEnterRoom={(roomId) => void enterRoom(roomId)}
-          onDeleteRoom={(roomId, name) => void handleDeleteRoom(roomId, name)}
-        />
+        <div className="hidden sm:flex">
+          <RoomSidebar
+            rooms={rooms}
+            loadingRooms={loadingRooms}
+            showNew={showNew}
+            activeRoomId={activeRoom?.id ?? null}
+            branches={branches}
+            characters={characters}
+            locations={locations}
+            events={events}
+            foreshadowings={foreshadowings}
+            plotThreads={plotThreads}
+            onToggleNew={() => setShowNew((v) => !v)}
+            onCancelNew={() => setShowNew(false)}
+            onCreate={(form) => void handleCreate(form)}
+            onEnterRoom={(roomId) => void enterRoom(roomId)}
+            onDeleteRoom={(roomId, name) => void handleDeleteRoom(roomId, name)}
+          />
+        </div>
+
+        {/* 移动端：房间列表抽屉覆盖层 */}
+        {mobileRoomsOpen && (
+          <div className="absolute inset-0 z-20 flex sm:hidden">
+            <div
+              className="absolute inset-0 bg-black/30"
+              onClick={() => setMobileRoomsOpen(false)}
+            />
+            <div className="relative h-full w-[min(20rem,85vw)] shadow-2xl bg-card">
+              <RoomSidebar
+                rooms={rooms}
+                loadingRooms={loadingRooms}
+                showNew={showNew}
+                activeRoomId={activeRoom?.id ?? null}
+                branches={branches}
+                characters={characters}
+                locations={locations}
+                events={events}
+                foreshadowings={foreshadowings}
+                plotThreads={plotThreads}
+                onToggleNew={() => setShowNew((v) => !v)}
+                onCancelNew={() => setShowNew(false)}
+                onCreate={(form) => void handleCreate(form)}
+                onEnterRoom={(roomId) => {
+                  setMobileRoomsOpen(false);
+                  void enterRoom(roomId);
+                }}
+                onDeleteRoom={(roomId, name) => void handleDeleteRoom(roomId, name)}
+              />
+            </div>
+          </div>
+        )}
 
         <ChatArea
           activeRoom={activeRoom}
@@ -225,6 +260,7 @@ export function SimRoom({ bookId, bookTitle, onClose }: SimRoomProps) {
           onSend={handleSend}
           onAutoAdvance={autoAdvance}
           onBranchType={createBranch}
+          onOpenRooms={() => setMobileRoomsOpen(true)}
         />
       </div>
     </div>

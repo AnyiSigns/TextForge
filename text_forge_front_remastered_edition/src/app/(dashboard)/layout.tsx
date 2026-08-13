@@ -5,11 +5,12 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   BookOpen, Database, Settings,
-  Workflow, ChevronsLeft, LogOut,
+  Workflow, ChevronsLeft, LogOut, Menu, X,
 } from 'lucide-react';
 import { cn } from '@/shared/lib/cn';
 import { useAuthStore } from '@/shared/stores/authStore';
 import * as userApi from '@/shared/api/user';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useBookDetailStore } from './books/[id]/store';
 import { AgentPanel } from './books/[id]/AgentPanel/AgentPanel';
 
@@ -43,6 +44,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const { hasHydrated } = useAuthStore();
+
+  // 移动端（<768px）：侧边栏变为抽屉，默认收起；桌面端沿用可折叠/可拖拽宽度
+  const isMobile = useMediaQuery('(max-width: 767px)');
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   // 用户信息直接订阅 authStore（登录/刷新/登出后自动同步），不再手动拷贝到本地 state
   const authUser = useAuthStore((s) => s.user);
@@ -83,6 +88,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       document.removeEventListener('keydown', handleEsc);
     };
   }, [userMenuOpen]);
+
+  // 移动端抽屉：路由切换后自动关闭；切回桌面端时复位（渲染期调整，同下方 prevPathname 模式）
+  if (!isMobile && mobileSidebarOpen) {
+    setMobileSidebarOpen(false);
+  }
+
+  // 移动端抽屉打开时锁定页面滚动（DOM 外部系统同步，非级联渲染）
+  useEffect(() => {
+    if (!isMobile) return;
+    document.body.style.overflow = mobileSidebarOpen ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; };
+  }, [isMobile, mobileSidebarOpen]);
 
   if (!hasHydrated) {
     return (
@@ -144,11 +161,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     });
   };
 
-  // 进入书籍详情页时自动折叠侧边栏（渲染期间调整，React 会立即重渲染）
+  // 进入书籍详情页时自动折叠侧边栏（渲染期间调整，React 会立即重渲染）；
+  // 移动端路由切换后自动收起抽屉
   if (pathname !== prevPathname) {
     setPrevPathname(pathname);
     if (pathname && pathname.startsWith('/books/') && pathname !== '/books') {
       setCollapsed(true);
+    }
+    if (isMobile) {
+      setMobileSidebarOpen(false);
     }
   }
 
@@ -164,23 +185,54 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-background dashboard-main">
+      {isMobile && (
+        <div className="app-mobile-topbar">
+          <button
+            type="button"
+            onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}
+            className="app-mobile-menu-btn"
+            aria-label={mobileSidebarOpen ? '关闭侧边栏' : '打开侧边栏'}
+          >
+            {mobileSidebarOpen ? <X size={18} /> : <Menu size={18} />}
+          </button>
+          <span className="app-mobile-brand">Text Forge</span>
+        </div>
+      )}
       <div className="flex flex-1 min-h-0">
         {!panelFullscreen && (
           <>
+            {isMobile && mobileSidebarOpen && (
+              <div className="app-sidebar-backdrop" onClick={() => setMobileSidebarOpen(false)} />
+            )}
             <aside
-              className={cn('app-sidebar', collapsed && 'is-collapsed')}
-              style={{ width: collapsed ? 56 : sidebarWidth }}
+              className={cn(
+                'app-sidebar',
+                !isMobile && collapsed && 'is-collapsed',
+                isMobile && mobileSidebarOpen && 'is-open',
+              )}
+              style={isMobile ? undefined : { width: collapsed ? 56 : sidebarWidth }}
             >
         <div className="app-sidebar-header">
           <span className="app-sidebar-brand">Text Forge</span>
-          <button
-            type="button"
-            onClick={toggleSidebar}
-            className="app-sidebar-toggle"
-            aria-label={collapsed ? '展开侧边栏' : '收起侧边栏'}
-          >
-            <ChevronsLeft size={18} className={cn('transition-transform', collapsed && 'rotate-180')} />
-          </button>
+          {!isMobile ? (
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              className="app-sidebar-toggle"
+              aria-label={collapsed ? '展开侧边栏' : '收起侧边栏'}
+            >
+              <ChevronsLeft size={18} className={cn('transition-transform', collapsed && 'rotate-180')} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setMobileSidebarOpen(false)}
+              className="app-sidebar-toggle"
+              aria-label="关闭侧边栏"
+            >
+              <X size={18} />
+            </button>
+          )}
         </div>
 
         <nav className="app-sidebar-nav">
@@ -193,7 +245,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   <Link
                     key={item.href}
                     href={item.href}
-                    title={collapsed ? item.label : undefined}
+                    title={collapsed && !isMobile ? item.label : undefined}
                     className={cn('app-nav-item', isActive && 'is-active')}
                   >
                     <item.icon size={18} strokeWidth={1.8} />
@@ -234,7 +286,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
             <div
               className={cn(
-                'w-[4px] h-full cursor-ew-resize transition-colors hover:bg-foreground/[0.06] flex-shrink-0',
+                'hidden lg:block w-[4px] h-full cursor-ew-resize transition-colors hover:bg-foreground/[0.06] flex-shrink-0',
                 sidebarDragging && 'bg-foreground/[0.08]',
                 collapsed && 'pointer-events-none',
               )}
@@ -248,8 +300,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         )}
 
         {agentActive && (
-          <div className="app-right-panel" style={{ width: panelFullscreen ? undefined : panelWidth, flex: panelFullscreen ? 1 : undefined }}>
-            {!panelFullscreen && (
+          <div
+            className="app-right-panel"
+            style={isMobile ? undefined : { width: panelFullscreen ? undefined : panelWidth, flex: panelFullscreen ? 1 : undefined }}
+          >
+            {!panelFullscreen && !isMobile && (
               <div
                 className={cn('app-right-panel-handle', panelDragging && 'is-dragging')}
                 onMouseDown={handleResizeDown}

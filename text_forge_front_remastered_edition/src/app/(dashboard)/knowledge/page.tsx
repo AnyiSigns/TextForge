@@ -197,7 +197,7 @@ export default function KnowledgePage() {
         description="个人文档本地检索 / 公共文档库浏览"
       />
 
-      <div className="px-6 py-5 space-y-4">
+      <div className="px-4 sm:px-6 py-5 space-y-4">
         <div className="flex gap-1 mb-2 border-b border-border">
           {([['personal', '个人文档', FolderOpen], ['public', '公共文档库', Globe2]] as const).map(([k, label, Icon]) => (
             <button key={k} onClick={() => setView(k)}
@@ -234,7 +234,7 @@ export default function KnowledgePage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <Button variant="secondary" size="sm" onClick={() => personalInputRef.current?.click()} disabled={loading} className="flex items-center gap-1.5">
                   <Upload size={14} /> 上传文件
@@ -242,7 +242,7 @@ export default function KnowledgePage() {
                 <input ref={personalInputRef} type="file" accept=".txt,.md,.markdown" className="hidden" onChange={handleUpload} />
                 <p className="text-[11px] text-muted-foreground hidden md:block">支持 TXT, Markdown，存于本地本机向量检索</p>
               </div>
-              <div className="relative w-56 shrink-0">
+              <div className="relative w-full sm:w-56 shrink-0">
                 <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <input value={personalSearch} onChange={(e) => setPersonalSearch(e.target.value)}
                   placeholder="搜索文件名..." className="w-full h-8 pl-8 pr-2 rounded-md text-xs bg-background border border-border focus:outline-none" />
@@ -291,7 +291,7 @@ export default function KnowledgePage() {
               公共文档库存于服务端，所有用户创作时均可检索引用。请勿上传违规内容。
             </div>
 
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <Button variant="secondary" size="sm" onClick={() => publicInputRef.current?.click()} disabled={publicUploading} className="flex items-center gap-1.5">
                   <Upload size={14} /> {publicUploading ? '上传中...' : '上传文档'}
@@ -299,7 +299,7 @@ export default function KnowledgePage() {
                 <input ref={publicInputRef} type="file" accept=".txt,.md,.markdown,.json,.csv" className="hidden" onChange={handlePublicUpload} />
                 <p className="text-[11px] text-muted-foreground hidden md:block">支持 TXT, Markdown, JSON, CSV</p>
               </div>
-              <div className="relative w-56 shrink-0">
+              <div className="relative w-full sm:w-56 shrink-0">
                 <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <input value={publicSearch} onChange={(e) => setPublicSearch(e.target.value)}
                   placeholder="搜索文档..." className="w-full h-8 pl-8 pr-2 rounded-md text-xs bg-background border border-border focus:outline-none" />

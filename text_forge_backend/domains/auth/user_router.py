@@ -2,19 +2,22 @@ import os
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
 
 from config.logging import get_logger
 from core.auth import get_current
+from core.security import verify_token
 from schema.request.user import (
     ChangePasswordByEmailReq,
     ChangePasswordReq,
+    DeleteAccountReq,
     ProfileRequest,
     SendCodeRequest,
 )
 from schema.response.user import ProfileResponse
 
 from .email import email_service
+from .router import REFRESH_COOKIE
 from .service import UserAuthService, user_db_serve
 from .verification import verification
 
@@ -166,3 +169,22 @@ async def upload_avatar(
     await user_serve.user_repo.update(user_id, avatar=avatar_url)
     await user_serve.session.commit()
     return {"avatar_url": avatar_url}
+
+
+@router.delete("/account")
+async def delete_account(
+    body: DeleteAccountReq,
+    response: Response,
+    user_serve: Annotated[UserAuthService, Depends(user_db_serve)],
+    user_id: Annotated[int, Depends(get_current)],
+):
+    """注销账号：校验密码后删除用户及全部数据（书籍/角色/工作流/文档/对话等），不可恢复。"""
+    access_jti = None
+    if body.access_token:
+        payload = verify_token(body.access_token)
+        if payload:
+            access_jti = payload.get("jti")
+    await user_serve.delete_account(user_id, body.password, access_jti)
+    # 清除 HttpOnly refresh cookie，避免注销后残留长期凭据
+    response.delete_cookie(key=REFRESH_COOKIE, path="/")
+    return {"message": "账号已注销"}

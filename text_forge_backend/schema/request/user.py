@@ -22,3 +22,10 @@ class ChangePasswordByEmailReq(BaseModel):
 
 class SendCodeRequest(BaseModel):
     email: EmailStr | None = None
+
+
+class DeleteAccountReq(BaseModel):
+    password: str = Field(..., min_length=1, description="登录密码（注销确认）")
+    access_token: str | None = Field(
+        default=None, description="当前 access token（用于注销后立即加入黑名单）"
+    )

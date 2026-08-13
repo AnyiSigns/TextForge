@@ -24,8 +24,8 @@ export function PageHeader({
 }: PageHeaderProps) {
   return (
     <div className={cn('sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border shadow-header theme-surface', className)}>
-      <div className="px-6 py-4">
-        <div className="flex items-center justify-between gap-3">
+      <div className="px-4 sm:px-6 py-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             {backHref && (
               <Link href={backHref} className="text-muted-foreground hover:text-foreground shrink-0" aria-label="返回">
@@ -38,7 +38,7 @@ export function PageHeader({
               {description && <p className="text-xs text-muted-foreground truncate">{description}</p>}
             </div>
           </div>
-          {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
+          {actions && <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap shrink-0">{actions}</div>}
         </div>
         {search && <div className="mt-4">{search}</div>}
       </div>

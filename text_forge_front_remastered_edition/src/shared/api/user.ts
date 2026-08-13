@@ -1,4 +1,5 @@
 import { apiClient } from './client';
+import { useAuthStore } from '@/shared/stores/authStore';
 
 export async function fetchProfile(): Promise<{ username: string; email: string; avatar: string | null }> {
   const { data } = await apiClient.get<{ user: { username: string; email: string; avatar: string | null } }>('/user/profile');
@@ -30,4 +31,11 @@ export async function uploadAvatar(file: File): Promise<{ avatar_url: string }> 
   // 手动覆盖会丢失 boundary 导致后端解析失败。
   const { data } = await apiClient.post<{ avatar_url: string }>('/user/avatar', form);
   return data;
+}
+
+export async function deleteAccount(password: string): Promise<void> {
+  // access_token 传 body 供注销后立即加入黑名单（与 /auth/logout 语义一致，
+  // 防止已删除账号的旧 token 继续通过 get_current 校验）
+  const at = useAuthStore.getState().accessToken;
+  await apiClient.delete('/user/account', { data: { password, access_token: at ?? null } });
 }

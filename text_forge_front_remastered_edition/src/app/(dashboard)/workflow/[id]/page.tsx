@@ -355,10 +355,10 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
         </div>
       </div>
 
-      <div className="flex flex-1 min-h-0">
+      <div className="flex flex-col md:flex-row flex-1 min-h-0">
         <NodePalette onDragStart={handleDragStart} />
 
-        <div className="flex-1 relative" onDrop={handleDrop} onDragOver={handleDragOver}>
+        <div className="flex-1 relative min-h-0" onDrop={handleDrop} onDragOver={handleDragOver}>
           <ReactFlow
             nodes={nodes}
             edges={edges}

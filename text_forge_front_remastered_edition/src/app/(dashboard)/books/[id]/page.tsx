@@ -16,6 +16,7 @@ import { SidePanel } from '@/features/map/SidePanel/SidePanel';
 import { AgentInsightsPanel } from '@/features/agent/AgentInsightsPanel';
 import { PanelLeftOpen, MessageCircle, Bot, PenLine, Sparkles, Activity } from 'lucide-react';
 import { onAgentOutlinesRefresh } from '@/features/agent/agentEvents';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 export default function MapPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -38,6 +39,9 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
   // 2.4：Agent 审计/指标洞察面板（工具条入口）
   const [insightsOpen, setInsightsOpen] = useState(false);
   const loadFromApi = useEntityStore((s) => s.loadFromApi);
+  // 移动端：侧面板以抽屉覆盖层展示（JS 条件渲染而非仅 CSS 隐藏，
+  // 避免桌面端同时挂载两份 SidePanel 造成重复请求）
+  const isMobile = useMediaQuery('(max-width: 767px)');
 
   useEffect(() => {
     if (isNaN(bookId)) return;
@@ -93,10 +97,20 @@ export default function MapPage({ params }: { params: Promise<{ id: string }> })
   };
 
   return (
-    <div className="flex h-full w-full bg-background theme-surface">
-      {panelOpen && (
-        <div className="w-60 flex-shrink-0">
+    <div className="flex h-full w-full bg-background theme-surface relative">
+      {panelOpen && !isMobile && (
+        <div className="w-60 flex-shrink-0 hidden md:block">
           <SidePanel onClose={() => setPanelOpen(false)} />
+        </div>
+      )}
+
+      {/* 移动端：侧面板改为抽屉覆盖层 */}
+      {isMobile && panelOpen && (
+        <div className="fixed inset-0 z-40 md:hidden">
+          <div className="absolute inset-0 bg-black/35" onClick={() => setPanelOpen(false)} />
+          <div className="absolute inset-y-0 left-0 w-[min(20rem,85vw)] shadow-2xl">
+            <SidePanel onClose={() => setPanelOpen(false)} />
+          </div>
         </div>
       )}
 

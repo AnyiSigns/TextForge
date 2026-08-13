@@ -94,3 +94,40 @@ async def test_login_rejected_before_verification():
         # 未验证详情通过响应体 error_code=EMAIL_NOT_VERIFIED 传递
         assert resp.status_code == 401, resp.text
         assert "EMAIL_NOT_VERIFIED" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_account_deletion_roundtrip():
+    """注册 → 验证 → 登录 → 注销（错误密码拒绝 / 正确密码删除）→ 旧 token 失效。"""
+    email = f"e2e_integ_del_{uuid.uuid4().hex[:8]}@example.com"
+
+    async with httpx.AsyncClient(base_url=BACKEND, timeout=15) as client:
+        resp = await client.post("/api/auth/register", json={
+            "user_name": f"注销_{uuid.uuid4().hex[:6]}",
+            "email": email,
+            "password": _PASSWORD,
+        })
+        assert resp.status_code == 200, resp.text
+
+        code = await _read_verification_code(email)
+        resp = await client.post("/api/auth/verify-email", json={"email": email, "code": code})
+        assert resp.status_code == 200, resp.text
+
+        resp = await client.post("/api/auth/login", json={"email": email, "password": _PASSWORD})
+        assert resp.status_code == 200, resp.text
+        access_token = resp.json()["access_token"]
+        headers = {"Authorization": f"Bearer {access_token}"}
+
+        # 密码错误应被拒绝（400）
+        resp = await client.request("DELETE", "/api/user/account",
+            headers=headers, json={"password": "wrongpassword123"})
+        assert resp.status_code == 400, resp.text
+
+        # 正确密码注销成功
+        resp = await client.request("DELETE", "/api/user/account",
+            headers=headers, json={"password": _PASSWORD, "access_token": access_token})
+        assert resp.status_code == 200, resp.text
+
+        # 注销后旧 access token 失效
+        resp = await client.get("/api/user/profile", headers=headers)
+        assert resp.status_code == 401, resp.text

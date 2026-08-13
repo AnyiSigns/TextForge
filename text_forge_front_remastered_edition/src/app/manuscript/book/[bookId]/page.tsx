@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, use, useRef } from 'react';
-import { ArrowLeft } from 'lucide-react';
+import { useEffect, use, useRef, useState } from 'react';
+import { ArrowLeft, ListTree, X } from 'lucide-react';
 import Link from 'next/link';
 import { useManuscriptStore } from './store';
 import { useBookDetailStore } from '@/app/(dashboard)/books/[id]/store';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { ChapterTree } from './ChapterTree';
 import { EditorArea } from './EditorArea';
 import { ChapterHoverPreview } from './ChapterHoverPreview';
@@ -22,6 +23,8 @@ export default function ManuscriptPage({ params }: { params: Promise<{ bookId: s
   const setTreeWidth = useManuscriptStore((s) => s.setTreeWidth);
 
   const draggingRef = useRef(false);
+  const isMobile = useMediaQuery('(max-width: 767px)');
+  const [treeOpenMobile, setTreeOpenMobile] = useState(false);
 
   useEffect(() => { void loadBook(bookId); }, [bookId, loadBook]);
 
@@ -73,6 +76,16 @@ export default function ManuscriptPage({ params }: { params: Promise<{ bookId: s
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-3 px-4 py-2 border-b border-border shrink-0">
+        {isMobile && (
+          <button
+            type="button"
+            onClick={() => setTreeOpenMobile(!treeOpenMobile)}
+            className="flex items-center justify-center w-7 h-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer shrink-0"
+            aria-label={treeOpenMobile ? '关闭章节目录' : '打开章节目录'}
+          >
+            {treeOpenMobile ? <X size={16} /> : <ListTree size={16} />}
+          </button>
+        )}
         <Link href={`/books/${bookId}`} className="text-muted-foreground hover:text-foreground flex items-center gap-1.5">
           <ArrowLeft size={16} />
           <span className="text-sm">{bookTitle || '手稿'}</span>
@@ -80,7 +93,7 @@ export default function ManuscriptPage({ params }: { params: Promise<{ bookId: s
       </div>
 
       <div className="flex flex-1 min-h-0">
-        {!focusMode && (
+        {!focusMode && !isMobile && (
           <div
             style={{ width: treeWidth }}
             className="shrink-0 border-r border-border overflow-hidden flex flex-col transition-[width] duration-75"
@@ -88,7 +101,7 @@ export default function ManuscriptPage({ params }: { params: Promise<{ bookId: s
             <ChapterTree />
           </div>
         )}
-        {!focusMode && (
+        {!focusMode && !isMobile && (
           <div
             onMouseDown={startDrag}
             className="w-1 shrink-0 cursor-col-resize bg-border/40 hover:bg-foreground/30 transition-colors"
@@ -99,6 +112,16 @@ export default function ManuscriptPage({ params }: { params: Promise<{ bookId: s
           <EditorArea />
         </main>
       </div>
+
+      {/* 移动端：章节目录抽屉覆盖层 */}
+      {isMobile && treeOpenMobile && (
+        <div className="fixed inset-0 z-40">
+          <div className="absolute inset-0 bg-black/35" onClick={() => setTreeOpenMobile(false)} />
+          <div className="absolute inset-y-0 left-0 w-[min(20rem,85vw)] shadow-2xl bg-background">
+            <ChapterTree />
+          </div>
+        </div>
+      )}
 
       <AgentDock />
       <ChapterHoverPreview />

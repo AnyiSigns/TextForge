@@ -60,7 +60,7 @@ export default function WorkflowListPage() {
         }
       />
 
-      <div className="px-6 py-5 space-y-6">
+      <div className="px-4 sm:px-6 py-5 space-y-6">
         {builtin.length > 0 && (
           <div>
             <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">内置模板</div>

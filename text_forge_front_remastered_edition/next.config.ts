@@ -5,8 +5,6 @@ const nextConfig = {
     proxyTimeout: 300_000,
   },
   rewrites: async () => {
-    // 本地开发默认代理到本机后端 (http://localhost:8000)。
-    // 若本机未起后端，可设置环境变量指向远程：BACKEND_URL=https://47.93.196.245
     const backend = process.env.BACKEND_URL || 'http://localhost:8000';
     return [
       { source: '/api/:path*', destination: `${backend}/api/:path*` },

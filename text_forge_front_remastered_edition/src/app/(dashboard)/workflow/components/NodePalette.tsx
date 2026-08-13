@@ -84,7 +84,7 @@ interface NodePaletteProps {
 
 export function NodePalette({ onDragStart }: NodePaletteProps) {
   return (
-    <div className="w-[200px] shrink-0 border-r border-border bg-background p-3 space-y-4 overflow-y-auto">
+    <div className="w-full md:w-[200px] md:shrink-0 border-b md:border-b-0 md:border-r border-border bg-background p-3 space-y-4 overflow-y-auto max-h-44 md:max-h-none">
       {LAYER_GROUPS.map(({ key, label, icon: Icon }) => {
         const roles = ROLE_TEMPLATES.filter((t) => t.layer === key);
         if (roles.length === 0) return null;

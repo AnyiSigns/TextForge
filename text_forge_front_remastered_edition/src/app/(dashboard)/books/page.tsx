@@ -177,7 +177,7 @@ export default function BooksListPage() {
         }
       />
 
-      <div className="px-6 py-5 space-y-4">
+      <div className="px-4 sm:px-6 py-5 space-y-4">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <StatCard icon={BookOpen} label="书籍总数" value={books.length} sub={pinnedCount > 0 ? `${pinnedCount} 本置顶` : '暂无置顶'} />
           <StatCard icon={Pencil} label="总字数" value={totalWords >= 10000 ? formatWords(totalWords) : (totalWords ? `${totalWords} 字` : '--')} sub={books.length ? '累计创作' : '尚未开始创作'} />
@@ -240,7 +240,7 @@ export default function BooksListPage() {
                         ) : (
                           <span className="text-muted-foreground/50">未设目标</span>
                         )}
-                        <div className="ml-auto flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="ml-auto flex items-center gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                           <button
                             onClick={(e) => { e.preventDefault(); e.stopPropagation(); openEdit(book); }}
                             aria-label="编辑"
@@ -313,13 +313,13 @@ export default function BooksListPage() {
 
                   <button
                     onClick={() => openEdit(book)}
-                    className={cn('h-7 w-7 grid place-items-center rounded text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-hover)] transition-colors bg-transparent border-none cursor-pointer shrink-0', isHovered ? 'opacity-100' : 'opacity-0')}
+                    className={cn('h-7 w-7 grid place-items-center rounded text-muted-foreground hover:text-foreground hover:bg-[var(--sidebar-hover)] transition-colors bg-transparent border-none cursor-pointer shrink-0', isHovered ? 'opacity-100' : 'sm:opacity-0')}
                   >
                     <Pencil size={13} />
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); handleDelete(book.id); }}
-                    className={cn('h-7 w-7 grid place-items-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors bg-transparent border-none cursor-pointer shrink-0', isHovered ? 'opacity-100' : 'opacity-0')}
+                    className={cn('h-7 w-7 grid place-items-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors bg-transparent border-none cursor-pointer shrink-0', isHovered ? 'opacity-100' : 'sm:opacity-0')}
                   >
                     <Trash2 size={13} />
                   </button>

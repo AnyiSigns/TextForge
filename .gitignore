@@ -6,18 +6,14 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# ===================== 前端（text_forge_front） =====================
+# ===================== 前端（text_forge_front_remastered_edition） =====================
 node_modules/
 .next/
 /out/
 coverage/
-storybook-static/
 *.tsbuildinfo
 next-env.d.ts
-.env.local
-.env.development
-.env.production
-.husky/
+pnpm-lock.yaml
 
 # ===================== 后端（text_forge_backend） =====================
 __pycache__/
@@ -30,55 +26,24 @@ venv/
 logs/
 *.sqlite3
 *.db
-text_forge_backend/.next/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 playwright-mcp/
-
-# ===================== 测试 =====================
-text_forge_backend/test/
 
 # ===================== 工具/IDE =====================
 .idea/
 .vscode/
 .kilo/
 
-# ===================== 环境变量（机密，绝不提交） =====================
+# ===================== 环境变量 =====================
 .env*
 !.env.example
 
-# ===================== 临时/生成物 =====================
-simulation-context-sample.txt
-generation-result.png
-api-contract.md
-api-contract.md.bak
+# ===================== 临时/运行产物 =====================
 static/
-final-swap.mjs
-quick-swap.mjs
-docs/api.md
-
-# ===================== 文档 =====================
-*.md
-review.txt
-审查规则.txt
-
-# ===================== 前端重制版生成/说明文件 =====================
-text_forge_front_remastered_edition/tech stack.txt
-text_forge_front_remastered_edition/tsconfig.tsbuildinfo
-
-# ===================== 配置/锁文件（非源码） =====================
-pnpm-lock.yaml
-yarn.lock
-
-# ===================== 数据库迁移 =====================
-*.sql
-text_forge_front/docs/adr/0001-feature-sliced-architecture.md
-text_forge_front/docs/adr/0002-git-engineering-gates.md
-text_forge_front/docs/adr/0003-observability-strategy.md
-text_forge_front/docs/adr/0004-backend-integration-boundary.md
-
-# ===================== 临时/生成物 =====================
 .playwright-mcp/
-project-detail-mockup.html
-projects-mockup.html
+
+# ===================== 数据库迁移（initdb 初始化脚本需要入库） =====================
+*.sql
+!text_forge_backend/initdb/*.sql
