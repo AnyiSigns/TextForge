@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { useAuthStore } from '@/shared/stores/authStore';
 import { cn } from '@/shared/lib/cn';
 import { showApiError } from '@/shared/lib/apiError';
+import { LegalDocsModal, type LegalDocKind } from './LegalDocsModal';
 
 const inputCls =
   'w-full h-10 pl-9 pr-3 rounded-lg text-sm bg-background border border-border ' +
@@ -23,10 +24,16 @@ export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [agreed, setAgreed] = useState(false);
+  const [docKind, setDocKind] = useState<LegalDocKind | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (!agreed) {
+      toast.error('请先阅读并同意《用户协议》与《免责声明》');
+      return;
+    }
     if (username.length < 3 || username.length > 50) {
       toast.error('用户名长度需为 3-50 位');
       return;
@@ -164,6 +171,33 @@ export default function RegisterPage() {
           </div>
         </div>
 
+        <label className="flex items-start gap-2 text-[11px] leading-relaxed text-muted-foreground cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={agreed}
+            onChange={(e) => setAgreed(e.target.checked)}
+            className="mt-0.5 size-3.5 accent-foreground cursor-pointer shrink-0"
+          />
+          <span>
+            我已阅读并同意
+            <button
+              type="button"
+              onClick={() => setDocKind('agreement')}
+              className="underline underline-offset-2 text-foreground/80 hover:text-foreground bg-transparent border-none cursor-pointer px-0.5"
+            >
+              《用户协议》
+            </button>
+            和
+            <button
+              type="button"
+              onClick={() => setDocKind('disclaimer')}
+              className="underline underline-offset-2 text-foreground/80 hover:text-foreground bg-transparent border-none cursor-pointer px-0.5"
+            >
+              《免责声明》
+            </button>
+          </span>
+        </label>
+
         <button
           type="submit"
           disabled={isLoading}
@@ -185,6 +219,8 @@ export default function RegisterPage() {
           </Link>
         </div>
       </form>
+
+      <LegalDocsModal kind={docKind} onClose={() => setDocKind(null)} />
     </div>
   );
 }

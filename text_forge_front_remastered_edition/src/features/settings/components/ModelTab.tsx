@@ -278,6 +278,10 @@ export function ModelTab() {
           )}
         </div>
       </Card>
+
+      <p className="text-[10px] leading-relaxed text-muted-foreground/70">
+        API Key 等模型配置仅保存在你的本地浏览器中，不会上传到平台服务器。请遵守各模型服务商的使用条款与内容政策，并妥善保管你的凭据。
+      </p>
     </div>
   );
 }
