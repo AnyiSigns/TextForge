@@ -51,7 +51,12 @@ export function ReviewCard({ data, onAction, disabled = false }: ReviewCardProps
   const startEditing = () => {
     // 写工具审核卡的 output_preview 以「章节ID=xxx」开头，那是预览前缀而非正文，
     // 回填编辑框前剥离，避免提交修改时把前缀写进章节正文。
-    setEditText(fullPreview.replace(/^章节ID=\d+\n/, ''));
+    //
+    // 注意：此处与后端 gating_service 的预览格式耦合（backend 侧 _strip_preview_prefix
+    // 用同一规则做落库前的防御性清洗）。结构化的章节 id 走 data.target_chapter_id 回传，
+    // 不依赖该前缀解析；即便后端将来去掉前缀，这里也只是「无匹配、原样回填」，不会出错。
+    // 容忍 CRLF 换行，仅剥离首行前缀。
+    setEditText(fullPreview.replace(/^章节ID=\d+\r?\n/, ''));
     setEditing(true);
   };
 

@@ -73,7 +73,7 @@ export const useAuthStore = create<AuthState>()(
 
       login: async (email, password) => {
         const data = await authApi.loginApi(email, password);
-        applyAuth(data.user, data.access_token, data.refresh_token);
+        applyAuth(data.user, data.access_token);
       },
 
       register: async (username, email, password) => {

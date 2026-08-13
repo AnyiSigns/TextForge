@@ -29,11 +29,11 @@ export class ApiError extends Error {
   }
 }
 
-function toApiError(err: Error & { response?: { status?: number; data?: { detail?: unknown; code?: string } }; code?: string }): ApiError {
+function toApiError(err: Error & { response?: { status?: number; data?: { detail?: unknown; code?: string; error_code?: string } }; code?: string }): ApiError {
   const status = err.response?.status;
   const data = err.response?.data;
   const detail = typeof data?.detail === 'string' ? data.detail : undefined;
-  const api = new ApiError(detail || err.message, status, data?.code ?? err.code, data?.detail);
+  const api = new ApiError(detail || err.message, status, data?.error_code ?? err.code, data?.detail);
   // 保留原始 response，供 parseApiError（apiError.ts）等既有消费方继续读取
   api.response = err.response;
   return api;

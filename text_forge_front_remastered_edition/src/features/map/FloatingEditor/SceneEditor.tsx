@@ -136,6 +136,8 @@ export function SceneEditor({ eventId, isNew, onClose }: SceneEditorProps) {
         plotThreadIds,
         resolvedForeshadowingIds,
         completedPlotThreadIds,
+        // 改章节时重算时间轴位置，否则事件会停留在原章节的时间段里
+        ...(event && event.chapterId !== chapterId ? { storyTs: computeDefaultTs(chapterId) } : {}),
       });
       // 埋下伏笔：把勾选的伏笔关联到本场景（relatedEventId），取消则解除
       for (const fw of foreshadowings) {

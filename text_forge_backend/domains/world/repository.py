@@ -1,6 +1,7 @@
 
 from sqlalchemy import delete as sqla_delete
 from sqlalchemy import func, select
+from sqlalchemy import update as sqla_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.book import Foreshadowing, Location, PlotThread, SceneEvent
@@ -171,6 +172,17 @@ class WorldRepository:
             event_id: 事件 ID。
             book_id: 书籍 ID。
         """
+        # 清理引用它的伏笔的 related_event_id（埋下事件反向引用），
+        # 避免伏笔残留指向已删除事件的陈旧 ID。必须限定 book_id：
+        # event_id 为全局自增，不带书边界会误清其他书籍的引用。
+        await self.session.execute(
+            sqla_update(Foreshadowing)
+            .where(
+                Foreshadowing.book_id == book_id,
+                Foreshadowing.related_event_id == event_id,
+            )
+            .values(related_event_id=None)
+        )
         stmt = sqla_delete(SceneEvent).where(SceneEvent.id == event_id, SceneEvent.book_id == book_id)
         await self.session.execute(stmt)
         await self.session.commit()

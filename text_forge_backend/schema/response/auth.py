@@ -24,7 +24,6 @@ class TokenRes(BaseModel):
         ...,
         description="JWT access token，有效期 15分钟，需在后续请求的 Authorization: Bearer <token> 中使用",
     )
-    refresh_token: str = Field(..., description="刷新令牌")
     token_type: str = Field(default="bearer", description="令牌类型，固定为 bearer")
 
     user: UserResponse

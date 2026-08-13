@@ -1,22 +1,17 @@
 'use client';
 
 import { Brain, Pen, Search, Plus } from 'lucide-react';
+// 执行器短名统一取自共享模块，避免与 RoleNode / 编辑页译名分叉
+import { executorShort, type ExecutorKind, type LayerKind } from '../executorMeta';
 
 interface RoleTemplate {
   id: string;
   label: string;
-  executor: 'main' | 'audit' | 'router' | 'tool';
+  executor: ExecutorKind;
   systemPrompt: string;
   contextFields: string[];
-  layer: 'decision' | 'execution' | 'audit';
+  layer: LayerKind;
 }
-
-const EXECUTOR_SHORT: Record<string, string> = {
-  main: '主模型',
-  audit: '审计',
-  router: '路由',
-  tool: '工具',
-};
 
 const ROLE_TEMPLATES: RoleTemplate[] = [
   {
@@ -121,7 +116,7 @@ export function NodePalette({ onDragStart }: NodePaletteProps) {
                     {role.label}
                   </span>
                   <span className="ml-auto text-[8px] text-foreground/25 shrink-0">
-                    {EXECUTOR_SHORT[role.executor] || EXECUTOR_SHORT.main}
+                    {executorShort(role.executor)}
                   </span>
                 </div>
               ))}

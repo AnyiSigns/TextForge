@@ -130,8 +130,9 @@ export function useModelSettings() {
     setEmbedDownloadId(id);
     setEmbedProgress(null);
     try {
-      await downloadEmbedModel(id, (p) => setEmbedProgress(p));
-      toast.success('本地检索模型已就绪，切换精度请前往知识库页面');
+      const ok = await downloadEmbedModel(id, (p) => setEmbedProgress(p));
+      // 返回 false 表示用户取消（不标记已下载、不提示失败）；true 为下载就绪
+      if (ok) toast.success('本地检索模型已就绪，切换精度请前往知识库页面');
     } catch (e) {
       showApiError(e, '下载失败');
     } finally {

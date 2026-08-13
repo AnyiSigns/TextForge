@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/shared/stores/authStore';
 import { getModelConfigData } from '@/shared/api/agent';
+import { getSimRoom } from './simRooms';
 import type { SimBranch, SimRoomDetail, SimRoomMessage, SimRoomParticipant } from './simRooms';
 
 export interface SimSuggestion {
@@ -69,6 +70,9 @@ export function useSimRoomSocket(room: SimRoomDetail | null): UseSimRoomResult {
   const streamingRef = useRef(false);
   // 当前正在流式输出的归属（角色名或"场景"），用于把 token 追加到同一条消息
   const streamingSpeakerRef = useRef<string | null>(null);
+  // 本轮尚未定稿（未收到 turn_done/end/error）的流式消息 id：
+  // 连接中断时这些片段在后端可能根本没有落库，需回滚，避免 UI 残留与 DB 不一致。
+  const draftMsgIdsRef = useRef<number[]>([]);
   // WebSocket 尚在 CONNECTING 时暂存待发消息，onopen 后统一刷出
   const pendingSendsRef = useRef<string[]>([]);
   // 本地临时消息 id 计数器：使用负数递减，避免与后端落库消息的正数自增主键
@@ -117,6 +121,7 @@ export function useSimRoomSocket(room: SimRoomDetail | null): UseSimRoomResult {
     pendingSendsRef.current = [];
     streamingRef.current = false;
     streamingSpeakerRef.current = null;
+    draftMsgIdsRef.current = [];
 
     let cancelled = false;
     // 指数退避重连：1s/2s/4s/8s… 上限 10s；仅在房间仍存在、组件未卸载时尝试
@@ -124,6 +129,8 @@ export function useSimRoomSocket(room: SimRoomDetail | null): UseSimRoomResult {
     let reconnectDelay = 1000;
     // 模型未配置仅提示一次，避免重连时反复弹 toast。
     let modelWarned = false;
+    // 本次 connect 是否为断线重连：重连成功后需与后端重新对齐历史消息
+    let reconnecting = false;
 
     const scheduleReconnect = () => {
       if (cancelled || !roomId || reconnectTimer) return;
@@ -132,8 +139,22 @@ export function useSimRoomSocket(room: SimRoomDetail | null): UseSimRoomResult {
       reconnectTimer = setTimeout(() => {
         reconnectTimer = null;
         if (cancelled || !roomId) return;
+        reconnecting = true;
         void connect();
       }, delay);
+    };
+
+    // 重连成功后按后端最新状态对齐消息列表：断线时本地已回滚未定稿片段，
+    // 而后端可能已落库部分消息，重新拉取可消除「UI 与 DB 不一致」。
+    const resyncMessages = async () => {
+      // 拉取期间新产生的本地临时消息（id 比 marker 更小的负数）需保留，避免覆盖新流式内容
+      const marker = msgIdRef.current;
+      const detail = await getSimRoom(roomId);
+      if (cancelled || !detail) return;
+      setMessages((prev) => [...(detail.messages ?? []), ...prev.filter((m) => m.id < marker)]);
+      setParticipants(detail.participants ?? []);
+      setBranches(detail.branches ?? []);
+      setRoundCount(detail.roundCount ?? 0);
     };
 
     const connect = async () => {
@@ -161,6 +182,11 @@ export function useSimRoomSocket(room: SimRoomDetail | null): UseSimRoomResult {
         setConnected(true);
         // 连接成功：重置退避，后续若再次断开从 1s 起算
         reconnectDelay = 1000;
+        if (reconnecting) {
+          reconnecting = false;
+          // 断线重连成功：与后端对齐历史消息（断线时本地已回滚未定稿片段）
+          void resyncMessages();
+        }
         if (modelConfig) {
           ws.send(JSON.stringify({ type: 'config', modelConfig }));
         }
@@ -203,8 +229,11 @@ export function useSimRoomSocket(room: SimRoomDetail | null): UseSimRoomResult {
           } else {
             streamingSpeakerRef.current = speaker;
             const isScene = speaker === '场景';
+            const draftId = nextMsgId();
+            // 标记为「本轮未定稿」，断线时回滚
+            draftMsgIdsRef.current.push(draftId);
             msgs.push({
-              id: nextMsgId(),
+              id: draftId,
               senderType: 'system',
               senderLabel: speaker,
               content: tokenText,
@@ -215,10 +244,13 @@ export function useSimRoomSocket(room: SimRoomDetail | null): UseSimRoomResult {
         });
       } else if (type === 'turn_done') {
         streamingRef.current = false;
+        // 本轮已定稿（后端已落库），不再参与断线回滚
+        draftMsgIdsRef.current = [];
         setStreaming(false);
         setRoundCount(typeof msg.roundCount === 'number' ? msg.roundCount : 0);
       } else if (type === 'auto_end' || type === 'end') {
         streamingRef.current = false;
+        draftMsgIdsRef.current = [];
         setStreaming(false);
         // end/auto_end 事件均携带真实轮数，保留展示（不归零）
         if (typeof msg.roundCount === 'number') {
@@ -233,6 +265,8 @@ export function useSimRoomSocket(room: SimRoomDetail | null): UseSimRoomResult {
       } else if (type === 'error') {
         // 错误必须展示给用户，不能静默
         streamingRef.current = false;
+        // 错误是本轮的终态：已展示的片段连同下方 ⚠ 提示一起保留，不再参与断线回滚
+        draftMsgIdsRef.current = [];
         setStreaming(false);
         setBranching(false);
         const errorText = typeof msg.message === 'string' ? msg.message : '模拟房间出错，请重试';
@@ -271,6 +305,14 @@ export function useSimRoomSocket(room: SimRoomDetail | null): UseSimRoomResult {
       streamingSpeakerRef.current = null;
       setStreaming(false);
       setBranching(false);
+      // 回滚本轮未定稿的流式片段：后端未走完本轮（无 turn_done/end），
+      // 这些内容多半没有落库，留在 UI 上会与 DB 不一致；重连成功后再按后端状态对齐。
+      const drafts = draftMsgIdsRef.current;
+      draftMsgIdsRef.current = [];
+      if (drafts.length > 0) {
+        const dropped = new Set(drafts);
+        setMessages((prev) => prev.filter((m) => !dropped.has(m.id)));
+      }
       // 断线后自动重连（指数退避）
       scheduleReconnect();
     };
@@ -282,6 +324,7 @@ export function useSimRoomSocket(room: SimRoomDetail | null): UseSimRoomResult {
       setStreaming(false);
       setBranching(false);
       // onerror 必随后触发 onclose，重连统一在 onclose 中调度，避免重复
+      // 未定稿片段的回滚同样统一在 onclose 处理
     };
     wsRef.current = ws;
     };

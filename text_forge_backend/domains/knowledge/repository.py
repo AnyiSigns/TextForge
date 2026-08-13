@@ -10,6 +10,15 @@ from shared.redis import cached_rag_search, set_rag_cache
 logger = get_logger(__name__)
 
 
+def _escape_like(text: str) -> str:
+    """转义 LIKE/ILIKE 元字符（% _ \）。
+
+    PostgreSQL 的 LIKE/ILIKE 默认转义符为反斜杠，故 \\、\\%、\\_ 可分别匹配
+    字面量 \\、%、_，避免用户输入中的元字符被当作通配符（A20b）。
+    """
+    return text.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
+
+
 class VectorRepository:
     """向量检索仓储。"""
 
@@ -55,14 +64,18 @@ class VectorRepository:
 
         stmt = (
             select(
-                Chunk,
+                Chunk.doc_id,
+                Chunk.content,
                 Document.file_name.label("doc_title"),
                 Document.author.label("doc_author"),
-                Chunk.content.label("content"),
                 Chunk.embedding.cosine_distance(query_embedding).label("distance"),
             )
             .join(Document, Chunk.doc_id == Document.id)
             .where(Document.scope == "public")
+            .where(Chunk.embedding.isnot(None))
+            # 混维向量共存：按查询向量维度过滤，避免 cosine_distance 报
+            # different vector dimensions（A29，pgvector 支持 length()）。
+            .where(func.length(Chunk.embedding) == len(query_embedding))
         )
 
         if rag_filter.get("doc_ids"):
@@ -74,7 +87,9 @@ class VectorRepository:
         if rag_filter.get("author_ids"):
             stmt = stmt.where(Document.author.in_(rag_filter["author_ids"]))
         if rag_filter.get("sample"):
-            stmt = stmt.where(Document.file_name.ilike(f"%{rag_filter['sample']}%"))
+            stmt = stmt.where(
+                Document.file_name.ilike(f"%{_escape_like(rag_filter['sample'])}%")
+            )
 
         stmt = stmt.order_by(Chunk.embedding.cosine_distance(query_embedding)).limit(
             top_k
@@ -83,10 +98,14 @@ class VectorRepository:
         rows = result.all()
         items = []
         for row in rows:
-            distance = float(row.distance) if row.distance is not None else 0.0
+            # NULL 向量（无 embedding 的存量切片）距离恒为最高相关度，
+            # 应跳过而非误判为最相关（A20）。
+            if row.distance is None:
+                continue
+            distance = float(row.distance)
             items.append(
                 {
-                    "doc_id": row.Chunk.doc_id,
+                    "doc_id": row.doc_id,
                     "doc_title": row.doc_title,
                     "doc_author": row.doc_author,
                     "content": row.content,
@@ -133,13 +152,13 @@ class VectorRepository:
         """
         stmt = (
             select(
-                Chunk,
+                Chunk.doc_id,
                 Document.file_name.label("doc_title"),
                 Document.author.label("doc_author"),
                 Chunk.content.label("content"),
             )
             .join(Document, Chunk.doc_id == Document.id)
-            .where(Document.scope == "public", Chunk.content.ilike(f"%{query}%"))
+            .where(Document.scope == "public", Chunk.content.ilike(f"%{_escape_like(query)}%"))
         )
 
         if rag_filter.get("doc_ids"):
@@ -151,7 +170,9 @@ class VectorRepository:
         if rag_filter.get("author_ids"):
             stmt = stmt.where(Document.author.in_(rag_filter["author_ids"]))
         if rag_filter.get("sample"):
-            stmt = stmt.where(Document.file_name.ilike(f"%{rag_filter['sample']}%"))
+            stmt = stmt.where(
+                Document.file_name.ilike(f"%{_escape_like(rag_filter['sample'])}%")
+            )
 
         stmt = stmt.order_by(func.length(Chunk.content)).limit(top_k)
         result = await self.session.execute(stmt)
@@ -159,7 +180,7 @@ class VectorRepository:
         for row in result.all():
             items.append(
                 {
-                    "doc_id": row.Chunk.doc_id,
+                    "doc_id": row.doc_id,
                     "doc_title": row.doc_title,
                     "doc_author": row.doc_author,
                     "content": row.content,

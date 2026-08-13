@@ -71,7 +71,7 @@ async def logout(
     await user_serve.token_repo.delete_user_and_jti(user_id, jti)
     await redis_client.srem(f"refresh_token_{user_id}", refresh_token)
     # access token 黑名单：jti → 黑名单，TTL 取 access 剩余有效期（默认 15 分钟）
-    access_token = request.access_token
+    access_token = body.access_token
     if access_token:
         at_payload = verify_token(access_token)
         at_jti = at_payload.get("jti") if at_payload else None
@@ -142,7 +142,7 @@ async def resend_verify(
     """重新发送验证邮件（仅限已注册未验证的邮箱，防止对任意邮箱轰炸）。"""
     user = await user_serve.user_repo.query_user_email(request.email)
     if not user:
-        raise HTTPException(status_code=400, detail="该邮箱尚未注册")
+        raise HTTPException(status_code=400, detail="验证邮件发送失败或邮箱未注册，请检查邮箱地址")
     if user.is_verified:
         raise HTTPException(status_code=400, detail="该邮箱已验证，无需重复验证")
     if await verification.is_rate_limited(request.email):
@@ -241,4 +241,4 @@ async def user_login(
         pass
     user_resp = UserResponse.model_validate(user)
     _set_refresh_cookie(response, refresh_token)
-    return TokenRes(access_token=access_token, refresh_token=refresh_token, user=user_resp)  # type: ignore
+    return TokenRes(access_token=access_token, user=user_resp)

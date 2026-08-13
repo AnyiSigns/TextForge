@@ -53,6 +53,13 @@ export function MapCanvas() {
     characterPlacements,
   } = useWorldMap(containerRef);
 
+  // 地点索引：父链回溯按 id 直接命中，避免每层 find 造成 O(n²)
+  const locationById = useMemo(() => {
+    const map = new Map<number, Location>();
+    for (const loc of allLocations) map.set(loc.id, loc);
+    return map;
+  }, [allLocations]);
+
   const maxDepth = useMemo(() => {
     let max = 0;
     for (const loc of allLocations) {
@@ -60,13 +67,13 @@ export function MapCanvas() {
       let current: Location | null = loc;
       while (current != null && current.parentId != null) {
         d++;
-        current = allLocations.find((l) => l.id === current!.parentId) ?? null;
+        current = locationById.get(current.parentId) ?? null;
         if (d > 20) break;
       }
       if (d > max) max = d;
     }
     return max;
-  }, [allLocations]);
+  }, [allLocations, locationById]);
 
   const mismatchInfo = useMemo(() => {
     if (!selectedEventId || !focusedLocation) return null;
@@ -75,21 +82,20 @@ export function MapCanvas() {
 
     if (event.locationId === focusedLocation.id) return null;
 
-    let current: Location | null = allLocations.find((l) => l.id === event.locationId) ?? null;
+    let current: Location | null = locationById.get(event.locationId) ?? null;
     while (current) {
       if (current.id === focusedLocation.id) return null;
       if (!current.parentId) break;
-      const pid = current.parentId;
-      current = allLocations.find((l) => l.id === pid) ?? null;
+      current = locationById.get(current.parentId) ?? null;
     }
 
-    const eventLoc = allLocations.find((l) => l.id === event.locationId);
+    const eventLoc = locationById.get(event.locationId);
     return {
       eventTitle: event.title,
       locationName: eventLoc?.name ?? '未知地点',
       locationId: event.locationId,
     };
-  }, [selectedEventId, focusedLocation, allSceneEvents, allLocations]);
+  }, [selectedEventId, focusedLocation, allSceneEvents, locationById]);
 
   const characterPositions = useMemo(() => {
     const map = new Map<number, { x: number; y: number }>();

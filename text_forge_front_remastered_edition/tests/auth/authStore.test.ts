@@ -43,10 +43,9 @@ describe('authStore', () => {
     vi.clearAllMocks();
   });
 
-  it('登录写入 accessToken/refreshToken 并设置登录标志', async () => {
+  it('登录写入 accessToken 并设置登录标志（refreshToken 由 HttpOnly cookie 下发，登录响应不再携带）', async () => {
     vi.mocked(authApi.loginApi).mockResolvedValue({
       access_token: 'at',
-      refresh_token: 'rt',
       token_type: 'bearer',
       user,
     });
@@ -55,8 +54,9 @@ describe('authStore', () => {
 
     const s = useAuthStore.getState();
     expect(s.accessToken).toBe('at');
-    expect(s.refreshToken).toBe('rt');
     expect(s.isAuthenticated).toBe(true);
+    // refresh token 由后端 HttpOnly cookie 下发，登录不写 refreshToken（会话刷新时由 cookie 换取）
+    expect(s.refreshToken).toBeNull();
     // 真实 refresh token 由后端 HttpOnly cookie 下发，前端只维护非敏感登录标志
     expect(setLoginFlag).toHaveBeenCalled();
   });

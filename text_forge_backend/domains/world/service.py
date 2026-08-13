@@ -4,10 +4,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config.logging import get_logger
 from shared.pagination import PageParams, PageResult
 
+from .constants import normalize_foreshadowing_status, normalize_plot_thread_status
 from .derived_sync import schedule_recompute
 from .repository import WorldRepository
 
 logger = get_logger(__name__)
+
+
+def _normalize_status(data: dict, normalizer) -> dict:
+    """写入前把 status 中文别名归一化为英文枚举（REST 与 agent 工具口径一致）。
+
+    Args:
+        data: 待写入字段字典。
+        normalizer: 对应实体的状态归一化函数。
+
+    Returns:
+        原字典（就地归一化 status 后返回）。
+    """
+    if data.get("status"):
+        data["status"] = normalizer(data["status"])
+    return data
 
 
 class WorldService:
@@ -31,9 +47,6 @@ class WorldService:
         items, total = await self.repo.list_locations_page(book_id, offset=page_params.offset, limit=page_params.limit)
         return PageResult(items=items, total=total, page=page_params.page, page_size=page_params.page_size)
 
-    async def list_locations(self, book_id: int) -> list[dict]:
-        return await self.repo.list_locations(book_id)
-
     async def create_location(self, book_id: int, data: dict):
         return await self.repo.create_location(book_id, data)
 
@@ -46,9 +59,6 @@ class WorldService:
     async def list_scene_events_page(self, book_id: int, page_params: PageParams) -> PageResult:
         items, total = await self.repo.list_scene_events_page(book_id, offset=page_params.offset, limit=page_params.limit)
         return PageResult(items=items, total=total, page=page_params.page, page_size=page_params.page_size)
-
-    async def list_scene_events(self, book_id: int) -> list[dict]:
-        return await self.repo.list_scene_events(book_id)
 
     async def create_scene_event(self, book_id: int, data: dict):
         item = await self.repo.create_scene_event(book_id, data)
@@ -68,16 +78,17 @@ class WorldService:
         items, total = await self.repo.list_foreshadowings_page(book_id, offset=page_params.offset, limit=page_params.limit, status=status)
         return PageResult(items=items, total=total, page=page_params.page, page_size=page_params.page_size)
 
-    async def list_foreshadowings(self, book_id: int, status: str | None = None) -> list[dict]:
-        return await self.repo.list_foreshadowings(book_id, status=status)
-
     async def create_foreshadowing(self, book_id: int, data: dict):
-        item = await self.repo.create_foreshadowing(book_id, data)
+        item = await self.repo.create_foreshadowing(
+            book_id, _normalize_status(data, normalize_foreshadowing_status)
+        )
         schedule_recompute(book_id)
         return await self._refresh_item(item)
 
     async def update_foreshadowing(self, item_id: int, book_id: int, data: dict):
-        item = await self.repo.update_foreshadowing(item_id, book_id, data)
+        item = await self.repo.update_foreshadowing(
+            item_id, book_id, _normalize_status(data, normalize_foreshadowing_status)
+        )
         schedule_recompute(book_id)
         return await self._refresh_item(item)
 
@@ -89,16 +100,17 @@ class WorldService:
         items, total = await self.repo.list_plot_threads_page(book_id, offset=page_params.offset, limit=page_params.limit)
         return PageResult(items=items, total=total, page=page_params.page, page_size=page_params.page_size)
 
-    async def list_plot_threads(self, book_id: int) -> list[dict]:
-        return await self.repo.list_plot_threads(book_id)
-
     async def create_plot_thread(self, book_id: int, data: dict):
-        item = await self.repo.create_plot_thread(book_id, data)
+        item = await self.repo.create_plot_thread(
+            book_id, _normalize_status(data, normalize_plot_thread_status)
+        )
         schedule_recompute(book_id)
         return await self._refresh_item(item)
 
     async def update_plot_thread(self, item_id: int, book_id: int, data: dict):
-        item = await self.repo.update_plot_thread(item_id, book_id, data)
+        item = await self.repo.update_plot_thread(
+            item_id, book_id, _normalize_status(data, normalize_plot_thread_status)
+        )
         schedule_recompute(book_id)
         return await self._refresh_item(item)
 

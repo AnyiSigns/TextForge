@@ -6,6 +6,7 @@
 - 情节线 end_chapter_id = 标记完结的场景事件所在章节，status 联动 completed
 - 伏笔 planted_at_chapter_id = 关联埋下事件（related_event_id）所在章节
 - 伏笔 resolved_at_chapter_id = 标记揭示的场景事件所在章节，status 联动 resolved
+- status 为 paused / abandoned 的手工状态不参与联动（见 _MANUAL_STATUSES）
 
 场景事件（SceneEvent）增删改后调用 recompute_derived 同步这些派生列。
 """
@@ -21,6 +22,10 @@ from models.book import Foreshadowing, PlotThread, SceneEvent
 from shared.database import db_manager
 
 logger = get_logger(__name__)
+
+# 手工状态豁免：paused / abandoned 表达「作者主动暂停或废弃」，大纲无法表达该语义，
+# 重算时保留不覆盖；其余状态仍完全由大纲派生（completed/active、resolved/planted）。
+_MANUAL_STATUSES = ("paused", "abandoned")
 
 
 async def _load_scene_events(session: AsyncSession, book_id: int) -> list[SceneEvent]:
@@ -80,8 +85,10 @@ async def _sync_plot_threads(
             t.end_chapter_id = completed[-1].chapter_id
         else:
             t.end_chapter_id = None
-        # 状态完全由大纲派生：有完结场景 → completed，否则 active
-        t.status = "completed" if completed else "active"
+        # 状态由大纲派生：有完结场景 → completed，否则 active；
+        # 手工置为 paused/abandoned 的情节线保留原状态，不被派生覆盖。
+        if t.status not in _MANUAL_STATUSES:
+            t.status = "completed" if completed else "active"
 
 
 async def _sync_foreshadowings(
@@ -117,8 +124,10 @@ async def _sync_foreshadowings(
             f.resolved_at_chapter_id = reveal[-1].chapter_id
         else:
             f.resolved_at_chapter_id = None
-        # 状态完全由大纲派生：有揭示场景 → resolved，否则 planted
-        f.status = "resolved" if reveal else "planted"
+        # 状态由大纲派生：有揭示场景 → resolved，否则 planted；
+        # 手工置为 paused/abandoned 的伏笔保留原状态，不被派生覆盖。
+        if f.status not in _MANUAL_STATUSES:
+            f.status = "resolved" if reveal else "planted"
 
 
 async def recompute_derived(session: AsyncSession, book_id: int) -> None:

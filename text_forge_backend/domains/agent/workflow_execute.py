@@ -252,12 +252,14 @@ async def _prepare_node_rag(
     if not query:
         return None, rag_filter, 0
     top_k = int(node_def.get("rag_top_k") or 3)
+    # 无论是否生成向量，都将 query 写入 rag_filter，
+    # 供后续向量检索与全文回退（embedding 为空时）共用（S15）。
+    rag_filter["query"] = query
 
     llm = ModelFactory(model_config)
     embedding = await llm.embedding.aembed_query(query)
     if not embedding:
         return None, rag_filter, top_k
-    rag_filter["query"] = query
     return embedding, rag_filter, top_k
 
 
@@ -281,11 +283,19 @@ async def _search_node_rag(
     from domains.knowledge.repository import VectorRepository
 
     repo = VectorRepository(session)
-    items = await repo.search_external_books(
-        query_embedding=embedding,
-        rag_filter=rag_filter,
-        top_k=top_k,
-    )
+    if embedding is None:
+        # 无 embedding（配置缺失/生成空向量）→ 回退全文检索，避免节点 RAG 静默无结果（S15）。
+        items = await repo.search_external_books_fulltext(
+            query=rag_filter.get("query", ""),
+            rag_filter=rag_filter,
+            top_k=top_k,
+        )
+    else:
+        items = await repo.search_external_books(
+            query_embedding=embedding,
+            rag_filter=rag_filter,
+            top_k=top_k,
+        )
     if not items:
         return ""
     return _format_external_documents(
@@ -371,9 +381,10 @@ async def execute_node(
                 except Exception as exc:
                     logger.warning(f"构建章节目标上下文失败: {exc}")
                     chapter_target_text = ""
-            # 节点级 RAG：embedding 已在会话外算好，此处仅做向量检索，
-            # 检索结果以外部文档块注入节点上下文
-            if rag_filter and rag_embedding:
+            # 节点级 RAG：embedding 已在会话外算好，此处做向量检索或全文回退
+            # （embedding 为空向量时 _search_node_rag 内部自动回退全文，故以
+            # rag_top_k>0 作为是否检索的判定，而非依赖 rag_embedding 非空）。
+            if rag_filter and rag_top_k:
                 try:
                     node_rag_text = await _search_node_rag(
                         rag_embedding, rag_filter, rag_top_k, session

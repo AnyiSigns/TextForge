@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState, useRef, use } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Save } from 'lucide-react';
 import Link from 'next/link';
@@ -16,15 +16,17 @@ import {
   type Connection,
   type Node,
   type Edge,
+  type ReactFlowInstance,
   MarkerType,
   BackgroundVariant,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import * as workflowApi from '@/shared/api/workflows';
-import type { Workflow, WorkflowNode as WfNode } from '@/shared/api/workflows';
+import type { Workflow, WorkflowNode as WfNode, WorkflowEdge as WfEdge } from '@/shared/api/workflows';
 import { RoleNode } from '../components/RoleNode';
 import { NodePalette } from '../components/NodePalette';
 import { InspectorPanel } from '../components/InspectorPanel';
+import { getLayer } from '../executorMeta';
 
 const nodeTypes = { roleNode: RoleNode };
 
@@ -47,13 +49,16 @@ function wfNodeToFlowNode(n: WfNode): Node {
   };
 }
 
-function getLayer(executor: string, label: string): 'decision' | 'execution' | 'audit' {
-  if (executor === 'audit') return 'audit';
-  if (executor === 'router') return 'decision';
-  if (executor === 'tool') return 'execution';
-  // main 档位无专用分支，按 label 中文关键词兜底推断层级
-  if (label.includes('策划') || label.includes('分镜')) return 'decision';
-  return 'execution';
+// workflow 连线 → ReactFlow 连线（样式集中于此，避免初始化与同步 effect 两处重复定义）
+function wfEdgeToFlowEdge(e: WfEdge): Edge {
+  return {
+    id: `${e.from}->${e.to}`,
+    source: e.from,
+    target: e.to,
+    type: 'smoothstep',
+    style: { stroke: 'var(--foreground)', strokeWidth: 1, opacity: 0.25 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--foreground)', width: 8, height: 8 },
+  };
 }
 
 function layoutNodes(nodes: Node[], edges: Edge[]): Node[] {
@@ -144,30 +149,24 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
     }).catch(() => {});
   }, [id, isNew]);
 
-  const initialNodes = (workflow.nodes ?? []).map(wfNodeToFlowNode);
-  const initialEdges = (workflow.edges ?? []).map((e) => ({
-    id: `${e.from}->${e.to}`,
-    source: e.from,
-    target: e.to,
-    type: 'smoothstep',
-    style: { stroke: 'var(--foreground)', strokeWidth: 1, opacity: 0.25 },
-    markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--foreground)', width: 8, height: 8 },
-  }));
+  // 初始节点/连线（含自动布局）用 useMemo 缓存：避免每轮渲染都重算映射与拓扑排布，
+  // 其值仅在 useNodesState/useEdgesState 首次挂载时生效，后续同步由下方 effect 负责。
+  const initialFlow = useMemo(() => {
+    const flowNodes = (workflow.nodes ?? []).map(wfNodeToFlowNode);
+    const flowEdges = (workflow.edges ?? []).map(wfEdgeToFlowEdge);
+    return { nodes: layoutNodes(flowNodes, flowEdges), edges: flowEdges };
+  }, [workflow.nodes, workflow.edges]);
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(layoutNodes(initialNodes, initialEdges));
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialFlow.nodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialFlow.edges);
+
+  // ReactFlow 实例：onDrop 需用 screenToFlowPosition 把屏幕坐标换算为画布坐标
+  const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
 
   useEffect(() => {
     if (!loadedRef.current) return;
     const flowNodes = (workflow.nodes ?? []).map(wfNodeToFlowNode);
-    const flowEdges = (workflow.edges ?? []).map((e) => ({
-      id: `${e.from}->${e.to}`,
-      source: e.from,
-      target: e.to,
-      type: 'smoothstep',
-      style: { stroke: 'var(--foreground)', strokeWidth: 1, opacity: 0.25 },
-      markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--foreground)', width: 8, height: 8 },
-    }));
+    const flowEdges = (workflow.edges ?? []).map(wfEdgeToFlowEdge);
     if (laidOutIdRef.current !== id) {
       // 首次加载此工作流（或 id 变化）：整体布局并重置坐标为自动排布。
       setNodes(layoutNodes(flowNodes, flowEdges));
@@ -205,6 +204,32 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
     [],
   );
 
+  // 画布删除节点（Delete/Backspace 或 API 删除）必须回写 workflow：
+  // 否则 handleSave 仍以 workflow 为准会把已删节点重新写回，且后续 updateNode
+  // 触发同步 effect 时会把被删节点以 (0,0) 坐标「复活」到画布上。
+  const handleNodesDelete = useCallback((deleted: Node[]) => {
+    const removed = new Set(deleted.map((n) => n.id));
+    if (removed.size === 0) return;
+    setWorkflow((w) => ({
+      ...w,
+      nodes: w.nodes.filter((n) => !removed.has(n.id)),
+      // 与画布一致：删除节点时其相连的连线一并移除
+      edges: w.edges.filter((e) => !removed.has(e.from) && !removed.has(e.to)),
+    }));
+    setSelectedNodeId((cur) => (cur && removed.has(cur) ? null : cur));
+  }, []);
+
+  // 画布删除连线同样回写 workflow。用 from->to 组合键匹配：
+  // onConnect 经 addEdge 生成的边 id 由 ReactFlow 内部生成，与 wfEdgeToFlowEdge 的 id 不同。
+  const handleEdgesDelete = useCallback((deleted: Edge[]) => {
+    const removed = new Set(deleted.map((e) => `${e.source}->${e.target}`));
+    if (removed.size === 0) return;
+    setWorkflow((w) => ({
+      ...w,
+      edges: w.edges.filter((e) => !removed.has(`${e.from}->${e.to}`)),
+    }));
+  }, []);
+
   const handleDragStart = useCallback(
     (event: React.DragEvent, template: {
       id: string; label: string; executor: string; systemPrompt: string; contextFields: string[];
@@ -229,7 +254,11 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
         systemPrompt: template.systemPrompt,
         contextFields: template.contextFields,
       };
-      const position = { x: event.clientX - 280, y: event.clientY - 200 };
+      // 屏幕坐标 → 画布坐标（考虑画布缩放与平移）；实例未就绪时按侧栏/顶栏偏移兜底
+      const instance = reactFlowInstanceRef.current;
+      const position = instance
+        ? instance.screenToFlowPosition({ x: event.clientX, y: event.clientY })
+        : { x: event.clientX - 280, y: event.clientY - 200 };
       const flowNode: Node = {
         id: nodeId,
         type: 'roleNode',
@@ -265,7 +294,24 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
     setSaving(true);
     try {
       const name = workflow.name.trim() || '未命名工作流';
-      const saved = await workflowApi.saveWorkflow({ ...workflow, name });
+      // 保存以画布（ReactFlow）状态为权威：节点/连线的「存在与否」按画布为准，
+      // 节点的业务字段（systemPrompt/contextFields/ragFilter 等）仍取 workflow 中的数据。
+      // 这样即便某类删除未回写 workflow，也不会把已删节点/连线重新写回后端。
+      const wfNodeById = new Map(workflow.nodes.map((n) => [n.id, n]));
+      const payloadNodes: WfNode[] = nodes.map((n) => {
+        const prev = wfNodeById.get(n.id);
+        if (prev) return prev;
+        // 兜底：画布上存在但 workflow 里缺失的节点（理论不会出现），按画布 data 还原最小信息
+        const data = n.data as { label?: string; executor?: WfNode['executor'] };
+        return { id: n.id, label: data.label || '未命名节点', executor: data.executor || 'main' };
+      });
+      const payloadEdges: WfEdge[] = edges.map((e) => ({ from: e.source, to: e.target }));
+      const saved = await workflowApi.saveWorkflow({
+        ...workflow,
+        name,
+        nodes: payloadNodes,
+        edges: payloadEdges,
+      });
       // 内置模板（workflows 表 builtin=true）不可原地修改：后端 put_workflow
       // 会另存为用户副本并返回新 id，此处需跳转到副本并提示，否则 URL 与状态脱节。
       const copied = saved.id !== workflow.id;
@@ -318,8 +364,11 @@ export default function WorkflowEditorPage({ params }: { params: Promise<{ id: s
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
+            onNodesDelete={handleNodesDelete}
+            onEdgesDelete={handleEdgesDelete}
             onConnect={onConnect}
             onNodeClick={onNodeClick}
+            onInit={(instance) => { reactFlowInstanceRef.current = instance; }}
             nodeTypes={nodeTypes}
             fitView
             fitViewOptions={{ padding: 0.3 }}

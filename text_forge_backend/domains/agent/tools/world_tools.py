@@ -155,6 +155,9 @@ def _build_world_tools(session_factory, model_config: dict | None = None):
                 return await service.search(query=query, api_key=api_key, top_k=top_k, use_cache=True)
         async with session_factory() as session:
             vector_repo = VectorRepository(session)
+            rag_filter = {"query": query}
+            if doc_ids:
+                rag_filter["doc_ids"] = [str(d) for d in doc_ids]
             embedding = None
             if model_config:
                 try:
@@ -163,13 +166,16 @@ def _build_world_tools(session_factory, model_config: dict | None = None):
                 except Exception as exc:
                     logger.warning(f"search embedding 失败: {exc}")
             if embedding is None:
-                return []
-            rag_filter = {"query": query}
-            if doc_ids:
-                rag_filter["doc_ids"] = [str(d) for d in doc_ids]
-            # 注意：文档库为全局公开库（Document 无 book_id 列，检索范围不受当前书籍影响），
-            # 如需限定范围请使用 doc_ids。
-            items = await vector_repo.search_external_books(query_embedding=embedding, rag_filter=rag_filter, top_k=top_k)
+                # 无 embedding（配置缺失/生成空向量）→ 回退全文检索，避免直接返回空结果（S15）。
+                items = await vector_repo.search_external_books_fulltext(
+                    query=query, rag_filter=rag_filter, top_k=top_k
+                )
+            else:
+                # 注意：文档库为全局公开库（Document 无 book_id 列，检索范围不受当前书籍影响），
+                # 如需限定范围请使用 doc_ids。
+                items = await vector_repo.search_external_books(
+                    query_embedding=embedding, rag_filter=rag_filter, top_k=top_k
+                )
             return [
                 {
                     "source": "docs",

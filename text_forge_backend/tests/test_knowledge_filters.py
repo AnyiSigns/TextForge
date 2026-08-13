@@ -152,7 +152,7 @@ async def test_search_external_books_returns_score_from_distance():
         def all(self):
             return [
                 SimpleNamespace(
-                    Chunk=SimpleNamespace(doc_id=1),
+                    doc_id=1,
                     doc_title="设定集",
                     doc_author="作者A",
                     content="世界观",

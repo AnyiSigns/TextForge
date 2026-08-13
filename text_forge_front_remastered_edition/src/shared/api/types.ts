@@ -209,17 +209,6 @@ export interface AgentMemory {
   distance?: number;
 }
 
-export interface KnowledgeDoc {
-  id: number;
-  name: string;
-  status: 'indexing' | 'indexed' | 'failed';
-  createdAt: string;
-  scope: 'personal' | 'public';
-  uploaderId?: string;
-  uploaderName?: string;
-  content?: string;
-}
-
 export interface SSEEvent {
   type: 'token' | 'agent_token' | 'agent_reasoning' | 'think_start' | 'agent_think_end' | 'tool_start' | 'tool_end' | 'progress' |
         'node_start' | 'node_stream' | 'node_end' | 'node_fail' | 'subgraph_start' |

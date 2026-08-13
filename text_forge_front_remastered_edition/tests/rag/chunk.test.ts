@@ -1,8 +1,8 @@
 // tests/rag/chunk.test.ts
-// RAG 文本分块纯函数测试：chunkDocument / lightSummary
-// 覆盖：短文本原样返回、段落保留、超长段标点处切分、重叠滑动、过短段落丢弃、兜底分支、摘要截断
+// RAG 文本分块纯函数测试：chunkDocument
+// 覆盖：短文本原样返回、段落保留、超长段标点处切分、重叠滑动、过短段落丢弃、兜底分支
 import { describe, expect, it } from 'vitest';
-import { chunkDocument, lightSummary } from '@/lib/rag/chunk';
+import { chunkDocument } from '@/lib/rag/chunk';
 
 describe('chunkDocument', () => {
   it('空文本返回硬上限截断的兜底片段', () => {
@@ -63,29 +63,5 @@ describe('chunkDocument', () => {
     for (const piece of out) {
       expect(piece.length).toBeLessThanOrEqual(600);
     }
-  });
-});
-
-describe('lightSummary', () => {
-  it('短文本原样返回并压缩空白', () => {
-    expect(lightSummary('  简单摘要。 ')).toBe('简单摘要。');
-  });
-
-  it('超过 maxChars 在标点处截断', () => {
-    const text = '甲'.repeat(100) + '。' + '乙'.repeat(100);
-    const out = lightSummary(text, 120);
-    expect(out.length).toBeLessThanOrEqual(121);
-    expect(out.endsWith('。')).toBe(true);
-  });
-
-  it('maxChars 前无标点时按硬截断', () => {
-    const text = '丙'.repeat(200);
-    const out = lightSummary(text, 120);
-    expect(out).toHaveLength(120);
-  });
-
-  it('自定义 maxChars 生效', () => {
-    const text = '丁'.repeat(50);
-    expect(lightSummary(text, 20)).toHaveLength(20);
   });
 });

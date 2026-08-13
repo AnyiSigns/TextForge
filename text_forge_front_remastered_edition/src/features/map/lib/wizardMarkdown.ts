@@ -612,7 +612,7 @@ export function parseStepJson(text: string, step: number): ParsedStepResult | nu
           description: asString(it.description),
           parentName: parent.name || undefined,
           parentRefId: parent.id,
-          level: parent.name || parent.id != null ? 2 : 1,
+          level: (parent.name || parent.id != null) ? 2 : 1,
         };
       });
     }

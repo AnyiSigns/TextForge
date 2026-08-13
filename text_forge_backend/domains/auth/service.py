@@ -84,10 +84,10 @@ class UserAuthService:
             user = await self.user_repo.query_user_email(email)
             if not user:
                 logger.info("用户不存在")
-                return None, None, None, "邮箱错误"
+                return None, None, None, "邮箱或密码错误"
             if not verify_pwd(pwd, user.hash_password):
                 logger.info("密码错误与数据库不一致")
-                return None, None, None, "密码错误"
+                return None, None, None, "邮箱或密码错误"
             if not user.is_verified:
                 logger.info("用户未验证邮箱")
                 return None, None, None, "邮箱未验证，请先验证邮箱"

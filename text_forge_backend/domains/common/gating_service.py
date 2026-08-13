@@ -9,6 +9,8 @@
 import json
 import re
 
+from pydantic import ValidationError
+
 from config.logging import get_logger
 from shared.utils import redact_sensitive
 
@@ -45,17 +47,6 @@ _EDITABLE_ARG = {
     OP_CHAPTER_DIFF: "unified_diff",
 }
 
-# 所有写操作默认都需审批；如需对某些操作放开，可在此置 False
-_OP_GATED = {
-    OP_CHAPTER_WRITE: True,
-    OP_CHAPTER_EDIT: True,
-    OP_CHAPTER_DIFF: True,
-    OP_ENTITY_CREATE: True,
-    OP_ENTITY_UPDATE: True,
-    OP_OUTLINE_CREATE: True,
-    OP_MEMORY_WRITE: True,
-}
-
 
 def resolve_operation(tool_name: str, args: dict | None) -> str | None:
     """把一次工具调用映射到写操作键；非写操作返回 None。
@@ -78,6 +69,9 @@ def resolve_operation(tool_name: str, args: dict | None) -> str | None:
 def is_gated(tool_name: str, args: dict | None) -> bool:
     """判断某次工具调用是否需要用户审批。
 
+    已登记的写操作一律需审批（_TOOL_OP / manage_memory 写模式即门控范围），
+    未登记的工具不拦截。
+
     Args:
         tool_name: 工具名。
         args: 工具入参。
@@ -85,10 +79,7 @@ def is_gated(tool_name: str, args: dict | None) -> bool:
     Returns:
         是否需要拦截等待用户确认。
     """
-    op = resolve_operation(tool_name, args)
-    if op is None:
-        return False
-    return _OP_GATED.get(op, False)
+    return resolve_operation(tool_name, args) is not None
 
 
 def build_preview(operation: str, tool_name: str, args: dict) -> dict:
@@ -105,8 +96,6 @@ def build_preview(operation: str, tool_name: str, args: dict) -> dict:
     if tool_name in ("write_chapter_content", "edit_chapter_content"):
         content = args.get("content") or args.get("new_text") or ""
         preview = f"章节ID={args.get('chapter_id')}\n{content[:8000]}"
-    elif tool_name == "write_workflow_candidate":
-        preview = f"章节ID={args.get('chapter_id')} 候选节点={args.get('node_id')}（从工作流结果写入，正文不在此预览）"
     elif tool_name == "apply_chapter_diff":
         preview = f"章节ID={args.get('chapter_id')}\n{args.get('unified_diff', '')[:800]}"
     elif tool_name == "create_entities":
@@ -171,13 +160,26 @@ class GatingService:
     def __init__(self, session_factory, model_config: dict | None = None):
         self._session_factory = session_factory
         self._model_config = model_config
+        # 工具表按实例缓存：一次节点执行内可能连续调用多个工具，
+        # 避免每次 _invoke 都重建全部工具（build_tools 会构造几十个 StructuredTool）。
+        # 不做模块级缓存：session_factory / model_config 随请求变化，
+        # 按实例缓存既省重建又不会跨请求串配置。
+        self._tools_cache: dict | None = None
+
+    def _get_tools(self) -> dict:
+        """构建（并缓存）工具名 → 工具实例映射。"""
+        if self._tools_cache is None:
+            from ..agent.tools_domain import build_tools
+
+            self._tools_cache = {
+                t.name: t
+                for t in build_tools(self._session_factory, model_config=self._model_config)
+            }
+        return self._tools_cache
 
     async def _invoke(self, tool_name: str, args: dict) -> dict:
         """安全调用工具，捕获异常转为结构化错误，避免门控节点因工具报错而崩溃。"""
-        from ..agent.tools_domain import build_tools
-
-        tools = {t.name: t for t in build_tools(self._session_factory, model_config=self._model_config)}
-        tool = tools.get(tool_name)
+        tool = self._get_tools().get(tool_name)
         if not tool:
             return {"error": f"工具不存在: {tool_name}"}
         try:
@@ -186,34 +188,29 @@ class GatingService:
             logger.error(f"[GatingService] 工具 {tool_name} 执行失败: {exc}", exc_info=True)
             # 缺参类错误：给出可操作提示，帮助模型下一轮直接取对参数，
             # 避免「漏参 → 报错 → 空转重试」死循环（尤其 read/write_chapter_content）。
-            try:
-                from pydantic import ValidationError
+            if isinstance(exc, ValidationError):
+                missing = [f"「{e.get('loc', ['?'])[-1]}」" for e in exc.errors() if e.get("type") == "missing"]
+                hint = f"工具 {tool_name} 缺少必填参数：{'、'.join(missing) or '未知字段'}。请直接给出这些参数的具体值，不要再猜测。"
+                if "chapter_id" in str(exc) and args.get("book_id"):
+                    # 附带当前书籍可用章节清单，让模型直接抄对 chapter_id
+                    try:
+                        from sqlalchemy import select
 
-                if isinstance(exc, ValidationError):
-                    missing = [f"「{e.get('loc', ['?'])[-1]}」" for e in exc.errors() if e.get("type") == "missing"]
-                    hint = f"工具 {tool_name} 缺少必填参数：{'、'.join(missing) or '未知字段'}。请直接给出这些参数的具体值，不要再猜测。"
-                    if "chapter_id" in str(exc) and args.get("book_id"):
-                        # 附带当前书籍可用章节清单，让模型直接抄对 chapter_id
-                        try:
-                            from sqlalchemy import select
+                        from models.book import Chapter, Volume
 
-                            from models.book import Chapter, Volume
-
-                            async with self._session_factory() as _s:
-                                rows = (await _s.execute(
-                                    select(Chapter.id, Chapter.title)
-                                    .join(Volume, Volume.id == Chapter.volume_id)
-                                    .where(Volume.book_id == args["book_id"])
-                                    .order_by(Chapter.sort_order, Chapter.id)
-                                )).all()
-                            if rows:
-                                chapter_list = "；".join(f"{cid}({title})" for cid, title in rows[:20])
-                                hint += f"\n当前书籍可用章节（chapter_id 从这些里选）：{chapter_list}"
-                        except Exception:
-                            pass
-                    return {"error": hint}
-            except ImportError:
-                pass
+                        async with self._session_factory() as _s:
+                            rows = (await _s.execute(
+                                select(Chapter.id, Chapter.title)
+                                .join(Volume, Volume.id == Chapter.volume_id)
+                                .where(Volume.book_id == args["book_id"])
+                                .order_by(Chapter.sort_order, Chapter.id)
+                            )).all()
+                        if rows:
+                            chapter_list = "；".join(f"{cid}({title})" for cid, title in rows[:20])
+                            hint += f"\n当前书籍可用章节（chapter_id 从这些里选）：{chapter_list}"
+                    except Exception:
+                        pass
+                return {"error": hint}
             return {"error": f"工具执行失败: {redact_sensitive(str(exc))}"}
 
     async def invoke(self, tool_name: str, args: dict) -> dict:

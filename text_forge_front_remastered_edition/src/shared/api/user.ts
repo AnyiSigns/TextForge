@@ -26,8 +26,8 @@ export async function sendCode(email?: string): Promise<void> {
 export async function uploadAvatar(file: File): Promise<{ avatar_url: string }> {
   const form = new FormData();
   form.append('file', file);
-  const { data } = await apiClient.post<{ avatar_url: string }>('/user/avatar', form, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  });
+  // 不显式设置 Content-Type：axios 对 FormData 会自动生成带 boundary 的 multipart 头，
+  // 手动覆盖会丢失 boundary 导致后端解析失败。
+  const { data } = await apiClient.post<{ avatar_url: string }>('/user/avatar', form);
   return data;
 }

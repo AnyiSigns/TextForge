@@ -11,6 +11,9 @@
 
 from __future__ import annotations
 
+import asyncio
+from types import SimpleNamespace
+
 import pytest
 from langchain_core.messages import AIMessage, AIMessageChunk
 from langgraph.checkpoint.memory import MemorySaver
@@ -268,3 +271,101 @@ async def test_nested_graph_chat_fast_path(monkeypatch):
     assert len(final["messages"]) == 2
     assert SUBGRAPH_NAMES == ("worldbuilding", "outlining", "drafting", "revising")
     assert isinstance(final["messages"][1].content, str) and len(final["messages"][1].content) > 0
+
+
+# ---------------------------------------------------------------------------
+# B1 回归：stream_agent 的 event_generator 必须正确解包 (ns, mode, data)，
+# 否则在 custom 分支引用未定义变量 mode/data 抛 NameError（整条 SSE 流崩溃）。
+# ---------------------------------------------------------------------------
+
+
+class _FakeRequest:
+    async def is_disconnected(self):
+        return False
+
+
+class _FakeSession:
+    def add(self, obj):
+        pass
+
+    async def commit(self):
+        pass
+
+
+class _FakeTool:
+    async def ainvoke(self, *args, **kwargs):
+        return None
+
+
+class _FakeGraph:
+    async def astream(self, state, config=None, stream_mode=None, subgraphs=False):
+        # 一条 custom 的 agent_token 事件：验证 event_generator 解包 (ns, mode, data)
+        yield ((), "custom", {"event": "agent_token", "token": "hi"})
+
+
+def _fake_build_user_agent_graph(*args, **kwargs):
+    return _FakeGraph()
+
+
+async def _fake_prepare_agent_state(*args, **kwargs):
+    # title 非「新对话」→ 跳过 _generate_title 的真实 LLM 调用
+    conv = SimpleNamespace(title="已有标题", id=1)
+    state = {"messages": [], "subgraph": None}
+    return conv, state, 0, "", ""
+
+
+async def _noop_async(*args, **kwargs):
+    return None
+
+
+@pytest.mark.asyncio
+async def test_stream_agent_sse_emits_event_without_nameerror(monkeypatch):
+    """B1 回归：stream_agent 必须产出自旋 SSE 事件且不抛 NameError。
+
+    通过 mock build_user_agent_graph 产出单条 (ns, mode, data) 三元组，
+    真实执行 event_generator 的 custom 事件消费路径（line 479 解包）：
+    断言流至少产出一个事件、且包含 agent_token 自定义事件。
+    """
+    from domains.agent import streaming as streaming_mod
+    from domains.agent.tools import feedback_tools
+    from schema.request.common import ChatRequest
+
+    monkeypatch.setattr(streaming_mod, "build_user_agent_graph", _fake_build_user_agent_graph)
+    monkeypatch.setattr(
+        streaming_mod,
+        "_acquire_thread_lock",
+        lambda tid: asyncio.sleep(0, result=(True, "k", "h")),
+    )
+    monkeypatch.setattr(streaming_mod, "_prepare_agent_state", _fake_prepare_agent_state)
+    monkeypatch.setattr(streaming_mod, "_renew_book_lock", _noop_async)
+    monkeypatch.setattr(streaming_mod, "_strip_api_key_from_checkpoint", _noop_async)
+    monkeypatch.setattr(streaming_mod, "_release_book_lock", _noop_async)
+    monkeypatch.setattr(streaming_mod, "_release_thread_lock", _noop_async)
+    monkeypatch.setattr(streaming_mod, "_auto_digest_if_due", _noop_async)
+    monkeypatch.setattr(
+        feedback_tools,
+        "_build_feedback_tools",
+        lambda *a, **k: {"proactive_suggestions": _FakeTool()},
+    )
+
+    body = ChatRequest(
+        thread_id="b1-regression",
+        message="hi",
+        model_config_data={"main_config": {"model_id": "x"}},
+    )
+    resp = await streaming_mod.stream_agent(
+        user_id=1,
+        thread_id="b1-regression",
+        body=body,
+        request=_FakeRequest(),
+        session=_FakeSession(),
+        _rl=None,
+    )
+    chunks = []
+    async for chunk in resp.body_iterator:
+        chunks.append(chunk)
+
+    assert chunks, "stream_agent 未产出任何 SSE 事件"
+    joined = "".join(chunks)
+    assert "agent_token" in joined, "未产出 agent_token 自定义事件"
+    assert "hi" in joined, "agent_token 事件未携带真实 token 内容"

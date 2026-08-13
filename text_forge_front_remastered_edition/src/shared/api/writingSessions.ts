@@ -1,7 +1,9 @@
 import { apiClient } from './client';
 import type { WritingSession, WritingStatsSummary } from './types';
 
-export async function createWritingSession(body: { book_id: number; chapter_id?: number; character_ids?: number[] }): Promise<WritingSession> {
+// 请求体统一用 camelCase：后端 WritingSessionCreateRequest 以 alias(bookId/chapterId/characterIds)
+// + populate_by_name 双向兼容，前端与其余接口保持一致的驼峰风格。
+export async function createWritingSession(body: { bookId: number; chapterId?: number; characterIds?: number[] }): Promise<WritingSession> {
   const { data } = await apiClient.post<WritingSession>('/writing-sessions/', body);
   return data;
 }

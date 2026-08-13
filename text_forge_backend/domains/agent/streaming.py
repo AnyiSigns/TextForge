@@ -479,6 +479,7 @@ async def stream_agent(
                             _step = _anext_task.result()
                         except StopAsyncIteration:
                             break
+                        ns, mode, data = _step
                         # 收到真实步骤/事件：重置单步空闲计时，并常驻推进下一轮
                         _step_start = time.monotonic()
                         _anext_task = asyncio.create_task(_ag_iter.__anext__())

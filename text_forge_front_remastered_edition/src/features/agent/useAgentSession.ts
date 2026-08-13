@@ -9,6 +9,11 @@ import { emitAgentOutlinesRefresh, emitAgentSessionsRefresh } from './agentEvent
 import { useStreamBuffer } from './sse/useStreamBuffer';
 import { createSSEHandler } from './sse/handleSSEEvent';
 
+// A52：个人库 RAG 注入超时（毫秒）。冷启动首次需从浏览器缓存/网络加载 30~320MB 模型，
+// 原 1000ms 必踩空；放宽到 8000ms 给模型预热时间。超时/失败均不阻断发送，
+// 回退为不带 personalRagResults 正常发送（而非报错中断）。
+const PERSONAL_RAG_TIMEOUT_MS = 8000;
+
 /**
  * Agent 会话生命周期 + 流式编排：抽取自原 useAgentSender 的 runAgentStream /
  * sendMessage / abort / resume。token 节流与 SSE 分发委托给 useStreamBuffer /
@@ -291,11 +296,12 @@ export function useAgentSession(opts: AgentSessionOptions) {
                     docIds: ragCfg.docIds.length ? ragCfg.docIds : undefined,
                   })
                   .catch(() => []),
-                new Promise<never[]>((resolve) => setTimeout(() => resolve([]), 1000)),
+                new Promise<never[]>((resolve) => setTimeout(() => resolve([]), PERSONAL_RAG_TIMEOUT_MS)),
               ]);
               if (ragHits.length > 0) {
                 personalRagResults = ragHits.map((h) => ({
-                  doc_name: h.docName,
+                  // A27：doc_name 同步截断到 200（对齐后端 schema 上限），避免过长触发 422
+                  doc_name: h.docName.slice(0, 200),
                   content: h.text,
                   score: h.score,
                 }));

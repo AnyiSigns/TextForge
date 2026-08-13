@@ -20,6 +20,9 @@ function escapeRegExp(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// 自定义推演输入上限（输入框 slice 与提交校验共用同一常量）
+const MAX_CUSTOM_LEN = 200;
+
 export function StoryFlow() {
   const {
     isOpen, currentSceneId, perspective, decisionChain, triggerChapterId,
@@ -75,8 +78,12 @@ export function StoryFlow() {
   const progressLabel = isEventMode
     ? (anchoredIndex >= 0 ? `事件 ${anchoredIndex + 1} / ${anchorEventIds.length} · ${currentNode?.title ?? ''}` : '剧情推演')
     : '自由推演';
+  // 后端 currentEventIndex 语义：当前正在推演的事件下标；事件全部推完时置为
+  // anchorEventIds.length（哨兵，见 story_flow/service.py）。所以「剩余事件数」应为
+  // 总数 - 当前下标（把仍在进行中的当前事件算作未完成）：停留在末事件时为 1，
+  // 只有推进到哨兵位才是 0，对应「推演已完整」文案。
   const remainingEvents = isEventMode && currentEventIndex >= 0
-    ? Math.max(0, anchorEventIds.length - 1 - currentEventIndex)
+    ? Math.max(0, anchorEventIds.length - currentEventIndex)
     : null;
 
   const isEnded = status === 'completed';
@@ -133,8 +140,8 @@ export function StoryFlow() {
   const handleCustomSubmit = () => {
     const text = customInput.trim();
     if (!text) return;
-    if (text.length > 200) {
-      toast.error('输入过长（上限 200 字）');
+    if (text.length > MAX_CUSTOM_LEN) {
+      toast.error(`输入过长（上限 ${MAX_CUSTOM_LEN} 字）`);
       return;
     }
     setCustomInput('');
@@ -429,7 +436,7 @@ export function StoryFlow() {
                 <div className="mt-4 flex items-center gap-2">
                   <input
                     value={customInput}
-                    onChange={(e) => setCustomInput(e.target.value.slice(0, 200))}
+                    onChange={(e) => setCustomInput(e.target.value.slice(0, MAX_CUSTOM_LEN))}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') handleCustomSubmit();
                     }}

@@ -58,3 +58,60 @@ def redact_sensitive(text: str) -> str:
         flags=re.IGNORECASE,
     )
     return result
+
+
+# 内网/保留域名后缀：容器与云环境常见的内部服务名，禁止作为外部模型服务地址
+_INTERNAL_HOST_SUFFIXES = (".local", ".localhost", ".internal", ".intranet", ".cluster.local")
+_INTERNAL_HOST_NAMES = ("localhost", "metadata", "metadata.google.internal")
+
+
+def is_public_http_url(url: str) -> bool:
+    """校验 URL 是否为「可对外访问的 http/https 地址」，用于阻断 SSRF。
+
+    拒绝：非 http/https 协议、无主机名、环回/私有/链路本地/保留网段 IP
+    （127.0.0.1、10.x、172.16-31.x、192.168.x、169.254.x、0.0.0.0、::1 等），
+    以及 localhost / *.local / *.internal 等内部域名。
+
+    仅做地址字面量校验，不做 DNS 解析，因此无法防御 DNS 重绑定；
+    对正常云厂商域名（api.openai.com、dashscope.aliyuncs.com 等）一律放行。
+
+    Args:
+        url: 待校验的地址。
+
+    Returns:
+        是否允许访问该地址。
+    """
+    import ipaddress
+    from urllib.parse import urlparse
+
+    if not url or not isinstance(url, str):
+        return False
+    try:
+        parsed = urlparse(url.strip())
+    except ValueError:
+        return False
+    if parsed.scheme not in ("http", "https"):
+        return False
+    host = (parsed.hostname or "").strip().lower().rstrip(".")
+    if not host:
+        return False
+    if host in _INTERNAL_HOST_NAMES or host.endswith(_INTERNAL_HOST_SUFFIXES):
+        return False
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        # 普通域名：无法在此判定，放行（云厂商 base_url 主体场景）
+        return True
+    # IPv4-mapped IPv6（如 ::ffff:127.0.0.1）按其 IPv4 地址判定
+    mapped = getattr(ip, "ipv4_mapped", None)
+    if mapped is not None:
+        ip = mapped
+    return not (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_multicast
+        or ip.is_unspecified
+    )
+

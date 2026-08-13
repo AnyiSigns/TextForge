@@ -63,19 +63,3 @@ export function chunkDocument(text: string): string[] {
   }
   return out.length ? out : [text.slice(0, HARD_MAX).trim()];
 }
-
-// 轻量摘要：从一段长文本取前几句/前若干字，作为向量检索的 query。
-// 零成本、不依赖模型——用于"自动搜"模式下把节点上下文压成检索问句。
-export function lightSummary(text: string, maxChars = 120): string {
-  const cleaned = text.replace(/\s+/g, ' ').trim();
-  if (cleaned.length <= maxChars) return cleaned;
-  const head = cleaned.slice(0, maxChars);
-  // 优先在标点处截断，避免半句
-  const cut = Math.max(
-    head.lastIndexOf('。'),
-    head.lastIndexOf('！'),
-    head.lastIndexOf('？'),
-    head.lastIndexOf('；'),
-  );
-  return (cut > maxChars * 0.5 ? head.slice(0, cut + 1) : head).trim();
-}

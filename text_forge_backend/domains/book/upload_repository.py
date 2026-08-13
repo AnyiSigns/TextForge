@@ -42,7 +42,9 @@ async def find_document_by_md5(session: AsyncSession, md5: str):
     return result.scalars().first()
 
 
-async def create_document(session: AsyncSession, file: UploadFile, md5: str, content: bytes) -> Document:
+async def create_document(
+    session: AsyncSession, file: UploadFile, md5: str, content: bytes, user_id: int
+) -> Document:
     """创建文档记录。
 
     Args:
@@ -50,6 +52,7 @@ async def create_document(session: AsyncSession, file: UploadFile, md5: str, con
         file: 上传文件。
         md5: 文件 MD5。
         content: 文件内容。
+        user_id: 上传者用户 ID，写入 Document.user_id 以满足外键约束。
 
     Returns:
         新创建的 Document 实例。
@@ -60,7 +63,7 @@ async def create_document(session: AsyncSession, file: UploadFile, md5: str, con
         author="",
         file_type=(ext.lstrip(".") if ext else None),
         file_md5=md5,
-        user_id=0,
+        user_id=user_id,
         file_size=len(content),
         scope="public",
         metadatas={},
@@ -90,6 +93,10 @@ async def create_chunks(session: AsyncSession, doc_id: int, chunks: list[str], e
             embedding = await embedder.aembed_query(text)
         except Exception:
             embedding = None
+        # 空向量（embedding 配置缺失走 _EmbeddingStub 返回 [] 或异常）落 NULL，
+        # 避免将空列表写进 pgvector 触发维度校验报错；后续检索会回退 fulltext。
+        if not embedding:
+            embedding = None
         records.append(
             Chunk(
                 doc_id=doc_id,
@@ -109,7 +116,9 @@ UPLOAD_MAX_BYTES = 10 * 1024 * 1024
 UPLOAD_ALLOWED_EXT = ("txt", "md", "markdown", "json", "csv")
 
 
-async def process_upload(session: AsyncSession, file: UploadFile, emb_config: dict | None = None):
+async def process_upload(
+    session: AsyncSession, file: UploadFile, user_id: int, emb_config: dict | None = None
+):
     """处理文档上传全流程。
 
     先校验体积与扩展名（拒绝超大/二进制文件），再读取解析。
@@ -117,6 +126,7 @@ async def process_upload(session: AsyncSession, file: UploadFile, emb_config: di
     Args:
         session: SQLAlchemy 异步会话。
         file: 上传文件。
+        user_id: 上传者用户 ID，透传至 Document.user_id。
         emb_config: embedding 配置。
 
     Returns:
@@ -159,7 +169,7 @@ async def process_upload(session: AsyncSession, file: UploadFile, emb_config: di
             "chunks": len(existing.chunks),
         }
 
-    doc = await create_document(session, file, md5, content)
+    doc = await create_document(session, file, md5, content, user_id)
 
     splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
     splitted = splitter.split_text(text)

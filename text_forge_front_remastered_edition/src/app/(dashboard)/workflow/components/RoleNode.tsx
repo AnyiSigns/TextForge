@@ -3,37 +3,21 @@
 import { memo } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { cn } from '@/shared/lib/cn';
+// 执行器译名与层级配色统一取自共享模块，避免各处译名分叉
+import {
+  LAYER_COLORS,
+  LAYER_BADGE,
+  LAYER_LABEL_STYLE,
+  executorLabel,
+  type ExecutorKind,
+  type LayerKind,
+} from '../executorMeta';
 
 interface RoleNodeData {
   label: string;
-  executor?: 'main' | 'audit' | 'tool' | 'router';
-  layer?: 'decision' | 'execution' | 'audit';
+  executor?: ExecutorKind;
+  layer?: LayerKind;
 }
-
-const EXECUTOR_LABEL: Record<string, string> = {
-  main: '主模型',
-  audit: '审计模型',
-  router: '路由模型',
-  tool: '工具模型',
-};
-
-const LAYER_COLORS: Record<string, string> = {
-  decision: 'bg-foreground/[0.06] border-foreground/[0.12]',
-  execution: 'bg-foreground/[0.10] border-foreground/[0.18]',
-  audit: 'bg-foreground/[0.15] border-foreground/[0.25]',
-};
-
-const LAYER_BADGE: Record<string, string> = {
-  decision: '🧠 决策层',
-  execution: '✍️ 执行层',
-  audit: '🔍 审计层',
-};
-
-const LAYER_LABEL_STYLE: Record<string, string> = {
-  decision: 'text-foreground/40',
-  execution: 'text-foreground/50',
-  audit: 'text-foreground/60',
-};
 
 export const RoleNode = memo(({ data, selected }: NodeProps) => {
   const nodeData = data as unknown as RoleNodeData;
@@ -59,7 +43,7 @@ export const RoleNode = memo(({ data, selected }: NodeProps) => {
         {label}
       </div>
       <div className={cn('text-[9px] mt-0.5', LAYER_LABEL_STYLE[layer])}>
-        {EXECUTOR_LABEL[executor] || EXECUTOR_LABEL.main}
+        {executorLabel(executor)}
       </div>
       <Handle
         type="source"

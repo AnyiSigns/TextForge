@@ -47,6 +47,8 @@ export interface KbDocRecord {
   uploaderId?: string;
   uploaderName?: string;
   content?: string;
+  /** 内容 SHA-256 哈希，用于个人文档去重（A24） */
+  contentHash?: string;
 }
 
 export async function putKbDoc(doc: KbDocRecord): Promise<void> {

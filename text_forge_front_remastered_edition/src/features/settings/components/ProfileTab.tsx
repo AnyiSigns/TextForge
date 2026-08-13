@@ -178,7 +178,7 @@ export function ProfileTab() {
           <Mail size={14} strokeWidth={1.8} className="text-muted-foreground" />
           <div>
             <div className="text-xs font-medium">更换邮箱</div>
-            <div className="text-[11px] text-muted-foreground mt-0.5">修改绑定邮箱，需通过旧邮箱验证码验证</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">修改绑定邮箱，需通过新邮箱验证码验证</div>
           </div>
         </div>
         <div className="space-y-3">

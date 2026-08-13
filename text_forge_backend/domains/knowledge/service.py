@@ -1,3 +1,4 @@
+import time
 
 from sqlalchemy import delete as sqla_delete
 from sqlalchemy import select
@@ -61,6 +62,7 @@ class KnowledgeService:
 
         vector_repo = VectorRepository(self.session)
         rag_filter = {"query": query}
+        _t0 = time.monotonic()
         if embedding:
             items = await vector_repo.search_external_books(
                 query_embedding=embedding,
@@ -76,6 +78,15 @@ class KnowledgeService:
                 rag_filter=rag_filter,
                 top_k=top_k,
             )
+        _elapsed_ms = round((time.monotonic() - _t0) * 1000, 1)
+        logger.debug(
+            "公共知识库检索 query=%r top_k=%s 命中=%s 耗时=%sms mode=%s",
+            query[:20],
+            top_k,
+            len(items),
+            _elapsed_ms,
+            "vector" if embedding else "fulltext",
+        )
         return items
 
     async def upload_public(
@@ -93,7 +104,7 @@ class KnowledgeService:
         """
         from domains.book.upload_repository import process_upload
 
-        result = await process_upload(self.session, file, emb_config=emb_config)
+        result = await process_upload(self.session, file, user_id=user_id, emb_config=emb_config)
         # P1-10 补全 author 链路：新上传文档将作者记为上传者用户名。
         # 存量文档（status=existed/MD5 命中）保持原样，不覆盖历史 author；
         # 存量 author 为 NULL 的文档在检索时 author_ids 过滤恒为 0 行，
@@ -108,6 +119,15 @@ class KnowledgeService:
         # 提交整个上传事务（Document + Chunks + author）：get_db 正常路径不自动
         # 提交，session 退出即回滚，缺 commit 会导致上传的文档与切片从不落库。
         await self.session.commit()
+        # 上传成功 → 失效 RAG 缓存，避免新文档不进入检索结果（S13）。
+        await delete_rag_cache("rag:*")
+        logger.info(
+            "公共知识库文档上传成功 doc_id=%s status=%s chunks=%s user_id=%s",
+            result.get("document_id"),
+            result.get("status"),
+            result.get("chunks"),
+            user_id,
+        )
         return result
 
     async def _resolve_user_name(self, user_id: int) -> str | None:

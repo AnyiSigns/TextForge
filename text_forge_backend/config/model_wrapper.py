@@ -36,6 +36,9 @@ class ModelWrapper:
         "cohere": "_create_cohere_embedding",
         "huggingface": "_create_huggingface_embedding",
         "baidu": "_create_baidu_embedding",
+        "openai": "_create_openai_embedding",
+        "deepseek": "_create_deepseek_embedding",
+        "zhipu": "_create_zhipu_embedding",
     }
 
     VISION_MAP: dict[str, Any] = {
@@ -154,6 +157,44 @@ class ModelWrapper:
             return QianfanEmbeddingsEndpoint(**kwargs)
         except Exception as e:
             raise RuntimeError(f"初始化百度千帆 embedding 失败: {e}")
+
+    @staticmethod
+    def _create_openai_embedding(config: dict[str, Any]):
+        try:
+            from langchain_openai import OpenAIEmbeddings
+
+            return OpenAIEmbeddings(
+                model=config.get("model_id") or "text-embedding-3-small",
+                api_key=config.get("api_key", ""),
+                base_url=config.get("base_url"),
+            )
+        except Exception as e:
+            raise RuntimeError(f"初始化 openai embedding 失败: {e}")
+
+    @staticmethod
+    def _create_deepseek_embedding(config: dict[str, Any]):
+        try:
+            from langchain_openai import OpenAIEmbeddings
+
+            return OpenAIEmbeddings(
+                model=config.get("model_id") or "deepseek-embedding",
+                api_key=config.get("api_key", ""),
+                base_url=config.get("base_url") or "https://api.deepseek.com",
+            )
+        except Exception as e:
+            raise RuntimeError(f"初始化 deepseek embedding 失败: {e}")
+
+    @staticmethod
+    def _create_zhipu_embedding(config: dict[str, Any]):
+        try:
+            from langchain_community.embeddings import ZhipuAIEmbeddings
+
+            return ZhipuAIEmbeddings(
+                model=config.get("model_id") or "embedding-2",
+                api_key=config.get("api_key", ""),
+            )
+        except Exception as e:
+            raise RuntimeError(f"初始化 zhipu embedding 失败: {e}")
 
     @staticmethod
     def _create_openai_vision(config: dict[str, Any]):

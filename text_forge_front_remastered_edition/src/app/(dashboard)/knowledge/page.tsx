@@ -17,6 +17,8 @@ import { PageContainer } from '@/shared/ui/PageContainer';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { ListRow } from '@/shared/ui/ListRow';
 import { Button } from '@/shared/ui/Button';
+import { ConfirmDialog } from '@/features/map/components/ConfirmDialog';
+import { useAuthStore } from '@/shared/stores/authStore';
 
 const fileIconClass = (name: string) => {
   const ext = name.split('.').pop()?.toLowerCase();
@@ -45,14 +47,33 @@ export default function KnowledgePage() {
   const personalInputRef = useRef<HTMLInputElement>(null);
   const publicInputRef = useRef<HTMLInputElement>(null);
 
+  // S12：公共库分页（后端每页上限 100，返回不足即到底）
+  const PUBLIC_PAGE_SIZE = 100;
+  const [publicPage, setPublicPage] = useState(1);
+  const [publicHasMore, setPublicHasMore] = useState(false);
+  // A26：用 ConfirmDialog 替代原生 confirm
+  const [confirmTarget, setConfirmTarget] = useState<{ doc: KbDocMeta; scope: 'personal' | 'public' } | null>(null);
+
   const embedTierId = useEmbedTier();
   const downloadedIds = useEmbedDownloaded();
 
-  const refresh = useCallback(async () => {
-    const [p, pub] = await Promise.all([ragClient.listPersonal(), ragClient.listPublic()]);
-    setPersonal(p);
-    setPublicDocs(pub);
+  const loadPublic = useCallback(async (page: number, append: boolean) => {
+    const docs = await ragClient.listPublic(page, PUBLIC_PAGE_SIZE);
+    setPublicHasMore(docs.length >= PUBLIC_PAGE_SIZE);
+    setPublicDocs((prev) => (append ? [...prev, ...docs] : docs));
   }, []);
+
+  const refresh = useCallback(async () => {
+    const [p] = await Promise.all([ragClient.listPersonal(), (async () => {
+      setPublicPage(1);
+      try {
+        await loadPublic(1, false);
+      } catch (e) {
+        showApiError(e, '公共文档库加载失败');
+      }
+    })()]);
+    setPersonal(p);
+  }, [loadPublic]);
 
   const refreshLocal = useCallback(async () => {
     const localDocs = await getAllKbDocs();
@@ -89,9 +110,13 @@ export default function KnowledgePage() {
     if (reindexing) return;
     setReindexing(true);
     try {
-      await reindexAll();
+      const { ok, failed } = await reindexAll();
       await refreshLocal();
-      toast.success('文档已重新整理，现在可以正常检索了');
+      if (failed > 0) {
+        toast.warning(`文档已重新整理：${ok} 篇成功，${failed} 篇失败`, { description: '失败的文档请在设置页检查本地检索模型配置后重试' });
+      } else {
+        toast.success('文档已重新整理，现在可以正常检索了');
+      }
     } catch {
       toast.error('整理文档失败');
     } finally {
@@ -104,7 +129,9 @@ export default function KnowledgePage() {
     if (!file) return;
     setLoading(true);
     try {
-      await ragClient.uploadPersonal(file);
+      // A50：从 authStore 取用户名补全上传者，使公共库 authorIds 过滤命中
+      const userName = useAuthStore.getState().user?.username;
+      await ragClient.uploadPersonal(file, undefined, userName);
       toast.success('上传成功');
       await refresh();
     } catch (e) {
@@ -113,12 +140,7 @@ export default function KnowledgePage() {
   };
 
   const handleDelete = async (doc: KbDocMeta) => {
-    if (!confirm('确定删除该文档吗？')) return;
-    try {
-      await ragClient.removePersonal(doc.id);
-      toast.success('已删除');
-      await refresh();
-    } catch (e) { showApiError(e, '删除失败'); }
+    setConfirmTarget({ doc, scope: 'personal' });
   };
 
   const preview = (doc: KbDocMeta) => {
@@ -136,17 +158,32 @@ export default function KnowledgePage() {
     if (!file) return;
     setPublicUploading(true);
     try {
-      await ragClient.uploadPublic(file);
-      toast.success('已上传到公共文档库');
+      const res = await ragClient.uploadPublic(file);
+      // S14：区分「已存在」与「新上传」
+      if (res.status === 'existed') {
+        toast.info('该文档已存在，未重复入库');
+      } else {
+        toast.success('已上传到公共文档库');
+      }
       await refresh();
     } catch (e) { showApiError(e, '上传失败'); }
     finally { setPublicUploading(false); e.target.value = ''; }
   };
 
   const handlePublicDelete = async (doc: KbDocMeta) => {
-    if (!confirm('确定从公共文档库删除该文档吗？')) return;
+    setConfirmTarget({ doc, scope: 'public' });
+  };
+
+  const confirmDelete = async () => {
+    const target = confirmTarget;
+    setConfirmTarget(null);
+    if (!target) return;
     try {
-      await ragClient.removePublic(doc.id);
+      if (target.scope === 'personal') {
+        await ragClient.removePersonal(target.doc.id);
+      } else {
+        await ragClient.removePublic(target.doc.id);
+      }
       toast.success('已删除');
       await refresh();
     } catch (e) { showApiError(e, '删除失败'); }
@@ -202,8 +239,8 @@ export default function KnowledgePage() {
                 <Button variant="secondary" size="sm" onClick={() => personalInputRef.current?.click()} disabled={loading} className="flex items-center gap-1.5">
                   <Upload size={14} /> 上传文件
                 </Button>
-                <input ref={personalInputRef} type="file" accept=".txt,.pdf,.md,.docx" className="hidden" onChange={handleUpload} />
-                <p className="text-[11px] text-muted-foreground hidden md:block">支持 TXT, PDF, Markdown，存于本地本机向量检索</p>
+                <input ref={personalInputRef} type="file" accept=".txt,.md,.markdown" className="hidden" onChange={handleUpload} />
+                <p className="text-[11px] text-muted-foreground hidden md:block">支持 TXT, Markdown，存于本地本机向量检索</p>
               </div>
               <div className="relative w-56 shrink-0">
                 <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -281,12 +318,27 @@ export default function KnowledgePage() {
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <button onClick={() => openPublic(doc)} className="p-1.5 rounded hover:bg-muted bg-transparent border-none cursor-pointer text-muted-foreground"><Eye size={14} /></button>
-                    <button onClick={() => ragClient.downloadPublic(doc.id, doc.name)} className="p-1.5 rounded hover:bg-muted bg-transparent border-none cursor-pointer text-muted-foreground"><Download size={14} /></button>
+                    <button onClick={async () => {
+                      try {
+                        await ragClient.downloadPublic(doc.id, doc.name);
+                      } catch (e) { showApiError(e, '下载失败'); }
+                    }} className="p-1.5 rounded hover:bg-muted bg-transparent border-none cursor-pointer text-muted-foreground"><Download size={14} /></button>
                     <button onClick={() => handlePublicDelete(doc)} className="p-1.5 rounded hover:bg-destructive/10 bg-transparent border-none cursor-pointer text-muted-foreground hover:text-destructive"><Trash2 size={14} /></button>
                   </div>
                 </ListRow>
               ))}
               {publicDocs.length === 0 && <div className="text-xs text-muted-foreground text-center py-8">暂无公共文档</div>}
+              {publicHasMore && (
+                <div className="flex justify-center pt-2">
+                  <Button variant="secondary" size="sm" onClick={async () => {
+                    try {
+                      const next = publicPage + 1;
+                      setPublicPage(next);
+                      await loadPublic(next, true);
+                    } catch (e) { showApiError(e, '加载更多失败'); }
+                  }}>加载更多</Button>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -301,6 +353,16 @@ export default function KnowledgePage() {
               <pre className="flex-1 overflow-y-auto p-4 text-xs whitespace-pre-wrap text-muted-foreground">{viewing.content}</pre>
             </Card>
           </div>
+        )}
+
+        {confirmTarget && (
+          <ConfirmDialog
+            title={confirmTarget.scope === 'personal' ? '删除个人文档' : '删除公共文档'}
+            message={`确定从${confirmTarget.scope === 'personal' ? '个人文档' : '公共文档库'}删除「${confirmTarget.doc.name}」吗？此操作不可撤销。`}
+            confirmLabel="删除"
+            onConfirm={confirmDelete}
+            onCancel={() => setConfirmTarget(null)}
+          />
         )}
       </div>
     </PageContainer>

@@ -128,8 +128,16 @@ async function getEngine(): Promise<WasmSearchEngine> {
       return buildEngine(chunks);
     })();
   }
-  engine = await engineLoading;
-  return engine;
+  try {
+    engine = await engineLoading;
+    return engine;
+  } catch (e) {
+    // S9：加载失败必须释放锁，否则 engineLoading 永久保持 rejected promise，
+    // 之后任何 getEngine 调用都复用同一失败 promise，个人库检索永远不可用。
+    engineLoading = null;
+    engine = null;
+    throw e;
+  }
 }
 
 async function buildEngine(chunks: StoredChunk[]): Promise<WasmSearchEngine> {
@@ -157,16 +165,25 @@ async function persistEngine(eng: WasmSearchEngine): Promise<void> {
 export async function indexDocument(doc: KbDocRecord): Promise<void> {
   if (!doc.content) return;
   const texts = chunkDocument(doc.content);
-  const chunks: StoredChunk[] = await Promise.all(
-    texts.map(async (text, idx) => ({
-      id: `${doc.id}#${idx}`,
-      docId: doc.id,
-      docName: doc.name,
-      uploaderName: doc.uploaderName,
-      text,
-      vec: await embed(text),
-    })),
-  );
+  // A28：大文档一次性 Promise.all 并发 embedding 会冻结主线程 UI；
+  // 改为分批（每批 8 篇）顺序处理，并在批次间让出主线程。
+  const chunks: StoredChunk[] = [];
+  const BATCH = 8;
+  for (let i = 0; i < texts.length; i += BATCH) {
+    const batch = texts.slice(i, i + BATCH);
+    const embedded = await Promise.all(
+      batch.map(async (text, idx) => ({
+        id: `${doc.id}#${i + idx}`,
+        docId: doc.id,
+        docName: doc.name,
+        uploaderName: doc.uploaderName,
+        text,
+        vec: await embed(text),
+      })),
+    );
+    chunks.push(...embedded);
+    await new Promise((r) => setTimeout(r, 0));
+  }
 
   const db = await getDB();
   // 游标删除同 docId 的旧 chunk，避免在内存里全表 getAll 一份再逐条删。
@@ -195,13 +212,23 @@ export async function removeDocumentChunks(docId: string): Promise<void> {
   await persistEngine(eng);
 }
 
-export async function reindexAll(): Promise<void> {
+// 重建全部文档索引。逐篇按成功/失败分别标记状态，返回成功/失败计数供 UI 提示。
+export async function reindexAll(): Promise<{ ok: number; failed: number }> {
   const docs = await getAllKbDocs();
+  let ok = 0;
+  let failed = 0;
   for (const d of docs) {
-    await indexDocument(d).catch(() => {});
-    // 重建完成，文档恢复「已索引」状态（避免一直显示待重建）
-    if (d.status !== 'indexed') await putKbDoc({ ...d, status: 'indexed' });
+    try {
+      await indexDocument(d);
+      if (d.status !== 'indexed') await putKbDoc({ ...d, status: 'indexed' });
+      ok++;
+    } catch {
+      // S10：失败文档标记为 failed，累计失败数，避免静默「全部成功」假象。
+      await putKbDoc({ ...d, status: 'failed' }).catch(() => {});
+      failed++;
+    }
   }
+  return { ok, failed };
 }
 
 export interface VectorSearchHit {
@@ -243,11 +270,6 @@ export async function vectorSearch(
   return hits;
 }
 
-export async function chunkCount(): Promise<number> {
-  const db = await getDB();
-  return (await db.getAll(CHUNK_STORE)).length;
-}
-
 // 切换向量维度档位时，把所有个人文档标记为「待重建」并清空全部维度的向量分块库，
 // 避免不同维度向量混用导致检索结果错乱（旧文档在新维度库里检索不到却仍显示「已索引」）。
 // 返回需重建的文档数，调用方据此提示用户重新建库。
@@ -259,6 +281,7 @@ export async function resetForTier(tierId: string): Promise<number> {
 
   await closeDB();
   engine = null;
+  engineLoading = null;
   invalidateChunkCache();
 
   // 清空所有维度档位各自的向量分块库（库名带维度后缀，直接删除整库最稳妥）。
@@ -284,6 +307,7 @@ export async function resetForTier(tierId: string): Promise<number> {
     // 被占用/失败：清空本地引擎（下次检索会按真实状态重建），向上抛出以便 UI 提示用户。
     // 注意：这里不把文档标 indexing，避免「删除失败却显示待重建」的错标。
     engine = null;
+    engineLoading = null;
     invalidateChunkCache();
     throw e;
   }
@@ -293,6 +317,7 @@ export async function resetForTier(tierId: string): Promise<number> {
   }
 
   engine = null;
+  engineLoading = null;
   invalidateChunkCache();
 
   // 文档元数据标记待重建（列表仍保留，但状态变为「需重建」，检索时不会被误判为可用）

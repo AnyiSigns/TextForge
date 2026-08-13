@@ -44,7 +44,9 @@ async def cached_rag_search(
     filter_key = json.dumps(rag_filter, sort_keys=True, ensure_ascii=False)
     # 把嵌入维度并入键：不同用户/模型维度不同，仅按 query 文本缓存会串味。
     dim_key = f":dim={embedding_dim}" if embedding_dim is not None else ":dim=none"
-    cache_key = f"rag:{hashlib.md5((query + filter_key + dim_key).encode()).hexdigest()}"
+    # top_k 并入键：不同返回条数应命中各自缓存，否则 top_k=3 的结果会被 top_k=5 误用（S8）。
+    topk_key = f":k={top_k}"
+    cache_key = f"rag:{hashlib.md5((query + filter_key + dim_key + topk_key).encode()).hexdigest()}"
     try:
         cached = await redis_client.get(cache_key)
         if cached is not None:
@@ -72,7 +74,9 @@ async def set_rag_cache(
     """
     filter_key = json.dumps(rag_filter, sort_keys=True, ensure_ascii=False)
     dim_key = f":dim={embedding_dim}" if embedding_dim is not None else ":dim=none"
-    cache_key = f"rag:{hashlib.md5((query + filter_key + dim_key).encode()).hexdigest()}"
+    # top_k 并入键：需与 cached_rag_search 保持一致（S8）。
+    topk_key = f":k={top_k}"
+    cache_key = f"rag:{hashlib.md5((query + filter_key + dim_key + topk_key).encode()).hexdigest()}"
     try:
         await redis_client.setex(
             cache_key, ttl, json.dumps(results, ensure_ascii=False)

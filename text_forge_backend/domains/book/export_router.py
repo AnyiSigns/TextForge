@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth import get_current
@@ -19,7 +19,7 @@ def export_db(session: AsyncSession = Depends(db_manager.get_db)) -> ExportServi
 @router.get("/{book_id}/export")
 async def export_book(
     user_id: Annotated[int, Depends(get_current)],
-    book_id: int,
+    book_id: Annotated[int, Path(description="书籍 ID")],
     service: Annotated[ExportService, Depends(export_db)],
     fmt: str = Query("md", pattern="^(md|txt|epub|pdf)$"),
     include_outline: bool = Query(False),

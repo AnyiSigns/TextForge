@@ -6,6 +6,8 @@
  */
 
 function warn(event: string, detail: string): void {
+  // 仅在非生产环境输出，避免生产 console.warn 噪音；告警语义不删除
+  if (process.env.NODE_ENV === 'production') return;
   if (typeof console !== 'undefined') {
     console.warn(`[sseGuards] ${event} 契约异常: ${detail}`);
   }

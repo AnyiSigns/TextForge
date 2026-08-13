@@ -13,7 +13,13 @@ export async function authedFetch(url: string, init: RequestInit = {}): Promise<
   if (res.status !== 401) return res;
 
   const ok = await useAuthStore.getState().refreshAccessToken();
-  if (!ok) return res;
+  if (!ok) {
+    // 与 apiClient 拦截器一致：刷新失败且不在登录页时跳转 /login，避免刷新循环
+    if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+      window.location.href = '/login';
+    }
+    return res;
+  }
   const newToken = useAuthStore.getState().accessToken;
   if (!newToken) return res;
 

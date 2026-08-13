@@ -119,10 +119,6 @@ export function getDownloadedTiers(): string[] {
   return snapshotCache;
 }
 
-export function isTierDownloaded(id: string): boolean {
-  return memoryDownloaded ? memoryDownloaded.includes(id) : false;
-}
-
 // 模块级发布订阅：让多组件共享同一份「已下载集合」实时状态（单一数据源），
 // 避免 settings 页与 ModelsSettings 各自维护副本导致互相不感知。
 type DownloadedListener = () => void;
@@ -154,13 +150,21 @@ export async function markTierDownloaded(id: string): Promise<void> {
   if (!ids.includes(id)) await saveDownloaded([...ids, id]);
 }
 
-// 当前正在进行的下载控制器（用于取消）
-let activeController: { cancelled: boolean } | null = null;
+// 当前正在进行的下载控制器（用于取消）：用 AbortController 真正中断下载流程。
+let activeAbort: AbortController | null = null;
 export function cancelEmbedDownload() {
-  if (activeController) activeController.cancelled = true;
+  activeAbort?.abort();
 }
 
-async function buildExtractor(onProgress?: (p: EmbedDownloadProgress) => void, controller?: { cancelled: boolean }): Promise<FeatureExtractionPipeline> {
+// 构建一个指定档位的 extractor；signal 用于取消。
+// 注意：transformers.js 3.x 的 pipeline 不消费 signal 中止底层网络下载，
+// 因此用 Promise.race 让取消请求即时 reject，避免「取消后仍标记已下载 / 继续占用」；
+// 已下载的权重仍会落浏览器缓存，下次下载可复用。
+async function buildExtractor(
+  onProgress?: (p: EmbedDownloadProgress) => void,
+  signal?: AbortSignal,
+  tier: EmbedModelTier = currentTier,
+): Promise<FeatureExtractionPipeline> {
   // transformers.js v3 的 pipeline 返回类型联合过大，TS 无法表示（TS2590），
   // 用 any 取模块后再断言回 FeatureExtractionPipeline，运行时类型正确。
   const mod = await import('@huggingface/transformers');
@@ -175,7 +179,7 @@ async function buildExtractor(onProgress?: (p: EmbedDownloadProgress) => void, c
     }
   }
 
-  const estTotal = currentTier.sizeMB * 1024 * 1024;
+  const estTotal = tier.sizeMB * 1024 * 1024;
   const fileMap: Record<string, { loaded: number; total: number }> = {};
   const report = (onProgress: (p: EmbedDownloadProgress) => void) => {
     let loaded = 0;
@@ -188,10 +192,9 @@ async function buildExtractor(onProgress?: (p: EmbedDownloadProgress) => void, c
     onProgress({ loaded, total: denom });
   };
 
-  const pipe = await pipeline('feature-extraction', currentTier.model, {
+  const pipePromise = pipeline('feature-extraction', tier.model, {
     progress_callback: onProgress
       ? (e: { status: string; progress?: number; loaded?: number; total?: number; file?: string }) => {
-          if (controller?.cancelled) return;
           const file = e.file ?? '?';
           if (e.status === 'progress') {
             const total = typeof e.total === 'number' && e.total > 0 ? e.total : (fileMap[file]?.total ?? 0);
@@ -207,18 +210,38 @@ async function buildExtractor(onProgress?: (p: EmbedDownloadProgress) => void, c
           report(onProgress);
         }
       : undefined,
+    signal,
   });
+  const abortPromise = new Promise<FeatureExtractionPipeline>((_, reject) => {
+    if (!signal) return;
+    if (signal.aborted) {
+      reject(new DOMException('下载已取消', 'AbortError'));
+      return;
+    }
+    signal.addEventListener(
+      'abort',
+      () => reject(new DOMException('下载已取消', 'AbortError')),
+      { once: true },
+    );
+  });
+  const pipe = await Promise.race([pipePromise, abortPromise]);
   if (onProgress) onProgress({ loaded: estTotal, total: estTotal });
   return pipe as FeatureExtractionPipeline;
 }
 
-async function getExtractor(onProgress?: (p: EmbedDownloadProgress) => void, controller?: { cancelled: boolean }): Promise<FeatureExtractionPipeline> {
+// onProgress/signal/tier 仅用于显式下载；常规 embed() 调用不传（走 currentTier）。
+async function getExtractor(
+  onProgress?: (p: EmbedDownloadProgress) => void,
+  signal?: AbortSignal,
+  tier?: EmbedModelTier,
+): Promise<FeatureExtractionPipeline> {
   if (extractor) return extractor;
   // 进行中则复用同一 promise（含正在下载的预热），避免并发重复构建 /
   // 复用已失败的 rejected promise。失败时 loading 已被清，下次调用会重启。
   if (loading) return loading;
+  const target = tier ?? currentTier;
   const start = () =>
-    buildExtractor(onProgress, controller)
+    buildExtractor(onProgress, signal, target)
       .then((p) => { extractor = p; loading = null; return p; })
       .catch((e) => { loading = null; throw e; });
   loading = start();
@@ -229,46 +252,49 @@ async function getExtractor(onProgress?: (p: EmbedDownloadProgress) => void, con
 export async function embed(text: string): Promise<number[]> {
   const pipe = await getExtractor();
   const out = await pipe(text, { pooling: 'mean', normalize: true });
-  return Array.from(out.data as Float32Array).slice(0, currentTier.dim);
+  const data = Array.from(out.data as Float32Array);
+  // A23：首次推理后校验维度，避免模型与档位维度不符导致静默截断/补零。
+  // 维度不一致通常是下载了与当前档位不匹配的模型，给出可操作提示。
+  if (data.length !== currentTier.dim) {
+    throw new Error(
+      `本地检索模型维度（${data.length}）与当前档位「${currentTier.label}」（${currentTier.dim} 维）不符，请在设置页重新下载对应档位模型`,
+    );
+  }
+  return data;
 }
 
-// 显式下载指定档位模型：切到该档、并发起下载（带进度回调）。
-// 与 prewarmEmbed 共用 extractor 单例：若已就绪且档位一致直接返回，
-// 否则强制清掉之前的加载锁重新下载，避免被静默预热的 loading 阻塞。
+// 显式下载指定档位模型：仅把权重拉到浏览器缓存（带进度回调），不切换 currentTier。
+// 与旧预热逻辑共用 extractor 单例：若已就绪且档位一致直接标记返回，
+// 否则清掉之前的加载锁重新下载，避免并发重复构建。
 export async function downloadEmbedModel(id: string, onProgress?: (p: EmbedDownloadProgress) => void): Promise<boolean> {
   const t = EMBED_TIERS.find((x) => x.id === id);
   if (!t) throw new Error(`未知向量模型档位：${id}`);
-  // 切换档位：若当前已是该档且已就绪，直接返回（无需重复下载）
+  // 若该档已就绪且即当前档，直接标记并跳过重复下载
   if (extractor && currentTier.id === id) {
     await markTierDownloaded(id);
     return true;
   }
-  setEmbedTier(id);
+  // 下载与切档解耦：仅下载目标档位权重到浏览器缓存，不改变 currentTier，
+  // 避免已索引的个人库被静默切到空库导致检索恒空。切档由知识库页下拉显式触发。
   extractor = null;
   loading = null;
-  const controller = { cancelled: false };
-  activeController = controller;
+  const abort = new AbortController();
+  activeAbort = abort;
   try {
-    await getExtractor(onProgress, controller);
-    // 下载成功：记录该档已下载（即便中途被新下载取代，本档权重已落本地缓存）
-    await markTierDownloaded(id);
-    return true;
-  } finally {
-    if (activeController === controller) activeController = null;
-  }
-}
-
-// 仅切换当前精度档（不触发下载），用于已下载档位的即时切换。
-export function switchEmbedTier(id: string) {
-  const t = EMBED_TIERS.find((x) => x.id === id);
-  if (!t) return;
-  if (extractor && currentTier.id !== id) {
+    await getExtractor(onProgress, abort.signal, t);
+    // 下载成功：释放 extractor（权重已落缓存，下次按 currentTier 重建更快），
+    // 仅标记该档已下载，不切换 currentTier。
     extractor = null;
     loading = null;
+    await markTierDownloaded(id);
+    return true;
+  } catch (e) {
+    // 取消（AbortError）不标记已下载、不视为失败提示；其余错误向上抛出由调用方提示。
+    if (abort.signal.aborted) return false;
+    throw e;
+  } finally {
+    if (activeAbort === abort) activeAbort = null;
   }
-  currentTier = t;
-  setItem(CURRENT_TIER_KEY, id).catch(() => {});
-  emitTier();
 }
 
 // 删除某个档位：清浏览器 Cache Storage 中该模型权重 + 从已下载集合移除。
@@ -301,13 +327,4 @@ export async function deleteEmbedModel(id: string): Promise<void> {
   }
 }
 
-// 登录后静默预热：后台下载并初始化默认档模型，不阻塞 UI。
-// 失败静默忽略（用户真正检索时再按需加载，会再次容灾尝试）。
-// 注意：预热与手动下载共用 loading 锁，手动下载会清掉该锁强制重下。
-export async function prewarmEmbed(): Promise<void> {
-  try {
-    await getExtractor();
-  } catch {
-    /* 静默 */
-  }
-}
+// 已下载集合的订阅工具见上方定义；此处不再保留旧预热函数。

@@ -55,18 +55,16 @@ describe('auth api', () => {
     await expect(authApi.resendVerifyApi('a@b.com')).rejects.toThrow('验证邮件发送失败，请稍后再试');
   });
 
-  it('登录成功：返回 access_token / refresh_token / user', async () => {
+  it('登录成功：返回 access_token / user（refresh_token 由 HttpOnly cookie 下发，不进响应体）', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       jsonResponse(200, {
         access_token: 'at',
-        refresh_token: 'rt',
         token_type: 'bearer',
         user: { id: 1, username: 'u', email: 'a@b.com', isVerified: true, createdAt: '' },
       }),
     );
     const data = await authApi.loginApi('a@b.com', 'p');
     expect(data.access_token).toBe('at');
-    expect(data.refresh_token).toBe('rt');
     expect(data.user.username).toBe('u');
   });
 });

@@ -13,6 +13,18 @@ import * as userApi from '@/shared/api/user';
 import { useBookDetailStore } from './books/[id]/store';
 import { AgentPanel } from './books/[id]/AgentPanel/AgentPanel';
 
+// 布局尺寸常量（统一命名，避免散落魔数）
+const SIDEBAR_MIN_WIDTH = 56;
+const SIDEBAR_MAX_WIDTH = 400;
+const SIDEBAR_COLLAPSED_WIDTH = 56;
+const SIDEBAR_DEFAULT_WIDTH = 224;
+const SIDEBAR_AUTO_COLLAPSE_THRESHOLD = 120;
+const PANEL_MIN_WIDTH = 260;
+const PANEL_MAX_WIDTH = 700;
+const PANEL_DEFAULT_WIDTH = 340;
+const PANEL_POPUP_OFFSET = 228;
+const PANEL_POPUP_OFFSET_COLLAPSED = 60;
+
 const menuGroups = [
   {
     label: '',
@@ -32,31 +44,29 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const userMenuRef = useRef<HTMLDivElement>(null);
   const { hasHydrated } = useAuthStore();
 
-  const [userName, setUserName] = useState('');
-  const [userEmail, setUserEmail] = useState('');
-  const [panelWidth, setPanelWidth] = useState(340);
+  // 用户信息直接订阅 authStore（登录/刷新/登出后自动同步），不再手动拷贝到本地 state
+  const authUser = useAuthStore((s) => s.user);
+  // 兜底：store 无 user 但会话仍有效时（如持久层被清但 cookie 仍在）回退 fetchProfile
+  const [profileFallback, setProfileFallback] = useState<{ username: string; email: string } | null>(null);
+  const userName = authUser?.username ?? profileFallback?.username ?? '';
+  const userEmail = authUser?.email ?? profileFallback?.email ?? '';
+  const [panelWidth, setPanelWidth] = useState(PANEL_DEFAULT_WIDTH);
   const [panelFullscreen, setPanelFullscreen] = useState(false);
   const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const [panelDragging, setPanelDragging] = useState(false);
-  const [sidebarWidth, setSidebarWidth] = useState(224);
+  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
   const sidebarResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const [sidebarDragging, setSidebarDragging] = useState(false);
   const [prevPathname, setPrevPathname] = useState(pathname);
   const agentActive = useBookDetailStore((s) => s.agentOpen);
 
   useEffect(() => {
-    // 优先使用 authStore 中已恢复的完整 profile，避免重复请求；缺失时回退 fetchProfile。
-    const stored = useAuthStore.getState().user;
-    if (stored) {
-      setUserName(stored.username || '');
-      setUserEmail(stored.email || '');
-      return;
-    }
+    // 优先使用 authStore 中已恢复的完整 profile；缺失时回退 fetchProfile。
+    if (authUser) return;
     userApi.fetchProfile().then((p) => {
-      setUserName(p.username || '');
-      setUserEmail(p.email || '');
+      setProfileFallback({ username: p.username || '', email: p.email || '' });
     }).catch(() => {});
-  }, []);
+  }, [authUser]);
 
   useEffect(() => {
     if (!userMenuOpen) return;
@@ -93,7 +103,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const handleResizeMove = (e: MouseEvent) => {
     if (!resizeRef.current) return;
     const delta = resizeRef.current.startX - e.clientX;
-    setPanelWidth(Math.max(260, Math.min(700, resizeRef.current.startWidth + delta)));
+    setPanelWidth(Math.max(PANEL_MIN_WIDTH, Math.min(PANEL_MAX_WIDTH, resizeRef.current.startWidth + delta)));
   };
 
   const handleResizeUp = () => {
@@ -114,7 +124,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const handleSidebarResizeMove = (e: MouseEvent) => {
     if (!sidebarResizeRef.current) return;
-    const newWidth = Math.max(56, Math.min(400, sidebarResizeRef.current.startWidth + (e.clientX - sidebarResizeRef.current.startX)));
+    const newWidth = Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, sidebarResizeRef.current.startWidth + (e.clientX - sidebarResizeRef.current.startX)));
     setSidebarWidth(newWidth);
   };
 
@@ -124,9 +134,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     document.removeEventListener('mousemove', handleSidebarResizeMove);
     document.removeEventListener('mouseup', handleSidebarResizeUp);
     setSidebarWidth((current) => {
-      if (current < 120) {
+      if (current < SIDEBAR_AUTO_COLLAPSE_THRESHOLD) {
         setCollapsed(true);
-        return 56;
+        return SIDEBAR_COLLAPSED_WIDTH;
       } else {
         setCollapsed(false);
         return current;
@@ -144,10 +154,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const toggleSidebar = () => {
     if (collapsed) {
-      setSidebarWidth(224);
+      setSidebarWidth(SIDEBAR_DEFAULT_WIDTH);
       setCollapsed(false);
     } else {
-      setSidebarWidth(56);
+      setSidebarWidth(SIDEBAR_COLLAPSED_WIDTH);
       setCollapsed(true);
     }
   };
@@ -204,7 +214,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
           </div>
           {userMenuOpen && (
-            <div ref={userMenuRef} className="app-user-popup" style={{ left: collapsed ? 60 : 228 }}>
+              <div ref={userMenuRef} className="app-user-popup" style={{ left: collapsed ? PANEL_POPUP_OFFSET_COLLAPSED : PANEL_POPUP_OFFSET }}>
               <div className="app-user-popup-item">
                 <div className="app-user-avatar" style={{ width: 24, height: 24, fontSize: 10 }}>{userName ? userName.charAt(0).toUpperCase() : 'U'}</div>
                 <div>
